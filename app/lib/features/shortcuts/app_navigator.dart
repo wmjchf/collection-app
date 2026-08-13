@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:super_collection/core/ui/app_toast.dart';
 
-/// 全局 Navigator，供快捷指令等无 BuildContext 场景弹 SnackBar。
+/// 全局 Navigator，供快捷指令等无 BuildContext 场景弹 Toast。
 class AppNavigator {
   AppNavigator._();
 
@@ -8,11 +9,15 @@ class AppNavigator {
 
   static BuildContext? get context => key.currentContext;
 
-  static void showSnackBar(String message) {
+  static void showSnackBar(String message, {bool loading = false}) {
     final ctx = context;
     if (ctx == null) return;
-    final messenger = ScaffoldMessenger.maybeOf(ctx);
-    messenger?.hideCurrentSnackBar();
-    messenger?.showSnackBar(SnackBar(content: Text(message)));
+    AppToast.show(ctx, message, loading: loading);
+  }
+
+  static void hideSnackBar() {
+    final ctx = context;
+    if (ctx == null) return;
+    AppToast.hide(ctx);
   }
 }

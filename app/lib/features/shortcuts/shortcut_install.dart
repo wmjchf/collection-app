@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:super_collection/features/shortcuts/shortcut_config.dart';
+import 'package:super_collection/core/ui/app_toast.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 /// 设置页主路径：一键添加快捷指令。
@@ -36,18 +37,14 @@ class _ManualInstallSheet extends StatelessWidget {
       const ClipboardData(text: ShortcutConfig.saveClipboardUri),
     );
     if (!context.mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('已复制打开链接')),
-    );
+    AppToast.show(context, '已复制打开链接');
   }
 
   Future<void> _openShortcutsApp(BuildContext context) async {
     final uri = Uri.parse('shortcuts://');
     final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
     if (!ok && context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('无法打开「快捷指令」，请手动打开该 App')),
-      );
+      AppToast.show(context, '无法打开「快捷指令」，请手动打开该 App');
     }
   }
 

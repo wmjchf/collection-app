@@ -1,20 +1,20 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:super_collection/core/network/api_client.dart';
+import 'package:super_collection/core/utils/clipboard_utils.dart';
 import 'package:super_collection/core/utils/link_utils.dart';
 import 'package:super_collection/features/items/item_detail_page.dart';
 import 'package:super_collection/features/items/items_repository.dart';
+import 'package:super_collection/core/ui/app_toast.dart';
 
 /// 弹出「添加链接」底部弹框（对齐 Figma）。
 /// 可预填 [initialUrl]；若为空则尝试读取剪贴板中的 URL。
-/// 暂无本地 mock 保存；后端接入后替换 [_save]。
 Future<void> showAddLinkSheet(
   BuildContext context, {
   String? initialUrl,
 }) async {
   var url = initialUrl?.trim() ?? '';
   if (url.isEmpty) {
-    url = await _readClipboardUrl() ?? '';
+    url = await readClipboardHttpUrl() ?? '';
   }
 
   if (!context.mounted) return;
@@ -34,19 +34,6 @@ Future<void> showAddLinkSheet(
     },
   );
 }
-
-Future<String?> _readClipboardUrl() async {
-  try {
-    final data = await Clipboard.getData(Clipboard.kTextPlain);
-    final text = data?.text?.trim();
-    if (text == null || text.isEmpty) return null;
-    return extractHttpUrl(text);
-  } catch (_) {
-    return null;
-  }
-}
-
-bool _isValidUrl(String value) => isValidHttpUrl(value);
 
 class AddLinkSheet extends StatefulWidget {
   const AddLinkSheet({super.key, this.initialUrl = ''});
@@ -90,7 +77,7 @@ class _AddLinkSheetState extends State<AddLinkSheet> {
   Future<void> _onSave() async {
     if (_saving) return;
     final url = _controller.text.trim();
-    if (!_isValidUrl(url)) {
+    if (!isValidHttpUrl(url)) {
       setState(() => _error = '请输入有效的 http(s) 链接');
       return;
     }
@@ -102,16 +89,12 @@ class _AddLinkSheetState extends State<AddLinkSheet> {
 
     try {
       final navigator = Navigator.of(context);
-      final messenger = ScaffoldMessenger.of(context);
       final result = await _items.createItem(url);
       if (!mounted) return;
       navigator.pop();
-      messenger.showSnackBar(
-        SnackBar(
-          content: Text(
-            result.existed ? '该链接已收藏' : '已保存：${result.item.title ?? ''}',
-          ),
-        ),
+      AppToast.show(
+        context,
+        result.existed ? '该链接已收藏' : '已保存：${result.item.title ?? ''}',
       );
       navigator.push(
         MaterialPageRoute<void>(

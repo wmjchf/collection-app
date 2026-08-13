@@ -1,6 +1,6 @@
-import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:super_collection/core/network/api_client.dart';
+import 'package:super_collection/core/utils/clipboard_utils.dart';
 import 'package:super_collection/core/utils/link_utils.dart';
 import 'package:super_collection/features/auth/auth_repository.dart';
 import 'package:super_collection/features/items/items_repository.dart';
@@ -61,7 +61,7 @@ class ShortcutInbound {
         return;
       }
 
-      AppNavigator.showSnackBar('正在保存…');
+      AppNavigator.showSnackBar('正在解析内容…', loading: true);
       final result = await ItemsRepository().createItem(url);
       AppNavigator.showSnackBar(
         result.existed
@@ -77,14 +77,5 @@ class ShortcutInbound {
     }
   }
 
-  static Future<String?> _readClipboardUrl() async {
-    try {
-      final data = await Clipboard.getData(Clipboard.kTextPlain);
-      final text = data?.text?.trim();
-      if (text == null || text.isEmpty) return null;
-      return extractHttpUrl(text);
-    } catch (_) {
-      return null;
-    }
-  }
+  static Future<String?> _readClipboardUrl() => readClipboardHttpUrl();
 }

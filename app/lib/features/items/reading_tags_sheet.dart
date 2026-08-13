@@ -4,6 +4,7 @@ import 'package:super_collection/features/collection/create_tag_sheet.dart';
 import 'package:super_collection/features/collection/tag_models.dart';
 import 'package:super_collection/features/collection/tags_repository.dart';
 import 'package:super_collection/features/items/items_repository.dart';
+import 'package:super_collection/core/ui/app_toast.dart';
 
 Future<void> showReadingTagsSheet(
   BuildContext context, {
@@ -99,15 +100,11 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
     } on ApiException catch (e) {
       if (!mounted) return;
       setState(() => _saving = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.message)),
-      );
+      AppToast.show(context, e.message);
     } catch (_) {
       if (!mounted) return;
       setState(() => _saving = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('保存失败')),
-      );
+      AppToast.show(context, '保存失败');
     }
   }
 

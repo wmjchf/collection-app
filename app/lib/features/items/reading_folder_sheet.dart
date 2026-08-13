@@ -4,6 +4,7 @@ import 'package:super_collection/features/collection/folder_models.dart';
 import 'package:super_collection/features/collection/folders_repository.dart';
 import 'package:super_collection/features/items/item_models.dart';
 import 'package:super_collection/features/items/items_repository.dart';
+import 'package:super_collection/core/ui/app_toast.dart';
 
 Future<CollectionItem?> showReadingFolderSheet(
   BuildContext context, {
@@ -96,15 +97,11 @@ class _ReadingFolderSheetState extends State<_ReadingFolderSheet> {
     } on ApiException catch (e) {
       if (!mounted) return;
       setState(() => _saving = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.message)),
-      );
+      AppToast.show(context, e.message);
     } catch (_) {
       if (!mounted) return;
       setState(() => _saving = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('移动失败')),
-      );
+      AppToast.show(context, '移动失败');
     }
   }
 

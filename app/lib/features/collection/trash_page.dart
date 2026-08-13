@@ -5,6 +5,7 @@ import 'package:super_collection/features/home/home_format.dart';
 import 'package:super_collection/features/items/cover_image.dart';
 import 'package:super_collection/features/items/item_models.dart';
 import 'package:super_collection/features/items/items_repository.dart';
+import 'package:super_collection/core/ui/app_toast.dart';
 
 /// 回收站（对齐 Figma `21. 回收站`）：恢复 / 彻底删除 / 清空
 class TrashPage extends StatefulWidget {
@@ -146,21 +147,15 @@ class _TrashPageState extends State<TrashPage> {
         _total = (_total - 1).clamp(0, 1 << 30);
         _busyIds.remove(item.id);
       });
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('已恢复')),
-      );
+      AppToast.show(context, '已恢复');
     } on ApiException catch (e) {
       if (!mounted) return;
       setState(() => _busyIds.remove(item.id));
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.message)),
-      );
+      AppToast.show(context, e.message);
     } catch (_) {
       if (!mounted) return;
       setState(() => _busyIds.remove(item.id));
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('恢复失败')),
-      );
+      AppToast.show(context, '恢复失败');
     }
   }
 
@@ -181,21 +176,15 @@ class _TrashPageState extends State<TrashPage> {
         _total = (_total - 1).clamp(0, 1 << 30);
         _busyIds.remove(item.id);
       });
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('已彻底删除')),
-      );
+      AppToast.show(context, '已彻底删除');
     } on ApiException catch (e) {
       if (!mounted) return;
       setState(() => _busyIds.remove(item.id));
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.message)),
-      );
+      AppToast.show(context, e.message);
     } catch (_) {
       if (!mounted) return;
       setState(() => _busyIds.remove(item.id));
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('删除失败')),
-      );
+      AppToast.show(context, '删除失败');
     }
   }
 
@@ -214,19 +203,13 @@ class _TrashPageState extends State<TrashPage> {
         _items = const [];
         _total = 0;
       });
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('回收站已清空')),
-      );
+      AppToast.show(context, '回收站已清空');
     } on ApiException catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.message)),
-      );
+      AppToast.show(context, e.message);
     } catch (_) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('清空失败')),
-      );
+      AppToast.show(context, '清空失败');
     }
   }
 

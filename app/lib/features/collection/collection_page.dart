@@ -12,6 +12,7 @@ import 'package:super_collection/features/collection/tag_models.dart';
 import 'package:super_collection/features/collection/tags_repository.dart';
 import 'package:super_collection/features/collection/trash_page.dart';
 import 'package:super_collection/features/settings/settings_page.dart';
+import 'package:super_collection/core/ui/app_toast.dart';
 
 /// 我的收藏（对齐 Figma：系统分类 / 收藏夹 / 标签 / 其他）
 class CollectionPage extends StatefulWidget {
@@ -148,9 +149,7 @@ class _CollectionPageState extends State<CollectionPage> {
     if (!mounted || folder == null) return;
     await _load();
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('已创建「${folder.name}」')),
-    );
+    AppToast.show(context, '已创建「${folder.name}」');
   }
 
   Future<void> _onCreateTag() async {
@@ -158,9 +157,7 @@ class _CollectionPageState extends State<CollectionPage> {
     if (!mounted || tag == null) return;
     await _load();
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('已创建标签「${tag.name}」')),
-    );
+    AppToast.show(context, '已创建标签「${tag.name}」');
   }
 
   Future<void> _onDeleteFolder(Folder folder) async {
@@ -176,17 +173,13 @@ class _CollectionPageState extends State<CollectionPage> {
       if (!mounted) return;
       await _load();
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('已删除「${folder.name}」')),
-      );
+      AppToast.show(context, '已删除「${folder.name}」');
     } on ApiException catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+      AppToast.show(context, e.message);
     } catch (_) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('删除失败')),
-      );
+      AppToast.show(context, '删除失败');
     }
   }
 
@@ -203,17 +196,13 @@ class _CollectionPageState extends State<CollectionPage> {
       if (!mounted) return;
       await _load();
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('已删除标签「${tag.name}」')),
-      );
+      AppToast.show(context, '已删除标签「${tag.name}」');
     } on ApiException catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+      AppToast.show(context, e.message);
     } catch (_) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('删除失败')),
-      );
+      AppToast.show(context, '删除失败');
     }
   }
 

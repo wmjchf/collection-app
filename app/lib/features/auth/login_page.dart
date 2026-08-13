@@ -6,6 +6,7 @@ import 'package:super_collection/features/onboarding/onboarding_page.dart';
 import 'package:super_collection/features/onboarding/onboarding_prefs.dart';
 import 'package:super_collection/features/shell/main_shell.dart';
 import 'package:super_collection/features/shortcuts/shortcut_inbound.dart';
+import 'package:super_collection/core/ui/app_toast.dart';
 
 /// 登录页（对齐 Figma：手机号 + 验证码）
 /// 开发阶段后端写死验证码，默认 123456。
@@ -48,9 +49,7 @@ class _LoginPageState extends State<LoginPage> {
 
   void _toast(String message) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message)),
-    );
+    AppToast.show(context, message);
   }
 
   Future<void> _onSendCode() async {

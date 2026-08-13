@@ -9,6 +9,7 @@ import 'package:super_collection/features/items/item_image_gallery.dart';
 import 'package:super_collection/features/items/item_models.dart';
 import 'package:super_collection/features/items/item_reading_page.dart';
 import 'package:super_collection/features/items/items_repository.dart';
+import 'package:super_collection/core/ui/app_toast.dart';
 
 /// 内容详情：头部元信息 + 随解析状态变化的内容区；成功时底部固定「进入阅读」。
 class ItemDetailPage extends StatefulWidget {
@@ -104,9 +105,7 @@ class _ItemDetailPageState extends State<ItemDetailPage> {
       _syncPolling(item);
     } on ApiException catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.message)),
-      );
+      AppToast.show(context, e.message);
     }
   }
 
@@ -153,9 +152,7 @@ class _ItemDetailPageState extends State<ItemDetailPage> {
   }
 
   void _toastSoon(String label) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('$label功能即将开放')),
-    );
+    AppToast.show(context, '$label功能即将开放');
   }
 
   @override

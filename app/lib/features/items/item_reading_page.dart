@@ -12,6 +12,7 @@ import 'package:super_collection/features/items/reading_folder_sheet.dart';
 import 'package:super_collection/features/items/reading_more_sheet.dart';
 import 'package:super_collection/features/items/reading_note_sheet.dart';
 import 'package:super_collection/features/items/reading_tags_sheet.dart';
+import 'package:super_collection/core/ui/app_toast.dart';
 
 /// 本地阅读页：标题 + 可读正文（含标注高亮）；底栏 星标 / 标签 / 备注 / 更多。
 class ItemReadingPage extends StatefulWidget {
@@ -91,9 +92,7 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
     } on ApiException catch (e) {
       if (!mounted) return;
       setState(() => _starring = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.message)),
-      );
+      AppToast.show(context, e.message);
     } catch (_) {
       if (!mounted) return;
       setState(() => _starring = false);
@@ -132,9 +131,7 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
       return ann;
     } on ApiException catch (e) {
       if (!mounted) return null;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.message)),
-      );
+      AppToast.show(context, e.message);
       return null;
     }
   }
@@ -148,9 +145,7 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
     _clearToolbar(state);
     final ann = await _createHighlight(text, start, end);
     if (ann != null && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('已高亮')),
-      );
+      AppToast.show(context, '已高亮');
     }
   }
 
@@ -170,14 +165,11 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
     );
     if (ann != null && mounted) {
       setState(() => _annotations = [..._annotations, ann]);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Text('短注已保存'),
-          action: SnackBarAction(
-            label: '查看',
-            onPressed: _showAnnotationList,
-          ),
-        ),
+      AppToast.show(
+        context,
+        '短注已保存',
+        actionLabel: '查看',
+        onAction: _showAnnotationList,
       );
     }
   }
@@ -189,9 +181,7 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
     await Clipboard.setData(ClipboardData(text: text));
     _clearToolbar(state);
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('已复制')),
-    );
+    AppToast.show(context, '已复制');
   }
 
   void _openAnnotation(ItemAnnotation ann) {
@@ -347,9 +337,7 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
       Navigator.of(context).pop(true);
     } on ApiException catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.message)),
-      );
+      AppToast.show(context, e.message);
     }
   }
 

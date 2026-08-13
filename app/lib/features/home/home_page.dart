@@ -1,15 +1,19 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:super_collection/core/network/api_client.dart';
+import 'package:super_collection/core/utils/clipboard_utils.dart';
+import 'package:super_collection/core/utils/link_utils.dart';
 import 'package:super_collection/features/collection/system_filter_list_page.dart';
-import 'package:super_collection/features/home/add_link_sheet.dart';
 import 'package:super_collection/features/home/home_format.dart';
 import 'package:super_collection/features/home/home_mock_data.dart';
 import 'package:super_collection/features/home/home_repository.dart';
 import 'package:super_collection/features/home/widgets/home_item_card.dart';
 import 'package:super_collection/features/items/item_detail_page.dart';
 import 'package:super_collection/features/items/item_models.dart';
+import 'package:super_collection/features/items/items_repository.dart';
+import 'package:super_collection/features/onboarding/shortcuts_help_page.dart';
 import 'package:super_collection/features/search/search_page.dart';
+import 'package:super_collection/core/ui/app_toast.dart';
 
 /// 一级页：首页 — 未读 / 标注 / 最近阅读
 class HomePage extends StatefulWidget {
@@ -28,9 +32,12 @@ class _HomePageState extends State<HomePage> {
   static const _blue = Color(0xFF2F6FED);
 
   final _repo = HomeRepository();
+  final _items = ItemsRepository();
   HomeData? _data;
   bool _loading = true;
+  bool _pasting = false;
   String? _error;
+  final _addButtonKey = GlobalKey();
 
   @override
   void initState() {
@@ -77,10 +84,137 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
-  Future<void> _onAddLink() async {
-    await showAddLinkSheet(context);
+  Future<void> _onAddPressed() async {
+    final box =
+        _addButtonKey.currentContext?.findRenderObject() as RenderBox?;
+    if (box == null || !mounted) return;
+
+    final overlay =
+        Overlay.of(context).context.findRenderObject() as RenderBox?;
+    if (overlay == null) return;
+
+    final topLeft = box.localToGlobal(Offset.zero, ancestor: overlay);
+    final size = box.size;
+    // 菜单右对齐到「+」按钮右侧
+    final position = RelativeRect.fromLTRB(
+      topLeft.dx + size.width - 188,
+      topLeft.dy + size.height + 6,
+      overlay.size.width - (topLeft.dx + size.width),
+      overlay.size.height - (topLeft.dy + size.height + 6),
+    );
+
+    final action = await showMenu<String>(
+      context: context,
+      position: position,
+      elevation: 8,
+      color: Colors.white,
+      shadowColor: Colors.black.withValues(alpha: 0.14),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: const BorderSide(color: Color(0xFFE6E8EB)),
+      ),
+      constraints: const BoxConstraints(minWidth: 188, maxWidth: 188),
+      items: const [
+        PopupMenuItem<String>(
+          value: 'paste',
+          height: 64,
+          padding: EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text(
+                '粘贴链接',
+                style: TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w500,
+                  color: Color(0xFF1F242E),
+                ),
+              ),
+              SizedBox(height: 4),
+              Text(
+                '读取剪贴板并直接保存',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Color(0xFF737A85),
+                ),
+              ),
+            ],
+          ),
+        ),
+        PopupMenuItem<String>(
+          value: 'shortcuts',
+          height: 64,
+          padding: EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text(
+                '快捷指令',
+                style: TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w500,
+                  color: Color(0xFF1F242E),
+                ),
+              ),
+              SizedBox(height: 4),
+              Text(
+                '说明与一键添加',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Color(0xFF737A85),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+
+    if (!mounted || action == null) return;
+    if (action == 'paste') {
+      await _pasteAndSave();
+    } else if (action == 'shortcuts') {
+      await Navigator.of(context).push(
+        MaterialPageRoute<void>(builder: (_) => const ShortcutsHelpPage()),
+      );
+    }
+  }
+
+  Future<void> _pasteAndSave() async {
+    if (_pasting) return;
+    final url = await readClipboardHttpUrl();
     if (!mounted) return;
-    await _load();
+    if (url == null || !isValidHttpUrl(url)) {
+      AppToast.show(
+        context,
+        url == null || url.isEmpty ? '剪贴板里没有链接' : '链接无效，请检查后重试',
+      );
+      return;
+    }
+
+    setState(() => _pasting = true);
+    AppToast.loading(context, '正在解析内容…');
+    try {
+      final result = await _items.createItem(url);
+      if (!mounted) return;
+      AppToast.show(
+        context,
+        result.existed
+            ? '该链接已收藏'
+            : '已保存：${result.item.title ?? url}',
+      );
+      await _load(quiet: true);
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      AppToast.show(context, e.message);
+    } catch (_) {
+      if (!mounted) return;
+      AppToast.show(context, '保存失败，请检查网络或后端是否启动');
+    } finally {
+      if (mounted) setState(() => _pasting = false);
+    }
   }
 
   void _openFilter(String code, String title) {
@@ -151,10 +285,11 @@ class _HomePageState extends State<HomePage> {
           Padding(
             padding: const EdgeInsets.only(right: 8),
             child: IconButton(
-              tooltip: '添加链接',
+              key: _addButtonKey,
+              tooltip: '添加',
               padding: EdgeInsets.zero,
               constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
-              onPressed: _onAddLink,
+              onPressed: _pasting ? null : _onAddPressed,
               icon: SvgPicture.asset(
                 'assets/icons/add.svg',
                 width: 22,
