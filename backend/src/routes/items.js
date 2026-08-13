@@ -48,6 +48,23 @@ router.get('/', async (req, res, next) => {
   }
 });
 
+/**
+ * GET /api/items/search?q=
+ * Query: limit, offset
+ */
+router.get('/search', async (req, res, next) => {
+  try {
+    const q = String(req.query.q || '').trim();
+    const result = await itemService.searchItems(req.auth.userId, q, {
+      limit: Number(req.query.limit ?? 50),
+      offset: Number(req.query.offset ?? 0),
+    });
+    return res.json(result);
+  } catch (err) {
+    return next(err);
+  }
+});
+
 /** GET /api/items/:id — 详情（含最近删除中的条目） */
 router.get('/:id', async (req, res, next) => {
   try {

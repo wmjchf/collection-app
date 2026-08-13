@@ -97,6 +97,31 @@ class CollectionItem {
   }
 }
 
+class SearchHit {
+  const SearchHit({
+    required this.item,
+    required this.matchedLabels,
+  });
+
+  final CollectionItem item;
+  final List<String> matchedLabels;
+
+  factory SearchHit.fromJson(Map<String, dynamic> json) {
+    final labels = <String>[];
+    final raw = json['matchedLabels'];
+    if (raw is List) {
+      for (final e in raw) {
+        final s = e?.toString().trim();
+        if (s != null && s.isNotEmpty) labels.add(s);
+      }
+    }
+    return SearchHit(
+      item: CollectionItem.fromJson(json),
+      matchedLabels: labels,
+    );
+  }
+}
+
 class ItemAnnotation {
   const ItemAnnotation({
     required this.id,

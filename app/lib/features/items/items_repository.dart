@@ -42,6 +42,28 @@ class ItemsRepository {
     return CollectionItem.fromJson(itemJson);
   }
 
+  Future<({List<SearchHit> items, int total, String query})> search(
+    String q, {
+    int limit = 50,
+    int offset = 0,
+  }) async {
+    final token = await _token();
+    final encoded = Uri.encodeQueryComponent(q.trim());
+    final json = await _api.get(
+      '/api/items/search?q=$encoded&limit=$limit&offset=$offset',
+      accessToken: token,
+    );
+    final list = json['items'] as List<dynamic>? ?? const [];
+    return (
+      items: list
+          .whereType<Map<String, dynamic>>()
+          .map(SearchHit.fromJson)
+          .toList(),
+      total: (json['total'] as num?)?.toInt() ?? 0,
+      query: json['query'] as String? ?? q,
+    );
+  }
+
   Future<CollectionItem> reparse(int id) async {
     final token = await _token();
     final json = await _api.post(

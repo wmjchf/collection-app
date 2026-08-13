@@ -508,6 +508,158 @@ async function setItemTags(userId, itemId, tagIds) {
   return listItemTags(userId, itemId);
 }
 
+const HIT_LABELS = {
+  title: '标题',
+  content: '正文',
+  summary: '摘要',
+  note: '备注',
+  url: '链接',
+  platform: '来源',
+  tag: '标签',
+  annotation: '标注',
+};
+
+const PLATFORM_ALIASES = {
+  微信: 'weixin',
+  小红书: 'xiaohongshu',
+  抖音: 'douyin',
+  微博: 'weibo',
+  B站: 'bilibili',
+  bilibili: 'bilibili',
+  知乎: 'zhihu',
+  网页: 'web',
+  zaker: 'zaker',
+  扎克: 'zaker',
+};
+
+function escapeLike(text) {
+  return String(text).replace(/\\/g, '\\\\').replace(/%/g, '\\%').replace(/_/g, '\\_');
+}
+
+function buildMatchedFields(row, query, platformAlias) {
+  const q = query.toLowerCase();
+  const hits = [];
+  const includes = (value) =>
+    value != null && String(value).toLowerCase().includes(q);
+
+  if (includes(row.title)) hits.push('title');
+  if (includes(row.content)) hits.push('content');
+  if (includes(row.summary)) hits.push('summary');
+  if (includes(row.note)) hits.push('note');
+  if (includes(row.url) || includes(row.canonical_url)) hits.push('url');
+  if (
+    includes(row.platform) ||
+    (platformAlias && row.platform === platformAlias)
+  ) {
+    hits.push('platform');
+  }
+  if (Number(row.hit_tag) === 1) hits.push('tag');
+  if (Number(row.hit_annotation) === 1) hits.push('annotation');
+
+  return [...new Set(hits)];
+}
+
+/**
+ * 全局搜索（未删除条目）
+ * 匹配：标题 / 正文 / 摘要 / 备注 / 链接 / 来源 / 标签名 / 标注原文与短注
+ */
+async function searchItems(userId, rawQuery, { limit = 50, offset = 0 } = {}) {
+  const query = String(rawQuery || '').trim();
+  if (!query) {
+    return { query: '', total: 0, items: [] };
+  }
+  if (query.length > 100) {
+    throw Object.assign(new Error('关键词过长'), { status: 400 });
+  }
+
+  const safeLimit = Math.min(Math.max(Number(limit) || 50, 1), 100);
+  const safeOffset = Math.max(Number(offset) || 0, 0);
+  const like = `%${escapeLike(query)}%`;
+  const platformAlias = PLATFORM_ALIASES[query] || PLATFORM_ALIASES[query.toLowerCase()] || null;
+
+  const params = { userId, like };
+  let platformClause = '';
+  if (platformAlias) {
+    platformClause = ' OR i.platform = :platformAlias';
+    params.platformAlias = platformAlias;
+  }
+
+  const matchClause = `
+    (
+      i.title LIKE :like
+      OR i.summary LIKE :like
+      OR i.content LIKE :like
+      OR i.note LIKE :like
+      OR i.url LIKE :like
+      OR i.canonical_url LIKE :like
+      OR i.platform LIKE :like
+      ${platformClause}
+      OR EXISTS (
+        SELECT 1 FROM item_tags it
+        INNER JOIN categories c ON c.id = it.category_id
+        WHERE it.item_id = i.id
+          AND c.section = 'tag'
+          AND c.name LIKE :like
+      )
+      OR EXISTS (
+        SELECT 1 FROM annotations a
+        WHERE a.item_id = i.id
+          AND (a.selected_text LIKE :like OR a.note LIKE :like)
+      )
+    )
+  `;
+
+  const [countRows] = await pool.execute(
+    `SELECT COUNT(*) AS cnt
+     FROM items i
+     WHERE i.user_id = :userId
+       AND i.deleted_at IS NULL
+       AND ${matchClause}`,
+    params,
+  );
+  const total = Number(countRows[0]?.cnt || 0);
+
+  const [rows] = await pool.execute(
+    `SELECT i.*,
+       EXISTS (
+         SELECT 1 FROM item_tags it
+         INNER JOIN categories c ON c.id = it.category_id
+         WHERE it.item_id = i.id
+           AND c.section = 'tag'
+           AND c.name LIKE :like
+       ) AS hit_tag,
+       EXISTS (
+         SELECT 1 FROM annotations a
+         WHERE a.item_id = i.id
+           AND (a.selected_text LIKE :like OR a.note LIKE :like)
+       ) AS hit_annotation
+     FROM items i
+     WHERE i.user_id = :userId
+       AND i.deleted_at IS NULL
+       AND ${matchClause}
+     ORDER BY i.created_at DESC, i.id DESC
+     LIMIT ${safeLimit} OFFSET ${safeOffset}`,
+    params,
+  );
+
+  const items = rows.map((row) => {
+    const matchedFields = buildMatchedFields(row, query, platformAlias);
+    return {
+      ...mapItem(row),
+      matchedFields,
+      matchedLabels: matchedFields.map((f) => HIT_LABELS[f] || f),
+    };
+  });
+
+  return {
+    query,
+    total,
+    items,
+    limit: safeLimit,
+    offset: safeOffset,
+  };
+}
+
 module.exports = {
   createItem,
   getByIdForUser,
@@ -526,4 +678,5 @@ module.exports = {
   emptyTrash,
   listItemTags,
   setItemTags,
+  searchItems,
 };

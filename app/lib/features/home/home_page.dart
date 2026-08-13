@@ -9,6 +9,7 @@ import 'package:super_collection/features/home/home_repository.dart';
 import 'package:super_collection/features/home/widgets/home_item_card.dart';
 import 'package:super_collection/features/items/item_detail_page.dart';
 import 'package:super_collection/features/items/item_models.dart';
+import 'package:super_collection/features/search/search_page.dart';
 
 /// 一级页：首页 — 未读 / 标注 / 最近阅读
 class HomePage extends StatefulWidget {
@@ -135,8 +136,10 @@ class _HomePageState extends State<HomePage> {
             padding: EdgeInsets.zero,
             constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
             onPressed: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('搜索：后续实现')),
+              Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => const SearchPage(),
+                ),
               );
             },
             icon: SvgPicture.asset(
