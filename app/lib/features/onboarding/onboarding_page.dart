@@ -60,7 +60,7 @@ class OnboardingPage extends StatelessWidget {
               ),
               const SizedBox(height: 28),
               const Text(
-                '三种入库方式（任选）',
+                '两种入库方式（任选）',
                 style: TextStyle(
                   fontSize: 13,
                   fontWeight: FontWeight.w500,
@@ -69,18 +69,13 @@ class OnboardingPage extends StatelessWidget {
               ),
               const SizedBox(height: 12),
               const _WayCard(
-                title: '剪贴板检测',
-                desc: '复制链接后打开 App，自动弹出添加框，确认即可保存',
-              ),
-              const SizedBox(height: 10),
-              const _WayCard(
-                title: '粘贴添加',
-                desc: '首页点「+」，粘贴或输入链接后保存',
+                title: '粘贴链接',
+                desc: '复制链接后，首页点「+」→「粘贴链接」，读取剪贴板并直接保存',
               ),
               const SizedBox(height: 10),
               const _WayCard(
                 title: '快捷指令',
-                desc: 'iOS 可配置一键从剪贴板保存（可选）',
+                desc: 'iOS 可一键从剪贴板保存（可选，建议加到主屏幕）',
               ),
               const Spacer(),
               SizedBox(

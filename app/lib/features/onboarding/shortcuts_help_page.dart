@@ -10,7 +10,6 @@ class ShortcutsHelpPage extends StatelessWidget {
   static const _bg = Color(0xFFF7F7FA);
   static const _text = Color(0xFF1F242E);
   static const _muted = Color(0xFF737A85);
-  static const _tipBg = Color(0xFFE8F0FF);
   static const _blue = Color(0xFF2F6FED);
 
   @override
@@ -105,37 +104,6 @@ class ShortcutsHelpPage extends StatelessWidget {
           const _HelpCard(
             title: '配置提示',
             desc: '首次使用需允许打开 App；建议放到主屏幕，保存成本最低',
-          ),
-          const SizedBox(height: 12),
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(
-              color: _tipBg,
-              borderRadius: BorderRadius.circular(14),
-            ),
-            child: const Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  '安卓说明',
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    color: _blue,
-                  ),
-                ),
-                SizedBox(height: 8),
-                Text(
-                  '第一期可用系统分享到 App，或复制后打开 App 自动弹框。',
-                  style: TextStyle(
-                    fontSize: 13,
-                    color: _muted,
-                    height: 1.4,
-                  ),
-                ),
-              ],
-            ),
           ),
         ],
       ),
