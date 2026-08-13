@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:super_collection/core/network/api_client.dart';
+import 'package:super_collection/core/utils/link_utils.dart';
 import 'package:super_collection/features/items/item_detail_page.dart';
 import 'package:super_collection/features/items/items_repository.dart';
 
@@ -39,27 +40,13 @@ Future<String?> _readClipboardUrl() async {
     final data = await Clipboard.getData(Clipboard.kTextPlain);
     final text = data?.text?.trim();
     if (text == null || text.isEmpty) return null;
-    return _extractUrl(text);
+    return extractHttpUrl(text);
   } catch (_) {
     return null;
   }
 }
 
-String? _extractUrl(String text) {
-  final match = RegExp(
-    r'https?://\S+',
-    caseSensitive: false,
-  ).firstMatch(text);
-  if (match == null) return null;
-  return match.group(0)?.replaceAll(RegExp(r'[.,;:!?)]+$'), '');
-}
-
-bool _isValidUrl(String value) {
-  final uri = Uri.tryParse(value.trim());
-  return uri != null &&
-      (uri.isScheme('http') || uri.isScheme('https')) &&
-      uri.host.isNotEmpty;
-}
+bool _isValidUrl(String value) => isValidHttpUrl(value);
 
 class AddLinkSheet extends StatefulWidget {
   const AddLinkSheet({super.key, this.initialUrl = ''});

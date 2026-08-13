@@ -11,6 +11,7 @@ import 'package:super_collection/features/collection/system_filters_repository.d
 import 'package:super_collection/features/collection/tag_models.dart';
 import 'package:super_collection/features/collection/tags_repository.dart';
 import 'package:super_collection/features/collection/trash_page.dart';
+import 'package:super_collection/features/settings/settings_page.dart';
 
 /// 我的收藏（对齐 Figma：系统分类 / 收藏夹 / 标签 / 其他）
 class CollectionPage extends StatefulWidget {
@@ -264,8 +265,29 @@ class _CollectionPageState extends State<CollectionPage> {
             height: 1.2,
           ),
         ),
-      ),
-      body: RefreshIndicator(
+        actions: [
+          Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: IconButton(
+              tooltip: '设置',
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+              onPressed: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => const SettingsPage(),
+                  ),
+                );
+              },
+              icon: const Icon(
+                Icons.settings_outlined,
+                size: 22,
+                color: _text,
+              ),
+            ),
+          ),
+        ],
+      ),      body: RefreshIndicator(
         onRefresh: _load,
         child: ListView(
           physics: const AlwaysScrollableScrollPhysics(),

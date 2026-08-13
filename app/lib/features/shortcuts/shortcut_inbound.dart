@@ -1,0 +1,90 @@
+import 'package:flutter/services.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:super_collection/core/network/api_client.dart';
+import 'package:super_collection/core/utils/link_utils.dart';
+import 'package:super_collection/features/auth/auth_repository.dart';
+import 'package:super_collection/features/items/items_repository.dart';
+import 'package:super_collection/features/shortcuts/app_navigator.dart';
+
+/// 处理 `supercollection://save` / `supercollection://save?url=`
+class ShortcutInbound {
+  ShortcutInbound._();
+
+  static const _pendingKey = 'pending_shortcut_uri';
+  static bool _handling = false;
+
+  static Future<void> handleUri(Uri uri) async {
+    if (uri.scheme != 'supercollection') return;
+    final isSave = uri.host == 'save' ||
+        uri.path == '/save' ||
+        uri.pathSegments.contains('save');
+    if (!isSave) return;
+
+    final session = await AuthRepository().readSession();
+    if (session == null) {
+      await _storePending(uri);
+      AppNavigator.showSnackBar('请先登录，登录后将自动保存链接');
+      return;
+    }
+
+    await _executeSave(uri);
+  }
+
+  /// 登录成功或进入主壳后调用，消化待处理的快捷指令。
+  static Future<void> flushPending() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_pendingKey);
+    if (raw == null || raw.isEmpty) return;
+    await prefs.remove(_pendingKey);
+    final uri = Uri.tryParse(raw);
+    if (uri == null) return;
+    await handleUri(uri);
+  }
+
+  static Future<void> _storePending(Uri uri) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_pendingKey, uri.toString());
+  }
+
+  static Future<void> _executeSave(Uri uri) async {
+    if (_handling) return;
+    _handling = true;
+    try {
+      var url = uri.queryParameters['url']?.trim() ?? '';
+      if (url.isEmpty) {
+        url = await _readClipboardUrl() ?? '';
+      }
+      if (!isValidHttpUrl(url)) {
+        AppNavigator.showSnackBar(
+          url.isEmpty ? '剪贴板里没有链接' : '链接无效，请检查后重试',
+        );
+        return;
+      }
+
+      AppNavigator.showSnackBar('正在保存…');
+      final result = await ItemsRepository().createItem(url);
+      AppNavigator.showSnackBar(
+        result.existed
+            ? '该链接已收藏'
+            : '已保存：${result.item.title ?? url}',
+      );
+    } on ApiException catch (e) {
+      AppNavigator.showSnackBar(e.message);
+    } catch (_) {
+      AppNavigator.showSnackBar('保存失败，请稍后重试');
+    } finally {
+      _handling = false;
+    }
+  }
+
+  static Future<String?> _readClipboardUrl() async {
+    try {
+      final data = await Clipboard.getData(Clipboard.kTextPlain);
+      final text = data?.text?.trim();
+      if (text == null || text.isEmpty) return null;
+      return extractHttpUrl(text);
+    } catch (_) {
+      return null;
+    }
+  }
+}
