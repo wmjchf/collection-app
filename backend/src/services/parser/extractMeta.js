@@ -38,6 +38,13 @@ function looksBlocked(html, $) {
   const text = $('body').text().replace(/\s+/g, '');
   if (text.includes('环境异常') && text.includes('去验证')) return true;
   if (html.includes('环境异常') && html.includes('完成验证后即可继续访问')) return true;
+  // 长亭 / 河图验证码壳页（如 myzaker 桌面站）
+  if (html.includes('challenge.rivers.chaitin.cn') && html.includes('window.captcha')) {
+    return true;
+  }
+  if (html.includes('window.captcha') && html.includes('entrypoint')) {
+    return true;
+  }
   return false;
 }
 

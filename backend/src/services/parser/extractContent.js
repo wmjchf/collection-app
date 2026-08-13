@@ -35,13 +35,14 @@ function extractGenericContent(html) {
   $('script, style, noscript, iframe, svg, nav, footer, header, aside').remove();
 
   const candidates = [
+    '#content_text',
+    '#content',
     'article',
     'main',
     '[role="main"]',
     '.article',
     '.post-content',
     '.entry-content',
-    '#content',
     '.content',
   ];
 

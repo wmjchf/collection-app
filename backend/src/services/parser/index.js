@@ -1,15 +1,26 @@
 const { fetchHtml } = require('./fetchHtml');
 const { extractMeta } = require('./extractMeta');
 const { extractContent } = require('./extractContent');
-const { detectPlatform, placeholderTitle } = require('../../utils/url');
+const {
+  detectPlatform,
+  placeholderTitle,
+  resolveFetchUrl,
+} = require('../../utils/url');
+
+function fetchTargetUrl(url) {
+  return resolveFetchUrl(url) || url;
+}
 
 /**
  * 阶段 1：短超时抓取 + 元信息
  */
 async function fetchQuickMeta(url) {
   const platform = detectPlatform(url);
-  const { html, finalUrl, status, ok } = await fetchHtml(url, { timeoutMs: 8000 });
-  const pageUrl = finalUrl || url;
+  const target = fetchTargetUrl(url);
+  const { html, finalUrl, status, ok } = await fetchHtml(target, {
+    timeoutMs: 8000,
+  });
+  const pageUrl = finalUrl || target;
   const meta = extractMeta(html, { platform, baseUrl: pageUrl });
 
   let title = meta.title;
@@ -37,14 +48,24 @@ async function fetchQuickMeta(url) {
  */
 async function parseFullContent(url, { platform, existingSummary, html } = {}) {
   const resolvedPlatform = platform || detectPlatform(url);
+  const target = fetchTargetUrl(url);
   let sourceHtml = html;
   let blocked = false;
-  let pageUrl = url;
+  let pageUrl = target;
+
+  // 缓存 HTML 若是验证码壳页，丢弃并改走可读页重抓
+  if (sourceHtml) {
+    const pre = extractMeta(sourceHtml, {
+      platform: resolvedPlatform,
+      baseUrl: url,
+    });
+    if (pre.blocked) sourceHtml = null;
+  }
 
   if (!sourceHtml) {
-    const fetched = await fetchHtml(url, { timeoutMs: 15000 });
+    const fetched = await fetchHtml(target, { timeoutMs: 15000 });
     sourceHtml = fetched.html;
-    pageUrl = fetched.finalUrl || url;
+    pageUrl = fetched.finalUrl || target;
   }
 
   let meta = extractMeta(sourceHtml, {
@@ -54,10 +75,11 @@ async function parseFullContent(url, { platform, existingSummary, html } = {}) {
   blocked = meta.blocked;
 
   if (blocked) {
-    // 风控页：再试一次完整抓取
-    const retry = await fetchHtml(url, { timeoutMs: 15000 });
+    // 风控页：改走可读页再试 / 或再抓一次
+    const retryUrl = fetchTargetUrl(url);
+    const retry = await fetchHtml(retryUrl, { timeoutMs: 15000 });
     sourceHtml = retry.html;
-    pageUrl = retry.finalUrl || url;
+    pageUrl = retry.finalUrl || retryUrl;
     meta = extractMeta(sourceHtml, {
       platform: resolvedPlatform,
       baseUrl: pageUrl,

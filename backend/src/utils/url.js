@@ -72,7 +72,31 @@ function detectPlatform(url) {
   if (host.includes('zhihu.com')) {
     return 'zhihu';
   }
+  if (host.includes('myzaker.com')) {
+    return 'zaker';
+  }
   return 'web';
+}
+
+/**
+ * 部分站点桌面页有风控，抓取时改走更稳的可读页。
+ * 返回 null 表示无需改写。
+ */
+function resolveFetchUrl(rawUrl) {
+  try {
+    const uri = new URL(rawUrl);
+    const host = uri.hostname.replace(/^www\./, '').toLowerCase();
+    if (host === 'myzaker.com') {
+      // www 桌面站常被长亭验证码拦截；App 文章页可直接出正文
+      const m = uri.pathname.match(/^\/article\/([0-9a-fA-F]+)\/?$/);
+      if (m) {
+        return `https://app.myzaker.com/news/article.php?pk=${m[1]}`;
+      }
+    }
+  } catch {
+    // ignore
+  }
+  return null;
 }
 
 function placeholderTitle(url) {
@@ -87,5 +111,6 @@ module.exports = {
   assertHttpUrl,
   normalizeUrl,
   detectPlatform,
+  resolveFetchUrl,
   placeholderTitle,
 };
