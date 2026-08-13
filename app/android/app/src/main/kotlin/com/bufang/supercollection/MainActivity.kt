@@ -1,4 +1,4 @@
-package com.supercollection.super_collection
+package com.bufang.supercollection
 
 import io.flutter.embedding.android.FlutterActivity
 
