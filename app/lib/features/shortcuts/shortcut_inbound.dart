@@ -1,5 +1,6 @@
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:super_collection/core/network/api_client.dart';
+import 'package:super_collection/core/ui/parse_progress_tracker.dart';
 import 'package:super_collection/core/utils/clipboard_utils.dart';
 import 'package:super_collection/core/utils/link_utils.dart';
 import 'package:super_collection/features/auth/auth_repository.dart';
@@ -61,16 +62,23 @@ class ShortcutInbound {
         return;
       }
 
-      AppNavigator.showSnackBar('正在解析内容…', loading: true);
+      ParseProgressTracker.begin();
       final result = await ItemsRepository().createItem(url);
-      AppNavigator.showSnackBar(
-        result.existed
-            ? '该链接已收藏'
-            : '已保存：${result.item.title ?? url}',
-      );
+      if (result.existed && result.item.isSuccess) {
+        ParseProgressTracker.cancel();
+        AppNavigator.showSnackBar('该链接已收藏');
+      } else {
+        // ignore: unawaited_futures
+        ParseProgressTracker.watchItem(
+          result.item.id,
+          initialStatus: result.item.status,
+        );
+      }
     } on ApiException catch (e) {
+      ParseProgressTracker.cancel();
       AppNavigator.showSnackBar(e.message);
     } catch (_) {
+      ParseProgressTracker.cancel();
       AppNavigator.showSnackBar('保存失败，请稍后重试');
     } finally {
       _handling = false;

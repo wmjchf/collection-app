@@ -40,6 +40,8 @@ class _CollectionPageState extends State<CollectionPage> {
   List<SystemFilter> _otherFilters = const [];
   bool _loading = true;
   String? _error;
+  bool _foldersExpanded = true;
+  bool _tagsExpanded = true;
 
   @override
   void initState() {
@@ -293,7 +295,7 @@ class _CollectionPageState extends State<CollectionPage> {
                     _EntityEntry(
                       title: f.name,
                       countLabel: f.countLabel,
-                      isSystem: true,
+                      icon: _CollectionNavIcon.forSystemCode(f.code),
                       onTap: () => _openSystemFilter(f),
                     ),
                 ],
@@ -307,7 +309,7 @@ class _CollectionPageState extends State<CollectionPage> {
                       _EntityEntry(
                         title: f.name,
                         countLabel: f.countLabel,
-                        isSystem: true,
+                        icon: _CollectionNavIcon.forSystemCode(f.code),
                         onTap: () => _openSystemFilter(f),
                       ),
                   ],
@@ -317,10 +319,13 @@ class _CollectionPageState extends State<CollectionPage> {
             const SizedBox(height: 16),
             _SectionLabel(
               '收藏夹',
+              expanded: _foldersExpanded,
+              onToggleExpand: () {
+                setState(() => _foldersExpanded = !_foldersExpanded);
+              },
               trailing: '＋',
               onTrailingTap: _onCreateFolder,
             ),
-            const SizedBox(height: 8),
             if (_loading &&
                 _folders.isEmpty &&
                 _tags.isEmpty &&
@@ -341,36 +346,65 @@ class _CollectionPageState extends State<CollectionPage> {
                 _systemFilters.isEmpty)
               _ErrorCard(message: _error!, onRetry: _load)
             else ...[
-              _EntityGroup(
-                entries: [
-                  for (final f in _folders)
-                    _EntityEntry(
-                      title: f.name,
-                      countLabel: f.countLabel,
-                      isSystem: f.isSystem,
-                      onTap: () => _openFolder(f),
-                      onLongPress: f.isSystem ? null : () => _onDeleteFolder(f),
-                    ),
-                ],
+              AnimatedSize(
+                duration: const Duration(milliseconds: 200),
+                curve: Curves.easeInOut,
+                alignment: Alignment.topCenter,
+                child: _foldersExpanded
+                    ? Padding(
+                        padding: const EdgeInsets.only(top: 8),
+                        child: _EntityGroup(
+                          entries: [
+                            for (final f in _folders)
+                              _EntityEntry(
+                                title: f.name,
+                                countLabel: f.countLabel,
+                                icon: _CollectionNavIcon.folder,
+                                onTap: () => _openFolder(f),
+                                onLongPress: f.isSystem
+                                    ? null
+                                    : () => _onDeleteFolder(f),
+                              ),
+                          ],
+                        ),
+                      )
+                    : const SizedBox(width: double.infinity),
               ),
               const SizedBox(height: 16),
               _SectionLabel(
                 '标签',
+                expanded: _tagsExpanded,
+                onToggleExpand: () {
+                  setState(() => _tagsExpanded = !_tagsExpanded);
+                },
                 trailing: '＋',
                 onTrailingTap: _onCreateTag,
               ),
-              const SizedBox(height: 8),
-              _EntityGroup(
-                entries: [
-                  for (final t in _tags)
-                    _EntityEntry(
-                      title: t.name,
-                      countLabel: t.countLabel,
-                      isSystem: t.isSystem,
-                      onTap: () => _openTag(t),
-                      onLongPress: t.isSystem ? null : () => _onDeleteTag(t),
-                    ),
-                ],
+              AnimatedSize(
+                duration: const Duration(milliseconds: 200),
+                curve: Curves.easeInOut,
+                alignment: Alignment.topCenter,
+                child: _tagsExpanded
+                    ? Padding(
+                        padding: const EdgeInsets.only(top: 8),
+                        child: _EntityGroup(
+                          entries: [
+                            for (final t in _tags)
+                              _EntityEntry(
+                                title: t.name,
+                                countLabel: t.countLabel,
+                                icon: t.isSystem
+                                    ? _CollectionNavIcon.tagSystem
+                                    : _CollectionNavIcon.tagUser,
+                                onTap: () => _openTag(t),
+                                onLongPress: t.isSystem
+                                    ? null
+                                    : () => _onDeleteTag(t),
+                              ),
+                          ],
+                        ),
+                      )
+                    : const SizedBox(width: double.infinity),
               ),
             ],
             const SizedBox(height: 16),
@@ -382,7 +416,7 @@ class _CollectionPageState extends State<CollectionPage> {
                   _EntityEntry(
                     title: f.name,
                     countLabel: f.countLabel,
-                    isSystem: true,
+                    icon: _CollectionNavIcon.forSystemCode(f.code),
                     onTap: () => _openSystemFilter(f),
                   ),
               ],
@@ -394,18 +428,98 @@ class _CollectionPageState extends State<CollectionPage> {
   }
 }
 
+class _CollectionNavIcon {
+  const _CollectionNavIcon({
+    required this.icon,
+    required this.background,
+  });
+
+  final IconData icon;
+  final Color background;
+
+  static const folder = _CollectionNavIcon(
+    icon: Icons.folder_rounded,
+    background: Color(0xFF5B8FF9),
+  );
+
+  static const tagSystem = _CollectionNavIcon(
+    icon: Icons.local_offer_rounded,
+    background: Color(0xFF788CAA),
+  );
+
+  static const tagUser = _CollectionNavIcon(
+    icon: Icons.local_offer_rounded,
+    background: Color(0xFFFF8C64),
+  );
+
+  static _CollectionNavIcon forSystemCode(String code) {
+    switch (code) {
+      case 'unread':
+        return const _CollectionNavIcon(
+          icon: Icons.adjust,
+          background: Color(0xFF5B8FF9),
+        );
+      case 'all':
+        return const _CollectionNavIcon(
+          icon: Icons.format_list_bulleted_rounded,
+          background: Color(0xFF6E788C),
+        );
+      case 'today':
+        return const _CollectionNavIcon(
+          icon: Icons.calendar_today_rounded,
+          background: Color(0xFFFF9F43),
+        );
+      case 'starred':
+        return const _CollectionNavIcon(
+          icon: Icons.star_rounded,
+          background: Color(0xFFFFC43D),
+        );
+      case 'parsed':
+        return const _CollectionNavIcon(
+          icon: Icons.article_rounded,
+          background: Color(0xFF56CC8C),
+        );
+      case 'annotated':
+        return const _CollectionNavIcon(
+          icon: Icons.edit_rounded,
+          background: Color(0xFFA270F5),
+        );
+      case 'recent_read':
+        return const _CollectionNavIcon(
+          icon: Icons.schedule_rounded,
+          background: Color(0xFF40BAC4),
+        );
+      case 'archived':
+        return const _CollectionNavIcon(
+          icon: Icons.inventory_2_rounded,
+          background: Color(0xFF96A0AF),
+        );
+      case 'trash':
+        return const _CollectionNavIcon(
+          icon: Icons.delete_outline_rounded,
+          background: Color(0xFFF56C6C),
+        );
+      default:
+        return const _CollectionNavIcon(
+          icon: Icons.circle,
+          background: Color(0xFF5B8FF9),
+        );
+    }
+  }
+}
+
 class _EntityEntry {
   const _EntityEntry({
     required this.title,
     required this.countLabel,
-    required this.isSystem,
+    required this.icon,
     required this.onTap,
     this.onLongPress,
   });
 
   final String title;
   final String countLabel;
-  final bool isSystem;
+  final _CollectionNavIcon icon;
   final VoidCallback onTap;
   final VoidCallback? onLongPress;
 }
@@ -446,6 +560,7 @@ class _EntityGroup extends StatelessWidget {
             _NavRow(
               title: entries[i].title,
               countLabel: entries[i].countLabel,
+              icon: entries[i].icon,
               onTap: entries[i].onTap,
               onLongPress: entries[i].onLongPress,
             ),
@@ -492,26 +607,55 @@ class _ErrorCard extends StatelessWidget {
 }
 
 class _SectionLabel extends StatelessWidget {
-  const _SectionLabel(this.title, {this.trailing, this.onTrailingTap});
+  const _SectionLabel(
+    this.title, {
+    this.trailing,
+    this.onTrailingTap,
+    this.expanded,
+    this.onToggleExpand,
+  });
 
   final String title;
   final String? trailing;
   final VoidCallback? onTrailingTap;
+  final bool? expanded;
+  final VoidCallback? onToggleExpand;
 
   @override
   Widget build(BuildContext context) {
+    final canToggle = onToggleExpand != null && expanded != null;
+
     return Row(
       children: [
-        Text(
-          title,
-          style: const TextStyle(
-            fontSize: 13,
-            fontWeight: FontWeight.w500,
-            color: _CollectionColors.muted,
+        Expanded(
+          child: GestureDetector(
+            onTap: canToggle ? onToggleExpand : null,
+            behavior: HitTestBehavior.opaque,
+            child: Row(
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500,
+                    color: _CollectionColors.muted,
+                  ),
+                ),
+                if (canToggle) ...[
+                  const SizedBox(width: 2),
+                  Icon(
+                    expanded!
+                        ? Icons.keyboard_arrow_down_rounded
+                        : Icons.keyboard_arrow_right_rounded,
+                    size: 18,
+                    color: _CollectionColors.muted,
+                  ),
+                ],
+              ],
+            ),
           ),
         ),
-        if (trailing != null) ...[
-          const Spacer(),
+        if (trailing != null)
           GestureDetector(
             onTap: onTrailingTap,
             behavior: HitTestBehavior.opaque,
@@ -528,7 +672,6 @@ class _SectionLabel extends StatelessWidget {
               ),
             ),
           ),
-        ],
       ],
     );
   }
@@ -538,12 +681,14 @@ class _NavRow extends StatelessWidget {
   const _NavRow({
     required this.title,
     required this.countLabel,
+    required this.icon,
     required this.onTap,
     this.onLongPress,
   });
 
   final String title;
   final String countLabel;
+  final _CollectionNavIcon icon;
   final VoidCallback onTap;
   final VoidCallback? onLongPress;
 
@@ -555,15 +700,21 @@ class _NavRow extends StatelessWidget {
         onTap: onTap,
         onLongPress: onLongPress,
         child: Padding(
-          padding: const EdgeInsets.all(14),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
           child: Row(
             children: [
               Container(
-                width: 8,
-                height: 8,
-                decoration: const BoxDecoration(
-                  color: _CollectionColors.blue,
-                  shape: BoxShape.circle,
+                width: 22,
+                height: 22,
+                decoration: BoxDecoration(
+                  color: icon.background,
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                alignment: Alignment.center,
+                child: Icon(
+                  icon.icon,
+                  size: 13,
+                  color: Colors.white,
                 ),
               ),
               const SizedBox(width: 10),
@@ -604,6 +755,5 @@ class _NavRow extends StatelessWidget {
 abstract final class _CollectionColors {
   static const text = Color(0xFF1F242E);
   static const muted = Color(0xFF737A85);
-  static const blue = Color(0xFF2F6FED);
   static const divider = Color(0xFFEDEDF0);
 }

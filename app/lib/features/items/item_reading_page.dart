@@ -50,6 +50,12 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
     return ArticleBodyText.splitParagraphs(raw).join('\n\n');
   }
 
+  /// 阅读页仅小红书展示图集（其余平台只读正文）
+  bool get _showReadingImages {
+    final platform = (_item.platform ?? '').toLowerCase();
+    return platform == 'xiaohongshu' && _item.displayImages.isNotEmpty;
+  }
+
   String _metaLine() {
     final date = _item.createdAt?.toLocal();
     final dateStr = date == null
@@ -484,7 +490,7 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
                   ),
                 ),
                 const SizedBox(height: 22),
-                if (_item.displayImages.isNotEmpty) ...[
+                if (_showReadingImages) ...[
                   ItemImageGallery(urls: _item.displayImages),
                   const SizedBox(height: 18),
                 ],

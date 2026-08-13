@@ -74,6 +74,21 @@ class ItemsRepository {
     return CollectionItem.fromJson(itemJson);
   }
 
+  Future<({String status, String? title, String? errorMessage})> getParseStatus(
+    int id,
+  ) async {
+    final token = await _token();
+    final json = await _api.get(
+      '/api/items/$id/parse-status',
+      accessToken: token,
+    );
+    return (
+      status: json['status'] as String? ?? 'pending',
+      title: json['title'] as String?,
+      errorMessage: json['errorMessage'] as String?,
+    );
+  }
+
   Future<CollectionItem> markAsRead(int id) async {
     final token = await _token();
     final json = await _api.post(

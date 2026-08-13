@@ -1,6 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:super_collection/core/network/api_client.dart';
+import 'package:super_collection/core/ui/app_toast.dart';
+import 'package:super_collection/core/ui/parse_progress_tracker.dart';
 import 'package:super_collection/core/utils/clipboard_utils.dart';
 import 'package:super_collection/core/utils/link_utils.dart';
 import 'package:super_collection/features/collection/system_filter_list_page.dart';
@@ -13,7 +17,6 @@ import 'package:super_collection/features/items/item_models.dart';
 import 'package:super_collection/features/items/items_repository.dart';
 import 'package:super_collection/features/onboarding/shortcuts_help_page.dart';
 import 'package:super_collection/features/search/search_page.dart';
-import 'package:super_collection/core/ui/app_toast.dart';
 
 /// 一级页：首页 — 未读 / 标注 / 最近阅读
 class HomePage extends StatefulWidget {
@@ -195,21 +198,29 @@ class _HomePageState extends State<HomePage> {
     }
 
     setState(() => _pasting = true);
-    AppToast.loading(context, '正在解析内容…');
+    ParseProgressTracker.begin();
     try {
       final result = await _items.createItem(url);
       if (!mounted) return;
-      AppToast.show(
-        context,
-        result.existed
-            ? '该链接已收藏'
-            : '已保存：${result.item.title ?? url}',
-      );
+      if (result.existed && result.item.isSuccess) {
+        ParseProgressTracker.cancel();
+        AppToast.show(context, '该链接已收藏');
+      } else {
+        unawaited(
+          ParseProgressTracker.watchItem(
+            result.item.id,
+            initialStatus: result.item.status,
+            onSettled: () => _load(quiet: true),
+          ),
+        );
+      }
       await _load(quiet: true);
     } on ApiException catch (e) {
+      ParseProgressTracker.cancel();
       if (!mounted) return;
       AppToast.show(context, e.message);
     } catch (_) {
+      ParseProgressTracker.cancel();
       if (!mounted) return;
       AppToast.show(context, '保存失败，请检查网络或后端是否启动');
     } finally {
