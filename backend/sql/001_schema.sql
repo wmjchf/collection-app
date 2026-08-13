@@ -76,6 +76,7 @@ CREATE TABLE `items` (
   `content` MEDIUMTEXT,
   `summary` VARCHAR(1000) DEFAULT NULL,
   `cover_image_url` VARCHAR(2048) DEFAULT NULL,
+  `image_urls` JSON DEFAULT NULL COMMENT '附加图片 URL 列表',
   `platform` VARCHAR(32) NOT NULL DEFAULT 'web',
   `status` ENUM('pending', 'success', 'failed') NOT NULL DEFAULT 'pending',
   `error_message` VARCHAR(512) DEFAULT NULL,

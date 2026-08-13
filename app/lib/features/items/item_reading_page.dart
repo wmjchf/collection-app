@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:super_collection/core/network/api_client.dart';
 import 'package:super_collection/features/home/home_format.dart';
 import 'package:super_collection/features/items/article_body_text.dart';
+import 'package:super_collection/features/items/item_image_gallery.dart';
 import 'package:super_collection/features/items/item_models.dart';
 import 'package:super_collection/features/items/items_repository.dart';
 import 'package:super_collection/features/items/reading_annotation_sheet.dart';
@@ -495,6 +496,10 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
                   ),
                 ),
                 const SizedBox(height: 22),
+                if (_item.displayImages.isNotEmpty) ...[
+                  ItemImageGallery(urls: _item.displayImages),
+                  const SizedBox(height: 18),
+                ],
                 if (body.isEmpty)
                   const Text(
                     '暂无正文',

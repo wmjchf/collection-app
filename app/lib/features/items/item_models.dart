@@ -8,6 +8,7 @@ class CollectionItem {
     this.content,
     this.summary,
     this.coverImageUrl,
+    this.imageUrls = const [],
     this.platform,
     this.errorMessage,
     this.note,
@@ -28,6 +29,7 @@ class CollectionItem {
   final String? content;
   final String? summary;
   final String? coverImageUrl;
+  final List<String> imageUrls;
   final String? platform;
   final String status; // pending | success | failed
   final String? errorMessage;
@@ -46,7 +48,23 @@ class CollectionItem {
   bool get isFailed => status == 'failed';
   bool get isInTrash => deletedAt != null;
 
+  /// 展示用图集：有 imageUrls 用它，否则退回单封面
+  List<String> get displayImages {
+    if (imageUrls.isNotEmpty) return imageUrls;
+    final cover = coverImageUrl?.trim();
+    if (cover != null && cover.isNotEmpty) return [cover];
+    return const [];
+  }
+
   factory CollectionItem.fromJson(Map<String, dynamic> json) {
+    final rawImages = json['imageUrls'];
+    final images = <String>[];
+    if (rawImages is List) {
+      for (final e in rawImages) {
+        final s = e?.toString().trim();
+        if (s != null && s.isNotEmpty) images.add(s);
+      }
+    }
     return CollectionItem(
       id: (json['id'] as num).toInt(),
       url: json['url'] as String? ?? '',
@@ -55,6 +73,7 @@ class CollectionItem {
       content: json['content'] as String?,
       summary: json['summary'] as String?,
       coverImageUrl: json['coverImageUrl'] as String?,
+      imageUrls: images,
       platform: json['platform'] as String?,
       status: json['status'] as String? ?? 'pending',
       errorMessage: json['errorMessage'] as String?,

@@ -57,7 +57,7 @@ function detectPlatform(url) {
   if (host.includes('mp.weixin.qq.com') || host.endsWith('weixin.qq.com')) {
     return 'weixin';
   }
-  if (host.includes('xiaohongshu.com') || host === 'xhslink.com') {
+  if (host.includes('xiaohongshu.com') || host.includes('xhslink.com') || host.includes('xhslink.cn')) {
     return 'xiaohongshu';
   }
   if (host.includes('douyin.com') || host.includes('iesdouyin.com')) {

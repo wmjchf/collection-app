@@ -4,6 +4,20 @@ const { fetchQuickMeta, parseFullContent } = require('./parser');
 
 function mapItem(row) {
   if (!row) return null;
+  let imageUrls = [];
+  if (row.image_urls != null) {
+    try {
+      const parsed =
+        typeof row.image_urls === 'string'
+          ? JSON.parse(row.image_urls)
+          : row.image_urls;
+      if (Array.isArray(parsed)) {
+        imageUrls = parsed.map((u) => String(u)).filter(Boolean);
+      }
+    } catch {
+      imageUrls = [];
+    }
+  }
   return {
     id: row.id,
     userId: row.user_id,
@@ -13,6 +27,7 @@ function mapItem(row) {
     content: row.content,
     summary: row.summary,
     coverImageUrl: row.cover_image_url,
+    imageUrls,
     platform: row.platform,
     status: row.status,
     errorMessage: row.error_message,
@@ -165,11 +180,15 @@ async function runContentParse(itemId) {
     });
 
     if (parsed.ok) {
+      const imageUrls = Array.isArray(parsed.imageUrls)
+        ? parsed.imageUrls.filter(Boolean).slice(0, 30)
+        : [];
       await pool.execute(
         `UPDATE items SET
            title = COALESCE(:title, title),
            summary = :summary,
            cover_image_url = COALESCE(:coverImageUrl, cover_image_url),
+           image_urls = CAST(:imageUrls AS JSON),
            content = :content,
            status = 'success',
            error_message = NULL
@@ -179,6 +198,7 @@ async function runContentParse(itemId) {
           title: parsed.title || null,
           summary: parsed.summary || null,
           coverImageUrl: parsed.coverImageUrl || null,
+          imageUrls: JSON.stringify(imageUrls),
           content: parsed.content,
         },
       );

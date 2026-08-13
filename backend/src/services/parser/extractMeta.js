@@ -1,4 +1,5 @@
 const cheerio = require('cheerio');
+const { extractXiaohongshuNote } = require('./extractXiaohongshu');
 
 function attr($, selectors) {
   for (const sel of selectors) {
@@ -63,6 +64,7 @@ function isLikelyTinyOrIcon(src, $el) {
   const lower = (src || '').toLowerCase();
   if (lower.includes('favicon') || lower.includes('sprite')) return true;
   if (lower.includes('/icon') || lower.endsWith('.svg')) return true;
+  if (lower.includes('fe-platform') && lower.includes('xiaohongshu')) return true;
   const w = parseInt($el.attr('width') || '0', 10);
   const h = parseInt($el.attr('height') || '0', 10);
   if ((w > 0 && w < 60) || (h > 0 && h < 60)) return true;
@@ -110,8 +112,10 @@ function firstContentImage($, { platform, baseUrl } = {}) {
  */
 function extractMeta(html, { platform, baseUrl } = {}) {
   const $ = cheerio.load(html);
+  const xhs = extractXiaohongshuNote(html);
 
   let title =
+    (xhs && xhs.title) ||
     attr($, [
       'meta[property="og:title"]',
       'meta[name="og:title"]',
@@ -121,21 +125,27 @@ function extractMeta(html, { platform, baseUrl } = {}) {
     weixinMsgTitle(html) ||
     null;
 
+  if (title) {
+    title = title.replace(/\s*[-_|]\s*小红书\s*$/i, '').trim() || title;
+  }
+
   if (!title) {
     const h1 = $('#activity-name').text().replace(/\s+/g, ' ').trim();
     if (h1) title = h1;
   }
   if (!title) {
     const t = $('title').first().text().replace(/\s+/g, ' ').trim();
-    if (t) title = t;
+    if (t) title = t.replace(/\s*[-_|]\s*小红书\s*$/i, '').trim() || t;
   }
 
   const summary =
+    (xhs && xhs.summary) ||
     attr($, [
       'meta[property="og:description"]',
       'meta[name="description"]',
       'meta[name="twitter:description"]',
-    ]) || null;
+    ]) ||
+    null;
 
   const metaCover =
     attr($, [
@@ -144,18 +154,22 @@ function extractMeta(html, { platform, baseUrl } = {}) {
       'meta[itemprop="image"]',
     ]) || null;
 
+  // 小红书 og:image 常是站点默认图，优先笔记首图
   const coverImageUrl =
+    (xhs && xhs.coverImageUrl) ||
     absolutize(baseUrl, metaCover) ||
     absolutize(baseUrl, weixinCdnCover(html)) ||
     firstContentImage($, { platform, baseUrl }) ||
     null;
 
   const author =
+    (xhs && xhs.author) ||
     attr($, [
       'meta[name="author"]',
       'meta[property="og:article:author"]',
       'meta[name="twitter:creator"]',
-    ]) || null;
+    ]) ||
+    null;
 
   const blocked = looksBlocked(html, $);
 

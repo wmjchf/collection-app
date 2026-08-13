@@ -1,0 +1,166 @@
+import 'package:flutter/material.dart';
+import 'package:super_collection/features/items/cover_image.dart';
+
+/// 多图轮播（小红书等）
+class ItemImageGallery extends StatefulWidget {
+  const ItemImageGallery({
+    super.key,
+    required this.urls,
+    this.borderRadius = 12,
+    this.height = 360,
+  });
+
+  final List<String> urls;
+  final double borderRadius;
+  final double height;
+
+  @override
+  State<ItemImageGallery> createState() => _ItemImageGalleryState();
+}
+
+class _ItemImageGalleryState extends State<ItemImageGallery> {
+  static const _dot = Color(0xFFD0D5DD);
+  static const _dotActive = Color(0xFF1F242E);
+
+  late final PageController _controller;
+  int _index = 0;
+
+  List<String> get _list => widget.urls
+      .map((e) => e.trim())
+      .where((e) => e.isNotEmpty)
+      .toList(growable: false);
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = PageController();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final list = _list;
+    if (list.isEmpty) return const SizedBox.shrink();
+
+    if (list.length == 1) {
+      return _CarouselImage(
+        url: list.first,
+        height: widget.height,
+        borderRadius: widget.borderRadius,
+      );
+    }
+
+    return Column(
+      children: [
+        ClipRRect(
+          borderRadius: BorderRadius.circular(widget.borderRadius),
+          child: SizedBox(
+            height: widget.height,
+            width: double.infinity,
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                PageView.builder(
+                  controller: _controller,
+                  itemCount: list.length,
+                  onPageChanged: (i) => setState(() => _index = i),
+                  itemBuilder: (context, i) => _CarouselImage(
+                    url: list[i],
+                    height: widget.height,
+                    borderRadius: 0,
+                  ),
+                ),
+                Positioned(
+                  right: 10,
+                  top: 10,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 4,
+                    ),
+                    decoration: BoxDecoration(
+                      color: const Color(0x99000000),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Text(
+                      '${_index + 1}/${list.length}',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: Colors.white,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 10),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            for (var i = 0; i < list.length; i++) ...[
+              if (i > 0) const SizedBox(width: 6),
+              AnimatedContainer(
+                duration: const Duration(milliseconds: 180),
+                width: i == _index ? 16 : 6,
+                height: 6,
+                decoration: BoxDecoration(
+                  color: i == _index ? _dotActive : _dot,
+                  borderRadius: BorderRadius.circular(3),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+class _CarouselImage extends StatelessWidget {
+  const _CarouselImage({
+    required this.url,
+    required this.height,
+    required this.borderRadius,
+  });
+
+  final String url;
+  final double height;
+  final double borderRadius;
+
+  @override
+  Widget build(BuildContext context) {
+    final child = Image.network(
+      url,
+      width: double.infinity,
+      height: height,
+      fit: BoxFit.cover,
+      errorBuilder: (_, __, ___) => CoverImage(
+        url: null,
+        height: height,
+        borderRadius: borderRadius,
+      ),
+      loadingBuilder: (context, child, progress) {
+        if (progress == null) return child;
+        return CoverImage(
+          url: null,
+          height: height,
+          borderRadius: borderRadius,
+        );
+      },
+    );
+
+    if (borderRadius <= 0) return child;
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(borderRadius),
+      child: child,
+    );
+  }
+}

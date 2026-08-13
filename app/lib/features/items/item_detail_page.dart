@@ -5,6 +5,7 @@ import 'package:super_collection/core/network/api_client.dart';
 import 'package:super_collection/features/home/home_format.dart';
 import 'package:super_collection/features/items/article_body_text.dart';
 import 'package:super_collection/features/items/cover_image.dart';
+import 'package:super_collection/features/items/item_image_gallery.dart';
 import 'package:super_collection/features/items/item_models.dart';
 import 'package:super_collection/features/items/item_reading_page.dart';
 import 'package:super_collection/features/items/items_repository.dart';
@@ -232,7 +233,7 @@ class _ItemDetailPageState extends State<ItemDetailPage> {
                             )
                           else if (item != null)
                             _SuccessCard(
-                              coverUrl: item.coverImageUrl,
+                              imageUrls: item.displayImages,
                               content: _previewText(item),
                             ),
                         ],
@@ -453,9 +454,9 @@ class _FailedCard extends StatelessWidget {
 }
 
 class _SuccessCard extends StatelessWidget {
-  const _SuccessCard({this.coverUrl, required this.content});
+  const _SuccessCard({this.imageUrls = const [], required this.content});
 
-  final String? coverUrl;
+  final List<String> imageUrls;
   final String content;
 
   static const _muted = Color(0xFF737A85);
@@ -463,6 +464,7 @@ class _SuccessCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final body = content.trim().isEmpty ? '正文已解析，可进入阅读。' : content;
+    final images = imageUrls;
 
     return Container(
       width: double.infinity,
@@ -474,7 +476,15 @@ class _SuccessCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          CoverImage(url: coverUrl, height: 160, borderRadius: 12),
+          if (images.isEmpty)
+            const CoverImage(url: null, height: 160, borderRadius: 12)
+          else if (images.length == 1)
+            CoverImage(url: images.first, height: 160, borderRadius: 12)
+          else
+            ItemImageGallery(
+              urls: images.take(12).toList(),
+              height: 220,
+            ),
           const SizedBox(height: 12),
           const Text(
             '正文',

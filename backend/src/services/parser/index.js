@@ -15,12 +15,18 @@ function fetchTargetUrl(url) {
  * 阶段 1：短超时抓取 + 元信息
  */
 async function fetchQuickMeta(url) {
-  const platform = detectPlatform(url);
+  let platform = detectPlatform(url);
   const target = fetchTargetUrl(url);
   const { html, finalUrl, status, ok } = await fetchHtml(target, {
     timeoutMs: 8000,
   });
   const pageUrl = finalUrl || target;
+  // 短链跳转后按最终域名纠正平台
+  try {
+    platform = detectPlatform(pageUrl) || platform;
+  } catch {
+    // ignore
+  }
   const meta = extractMeta(html, { platform, baseUrl: pageUrl });
 
   let title = meta.title;
@@ -92,36 +98,45 @@ async function parseFullContent(url, { platform, existingSummary, html } = {}) {
         title: meta.title,
         summary: meta.summary || existingSummary || null,
         coverImageUrl: meta.coverImageUrl,
+        imageUrls: [],
         content: null,
         errorMessage: '页面需验证，暂时无法解析正文',
       };
     }
   }
 
-  const { content, summary } = extractContent(sourceHtml, {
+  const { content, summary, imageUrls } = extractContent(sourceHtml, {
     platform: resolvedPlatform,
     existingSummary: existingSummary || meta.summary,
   });
 
-  if (!content) {
+  if (!content && !(imageUrls && imageUrls.length)) {
     return {
       ok: false,
       blocked: false,
       title: meta.title,
       summary: summary || meta.summary || existingSummary || null,
       coverImageUrl: meta.coverImageUrl,
+      imageUrls: [],
       content: null,
       errorMessage: '未能提取到可读正文',
     };
   }
 
+  const cover =
+    meta.coverImageUrl ||
+    (imageUrls && imageUrls[0]) ||
+    null;
+
   return {
     ok: true,
     blocked: false,
     title: meta.title,
-    summary,
-    coverImageUrl: meta.coverImageUrl,
-    content,
+    summary: summary || meta.summary || existingSummary || null,
+    coverImageUrl: cover,
+    imageUrls: imageUrls || [],
+    // 纯图笔记也允许成功
+    content: content || (meta.title ? String(meta.title) : '（图片笔记）'),
     errorMessage: null,
   };
 }

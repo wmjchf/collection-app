@@ -1,4 +1,5 @@
 const cheerio = require('cheerio');
+const { extractXiaohongshuNote } = require('./extractXiaohongshu');
 
 function htmlToText(fragment) {
   const $ = cheerio.load(`<div id="__root">${fragment}</div>`, {
@@ -83,9 +84,24 @@ function buildSummary(existingSummary, content) {
 function extractContent(html, opts = {}) {
   const platform = opts.platform || 'web';
   let content = null;
+  let summaryOverride = null;
+  let imageUrls = [];
 
   if (platform === 'weixin') {
     content = extractWeixinContent(html);
+  }
+  if (
+    platform === 'xiaohongshu' ||
+    (!content &&
+      html.includes('__INITIAL_STATE__') &&
+      html.includes('noteDetailMap'))
+  ) {
+    const note = extractXiaohongshuNote(html);
+    if (note?.content) {
+      content = note.content;
+      summaryOverride = note.summary;
+      imageUrls = note.imageUrls || [];
+    }
   }
   if (!content) {
     content = extractGenericContent(html);
@@ -93,7 +109,8 @@ function extractContent(html, opts = {}) {
 
   return {
     content,
-    summary: buildSummary(opts.existingSummary, content),
+    summary: buildSummary(summaryOverride || opts.existingSummary, content),
+    imageUrls,
   };
 }
 
