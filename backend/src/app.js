@@ -2,6 +2,11 @@ const express = require('express');
 const cors = require('cors');
 const healthRouter = require('./routes/health');
 const authRouter = require('./routes/auth');
+const itemsRouter = require('./routes/items');
+const foldersRouter = require('./routes/folders');
+const tagsRouter = require('./routes/tags');
+const systemFiltersRouter = require('./routes/systemFilters');
+const homeRouter = require('./routes/home');
 
 const app = express();
 
@@ -14,6 +19,11 @@ app.get('/', (_req, res) => {
 
 app.use('/api', healthRouter);
 app.use('/api/auth', authRouter);
+app.use('/api/items', itemsRouter);
+app.use('/api/folders', foldersRouter);
+app.use('/api/tags', tagsRouter);
+app.use('/api/system-filters', systemFiltersRouter);
+app.use('/api/home', homeRouter);
 
 app.use((err, _req, res, _next) => {
   console.error(err);

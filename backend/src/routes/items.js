@@ -1,0 +1,281 @@
+const express = require('express');
+const { requireAuth } = require('../middleware/auth');
+const itemService = require('../services/itemService');
+
+const router = express.Router();
+
+router.use(requireAuth);
+
+/** POST /api/items — 保存链接（同步快速元信息 + 异步正文解析） */
+router.post('/', async (req, res, next) => {
+  try {
+    const url = req.body?.url;
+    if (!url || !String(url).trim()) {
+      return res.status(400).json({ message: '请输入链接' });
+    }
+    const { item, existed } = await itemService.createItem(req.auth.userId, url);
+    return res.status(existed ? 200 : 201).json({
+      item,
+      existed,
+      message: existed ? '该链接已收藏' : '已保存',
+    });
+  } catch (err) {
+    return next(err);
+  }
+});
+
+/**
+ * GET /api/items?filter=unread|all|today|starred|parsed|annotated|recent_read|archived|trash
+ * Query: tzOffsetMinutes, limit, offset
+ */
+router.get('/', async (req, res, next) => {
+  try {
+    const filter = String(req.query.filter || '').trim();
+    if (!filter) {
+      return res.status(400).json({
+        message:
+          '请指定 filter（unread/all/today/starred/parsed/annotated/recent_read/archived/trash）',
+      });
+    }
+    const result = await itemService.listBySystemFilter(req.auth.userId, filter, {
+      tzOffsetMinutes: Number(req.query.tzOffsetMinutes ?? 480),
+      limit: Number(req.query.limit ?? 50),
+      offset: Number(req.query.offset ?? 0),
+    });
+    return res.json(result);
+  } catch (err) {
+    return next(err);
+  }
+});
+
+/** GET /api/items/:id — 详情（含最近删除中的条目） */
+router.get('/:id', async (req, res, next) => {
+  try {
+    const item = await itemService.getByIdForUser(
+      req.auth.userId,
+      Number(req.params.id),
+      { includeDeleted: true },
+    );
+    if (!item) {
+      return res.status(404).json({ message: '条目不存在' });
+    }
+    return res.json({ item });
+  } catch (err) {
+    return next(err);
+  }
+});
+
+/** GET /api/items/:id/parse-status — 轻量轮询 */
+router.get('/:id/parse-status', async (req, res, next) => {
+  try {
+    const status = await itemService.getParseStatus(
+      req.auth.userId,
+      Number(req.params.id),
+    );
+    return res.json(status);
+  } catch (err) {
+    return next(err);
+  }
+});
+
+/** POST /api/items/:id/reparse — 重试正文解析 */
+router.post('/:id/reparse', async (req, res, next) => {
+  try {
+    const item = await itemService.reparseItem(
+      req.auth.userId,
+      Number(req.params.id),
+    );
+    return res.json({ item, message: '已开始重新解析' });
+  } catch (err) {
+    return next(err);
+  }
+});
+
+/** POST /api/items/:id/read — 进入阅读：已读 + last_read_at */
+router.post('/:id/read', async (req, res, next) => {
+  try {
+    const item = await itemService.markAsRead(
+      req.auth.userId,
+      Number(req.params.id),
+    );
+    return res.json({ item });
+  } catch (err) {
+    return next(err);
+  }
+});
+
+/** POST /api/items/:id/star — body { starred: boolean } */
+router.post('/:id/star', async (req, res, next) => {
+  try {
+    const starred = !!req.body?.starred;
+    const item = await itemService.setStarred(
+      req.auth.userId,
+      Number(req.params.id),
+      starred,
+    );
+    return res.json({ item });
+  } catch (err) {
+    return next(err);
+  }
+});
+
+/** PATCH /api/items/:id — body { note?, folderId? } */
+router.patch('/:id', async (req, res, next) => {
+  try {
+    const itemId = Number(req.params.id);
+    const userId = req.auth.userId;
+    let item = null;
+    if (Object.prototype.hasOwnProperty.call(req.body || {}, 'note')) {
+      item = await itemService.updateNote(userId, itemId, req.body.note);
+    }
+    if (Object.prototype.hasOwnProperty.call(req.body || {}, 'folderId')) {
+      item = await itemService.moveToFolder(
+        userId,
+        itemId,
+        Number(req.body.folderId),
+      );
+    }
+    if (!item) {
+      return res.status(400).json({ message: '请提供 note 或 folderId' });
+    }
+    return res.json({ item });
+  } catch (err) {
+    return next(err);
+  }
+});
+
+/** DELETE /api/items/trash — 清空回收站 */
+router.delete('/trash', async (req, res, next) => {
+  try {
+    const result = await itemService.emptyTrash(req.auth.userId);
+    return res.json(result);
+  } catch (err) {
+    return next(err);
+  }
+});
+
+/** POST /api/items/:id/restore — 从回收站恢复 */
+router.post('/:id/restore', async (req, res, next) => {
+  try {
+    const item = await itemService.restoreFromTrash(
+      req.auth.userId,
+      Number(req.params.id),
+    );
+    return res.json({ item });
+  } catch (err) {
+    return next(err);
+  }
+});
+
+/** DELETE /api/items/:id/permanent — 彻底删除（仅回收站） */
+router.delete('/:id/permanent', async (req, res, next) => {
+  try {
+    const result = await itemService.purgeFromTrash(
+      req.auth.userId,
+      Number(req.params.id),
+    );
+    return res.json(result);
+  } catch (err) {
+    return next(err);
+  }
+});
+
+/** DELETE /api/items/:id — 软删除 */
+router.delete('/:id', async (req, res, next) => {
+  try {
+    const result = await itemService.softDelete(
+      req.auth.userId,
+      Number(req.params.id),
+    );
+    return res.json(result);
+  } catch (err) {
+    return next(err);
+  }
+});
+
+/** GET /api/items/:id/tags */
+router.get('/:id/tags', async (req, res, next) => {
+  try {
+    const tags = await itemService.listItemTags(
+      req.auth.userId,
+      Number(req.params.id),
+    );
+    return res.json({ tags });
+  } catch (err) {
+    return next(err);
+  }
+});
+
+/** PUT /api/items/:id/tags — body { tagIds: number[] } */
+router.put('/:id/tags', async (req, res, next) => {
+  try {
+    const tags = await itemService.setItemTags(
+      req.auth.userId,
+      Number(req.params.id),
+      req.body?.tagIds || [],
+    );
+    return res.json({ tags });
+  } catch (err) {
+    return next(err);
+  }
+});
+
+const annotationService = require('../services/annotationService');
+
+/** GET /api/items/:id/annotations */
+router.get('/:id/annotations', async (req, res, next) => {
+  try {
+    const annotations = await annotationService.listByItem(
+      req.auth.userId,
+      Number(req.params.id),
+    );
+    return res.json({ annotations });
+  } catch (err) {
+    return next(err);
+  }
+});
+
+/** POST /api/items/:id/annotations */
+router.post('/:id/annotations', async (req, res, next) => {
+  try {
+    const annotation = await annotationService.create(
+      req.auth.userId,
+      Number(req.params.id),
+      req.body || {},
+    );
+    return res.status(201).json({ annotation });
+  } catch (err) {
+    return next(err);
+  }
+});
+
+/** PATCH /api/items/:id/annotations/:annotationId */
+router.patch('/:id/annotations/:annotationId', async (req, res, next) => {
+  try {
+    const annotation = await annotationService.update(
+      req.auth.userId,
+      Number(req.params.id),
+      Number(req.params.annotationId),
+      req.body || {},
+    );
+    return res.json({ annotation });
+  } catch (err) {
+    return next(err);
+  }
+});
+
+/** DELETE /api/items/:id/annotations/:annotationId */
+router.delete('/:id/annotations/:annotationId', async (req, res, next) => {
+  try {
+    const result = await annotationService.remove(
+      req.auth.userId,
+      Number(req.params.id),
+      Number(req.params.annotationId),
+    );
+    return res.json(result);
+  } catch (err) {
+    return next(err);
+  }
+});
+
+module.exports = router;

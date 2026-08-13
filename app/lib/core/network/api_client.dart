@@ -50,6 +50,51 @@ class ApiClient {
     return _decode(res);
   }
 
+  Future<Map<String, dynamic>> delete(
+    String path, {
+    String? accessToken,
+  }) async {
+    final res = await _client.delete(
+      Uri.parse('$_baseUrl$path'),
+      headers: {
+        if (accessToken != null) 'Authorization': 'Bearer $accessToken',
+      },
+    );
+    return _decode(res);
+  }
+
+  Future<Map<String, dynamic>> patch(
+    String path, {
+    Map<String, dynamic>? body,
+    String? accessToken,
+  }) async {
+    final res = await _client.patch(
+      Uri.parse('$_baseUrl$path'),
+      headers: {
+        'Content-Type': 'application/json',
+        if (accessToken != null) 'Authorization': 'Bearer $accessToken',
+      },
+      body: jsonEncode(body ?? {}),
+    );
+    return _decode(res);
+  }
+
+  Future<Map<String, dynamic>> put(
+    String path, {
+    Map<String, dynamic>? body,
+    String? accessToken,
+  }) async {
+    final res = await _client.put(
+      Uri.parse('$_baseUrl$path'),
+      headers: {
+        'Content-Type': 'application/json',
+        if (accessToken != null) 'Authorization': 'Bearer $accessToken',
+      },
+      body: jsonEncode(body ?? {}),
+    );
+    return _decode(res);
+  }
+
   Map<String, dynamic> _decode(http.Response res) {
     Map<String, dynamic> json;
     try {

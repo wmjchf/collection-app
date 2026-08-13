@@ -160,6 +160,32 @@
 | `POST /api/auth/logout` | 作废 refresh |
 | `GET /api/me` | 当前用户 |
 
+## 收藏夹 API（约定）
+
+| 接口 | 说明 |
+| --- | --- |
+| `GET /api/folders` | 系统「未分类」+ 当前用户自建；含 `itemCount` |
+| `POST /api/folders` | body `{ name }` 新建；不可与未分类/已有夹重名 |
+| `DELETE /api/folders/:id` | 仅自建夹；夹内条目移回「未分类」，不删条目 |
+
+## 标签 API（约定）
+
+| 接口 | 说明 |
+| --- | --- |
+| `GET /api/tags` | 系统「无标签」+ 当前用户自建；含 `itemCount` |
+| `POST /api/tags` | body `{ name }` 新建 |
+| `DELETE /api/tags/:id` | 仅自建标签；解除 `item_tags` 关联，不删条目 |
+
+## 系统筛选 API（约定）
+
+| 接口 | 说明 |
+| --- | --- |
+| `GET /api/system-filters` | 未读/所有/今天/星标/解析/标注/最近阅读 + 数量；`tzOffsetMinutes` 可选（默认 480） |
+| `GET /api/items?filter=` | 按系统筛选列条目；`filter` 同上；支持 `limit`/`offset`/`tzOffsetMinutes` |
+| `GET /api/home` | 首页三板块：未读 / 标注 / 最近阅读，各最多 3 条 + `total` |
+
+未读无数据时 `countLabel` 为「无」；列表默认排除已删除与已归档。
+
 环境变量（示例）：`ALIYUN_ACCESS_KEY_ID` / `ALIYUN_ACCESS_KEY_SECRET` / `ALIYUN_SMS_SIGN_NAME` / `ALIYUN_SMS_TEMPLATE_CODE`
 
 ---

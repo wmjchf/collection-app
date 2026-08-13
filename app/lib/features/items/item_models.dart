@@ -1,0 +1,114 @@
+class CollectionItem {
+  const CollectionItem({
+    required this.id,
+    required this.url,
+    required this.status,
+    this.canonicalUrl,
+    this.title,
+    this.content,
+    this.summary,
+    this.coverImageUrl,
+    this.platform,
+    this.errorMessage,
+    this.note,
+    this.folderId,
+    this.isUnread = true,
+    this.isStarred = false,
+    this.createdAt,
+    this.updatedAt,
+    this.lastReadAt,
+    this.deletedAt,
+    this.annotationCount,
+  });
+
+  final int id;
+  final String url;
+  final String? canonicalUrl;
+  final String? title;
+  final String? content;
+  final String? summary;
+  final String? coverImageUrl;
+  final String? platform;
+  final String status; // pending | success | failed
+  final String? errorMessage;
+  final String? note;
+  final int? folderId;
+  final bool isUnread;
+  final bool isStarred;
+  final DateTime? createdAt;
+  final DateTime? updatedAt;
+  final DateTime? lastReadAt;
+  final DateTime? deletedAt;
+  final int? annotationCount;
+
+  bool get isPending => status == 'pending';
+  bool get isSuccess => status == 'success';
+  bool get isFailed => status == 'failed';
+  bool get isInTrash => deletedAt != null;
+
+  factory CollectionItem.fromJson(Map<String, dynamic> json) {
+    return CollectionItem(
+      id: (json['id'] as num).toInt(),
+      url: json['url'] as String? ?? '',
+      canonicalUrl: json['canonicalUrl'] as String?,
+      title: json['title'] as String?,
+      content: json['content'] as String?,
+      summary: json['summary'] as String?,
+      coverImageUrl: json['coverImageUrl'] as String?,
+      platform: json['platform'] as String?,
+      status: json['status'] as String? ?? 'pending',
+      errorMessage: json['errorMessage'] as String?,
+      note: json['note'] as String?,
+      folderId: (json['folderId'] as num?)?.toInt(),
+      isUnread: json['isUnread'] as bool? ?? true,
+      isStarred: json['isStarred'] as bool? ?? false,
+      createdAt: _parseTime(json['createdAt']),
+      updatedAt: _parseTime(json['updatedAt']),
+      lastReadAt: _parseTime(json['lastReadAt']),
+      deletedAt: _parseTime(json['deletedAt']),
+      annotationCount: (json['annotationCount'] as num?)?.toInt(),
+    );
+  }
+
+  static DateTime? _parseTime(Object? value) {
+    if (value is String && value.isNotEmpty) {
+      return DateTime.tryParse(value);
+    }
+    return null;
+  }
+}
+
+class ItemAnnotation {
+  const ItemAnnotation({
+    required this.id,
+    required this.itemId,
+    required this.selectedText,
+    this.startOffset,
+    this.endOffset,
+    this.color,
+    this.note,
+    this.createdAt,
+  });
+
+  final int id;
+  final int itemId;
+  final String selectedText;
+  final int? startOffset;
+  final int? endOffset;
+  final String? color;
+  final String? note;
+  final DateTime? createdAt;
+
+  factory ItemAnnotation.fromJson(Map<String, dynamic> json) {
+    return ItemAnnotation(
+      id: (json['id'] as num).toInt(),
+      itemId: (json['itemId'] as num).toInt(),
+      selectedText: json['selectedText'] as String? ?? '',
+      startOffset: (json['startOffset'] as num?)?.toInt(),
+      endOffset: (json['endOffset'] as num?)?.toInt(),
+      color: json['color'] as String?,
+      note: json['note'] as String?,
+      createdAt: CollectionItem._parseTime(json['createdAt']),
+    );
+  }
+}

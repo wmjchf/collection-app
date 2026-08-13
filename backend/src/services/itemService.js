@@ -1,0 +1,509 @@
+const { pool } = require('../db');
+const { normalizeUrl, detectPlatform, placeholderTitle } = require('../utils/url');
+const { fetchQuickMeta, parseFullContent } = require('./parser');
+
+function mapItem(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    userId: row.user_id,
+    url: row.url,
+    canonicalUrl: row.canonical_url,
+    title: row.title,
+    content: row.content,
+    summary: row.summary,
+    coverImageUrl: row.cover_image_url,
+    platform: row.platform,
+    status: row.status,
+    errorMessage: row.error_message,
+    note: row.note,
+    folderId: row.folder_id,
+    isStarred: !!row.is_starred,
+    isUnread: !!row.is_unread,
+    isArchived: !!row.is_archived,
+    lastReadAt: row.last_read_at,
+    deletedAt: row.deleted_at,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    annotationCount:
+      row.annotation_count != null ? Number(row.annotation_count) : undefined,
+  };
+}
+
+async function getUncategorizedFolderId() {
+  const [rows] = await pool.execute(
+    `SELECT id FROM categories
+     WHERE user_id = 0 AND section = 'folder' AND code = 'uncategorized'
+     LIMIT 1`,
+  );
+  if (!rows[0]) {
+    throw Object.assign(new Error('系统未分类不存在，请先执行数据库迁移'), {
+      status: 500,
+    });
+  }
+  return rows[0].id;
+}
+
+async function findByCanonical(userId, canonicalUrl) {
+  const [rows] = await pool.execute(
+    `SELECT * FROM items
+     WHERE user_id = :userId
+       AND canonical_url = :canonicalUrl
+       AND deleted_at IS NULL
+     LIMIT 1`,
+    { userId, canonicalUrl },
+  );
+  return rows[0] || null;
+}
+
+/**
+ * @param {{ includeDeleted?: boolean }} [opts]
+ */
+async function getByIdForUser(userId, itemId, opts = {}) {
+  const includeDeleted = !!opts.includeDeleted;
+  const [rows] = await pool.execute(
+    `SELECT * FROM items
+     WHERE id = :itemId AND user_id = :userId
+       ${includeDeleted ? '' : 'AND deleted_at IS NULL'}
+     LIMIT 1`,
+    { itemId, userId },
+  );
+  return mapItem(rows[0] || null);
+}
+
+/**
+ * 创建条目：同步快速元信息 → 写库 → 触发异步正文解析
+ */
+async function createItem(userId, rawUrl) {
+  const url = String(rawUrl || '').trim();
+  const canonicalUrl = normalizeUrl(url);
+  const existing = await findByCanonical(userId, canonicalUrl);
+  if (existing) {
+    return { item: mapItem(existing), existed: true };
+  }
+
+  let meta;
+  try {
+    meta = await fetchQuickMeta(canonicalUrl);
+  } catch (err) {
+    // 快速阶段失败仍入库，标题用域名占位，交给异步重试正文
+    meta = {
+      platform: detectPlatform(canonicalUrl),
+      finalUrl: canonicalUrl,
+      title: placeholderTitle(canonicalUrl),
+      summary: null,
+      coverImageUrl: null,
+      blocked: false,
+      html: null,
+      fetchError: err.message,
+    };
+  }
+
+  const folderId = await getUncategorizedFolderId();
+  const title = meta.title || placeholderTitle(canonicalUrl);
+
+  const [result] = await pool.execute(
+    `INSERT INTO items (
+       user_id, url, canonical_url, title, summary, cover_image_url,
+       platform, status, folder_id, is_unread
+     ) VALUES (
+       :userId, :url, :canonicalUrl, :title, :summary, :coverImageUrl,
+       :platform, 'pending', :folderId, 1
+     )`,
+    {
+      userId,
+      url,
+      canonicalUrl,
+      title,
+      summary: meta.summary || null,
+      coverImageUrl: meta.coverImageUrl || null,
+      platform: meta.platform || 'web',
+      folderId,
+    },
+  );
+
+  const itemId = result.insertId;
+
+  // 异步正文解析；把阶段 1 HTML 暂存在内存任务里避免立刻再抓
+  const { enqueueParse } = require('./parseQueue');
+  // 先挂到全局弱缓存，供 runContentParse 复用
+  if (meta.html) {
+    _htmlCache.set(itemId, { html: meta.html, at: Date.now() });
+  }
+  enqueueParse(itemId);
+
+  const item = await getByIdForUser(userId, itemId);
+  return { item, existed: false };
+}
+
+/** itemId -> { html, at }，5 分钟过期 */
+const _htmlCache = new Map();
+
+function takeCachedHtml(itemId) {
+  const entry = _htmlCache.get(itemId);
+  _htmlCache.delete(itemId);
+  if (!entry) return null;
+  if (Date.now() - entry.at > 5 * 60 * 1000) return null;
+  return entry.html;
+}
+
+async function runContentParse(itemId) {
+  const [rows] = await pool.execute(
+    'SELECT * FROM items WHERE id = :itemId AND deleted_at IS NULL LIMIT 1',
+    { itemId },
+  );
+  const row = rows[0];
+  if (!row) return;
+
+  const cachedHtml = takeCachedHtml(itemId);
+
+  try {
+    const parsed = await parseFullContent(row.canonical_url || row.url, {
+      platform: row.platform,
+      existingSummary: row.summary,
+      html: cachedHtml,
+    });
+
+    if (parsed.ok) {
+      await pool.execute(
+        `UPDATE items SET
+           title = COALESCE(:title, title),
+           summary = :summary,
+           cover_image_url = COALESCE(:coverImageUrl, cover_image_url),
+           content = :content,
+           status = 'success',
+           error_message = NULL
+         WHERE id = :itemId`,
+        {
+          itemId,
+          title: parsed.title || null,
+          summary: parsed.summary || null,
+          coverImageUrl: parsed.coverImageUrl || null,
+          content: parsed.content,
+        },
+      );
+      return;
+    }
+
+    await pool.execute(
+      `UPDATE items SET
+         title = COALESCE(:title, title),
+         summary = COALESCE(:summary, summary),
+         cover_image_url = COALESCE(:coverImageUrl, cover_image_url),
+         status = 'failed',
+         error_message = :errorMessage
+       WHERE id = :itemId`,
+      {
+        itemId,
+        title: parsed.title || null,
+        summary: parsed.summary || null,
+        coverImageUrl: parsed.coverImageUrl || null,
+        errorMessage: parsed.errorMessage || '解析失败',
+      },
+    );
+  } catch (err) {
+    await pool.execute(
+      `UPDATE items SET status = 'failed', error_message = :errorMessage
+       WHERE id = :itemId`,
+      {
+        itemId,
+        errorMessage: (err.message || '解析失败').slice(0, 500),
+      },
+    );
+  }
+}
+
+async function reparseItem(userId, itemId) {
+  const item = await getByIdForUser(userId, itemId);
+  if (!item) {
+    throw Object.assign(new Error('条目不存在'), { status: 404 });
+  }
+
+  await pool.execute(
+    `UPDATE items SET status = 'pending', error_message = NULL
+     WHERE id = :itemId AND user_id = :userId`,
+    { itemId, userId },
+  );
+
+  const { enqueueParse } = require('./parseQueue');
+  enqueueParse(itemId);
+
+  return getByIdForUser(userId, itemId);
+}
+
+async function getParseStatus(userId, itemId) {
+  const [rows] = await pool.execute(
+    `SELECT id, status, title, updated_at, error_message
+     FROM items
+     WHERE id = :itemId AND user_id = :userId AND deleted_at IS NULL
+     LIMIT 1`,
+    { itemId, userId },
+  );
+  const row = rows[0];
+  if (!row) {
+    throw Object.assign(new Error('条目不存在'), { status: 404 });
+  }
+  return {
+    id: row.id,
+    status: row.status,
+    title: row.title,
+    updatedAt: row.updated_at,
+    errorMessage: row.error_message,
+  };
+}
+
+const systemFilterService = require('./systemFilterService');
+
+async function listBySystemFilter(userId, code, options = {}) {
+  const result = await systemFilterService.listItemsBySystemFilter(
+    userId,
+    code,
+    options,
+  );
+  return {
+    ...result,
+    items: result.items.map(mapItem),
+  };
+}
+
+/** 进入阅读：标为已读并更新最近阅读时间 */
+async function markAsRead(userId, itemId) {
+  const existing = await getByIdForUser(userId, itemId);
+  if (!existing) {
+    throw Object.assign(new Error('条目不存在'), { status: 404 });
+  }
+  await pool.execute(
+    `UPDATE items
+     SET is_unread = 0, last_read_at = CURRENT_TIMESTAMP(3)
+     WHERE id = :itemId AND user_id = :userId AND deleted_at IS NULL`,
+    { itemId, userId },
+  );
+  return getByIdForUser(userId, itemId);
+}
+
+/** 切换星标 */
+async function setStarred(userId, itemId, starred) {
+  const existing = await getByIdForUser(userId, itemId);
+  if (!existing) {
+    throw Object.assign(new Error('条目不存在'), { status: 404 });
+  }
+  await pool.execute(
+    `UPDATE items
+     SET is_starred = :starred
+     WHERE id = :itemId AND user_id = :userId AND deleted_at IS NULL`,
+    { itemId, userId, starred: starred ? 1 : 0 },
+  );
+  return getByIdForUser(userId, itemId);
+}
+
+/** 更新备注 */
+async function updateNote(userId, itemId, note) {
+  const existing = await getByIdForUser(userId, itemId);
+  if (!existing) {
+    throw Object.assign(new Error('条目不存在'), { status: 404 });
+  }
+  const value = note == null ? null : String(note).trim().slice(0, 5000);
+  await pool.execute(
+    `UPDATE items SET note = :note
+     WHERE id = :itemId AND user_id = :userId AND deleted_at IS NULL`,
+    { itemId, userId, note: value || null },
+  );
+  return getByIdForUser(userId, itemId);
+}
+
+/** 移动到收藏夹 */
+async function moveToFolder(userId, itemId, folderId) {
+  const existing = await getByIdForUser(userId, itemId);
+  if (!existing) {
+    throw Object.assign(new Error('条目不存在'), { status: 404 });
+  }
+  const [folders] = await pool.execute(
+    `SELECT id FROM categories
+     WHERE id = :folderId AND section = 'folder'
+       AND (user_id = :userId OR (user_id = 0 AND is_system = 1))
+     LIMIT 1`,
+    { folderId, userId },
+  );
+  if (!folders[0]) {
+    throw Object.assign(new Error('收藏夹不存在'), { status: 404 });
+  }
+  await pool.execute(
+    `UPDATE items SET folder_id = :folderId
+     WHERE id = :itemId AND user_id = :userId AND deleted_at IS NULL`,
+    { itemId, userId, folderId },
+  );
+  return getByIdForUser(userId, itemId);
+}
+
+/** 软删除 → 回收站 */
+async function softDelete(userId, itemId) {
+  const existing = await getByIdForUser(userId, itemId);
+  if (!existing) {
+    throw Object.assign(new Error('条目不存在'), { status: 404 });
+  }
+  await pool.execute(
+    `UPDATE items SET deleted_at = CURRENT_TIMESTAMP(3)
+     WHERE id = :itemId AND user_id = :userId AND deleted_at IS NULL`,
+    { itemId, userId },
+  );
+  return { id: itemId, deleted: true };
+}
+
+/** 从回收站恢复 */
+async function restoreFromTrash(userId, itemId) {
+  const existing = await getByIdForUser(userId, itemId, {
+    includeDeleted: true,
+  });
+  if (!existing || !existing.deletedAt) {
+    throw Object.assign(new Error('回收站中不存在该条目'), { status: 404 });
+  }
+
+  if (existing.canonicalUrl) {
+    const [dup] = await pool.execute(
+      `SELECT id FROM items
+       WHERE user_id = :userId
+         AND canonical_url = :canonicalUrl
+         AND deleted_at IS NULL
+         AND id <> :itemId
+       LIMIT 1`,
+      {
+        userId,
+        canonicalUrl: existing.canonicalUrl,
+        itemId,
+      },
+    );
+    if (dup[0]) {
+      throw Object.assign(
+        new Error('已有相同链接的收藏，无法恢复'),
+        { status: 409 },
+      );
+    }
+  }
+
+  await pool.execute(
+    `UPDATE items SET deleted_at = NULL
+     WHERE id = :itemId AND user_id = :userId AND deleted_at IS NOT NULL`,
+    { itemId, userId },
+  );
+  return getByIdForUser(userId, itemId);
+}
+
+/** 彻底删除（仅回收站内） */
+async function purgeFromTrash(userId, itemId) {
+  const existing = await getByIdForUser(userId, itemId, {
+    includeDeleted: true,
+  });
+  if (!existing || !existing.deletedAt) {
+    throw Object.assign(new Error('回收站中不存在该条目'), { status: 404 });
+  }
+  await pool.execute(
+    `DELETE FROM items
+     WHERE id = :itemId AND user_id = :userId AND deleted_at IS NOT NULL`,
+    { itemId, userId },
+  );
+  return { id: itemId, purged: true };
+}
+
+/** 清空回收站 */
+async function emptyTrash(userId) {
+  const [result] = await pool.execute(
+    `DELETE FROM items
+     WHERE user_id = :userId AND deleted_at IS NOT NULL`,
+    { userId },
+  );
+  return { emptied: true, deletedCount: Number(result.affectedRows || 0) };
+}
+
+/** 条目当前标签（不含系统「无标签」） */
+async function listItemTags(userId, itemId) {
+  const existing = await getByIdForUser(userId, itemId);
+  if (!existing) {
+    throw Object.assign(new Error('条目不存在'), { status: 404 });
+  }
+  const [rows] = await pool.execute(
+    `SELECT c.id, c.name, c.code, c.is_system, c.sort_order, c.created_at, c.updated_at
+     FROM item_tags it
+     INNER JOIN categories c ON c.id = it.category_id
+     INNER JOIN items i ON i.id = it.item_id
+     WHERE it.item_id = :itemId
+       AND i.user_id = :userId
+       AND c.section = 'tag'
+       AND c.is_system = 0
+     ORDER BY c.sort_order ASC, c.id ASC`,
+    { itemId, userId },
+  );
+  return rows.map((row) => ({
+    id: row.id,
+    name: row.name,
+    code: row.code,
+    isSystem: !!row.is_system,
+    sortOrder: row.sort_order,
+    itemCount: 0,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  }));
+}
+
+/** 覆盖设置条目标签（仅用户自建标签 id） */
+async function setItemTags(userId, itemId, tagIds) {
+  const existing = await getByIdForUser(userId, itemId);
+  if (!existing) {
+    throw Object.assign(new Error('条目不存在'), { status: 404 });
+  }
+  const ids = [...new Set((tagIds || []).map((n) => Number(n)).filter((n) => n > 0))];
+
+  if (ids.length) {
+    for (const tagId of ids) {
+      const [owned] = await pool.execute(
+        `SELECT id FROM categories
+         WHERE id = :tagId AND section = 'tag'
+           AND user_id = :userId AND is_system = 0
+         LIMIT 1`,
+        { tagId, userId },
+      );
+      if (!owned[0]) {
+        throw Object.assign(new Error('包含无效标签'), { status: 400 });
+      }
+    }
+  }
+
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    await conn.execute(`DELETE FROM item_tags WHERE item_id = :itemId`, { itemId });
+    for (const tagId of ids) {
+      await conn.execute(
+        `INSERT INTO item_tags (item_id, category_id) VALUES (:itemId, :tagId)`,
+        { itemId, tagId },
+      );
+    }
+    await conn.commit();
+  } catch (err) {
+    await conn.rollback();
+    throw err;
+  } finally {
+    conn.release();
+  }
+
+  return listItemTags(userId, itemId);
+}
+
+module.exports = {
+  createItem,
+  getByIdForUser,
+  getParseStatus,
+  reparseItem,
+  runContentParse,
+  mapItem,
+  listBySystemFilter,
+  markAsRead,
+  setStarred,
+  updateNote,
+  moveToFolder,
+  softDelete,
+  restoreFromTrash,
+  purgeFromTrash,
+  emptyTrash,
+  listItemTags,
+  setItemTags,
+};
