@@ -69,6 +69,9 @@ function detectPlatform(url) {
   if (host.includes('bilibili.com') || host === 'b23.tv') {
     return 'bilibili';
   }
+  if (host.includes('okjike.com') || host.includes('jike.city')) {
+    return 'jike';
+  }
   if (host.includes('zhihu.com')) {
     return 'zhihu';
   }

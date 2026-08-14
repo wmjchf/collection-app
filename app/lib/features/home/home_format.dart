@@ -13,6 +13,8 @@ String platformLabel(String? platform) {
       return '微博';
     case 'bilibili':
       return 'B站';
+    case 'jike':
+      return '即刻';
     case 'zhihu':
       return '知乎';
     case 'web':

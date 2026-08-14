@@ -1,5 +1,6 @@
 const cheerio = require('cheerio');
 const { extractXiaohongshuNote } = require('./extractXiaohongshu');
+const { extractJikePost } = require('./extractJike');
 
 function htmlToText(fragment) {
   const $ = cheerio.load(`<div id="__root">${fragment}</div>`, {
@@ -181,6 +182,17 @@ function extractContent(html, opts = {}) {
     if (wx) {
       content = wx.content;
       imageUrls = wx.imageUrls || [];
+    }
+  }
+  if (
+    platform === 'jike' ||
+    (!content && html.includes('__NEXT_DATA__') && html.includes('okjike'))
+  ) {
+    const jike = extractJikePost(html);
+    if (jike?.content) {
+      content = jike.content;
+      summaryOverride = jike.summary;
+      imageUrls = jike.imageUrls || [];
     }
   }
   if (

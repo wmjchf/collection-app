@@ -658,6 +658,8 @@ const PLATFORM_ALIASES = {
   微博: 'weibo',
   B站: 'bilibili',
   bilibili: 'bilibili',
+  即刻: 'jike',
+  jike: 'jike',
   知乎: 'zhihu',
   网页: 'web',
   zaker: 'zaker',

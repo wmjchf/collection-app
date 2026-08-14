@@ -1,5 +1,6 @@
 const cheerio = require('cheerio');
 const { extractXiaohongshuNote } = require('./extractXiaohongshu');
+const { extractJikePost } = require('./extractJike');
 
 function attr($, selectors) {
   for (const sel of selectors) {
@@ -116,8 +117,14 @@ function firstContentImage($, { platform, baseUrl } = {}) {
 function extractMeta(html, { platform, baseUrl } = {}) {
   const $ = cheerio.load(html);
   const xhs = extractXiaohongshuNote(html);
+  const jike =
+    platform === 'jike' ||
+    (html.includes('__NEXT_DATA__') && /okjike\.com|jike\.city/i.test(html))
+      ? extractJikePost(html)
+      : null;
 
   let title =
+    (jike && jike.title) ||
     (xhs && xhs.title) ||
     attr($, [
       'meta[property="og:title"]',
@@ -129,7 +136,10 @@ function extractMeta(html, { platform, baseUrl } = {}) {
     null;
 
   if (title) {
-    title = title.replace(/\s*[-_|]\s*小红书\s*$/i, '').trim() || title;
+    title = title
+      .replace(/\s*[-_|]\s*小红书\s*$/i, '')
+      .replace(/\s*[-_|]\s*即刻App?\s*$/i, '')
+      .trim() || title;
   }
 
   if (!title) {
@@ -159,6 +169,7 @@ function extractMeta(html, { platform, baseUrl } = {}) {
   }
 
   const summary =
+    (jike && jike.summary) ||
     (xhs && xhs.summary) ||
     attr($, [
       'meta[property="og:description"]',
@@ -176,6 +187,7 @@ function extractMeta(html, { platform, baseUrl } = {}) {
 
   // 小红书 og:image 常是站点默认图，优先笔记首图
   const coverImageUrl =
+    (jike && jike.coverImageUrl) ||
     (xhs && xhs.coverImageUrl) ||
     absolutize(baseUrl, metaCover) ||
     absolutize(baseUrl, weixinCdnCover(html)) ||
@@ -183,6 +195,7 @@ function extractMeta(html, { platform, baseUrl } = {}) {
     null;
 
   const author =
+    (jike && jike.author) ||
     (xhs && xhs.author) ||
     attr($, [
       'meta[name="author"]',
