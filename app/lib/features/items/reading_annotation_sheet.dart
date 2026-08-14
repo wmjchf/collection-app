@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:super_collection/core/network/api_client.dart';
+import 'package:super_collection/core/ui/app_confirm_dialog.dart';
+import 'package:super_collection/core/ui/app_toast.dart';
 import 'package:super_collection/features/items/item_models.dart';
 import 'package:super_collection/features/items/items_repository.dart';
-import 'package:super_collection/core/ui/app_toast.dart';
+
 
 Future<void> showAnnotationDetailSheet(
   BuildContext context, {
@@ -152,25 +154,11 @@ class _AnnotationNoteSheetState extends State<_AnnotationNoteSheet> {
       Navigator.pop(context);
       return;
     }
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('删除标注'),
-        content: const Text('确定删除这条标注吗？'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('取消'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: TextButton.styleFrom(
-              foregroundColor: const Color(0xFFBF3333),
-            ),
-            child: const Text('删除'),
-          ),
-        ],
-      ),
+    final ok = await showAppConfirmDialog(
+      context,
+      title: '删除标注？',
+      message: '删除后不可恢复。',
+      confirmLabel: '删除',
     );
     if (ok != true || !mounted) return;
     try {

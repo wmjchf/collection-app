@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:super_collection/core/network/api_client.dart';
+import 'package:super_collection/core/ui/app_confirm_dialog.dart';
+import 'package:super_collection/core/ui/app_toast.dart';
 import 'package:super_collection/features/collection/system_filters_repository.dart';
 import 'package:super_collection/features/home/home_format.dart';
 import 'package:super_collection/features/items/cover_image.dart';
 import 'package:super_collection/features/items/item_models.dart';
 import 'package:super_collection/features/items/items_repository.dart';
-import 'package:super_collection/core/ui/app_toast.dart';
+
 
 /// 回收站（对齐 Figma `21. 回收站`）：恢复 / 彻底删除 / 清空
 class TrashPage extends StatefulWidget {
@@ -20,7 +22,6 @@ class _TrashPageState extends State<TrashPage> {
   static const _text = Color(0xFF1F242E);
   static const _muted = Color(0xFF737A85);
   static const _danger = Color(0xFFBF3333);
-  static const _restoreBg = Color(0xFFF5F7FA);
 
   final _filtersRepo = SystemFiltersRepository();
   final _itemsRepo = ItemsRepository();
@@ -70,68 +71,11 @@ class _TrashPageState extends State<TrashPage> {
     required String message,
     required String confirmLabel,
   }) async {
-    final ok = await showDialog<bool>(
-      context: context,
-      barrierColor: const Color(0x66000000),
-      builder: (context) => Dialog(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        insetPadding: const EdgeInsets.symmetric(horizontal: 45),
-        child: Material(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(16),
-          clipBehavior: Clip.antiAlias,
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(20, 22, 20, 18),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  title,
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(
-                    fontSize: 17,
-                    fontWeight: FontWeight.w700,
-                    color: _text,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                Text(
-                  message,
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(
-                    fontSize: 13,
-                    color: _muted,
-                    height: 1.3,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    Expanded(
-                      child: _DialogBtn(
-                        label: '取消',
-                        background: _restoreBg,
-                        foreground: _text,
-                        onTap: () => Navigator.pop(context, false),
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: _DialogBtn(
-                        label: confirmLabel,
-                        background: _danger,
-                        foreground: Colors.white,
-                        onTap: () => Navigator.pop(context, true),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
+    final ok = await showAppConfirmDialog(
+      context,
+      title: title,
+      message: message,
+      confirmLabel: confirmLabel,
     );
     return ok == true;
   }
@@ -456,44 +400,6 @@ class _TrashCard extends StatelessWidget {
               ),
             ),
           ],
-        ),
-      ),
-    );
-  }
-}
-
-class _DialogBtn extends StatelessWidget {
-  const _DialogBtn({
-    required this.label,
-    required this.background,
-    required this.foreground,
-    required this.onTap,
-  });
-
-  final String label;
-  final Color background;
-  final Color foreground;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: background,
-      borderRadius: BorderRadius.circular(10),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(10),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 12),
-          child: Text(
-            label,
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              fontSize: 15,
-              fontWeight: FontWeight.w500,
-              color: foreground,
-            ),
-          ),
         ),
       ),
     );

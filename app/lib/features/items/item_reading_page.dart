@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:super_collection/core/network/api_client.dart';
+import 'package:super_collection/core/ui/app_toast.dart';
 import 'package:super_collection/features/home/home_format.dart';
 import 'package:super_collection/features/items/article_body_text.dart';
 import 'package:super_collection/features/items/item_image_gallery.dart';
@@ -12,7 +14,6 @@ import 'package:super_collection/features/items/reading_folder_sheet.dart';
 import 'package:super_collection/features/items/reading_more_sheet.dart';
 import 'package:super_collection/features/items/reading_note_sheet.dart';
 import 'package:super_collection/features/items/reading_tags_sheet.dart';
-import 'package:super_collection/core/ui/app_toast.dart';
 
 /// 本地阅读页：标题 + 可读正文（含标注高亮）；底栏 星标 / 标签 / 备注 / 更多。
 class ItemReadingPage extends StatefulWidget {
@@ -607,9 +608,11 @@ class _AnnotatedBodyStack extends StatefulWidget {
 }
 
 class _AnnotatedBodyStackState extends State<_AnnotatedBodyStack> {
+  final GlobalKey _textKey = GlobalKey();
   final List<({Rect rect, ItemAnnotation ann, bool showNoteIcon})> _hits = [];
   double? _laidOutWidth;
   int _measureToken = 0;
+  int _measureMisses = 0;
 
   @override
   void didUpdateWidget(covariant _AnnotatedBodyStack oldWidget) {
@@ -619,6 +622,7 @@ class _AnnotatedBodyStackState extends State<_AnnotatedBodyStack> {
         oldWidget.spans.length != widget.spans.length ||
         !_sameAnnotationIds(oldWidget.annotations, widget.annotations)) {
       _laidOutWidth = null;
+      _measureMisses = 0;
     }
   }
 
@@ -637,15 +641,40 @@ class _AnnotatedBodyStackState extends State<_AnnotatedBodyStack> {
     return true;
   }
 
-  void _scheduleMeasure(double maxWidth) {
+  void _scheduleMeasure() {
     final token = ++_measureToken;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || token != _measureToken) return;
-      _measure(maxWidth);
+      _measure();
     });
   }
 
-  void _measure(double maxWidth) {
+  RenderEditable? _findRenderEditable() {
+    final root = _textKey.currentContext?.findRenderObject();
+    if (root == null) return null;
+    if (root is RenderEditable) return root;
+    RenderEditable? found;
+    void visit(RenderObject child) {
+      if (found != null) return;
+      if (child is RenderEditable) {
+        found = child;
+        return;
+      }
+      child.visitChildren(visit);
+    }
+
+    root.visitChildren(visit);
+    return found;
+  }
+
+  /// 去掉选区末尾换行/空白对应的空盒子，避免图标落到段间距里。
+  List<TextBox> _meaningfulBoxes(List<TextBox> boxes) {
+    return boxes
+        .where((b) => (b.right - b.left) > 1.0 && (b.bottom - b.top) > 1.0)
+        .toList(growable: false);
+  }
+
+  void _measure() {
     if (widget.annotations.isEmpty) {
       if (_hits.isNotEmpty) {
         setState(() => _hits.clear());
@@ -653,26 +682,39 @@ class _AnnotatedBodyStackState extends State<_AnnotatedBodyStack> {
       return;
     }
 
-    final painter = TextPainter(
-      text: TextSpan(
-        style: _AnnotatedBodyStack.bodyStyle,
-        children: widget.spans,
-      ),
-      textAlign: TextAlign.justify,
-      textDirection: TextDirection.ltr,
-    )..layout(maxWidth: maxWidth);
+    final editable = _findRenderEditable();
+    final stackBox = context.findRenderObject() as RenderBox?;
+    if (editable == null || stackBox == null || !stackBox.hasSize) {
+      if (_measureMisses < 10) {
+        _measureMisses++;
+        _scheduleMeasure();
+      }
+      return;
+    }
+    _measureMisses = 0;
+
+    // RenderEditable 相对 Stack 的偏移（SelectableText 内部可能有 inset）
+    final origin = editable.localToGlobal(Offset.zero, ancestor: stackBox);
 
     final next = <({Rect rect, ItemAnnotation ann, bool showNoteIcon})>[];
     for (final r in widget.annotations) {
-      final boxes = painter.getBoxesForSelection(
+      final raw = editable.getBoxesForSelection(
         TextSelection(baseOffset: r.start, extentOffset: r.end),
       );
+      final boxes = _meaningfulBoxes(raw);
+      if (boxes.isEmpty) continue;
+
       final hasNote =
           r.ann.note != null && r.ann.note!.trim().isNotEmpty;
       for (var i = 0; i < boxes.length; i++) {
         final box = boxes[i];
         next.add((
-          rect: Rect.fromLTRB(box.left, box.top, box.right, box.bottom),
+          rect: Rect.fromLTRB(
+            origin.dx + box.left,
+            origin.dy + box.top,
+            origin.dx + box.right,
+            origin.dy + box.bottom,
+          ),
           ann: r.ann,
           showNoteIcon: hasNote && i == boxes.length - 1,
         ));
@@ -695,8 +737,9 @@ class _AnnotatedBodyStackState extends State<_AnnotatedBodyStack> {
         final w = constraints.maxWidth;
         if (_laidOutWidth != w) {
           _laidOutWidth = w;
-          _scheduleMeasure(w);
         }
+        // 每帧后按真实 RenderEditable 量一次，避免 TextPainter 与真机排版不一致
+        _scheduleMeasure();
         return Stack(
           clipBehavior: Clip.none,
           children: [
@@ -710,6 +753,7 @@ class _AnnotatedBodyStackState extends State<_AnnotatedBodyStack> {
                   style: _AnnotatedBodyStack.bodyStyle,
                   children: widget.spans,
                 ),
+                key: _textKey,
                 textAlign: TextAlign.justify,
                 contextMenuBuilder: widget.contextMenuBuilder,
               ),
@@ -730,10 +774,10 @@ class _AnnotatedBodyStackState extends State<_AnnotatedBodyStack> {
             for (final hit in _hits)
               if (hit.showNoteIcon)
                 Positioned(
-                  left: hit.rect.right - 10,
-                  top: hit.rect.top - 2,
-                  child: IgnorePointer(
-                    child: const Icon(
+                  left: hit.rect.right - 2,
+                  top: hit.rect.top + (hit.rect.height - 12) / 2,
+                  child: const IgnorePointer(
+                    child: Icon(
                       Icons.sticky_note_2_outlined,
                       size: 12,
                       color: _AnnotatedBodyStack._blue,

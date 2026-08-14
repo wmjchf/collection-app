@@ -8,7 +8,8 @@ class ShortcutConfig {
   /// 发布预置指令后填入，例如 https://www.icloud.com/shortcuts/xxxx
   static const installIcloudUrl = String.fromEnvironment(
     'SHORTCUT_INSTALL_URL',
-    defaultValue: '',
+    defaultValue:
+        'https://www.icloud.com/shortcuts/2cf05b2b67294f8394f4fdf3b457552c',
   );
 
   /// 从剪贴板保存（无参数）

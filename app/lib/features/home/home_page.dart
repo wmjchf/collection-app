@@ -177,7 +177,10 @@ class _HomePageState extends State<HomePage> {
 
     if (!mounted || action == null) return;
     if (action == 'paste') {
-      await _pasteAndSave();
+      // 等 menu 关闭后再粘贴，避免 dropdown 滞留
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) unawaited(_pasteAndSave());
+      });
     } else if (action == 'shortcuts') {
       await Navigator.of(context).push(
         MaterialPageRoute<void>(builder: (_) => const ShortcutsHelpPage()),

@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:super_collection/core/network/api_client.dart';
+import 'package:super_collection/core/ui/app_confirm_dialog.dart';
+import 'package:super_collection/core/ui/app_toast.dart';
 import 'package:super_collection/features/collection/create_folder_sheet.dart';
 import 'package:super_collection/features/collection/create_tag_sheet.dart';
 import 'package:super_collection/features/collection/folder_models.dart';
@@ -12,7 +14,6 @@ import 'package:super_collection/features/collection/tag_models.dart';
 import 'package:super_collection/features/collection/tags_repository.dart';
 import 'package:super_collection/features/collection/trash_page.dart';
 import 'package:super_collection/features/settings/settings_page.dart';
-import 'package:super_collection/core/ui/app_toast.dart';
 
 /// 我的收藏（对齐 Figma：系统分类 / 收藏夹 / 标签 / 其他）
 class CollectionPage extends StatefulWidget {
@@ -212,27 +213,11 @@ class _CollectionPageState extends State<CollectionPage> {
     required String title,
     required String message,
   }) {
-    return showDialog<bool>(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: Text(title),
-          content: Text(message),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('取消'),
-            ),
-            TextButton(
-              onPressed: () => Navigator.pop(context, true),
-              child: const Text(
-                '删除',
-                style: TextStyle(color: Color(0xFFE34D59)),
-              ),
-            ),
-          ],
-        );
-      },
+    return showAppConfirmDialog(
+      context,
+      title: title,
+      message: message,
+      confirmLabel: '删除',
     );
   }
 
