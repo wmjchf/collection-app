@@ -45,9 +45,9 @@ class HowToAddLinkPage extends StatelessWidget {
           ),
           SizedBox(height: 16),
           _HelpCard(
-            title: '粘贴链接',
+            title: '复制链接自动保存',
             desc:
-                '先在其他 App 复制链接，再打开超级收藏夹：首页点右上角「+」→「粘贴链接」，会读取剪贴板并直接保存，无需再输入。',
+                '先在其他 App 复制可用链接，再打开超级收藏夹（或从后台切回），会自动读取剪贴板并保存。也可在首页点「+」→「粘贴链接」手动触发。',
           ),
           SizedBox(height: 12),
           _HelpCard(

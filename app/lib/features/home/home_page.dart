@@ -7,7 +7,6 @@ import 'package:super_collection/core/ui/app_toast.dart';
 import 'package:super_collection/core/ui/parse_progress_tracker.dart';
 import 'package:super_collection/core/utils/clipboard_utils.dart';
 import 'package:super_collection/core/utils/link_utils.dart';
-import 'package:super_collection/features/auth/auth_repository.dart';
 import 'package:super_collection/features/collection/system_filter_list_page.dart';
 import 'package:super_collection/features/home/home_format.dart';
 import 'package:super_collection/features/home/home_mock_data.dart';
@@ -16,8 +15,6 @@ import 'package:super_collection/features/home/widgets/home_item_card.dart';
 import 'package:super_collection/features/items/item_detail_page.dart';
 import 'package:super_collection/features/items/item_models.dart';
 import 'package:super_collection/features/items/items_repository.dart';
-import 'package:super_collection/features/onboarding/coach_prefs.dart';
-import 'package:super_collection/features/onboarding/home_coach_overlay.dart';
 import 'package:super_collection/features/onboarding/shortcuts_help_page.dart';
 import 'package:super_collection/features/search/search_page.dart';
 
@@ -32,41 +29,46 @@ class HomePage extends StatefulWidget {
   State<HomePage> createState() => _HomePageState();
 }
 
-class _HomePageState extends State<HomePage> {
+class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   static const _bg = Color(0xFFF7F7FA);
   static const _text = Color(0xFF1F242E);
   static const _blue = Color(0xFF2F6FED);
 
   final _repo = HomeRepository();
   final _items = ItemsRepository();
-  final _auth = AuthRepository();
   HomeData? _data;
   bool _loading = true;
   bool _pasting = false;
   String? _error;
   final _addButtonKey = GlobalKey();
-  final _pasteItemKey = GlobalKey();
 
-  /// 0=点+，1=粘贴链接，2=完成；null=未在引导
-  int? _coachStep;
-  int? _coachUserId;
-  OverlayEntry? _coachOverlay;
-  OverlayEntry? _coachMenuOverlay;
-  bool _coachStarting = false;
+  /// 已处理过的剪贴板链接，避免反复保存
+  String? _lastClipboardHandledUrl;
+  bool _clipboardOfferRunning = false;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _load();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      unawaited(_maybeStartCoach());
+      unawaited(_maybeOfferClipboardLink());
     });
   }
 
   @override
   void dispose() {
-    _removeCoachOverlays();
+    WidgetsBinding.instance.removeObserver(this);
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && widget.isActive) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        unawaited(_maybeOfferClipboardLink());
+      });
+    }
   }
 
   @override
@@ -74,11 +76,9 @@ class _HomePageState extends State<HomePage> {
     super.didUpdateWidget(oldWidget);
     if (widget.isActive && !oldWidget.isActive) {
       _load(quiet: true);
-      if (_coachStep == null) {
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          unawaited(_maybeStartCoach());
-        });
-      }
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        unawaited(_maybeOfferClipboardLink());
+      });
     }
   }
 
@@ -113,201 +113,7 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
-  Future<void> _maybeStartCoach() async {
-    if (!mounted || !widget.isActive || _coachStarting || _coachStep != null) {
-      return;
-    }
-    _coachStarting = true;
-    try {
-      final session = await _auth.readSession();
-      _coachUserId = session?.userId;
-      final seen = await CoachPrefs.isSeen(userId: _coachUserId);
-      if (!mounted || seen || !widget.isActive) return;
-      _coachStep = 0;
-      _syncCoachOverlay();
-    } finally {
-      _coachStarting = false;
-    }
-  }
-
-  void _removeCoachOverlays() {
-    _coachMenuOverlay?.remove();
-    _coachMenuOverlay = null;
-    _coachOverlay?.remove();
-    _coachOverlay = null;
-  }
-
-  void _syncCoachOverlay() {
-    _coachOverlay?.remove();
-    _coachOverlay = null;
-    if (_coachStep == null || !mounted) return;
-
-    _coachOverlay = OverlayEntry(
-      builder: (context) => _buildCoachLayer(context),
-    );
-    Overlay.of(context).insert(_coachOverlay!);
-  }
-
-  void _rebuildCoachOverlay() {
-    _coachOverlay?.markNeedsBuild();
-    _coachMenuOverlay?.markNeedsBuild();
-  }
-
-  Future<void> _finishCoach() async {
-    _removeCoachOverlays();
-    _coachStep = null;
-    await CoachPrefs.markSeen(userId: _coachUserId);
-  }
-
-  void _coachGoToPasteStep() {
-    if (_coachStep != 0) return;
-    _coachStep = 1;
-    _coachOverlay?.remove();
-    _coachOverlay = null;
-    _showCoachMenu();
-    _syncCoachOverlay();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _rebuildCoachOverlay();
-    });
-  }
-
-  void _coachGoToDoneStep() {
-    if (_coachStep != 1) return;
-    _coachMenuOverlay?.remove();
-    _coachMenuOverlay = null;
-    _coachStep = 2;
-    _syncCoachOverlay();
-  }
-
-  Future<void> _coachTapPaste() async {
-    if (_coachStep != 1) return;
-    _coachMenuOverlay?.remove();
-    _coachMenuOverlay = null;
-    await _finishCoach();
-    if (!mounted) return;
-    await _pasteAndSave();
-  }
-
-  void _showCoachMenu() {
-    _coachMenuOverlay?.remove();
-    final box =
-        _addButtonKey.currentContext?.findRenderObject() as RenderBox?;
-    final overlay =
-        Overlay.of(context).context.findRenderObject() as RenderBox?;
-    if (box == null || overlay == null) return;
-
-    final topLeft = box.localToGlobal(Offset.zero, ancestor: overlay);
-    final size = box.size;
-    final left = topLeft.dx + size.width - 188;
-    final top = topLeft.dy + size.height + 6;
-
-    _coachMenuOverlay = OverlayEntry(
-      builder: (context) {
-        return Positioned(
-          left: left,
-          top: top,
-          width: 188,
-          child: Material(
-            color: Colors.white,
-            elevation: 8,
-            shadowColor: Colors.black.withValues(alpha: 0.14),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-              side: const BorderSide(color: Color(0xFFE6E8EB)),
-            ),
-            clipBehavior: Clip.antiAlias,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                _CoachMenuItem(
-                  key: _pasteItemKey,
-                  title: '粘贴链接',
-                  subtitle: '读取剪贴板并直接保存',
-                  onTap: () => unawaited(_coachTapPaste()),
-                ),
-                const Divider(height: 1, color: Color(0xFFE6E8EB)),
-                const _CoachMenuItem(
-                  title: '快捷指令',
-                  subtitle: '说明与一键添加',
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-    // 菜单在遮罩之下：先插菜单，再插遮罩（_syncCoachOverlay 会插在上面）
-    Overlay.of(context).insert(_coachMenuOverlay!);
-  }
-
-  Widget _buildCoachLayer(BuildContext context) {
-    final step = _coachStep;
-    if (step == null) return const SizedBox.shrink();
-
-    if (step == 0) {
-      final hole = rectForKey(_addButtonKey, inflate: 2);
-      if (hole == null) {
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted && _coachStep == 0) _rebuildCoachOverlay();
-        });
-        return const SizedBox.shrink();
-      }
-      return CoachHoleOverlay(
-        hole: hole,
-        holeRadius: 10,
-        tooltipTop: hole.bottom + 16,
-        onHoleTap: _coachGoToPasteStep,
-        tooltip: CoachTooltipCard(
-          stepLabel: '1 / 3',
-          title: '添加收藏',
-          message: '点右上角「+」，打开添加菜单。',
-          confirmLabel: '下一步',
-          onSkip: () => unawaited(_finishCoach()),
-          onConfirm: _coachGoToPasteStep,
-        ),
-      );
-    }
-
-    if (step == 1) {
-      final hole = rectForKey(_pasteItemKey, inflate: 0);
-      if (hole == null) {
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted && _coachStep == 1) _rebuildCoachOverlay();
-        });
-        return const SizedBox.shrink();
-      }
-      return CoachHoleOverlay(
-        hole: hole,
-        holeRadius: 10,
-        tooltipTop: hole.bottom + 20,
-        onHoleTap: () => unawaited(_coachTapPaste()),
-        tooltip: CoachTooltipCard(
-          stepLabel: '2 / 3',
-          title: '粘贴链接',
-          message: '点「粘贴链接」，读取剪贴板里的网址并直接保存。',
-          confirmLabel: '下一步',
-          onSkip: () => unawaited(_finishCoach()),
-          onConfirm: _coachGoToDoneStep,
-        ),
-      );
-    }
-
-    // step 2
-    return CoachHoleOverlay(
-      tooltip: CoachTooltipCard(
-        stepLabel: '3 / 3',
-        title: '可以开始了',
-        message: '先存一条感兴趣的内容，之后用搜索随时找回。',
-        confirmLabel: '开始使用',
-        showSkip: false,
-        onConfirm: () => unawaited(_finishCoach()),
-      ),
-    );
-  }
-
   Future<void> _onAddPressed() async {
-    if (_coachStep != null) return;
     final box =
         _addButtonKey.currentContext?.findRenderObject() as RenderBox?;
     if (box == null || !mounted) return;
@@ -419,12 +225,42 @@ class _HomePageState extends State<HomePage> {
       );
       return;
     }
+    await _saveClipboardUrl(url);
+  }
 
+  /// 进首页 / 从后台回前台：剪贴板有可用链接则直接保存
+  Future<void> _maybeOfferClipboardLink() async {
+    if (!mounted ||
+        !widget.isActive ||
+        _pasting ||
+        _clipboardOfferRunning) {
+      return;
+    }
+    // 首页被盖住（详情/弹层）时不抢焦点
+    final route = ModalRoute.of(context);
+    if (route != null && !route.isCurrent) return;
+
+    _clipboardOfferRunning = true;
+    try {
+      final url = await readClipboardHttpUrl();
+      if (!mounted) return;
+      if (url == null || !isValidHttpUrl(url)) return;
+      if (url == _lastClipboardHandledUrl) return;
+      await _saveClipboardUrl(url);
+    } finally {
+      _clipboardOfferRunning = false;
+    }
+  }
+
+  Future<void> _saveClipboardUrl(String url) async {
+    if (_pasting) return;
+    _lastClipboardHandledUrl = url;
     setState(() => _pasting = true);
     ParseProgressTracker.begin();
     try {
       final result = await _items.createItem(url);
       if (!mounted) return;
+      await clearClipboard();
       if (result.existed && result.item.isSuccess) {
         ParseProgressTracker.cancel();
         AppToast.show(context, '该链接已收藏');
@@ -728,50 +564,6 @@ class _HomeSection extends StatelessWidget {
             ],
           ),
       ],
-    );
-  }
-}
-
-class _CoachMenuItem extends StatelessWidget {
-  const _CoachMenuItem({
-    super.key,
-    required this.title,
-    required this.subtitle,
-    this.onTap,
-  });
-
-  final String title;
-  final String subtitle;
-  final VoidCallback? onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              title,
-              style: const TextStyle(
-                fontSize: 15,
-                fontWeight: FontWeight.w500,
-                color: Color(0xFF1F242E),
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              subtitle,
-              style: const TextStyle(
-                fontSize: 12,
-                color: Color(0xFF737A85),
-              ),
-            ),
-          ],
-        ),
-      ),
     );
   }
 }

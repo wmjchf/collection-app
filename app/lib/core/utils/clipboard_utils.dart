@@ -11,3 +11,9 @@ Future<String?> readClipboardHttpUrl() async {
     return null;
   }
 }
+
+Future<void> clearClipboard() async {
+  try {
+    await Clipboard.setData(const ClipboardData(text: ''));
+  } catch (_) {}
+}

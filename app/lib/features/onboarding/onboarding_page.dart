@@ -69,8 +69,8 @@ class OnboardingPage extends StatelessWidget {
               ),
               const SizedBox(height: 12),
               const _WayCard(
-                title: '粘贴链接',
-                desc: '复制链接后，首页点「+」→「粘贴链接」，读取剪贴板并直接保存',
+                title: '复制链接',
+                desc: '在其他 App 复制可用链接后打开本 App，会自动读取剪贴板并保存',
               ),
               const SizedBox(height: 10),
               const _WayCard(
