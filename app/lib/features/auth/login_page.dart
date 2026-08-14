@@ -1,12 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:super_collection/core/config/api_config.dart';
 import 'package:super_collection/core/network/api_client.dart';
+import 'package:super_collection/core/ui/app_toast.dart';
 import 'package:super_collection/features/auth/auth_repository.dart';
 import 'package:super_collection/features/onboarding/onboarding_page.dart';
 import 'package:super_collection/features/onboarding/onboarding_prefs.dart';
 import 'package:super_collection/features/shell/main_shell.dart';
 import 'package:super_collection/features/shortcuts/shortcut_inbound.dart';
-import 'package:super_collection/core/ui/app_toast.dart';
 
 /// 登录页（对齐 Figma：手机号 + 验证码）
 /// 开发阶段后端写死验证码，默认 123456。
@@ -283,6 +284,12 @@ class _LoginPageState extends State<LoginPage> {
                 '开发环境验证码：123456',
                 textAlign: TextAlign.center,
                 style: TextStyle(fontSize: 12, color: _blue),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'API：${ApiConfig.baseUrl}',
+                textAlign: TextAlign.center,
+                style: const TextStyle(fontSize: 12, color: _muted),
               ),
             ],
           ),
