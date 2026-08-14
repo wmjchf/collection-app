@@ -39,6 +39,9 @@ function looksBlocked(html, $) {
   const text = $('body').text().replace(/\s+/g, '');
   if (text.includes('环境异常') && text.includes('去验证')) return true;
   if (html.includes('环境异常') && html.includes('完成验证后即可继续访问')) return true;
+  // 掘金 / 字节系偶发挑战页
+  if (/please\s*wait/i.test(text) && text.length < 80) return true;
+  if (/please\s*wait/i.test(html.slice(0, 2000)) && text.length < 120) return true;
   // 长亭 / 河图验证码壳页（如 myzaker 桌面站）
   if (html.includes('challenge.rivers.chaitin.cn') && html.includes('window.captcha')) {
     return true;
@@ -133,9 +136,26 @@ function extractMeta(html, { platform, baseUrl } = {}) {
     const h1 = $('#activity-name').text().replace(/\s+/g, ' ').trim();
     if (h1) title = h1;
   }
+  // 掘金等：优先文章 h1，避免 title 标签过长或成作者名
+  {
+    const h1 =
+      $('h1.article-title').first().text().replace(/\s+/g, ' ').trim() ||
+      $('h1').first().text().replace(/\s+/g, ' ').trim();
+    if (h1 && h1.length >= 4) {
+      if (!title || title.length > h1.length + 10 || title === '去追光') {
+        title = h1;
+      }
+    }
+  }
   if (!title) {
     const t = $('title').first().text().replace(/\s+/g, ' ').trim();
-    if (t) title = t.replace(/\s*[-_|]\s*小红书\s*$/i, '').trim() || t;
+    if (t) {
+      title =
+        t
+          .replace(/\s*[-_|]\s*小红书\s*$/i, '')
+          .replace(/\s*[-_|]\s*掘金\s*$/i, '')
+          .trim() || t;
+    }
   }
 
   const summary =

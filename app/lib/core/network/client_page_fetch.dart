@@ -53,8 +53,17 @@ class ClientPageFetch {
   }
 
   static bool _looksBlocked(String html) {
-    return html.contains('环境异常') &&
-        (html.contains('去验证') || html.contains('完成验证后即可继续访问'));
+    final head = html.length > 3000 ? html.substring(0, 3000) : html;
+    if (html.contains('环境异常') &&
+        (html.contains('去验证') || html.contains('完成验证后即可继续访问'))) {
+      return true;
+    }
+    // 掘金等 Please wait 挑战壳
+    if (RegExp(r'please\s*wait', caseSensitive: false).hasMatch(head) &&
+        html.replaceAll(RegExp(r'\s+'), '').length < 400) {
+      return true;
+    }
+    return false;
   }
 }
 

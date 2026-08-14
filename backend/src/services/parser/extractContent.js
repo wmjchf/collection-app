@@ -41,6 +41,8 @@ function extractGenericContent(html) {
     'article',
     'main',
     '[role="main"]',
+    '.article-content',
+    '.markdown-body',
     '.article',
     '.post-content',
     '.entry-content',

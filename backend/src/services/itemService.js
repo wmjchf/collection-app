@@ -238,6 +238,30 @@ async function runContentParse(itemId) {
       return;
     }
 
+    // 云上常拿到壳页/空正文（如掘金 Please wait）：改由客户端抓取
+    if (
+      parsed.errorMessage === '未能提取到可读正文' ||
+      (!parsed.content && !(parsed.imageUrls && parsed.imageUrls.length))
+    ) {
+      await pool.execute(
+        `UPDATE items SET
+           title = COALESCE(:title, title),
+           summary = COALESCE(:summary, summary),
+           cover_image_url = COALESCE(:coverImageUrl, cover_image_url),
+           status = 'pending',
+           error_message = :errorMessage
+         WHERE id = :itemId`,
+        {
+          itemId,
+          title: parsed.title || null,
+          summary: parsed.summary || null,
+          coverImageUrl: parsed.coverImageUrl || null,
+          errorMessage: NEED_CLIENT_FETCH,
+        },
+      );
+      return;
+    }
+
     await pool.execute(
       `UPDATE items SET
          title = COALESCE(:title, title),
