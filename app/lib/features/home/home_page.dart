@@ -339,52 +339,76 @@ class _HomePageState extends State<HomePage> {
                       TextButton(onPressed: _load, child: const Text('重试')),
                     ],
                   )
-                : ListView(
-                    physics: const AlwaysScrollableScrollPhysics(),
-                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
-                    children: [
-                      _HomeSection(
-                        title: '未读',
-                        emptyText: '暂无未读',
-                        items: [
-                          for (final item in unread) previewForUnread(item),
+                : LayoutBuilder(
+                    builder: (context, constraints) {
+                      // 三段空态均分可视高度，避免整页大片留白
+                      const listPaddingV = 12.0 + 24.0;
+                      const sectionGaps = 16.0 * 2;
+                      const sectionHeaderH = 30.0 * 3;
+                      final emptyCardH = ((constraints.maxHeight -
+                                  listPaddingV -
+                                  sectionGaps -
+                                  sectionHeaderH) /
+                              3)
+                          .clamp(140.0, 320.0);
+                      return ListView(
+                        physics: const AlwaysScrollableScrollPhysics(),
+                        padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+                        children: [
+                          _HomeSection(
+                            title: '未读',
+                            emptyText: '暂无未读',
+                            emptyIcon: Icons.mark_email_unread_outlined,
+                            emptyHeight: emptyCardH,
+                            items: [
+                              for (final item in unread)
+                                previewForUnread(item),
+                            ],
+                            onMore: () => _openFilter('unread', '未读'),
+                            onItemTap: (preview) {
+                              final item = unread
+                                  .firstWhere((e) => e.id == preview.id);
+                              _openItem(item);
+                            },
+                          ),
+                          const SizedBox(height: 16),
+                          _HomeSection(
+                            title: '标注',
+                            emptyText: '暂无标注',
+                            emptyIcon: Icons.highlight_outlined,
+                            emptyHeight: emptyCardH,
+                            items: [
+                              for (final item in annotated)
+                                previewForAnnotated(item),
+                            ],
+                            onMore: () => _openFilter('annotated', '标注'),
+                            onItemTap: (preview) {
+                              final item = annotated
+                                  .firstWhere((e) => e.id == preview.id);
+                              _openItem(item);
+                            },
+                          ),
+                          const SizedBox(height: 16),
+                          _HomeSection(
+                            title: '最近阅读',
+                            emptyText: '暂无最近阅读',
+                            emptyIcon: Icons.menu_book_outlined,
+                            emptyHeight: emptyCardH,
+                            items: [
+                              for (final item in recent)
+                                previewForRecent(item),
+                            ],
+                            onMore: () =>
+                                _openFilter('recent_read', '最近阅读'),
+                            onItemTap: (preview) {
+                              final item = recent
+                                  .firstWhere((e) => e.id == preview.id);
+                              _openItem(item);
+                            },
+                          ),
                         ],
-                        onMore: () => _openFilter('unread', '未读'),
-                        onItemTap: (preview) {
-                          final item = unread.firstWhere((e) => e.id == preview.id);
-                          _openItem(item);
-                        },
-                      ),
-                      const SizedBox(height: 16),
-                      _HomeSection(
-                        title: '标注',
-                        emptyText: '暂无标注',
-                        items: [
-                          for (final item in annotated)
-                            previewForAnnotated(item),
-                        ],
-                        onMore: () => _openFilter('annotated', '标注'),
-                        onItemTap: (preview) {
-                          final item =
-                              annotated.firstWhere((e) => e.id == preview.id);
-                          _openItem(item);
-                        },
-                      ),
-                      const SizedBox(height: 16),
-                      _HomeSection(
-                        title: '最近阅读',
-                        emptyText: '暂无最近阅读',
-                        items: [
-                          for (final item in recent) previewForRecent(item),
-                        ],
-                        onMore: () => _openFilter('recent_read', '最近阅读'),
-                        onItemTap: (preview) {
-                          final item =
-                              recent.firstWhere((e) => e.id == preview.id);
-                          _openItem(item);
-                        },
-                      ),
-                    ],
+                      );
+                    },
                   ),
       ),
     );
@@ -395,6 +419,8 @@ class _HomeSection extends StatelessWidget {
   const _HomeSection({
     required this.title,
     required this.emptyText,
+    required this.emptyIcon,
+    required this.emptyHeight,
     required this.items,
     required this.onMore,
     required this.onItemTap,
@@ -402,9 +428,14 @@ class _HomeSection extends StatelessWidget {
 
   final String title;
   final String emptyText;
+  final IconData emptyIcon;
+  final double emptyHeight;
   final List<HomeItemPreview> items;
   final VoidCallback onMore;
   final ValueChanged<HomeItemPreview> onItemTap;
+
+  static const _muted = Color(0xFF737A85);
+  static const _iconMuted = Color(0xFFC5CAD3);
 
   @override
   Widget build(BuildContext context) {
@@ -443,18 +474,25 @@ class _HomeSection extends StatelessWidget {
         if (items.isEmpty)
           Container(
             width: double.infinity,
-            padding: const EdgeInsets.symmetric(vertical: 28, horizontal: 16),
+            height: emptyHeight,
             decoration: BoxDecoration(
               color: Colors.white,
               borderRadius: BorderRadius.circular(12),
             ),
-            child: Text(
-              emptyText,
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                fontSize: 14,
-                color: Color(0xFF737A85),
-              ),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(emptyIcon, size: 40, color: _iconMuted),
+                const SizedBox(height: 10),
+                Text(
+                  emptyText,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    color: _muted,
+                  ),
+                ),
+              ],
             ),
           )
         else
