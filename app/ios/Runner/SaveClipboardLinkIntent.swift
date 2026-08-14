@@ -43,7 +43,8 @@ struct SaveClipboardLinkIntent: AppIntent {
     }
 
     let result = try await ShortcutAuthStore.createItem(baseUrl: base, token: token, url: link)
-    ShortcutAuthStore.clearClipboard()
+    // 后台 Intent 写剪贴板常被系统忽略；尽量清，可靠清空请靠快捷指令里的「拷贝到剪贴板」留空
+    await ShortcutAuthStore.clearClipboard()
     if result.existed {
       return .result(dialog: "该链接已收藏")
     }
@@ -122,8 +123,15 @@ enum ShortcutAuthStore {
     return nil
   }
 
-  static func clearClipboard() {
-    UIPasteboard.general.items = []
+  /// 后台写剪贴板可能被系统忽略；尽量清空，不能依赖此方法一定成功。
+  static func clearClipboard() async {
+    await MainActor.run {
+      let pb = UIPasteboard.general
+      pb.setItems([["public.utf8-plain-text": Data()]], options: [:])
+      pb.string = ""
+      pb.url = nil
+      pb.items = []
+    }
   }
 
   private static func optionalTrim(_ s: String?) -> String? {

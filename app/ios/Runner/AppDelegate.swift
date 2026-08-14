@@ -18,11 +18,14 @@ import UIKit
       binaryMessenger: engineBridge.applicationRegistrar.messenger()
     )
     channel.setMethodCallHandler { call, result in
-      guard call.method == "hasProbableUrl" else {
+      switch call.method {
+      case "hasProbableUrl":
+        Self.detectProbableUrl(result: result)
+      case "pasteboardChangeCount":
+        result(UIPasteboard.general.changeCount)
+      default:
         result(FlutterMethodNotImplemented)
-        return
       }
-      Self.detectProbableUrl(result: result)
     }
   }
 

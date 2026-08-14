@@ -31,8 +31,11 @@ class ParseProgressTracker {
     String subtitle = '拉取标题、封面与正文…',
   }) {
     _timer?.cancel();
+    _timer = null;
     _clientFetchStarted = false;
     _watchingId = null;
+    // 打断上一条时必须释放等待中的补齐队列 Completer
+    unawaited(_notifySettled());
     _progress.start(title: title, subtitle: subtitle);
   }
 
@@ -41,13 +44,19 @@ class ParseProgressTracker {
     String? initialStatus,
     String? platform,
     String? url,
+    String? title,
+    String? subtitle,
     Future<void> Function()? onSettled,
   }) async {
     _timer?.cancel();
     _onSettled = onSettled;
     _clientFetchStarted = false;
     _watchingId = itemId;
-    _progress.start(itemId: itemId);
+    _progress.start(
+      itemId: itemId,
+      title: title ?? '正在解析内容',
+      subtitle: subtitle ?? '拉取标题、封面与正文…',
+    );
 
     final status = (initialStatus ?? 'pending').toLowerCase();
     if (status == 'success') {
@@ -59,10 +68,11 @@ class ParseProgressTracker {
       return;
     }
 
-    // 微信：尽早用客户端抓，不等服务端确认
-    if ((platform ?? '').toLowerCase() == 'weixin' &&
-        url != null &&
-        url.isNotEmpty) {
+    // 微信 / 已知 URL：尽早用客户端抓，不等服务端确认
+    if (url != null &&
+        url.isNotEmpty &&
+        ((platform ?? '').toLowerCase() == 'weixin' ||
+            (platform ?? '').toLowerCase() == 'wechat')) {
       unawaited(_tryClientFetch(itemId, url));
     }
 
@@ -104,7 +114,7 @@ class ParseProgressTracker {
     _clientFetchStarted = true;
     _progress.start(
       itemId: itemId,
-      title: '正在解析内容',
+      title: _progress.title,
       subtitle: '使用本机网络拉取页面…',
     );
     try {
@@ -121,6 +131,7 @@ class ParseProgressTracker {
           subtitle: item.errorMessage ?? '可稍后在详情中重试',
         );
       }
+      // 仍 pending：继续靠轮询收尾
     } on ClientPageFetchException catch (e) {
       if (_watchingId != itemId) return;
       _timer?.cancel();
@@ -142,7 +153,7 @@ class ParseProgressTracker {
     _clientFetchStarted = false;
     _progress.markSuccess();
     await _notifySettled();
-    await Future<void>.delayed(const Duration(milliseconds: 1200));
+    await Future<void>.delayed(const Duration(milliseconds: 900));
     if (_progress.phase == ParseProgressPhase.success) {
       _progress.hide();
     }
@@ -154,7 +165,7 @@ class ParseProgressTracker {
     _clientFetchStarted = false;
     _progress.markFailed(subtitle: subtitle ?? '可稍后在详情中重试');
     await _notifySettled();
-    await Future<void>.delayed(const Duration(milliseconds: 1800));
+    await Future<void>.delayed(const Duration(milliseconds: 1400));
     if (_progress.phase == ParseProgressPhase.failed) {
       _progress.hide();
     }
@@ -175,6 +186,7 @@ class ParseProgressTracker {
     _timer = null;
     _watchingId = null;
     _clientFetchStarted = false;
+    unawaited(_notifySettled());
     _progress.hide();
   }
 }

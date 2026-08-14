@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:super_collection/core/network/api_client.dart';
 import 'package:super_collection/core/ui/app_toast.dart';
+import 'package:super_collection/core/ui/client_fetch_backfill.dart';
 import 'package:super_collection/core/ui/parse_progress_tracker.dart';
 import 'package:super_collection/core/utils/clipboard_utils.dart';
 import 'package:super_collection/core/utils/link_utils.dart';
@@ -206,6 +207,14 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
 
     _clipboardOfferRunning = true;
     try {
+      // 补齐队列进行中时不要 begin() 打断，否则会挂死排队
+      var wait = 0;
+      while (ClientFetchBackfill.isRunning && wait < 120) {
+        await Future<void>.delayed(const Duration(milliseconds: 500));
+        wait++;
+        if (!mounted) return;
+      }
+
       final url = await readClipboardHttpUrl(probeFirst: true);
       if (!mounted) return;
       if (url == null || !isValidHttpUrl(url)) return;

@@ -64,6 +64,7 @@ class ShortcutInbound {
 
       ParseProgressTracker.begin();
       final result = await ItemsRepository().createItem(url);
+      await clearClipboard();
       if (result.existed && result.item.isSuccess) {
         ParseProgressTracker.cancel();
         AppNavigator.showSnackBar('该链接已收藏');
