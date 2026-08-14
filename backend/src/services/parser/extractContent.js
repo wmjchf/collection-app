@@ -21,14 +21,101 @@ function htmlToText(fragment) {
   return text;
 }
 
+function decodeJsString(value) {
+  if (!value) return null;
+  return value
+    .replace(/\\x([0-9a-fA-F]{2})/g, (_, h) =>
+      String.fromCharCode(parseInt(h, 16)),
+    )
+    .replace(/\\u([0-9a-fA-F]{4})/g, (_, h) =>
+      String.fromCharCode(parseInt(h, 16)),
+    )
+    .replace(/\\n/g, '\n')
+    .replace(/\\'/g, "'")
+    .replace(/\\"/g, '"')
+    .replace(/\\\\/g, '\\')
+    .trim();
+}
+
+function pickJsField(html, key) {
+  const re = new RegExp(`${key}\\s*:\\s*'((?:\\\\'|[^'])*)'`, 'i');
+  const m = html.match(re);
+  return m ? decodeJsString(m[1]) : null;
+}
+
+/** 微信图文：picture_page_info_list / js_content 里的图 */
+function extractWeixinImages(html) {
+  const urls = [];
+  const seen = new Set();
+  const push = (u) => {
+    if (!u || seen.has(u)) return;
+    seen.add(u);
+    urls.push(u);
+  };
+
+  const listIdx = html.indexOf('picture_page_info_list');
+  if (listIdx >= 0) {
+    const chunk = html.slice(listIdx, listIdx + 80000);
+    const re = /cdn_url:\s*'(https?:[^']+)'/g;
+    let m;
+    while ((m = re.exec(chunk))) {
+      const u = decodeJsString(m[1]);
+      if (u && /mmbiz\.qpic\.cn/i.test(u)) push(u);
+      if (urls.length >= 30) break;
+    }
+  }
+
+  const $ = cheerio.load(html);
+  $('#js_content img').each((_, el) => {
+    const src =
+      $(el).attr('data-src') ||
+      $(el).attr('data-original') ||
+      $(el).attr('src');
+    if (src && !src.startsWith('data:')) push(src.trim());
+  });
+
+  return urls.slice(0, 30);
+}
+
 function extractWeixinContent(html) {
   const $ = cheerio.load(html);
   const node = $('#js_content');
-  if (!node.length) return null;
-  const inner = node.html() || '';
-  const text = htmlToText(inner);
-  if (text.replace(/\s+/g, '').length < 40) return null;
-  return text;
+  let text = null;
+  if (node.length) {
+    const inner = node.html() || '';
+    const t = htmlToText(inner);
+    if (t.replace(/\s+/g, '').length >= 20) text = t;
+  }
+
+  // 非微信内打开时，常无 #js_content，改从页面内嵌 cgiData 取摘要
+  if (!text) {
+    const fromCgi =
+      pickJsField(html, 'content_noencode') || pickJsField(html, 'desc') || null;
+    if (fromCgi && fromCgi.replace(/\s+/g, '').length >= 8) {
+      text = fromCgi;
+    }
+  }
+
+  // og:description 再兜一层
+  if (!text) {
+    const og = $('meta[property="og:description"]').attr('content');
+    if (og && og.trim().replace(/\s+/g, '').length >= 8) {
+      text = og.trim();
+    }
+  }
+
+  const nick = pickJsField(html, 'nick_name');
+  if (text && nick && !text.includes(nick)) {
+    text = `作者：${nick}\n\n${text}`;
+  }
+
+  const imageUrls = extractWeixinImages(html);
+  if (!text && imageUrls.length === 0) return null;
+
+  return {
+    content: text,
+    imageUrls,
+  };
 }
 
 function extractGenericContent(html) {
@@ -90,7 +177,11 @@ function extractContent(html, opts = {}) {
   let imageUrls = [];
 
   if (platform === 'weixin') {
-    content = extractWeixinContent(html);
+    const wx = extractWeixinContent(html);
+    if (wx) {
+      content = wx.content;
+      imageUrls = wx.imageUrls || [];
+    }
   }
   if (
     platform === 'xiaohongshu' ||
