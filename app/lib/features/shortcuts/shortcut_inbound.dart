@@ -72,6 +72,8 @@ class ShortcutInbound {
         ParseProgressTracker.watchItem(
           result.item.id,
           initialStatus: result.item.status,
+          platform: result.item.platform,
+          url: result.item.canonicalUrl ?? result.item.url,
         );
       }
     } on ApiException catch (e) {

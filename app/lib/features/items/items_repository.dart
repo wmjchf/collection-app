@@ -89,6 +89,42 @@ class ItemsRepository {
     );
   }
 
+  Future<
+      ({
+        String status,
+        String? title,
+        String? errorMessage,
+        bool needsClientFetch,
+        String? url,
+        String? platform,
+      })> getParseStatusDetailed(int id) async {
+    final token = await _token();
+    final json = await _api.get(
+      '/api/items/$id/parse-status',
+      accessToken: token,
+    );
+    return (
+      status: json['status'] as String? ?? 'pending',
+      title: json['title'] as String?,
+      errorMessage: json['errorMessage'] as String?,
+      needsClientFetch: json['needsClientFetch'] as bool? ?? false,
+      url: json['url'] as String?,
+      platform: json['platform'] as String?,
+    );
+  }
+
+  /// 客户端抓到的 HTML 交给服务端抽取
+  Future<CollectionItem> parseWithHtml(int id, String html) async {
+    final token = await _token();
+    final json = await _api.post(
+      '/api/items/$id/parse-with-html',
+      body: {'html': html},
+      accessToken: token,
+    );
+    final itemJson = json['item'] as Map<String, dynamic>? ?? {};
+    return CollectionItem.fromJson(itemJson);
+  }
+
   Future<CollectionItem> markAsRead(int id) async {
     final token = await _token();
     final json = await _api.post(

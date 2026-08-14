@@ -51,13 +51,77 @@ async function fetchQuickMeta(url) {
 
 /**
  * 阶段 2：从 HTML 抽正文；必要时重新抓取
+ * @param {object} [opts]
+ * @param {boolean} [opts.preferProvidedHtml] 仅用调用方提供的 HTML（客户端抓取），不再向源站请求
  */
-async function parseFullContent(url, { platform, existingSummary, html } = {}) {
+async function parseFullContent(
+  url,
+  { platform, existingSummary, html, preferProvidedHtml = false } = {},
+) {
   const resolvedPlatform = platform || detectPlatform(url);
   const target = fetchTargetUrl(url);
   let sourceHtml = html;
   let blocked = false;
   let pageUrl = target;
+
+  if (preferProvidedHtml) {
+    if (!sourceHtml || String(sourceHtml).trim().length < 80) {
+      return {
+        ok: false,
+        blocked: false,
+        title: null,
+        summary: existingSummary || null,
+        coverImageUrl: null,
+        imageUrls: [],
+        content: null,
+        errorMessage: '未提供有效页面内容',
+      };
+    }
+    const meta = extractMeta(sourceHtml, {
+      platform: resolvedPlatform,
+      baseUrl: pageUrl,
+    });
+    if (meta.blocked) {
+      return {
+        ok: false,
+        blocked: true,
+        title: meta.title,
+        summary: meta.summary || existingSummary || null,
+        coverImageUrl: meta.coverImageUrl,
+        imageUrls: [],
+        content: null,
+        errorMessage: '页面需验证，暂时无法解析正文',
+      };
+    }
+    const { content, summary, imageUrls } = extractContent(sourceHtml, {
+      platform: resolvedPlatform,
+      existingSummary: existingSummary || meta.summary,
+    });
+    if (!content && !(imageUrls && imageUrls.length)) {
+      return {
+        ok: false,
+        blocked: false,
+        title: meta.title,
+        summary: summary || meta.summary || existingSummary || null,
+        coverImageUrl: meta.coverImageUrl,
+        imageUrls: [],
+        content: null,
+        errorMessage: '未能提取到可读正文',
+      };
+    }
+    const cover =
+      meta.coverImageUrl || (imageUrls && imageUrls[0]) || null;
+    return {
+      ok: true,
+      blocked: false,
+      title: meta.title,
+      summary: summary || meta.summary || existingSummary || null,
+      coverImageUrl: cover,
+      imageUrls: imageUrls || [],
+      content: content || (meta.title ? String(meta.title) : '（图片笔记）'),
+      errorMessage: null,
+    };
+  }
 
   // 缓存 HTML 若是验证码壳页，丢弃并改走可读页重抓
   if (sourceHtml) {

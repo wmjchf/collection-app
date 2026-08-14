@@ -11,7 +11,8 @@ const homeRouter = require('./routes/home');
 const app = express();
 
 app.use(cors());
-app.use(express.json());
+// 客户端上报微信等整页 HTML 可能达数 MB
+app.use(express.json({ limit: '8mb' }));
 
 app.get('/', (_req, res) => {
   res.json({ name: 'collection-backend', version: '1.0.0' });

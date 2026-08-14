@@ -2,6 +2,9 @@ const { pool } = require('../db');
 const { normalizeUrl, detectPlatform, placeholderTitle } = require('../utils/url');
 const { fetchQuickMeta, parseFullContent } = require('./parser');
 
+/** 服务端抓取被拦时，等待客户端上报 HTML */
+const NEED_CLIENT_FETCH = 'NEED_CLIENT_FETCH';
+
 function mapItem(row) {
   if (!row) return null;
   let imageUrls = [];
@@ -170,6 +173,16 @@ async function runContentParse(itemId) {
   const row = rows[0];
   if (!row) return;
 
+  // 微信公众号：云主机出口常被「环境异常」拦截，改由客户端抓 HTML 再回传
+  if (row.platform === 'weixin') {
+    await pool.execute(
+      `UPDATE items SET status = 'pending', error_message = :errorMessage
+       WHERE id = :itemId`,
+      { itemId, errorMessage: NEED_CLIENT_FETCH },
+    );
+    return;
+  }
+
   const cachedHtml = takeCachedHtml(itemId);
 
   try {
@@ -205,6 +218,26 @@ async function runContentParse(itemId) {
       return;
     }
 
+    if (parsed.blocked) {
+      await pool.execute(
+        `UPDATE items SET
+           title = COALESCE(:title, title),
+           summary = COALESCE(:summary, summary),
+           cover_image_url = COALESCE(:coverImageUrl, cover_image_url),
+           status = 'pending',
+           error_message = :errorMessage
+         WHERE id = :itemId`,
+        {
+          itemId,
+          title: parsed.title || null,
+          summary: parsed.summary || null,
+          coverImageUrl: parsed.coverImageUrl || null,
+          errorMessage: NEED_CLIENT_FETCH,
+        },
+      );
+      return;
+    }
+
     await pool.execute(
       `UPDATE items SET
          title = COALESCE(:title, title),
@@ -233,6 +266,74 @@ async function runContentParse(itemId) {
   }
 }
 
+/** 客户端上报 HTML，服务端只负责抽取正文（不再向源站请求） */
+async function parseWithClientHtml(userId, itemId, html) {
+  const item = await getByIdForUser(userId, itemId);
+  if (!item) {
+    throw Object.assign(new Error('条目不存在'), { status: 404 });
+  }
+  const raw = typeof html === 'string' ? html : '';
+  if (raw.trim().length < 80) {
+    throw Object.assign(new Error('页面内容过短'), { status: 400 });
+  }
+  if (raw.length > 8 * 1024 * 1024) {
+    throw Object.assign(new Error('页面内容过大'), { status: 400 });
+  }
+
+  const parsed = await parseFullContent(item.canonicalUrl || item.url, {
+    platform: item.platform,
+    existingSummary: item.summary,
+    html: raw,
+    preferProvidedHtml: true,
+  });
+
+  if (parsed.ok) {
+    const imageUrls = Array.isArray(parsed.imageUrls)
+      ? parsed.imageUrls.filter(Boolean).slice(0, 30)
+      : [];
+    await pool.execute(
+      `UPDATE items SET
+         title = COALESCE(:title, title),
+         summary = :summary,
+         cover_image_url = COALESCE(:coverImageUrl, cover_image_url),
+         image_urls = CAST(:imageUrls AS JSON),
+         content = :content,
+         status = 'success',
+         error_message = NULL
+       WHERE id = :itemId AND user_id = :userId`,
+      {
+        itemId,
+        userId,
+        title: parsed.title || null,
+        summary: parsed.summary || null,
+        coverImageUrl: parsed.coverImageUrl || null,
+        imageUrls: JSON.stringify(imageUrls),
+        content: parsed.content,
+      },
+    );
+    return getByIdForUser(userId, itemId);
+  }
+
+  await pool.execute(
+    `UPDATE items SET
+       title = COALESCE(:title, title),
+       summary = COALESCE(:summary, summary),
+       cover_image_url = COALESCE(:coverImageUrl, cover_image_url),
+       status = 'failed',
+       error_message = :errorMessage
+     WHERE id = :itemId AND user_id = :userId`,
+    {
+      itemId,
+      userId,
+      title: parsed.title || null,
+      summary: parsed.summary || null,
+      coverImageUrl: parsed.coverImageUrl || null,
+      errorMessage: parsed.errorMessage || '解析失败',
+    },
+  );
+  return getByIdForUser(userId, itemId);
+}
+
 async function reparseItem(userId, itemId) {
   const item = await getByIdForUser(userId, itemId);
   if (!item) {
@@ -253,7 +354,7 @@ async function reparseItem(userId, itemId) {
 
 async function getParseStatus(userId, itemId) {
   const [rows] = await pool.execute(
-    `SELECT id, status, title, updated_at, error_message
+    `SELECT id, status, title, updated_at, error_message, url, canonical_url, platform
      FROM items
      WHERE id = :itemId AND user_id = :userId AND deleted_at IS NULL
      LIMIT 1`,
@@ -263,12 +364,19 @@ async function getParseStatus(userId, itemId) {
   if (!row) {
     throw Object.assign(new Error('条目不存在'), { status: 404 });
   }
+  const needsClientFetch =
+    row.error_message === NEED_CLIENT_FETCH ||
+    (row.status === 'pending' && row.platform === 'weixin');
   return {
     id: row.id,
     status: row.status,
     title: row.title,
     updatedAt: row.updated_at,
-    errorMessage: row.error_message,
+    errorMessage:
+      row.error_message === NEED_CLIENT_FETCH ? null : row.error_message,
+    needsClientFetch,
+    url: row.canonical_url || row.url,
+    platform: row.platform,
   };
 }
 
@@ -666,6 +774,7 @@ module.exports = {
   getParseStatus,
   reparseItem,
   runContentParse,
+  parseWithClientHtml,
   mapItem,
   listBySystemFilter,
   markAsRead,

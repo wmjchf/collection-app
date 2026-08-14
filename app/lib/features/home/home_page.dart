@@ -210,6 +210,8 @@ class _HomePageState extends State<HomePage> {
           ParseProgressTracker.watchItem(
             result.item.id,
             initialStatus: result.item.status,
+            platform: result.item.platform,
+            url: result.item.canonicalUrl ?? result.item.url,
             onSettled: () => _load(quiet: true),
           ),
         );

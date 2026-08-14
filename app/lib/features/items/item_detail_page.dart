@@ -2,6 +2,8 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:super_collection/core/network/api_client.dart';
+import 'package:super_collection/core/ui/app_toast.dart';
+import 'package:super_collection/core/ui/parse_progress_tracker.dart';
 import 'package:super_collection/features/home/home_format.dart';
 import 'package:super_collection/features/items/article_body_text.dart';
 import 'package:super_collection/features/items/cover_image.dart';
@@ -9,7 +11,6 @@ import 'package:super_collection/features/items/item_image_gallery.dart';
 import 'package:super_collection/features/items/item_models.dart';
 import 'package:super_collection/features/items/item_reading_page.dart';
 import 'package:super_collection/features/items/items_repository.dart';
-import 'package:super_collection/core/ui/app_toast.dart';
 
 /// 内容详情：头部元信息 + 随解析状态变化的内容区；成功时底部固定「进入阅读」。
 class ItemDetailPage extends StatefulWidget {
@@ -99,11 +100,29 @@ class _ItemDetailPageState extends State<ItemDetailPage> {
 
   Future<void> _reparse() async {
     try {
+      ParseProgressTracker.begin();
       final item = await _repo.reparse(widget.itemId);
       if (!mounted) return;
       setState(() => _item = item);
       _syncPolling(item);
+      // ignore: unawaited_futures
+      ParseProgressTracker.watchItem(
+        item.id,
+        initialStatus: item.status,
+        platform: item.platform,
+        url: item.canonicalUrl ?? item.url,
+        onSettled: () async {
+          if (!mounted) return;
+          try {
+            final refreshed = await _repo.getItem(widget.itemId);
+            if (!mounted) return;
+            setState(() => _item = refreshed);
+            _syncPolling(refreshed);
+          } catch (_) {}
+        },
+      );
     } on ApiException catch (e) {
+      ParseProgressTracker.cancel();
       if (!mounted) return;
       AppToast.show(context, e.message);
     }

@@ -1,10 +1,12 @@
 import 'dart:async';
 
 import 'package:super_collection/core/network/api_client.dart';
+import 'package:super_collection/core/network/client_page_fetch.dart';
 import 'package:super_collection/core/ui/parse_progress_controller.dart';
 import 'package:super_collection/features/items/items_repository.dart';
 
 /// 创建后展示底栏上方不确定进度条，并轮询解析状态。
+/// 若服务端要求客户端抓取（如微信），则由手机出口拉 HTML 再回传。
 class ParseProgressTracker {
   ParseProgressTracker._();
 
@@ -13,6 +15,8 @@ class ParseProgressTracker {
   static final _progress = ParseProgressController.instance;
 
   static Future<void> Function()? _onSettled;
+  static bool _clientFetchStarted = false;
+  static int? _watchingId;
 
   /// 一点击就显示底栏上方进度条（不等待 create 返回）。
   static void begin({
@@ -20,16 +24,22 @@ class ParseProgressTracker {
     String subtitle = '拉取标题、封面与正文…',
   }) {
     _timer?.cancel();
+    _clientFetchStarted = false;
+    _watchingId = null;
     _progress.start(title: title, subtitle: subtitle);
   }
 
   static Future<void> watchItem(
     int itemId, {
     String? initialStatus,
+    String? platform,
+    String? url,
     Future<void> Function()? onSettled,
   }) async {
     _timer?.cancel();
     _onSettled = onSettled;
+    _clientFetchStarted = false;
+    _watchingId = itemId;
     _progress.start(itemId: itemId);
 
     final status = (initialStatus ?? 'pending').toLowerCase();
@@ -42,27 +52,81 @@ class ParseProgressTracker {
       return;
     }
 
+    // 微信：尽早用客户端抓，不等服务端确认
+    if ((platform ?? '').toLowerCase() == 'weixin' &&
+        url != null &&
+        url.isNotEmpty) {
+      unawaited(_tryClientFetch(itemId, url));
+    }
+
     _timer = Timer.periodic(const Duration(milliseconds: 900), (_) {
       _tick(itemId);
     });
-    // 立刻查一次
     await _tick(itemId);
   }
 
   static Future<void> _tick(int itemId) async {
+    if (_watchingId != itemId) return;
     try {
-      final s = await _items.getParseStatus(itemId);
+      final s = await _items.getParseStatusDetailed(itemId);
+      if (_watchingId != itemId) return;
       final status = s.status.toLowerCase();
       if (status == 'success') {
         _timer?.cancel();
         await _finishSuccess();
-      } else if (status == 'failed') {
+        return;
+      }
+      if (status == 'failed') {
         _timer?.cancel();
         await _finishFailed(subtitle: s.errorMessage ?? '可稍后在详情中重试');
+        return;
+      }
+      if (s.needsClientFetch &&
+          s.url != null &&
+          s.url!.isNotEmpty &&
+          !_clientFetchStarted) {
+        unawaited(_tryClientFetch(itemId, s.url!));
       }
     } on ApiException {
       // 轮询失败不打断，等下次
     } catch (_) {}
+  }
+
+  static Future<void> _tryClientFetch(int itemId, String url) async {
+    if (_clientFetchStarted || _watchingId != itemId) return;
+    _clientFetchStarted = true;
+    _progress.start(
+      itemId: itemId,
+      title: '正在解析内容',
+      subtitle: '使用本机网络拉取页面…',
+    );
+    try {
+      final html = await ClientPageFetch.fetchHtml(url);
+      if (_watchingId != itemId) return;
+      final item = await _items.parseWithHtml(itemId, html);
+      if (_watchingId != itemId) return;
+      if (item.isSuccess) {
+        _timer?.cancel();
+        await _finishSuccess();
+      } else if (item.isFailed) {
+        _timer?.cancel();
+        await _finishFailed(
+          subtitle: item.errorMessage ?? '可稍后在详情中重试',
+        );
+      }
+    } on ClientPageFetchException catch (e) {
+      if (_watchingId != itemId) return;
+      _timer?.cancel();
+      await _finishFailed(subtitle: e.message);
+    } on ApiException catch (e) {
+      if (_watchingId != itemId) return;
+      _timer?.cancel();
+      await _finishFailed(subtitle: e.message);
+    } catch (_) {
+      if (_watchingId != itemId) return;
+      _timer?.cancel();
+      await _finishFailed(subtitle: '本机抓取失败，请稍后重试');
+    }
   }
 
   static Future<void> _finishSuccess() async {
@@ -96,6 +160,8 @@ class ParseProgressTracker {
   static void cancel() {
     _timer?.cancel();
     _timer = null;
+    _watchingId = null;
+    _clientFetchStarted = false;
     _progress.hide();
   }
 }

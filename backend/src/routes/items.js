@@ -108,6 +108,24 @@ router.post('/:id/reparse', async (req, res, next) => {
   }
 });
 
+/** POST /api/items/:id/parse-with-html — 客户端抓取 HTML 后交由服务端抽取 */
+router.post('/:id/parse-with-html', async (req, res, next) => {
+  try {
+    const html = req.body?.html;
+    const item = await itemService.parseWithClientHtml(
+      req.auth.userId,
+      Number(req.params.id),
+      html,
+    );
+    return res.json({
+      item,
+      message: item.status === 'success' ? '解析完成' : '解析失败',
+    });
+  } catch (err) {
+    return next(err);
+  }
+});
+
 /** POST /api/items/:id/read — 进入阅读：已读 + last_read_at */
 router.post('/:id/read', async (req, res, next) => {
   try {
