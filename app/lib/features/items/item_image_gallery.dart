@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:super_collection/features/items/cover_image.dart';
 
-/// 多图轮播（小红书等）
+/// 多图轮播；点击可全屏预览。
 class ItemImageGallery extends StatefulWidget {
   const ItemImageGallery({
     super.key,
@@ -42,16 +42,38 @@ class _ItemImageGalleryState extends State<ItemImageGallery> {
     super.dispose();
   }
 
+  void _openPreview(int initialIndex) {
+    final list = _list;
+    if (list.isEmpty) return;
+    final i = initialIndex.clamp(0, list.length - 1);
+    Navigator.of(context).push(
+      PageRouteBuilder<void>(
+        opaque: false,
+        barrierColor: Colors.black,
+        pageBuilder: (_, __, ___) => _ImagePreviewPage(
+          urls: list,
+          initialIndex: i,
+        ),
+        transitionsBuilder: (_, anim, __, child) {
+          return FadeTransition(opacity: anim, child: child);
+        },
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final list = _list;
     if (list.isEmpty) return const SizedBox.shrink();
 
     if (list.length == 1) {
-      return _CarouselImage(
-        url: list.first,
-        height: widget.height,
-        borderRadius: widget.borderRadius,
+      return GestureDetector(
+        onTap: () => _openPreview(0),
+        child: _CarouselImage(
+          url: list.first,
+          height: widget.height,
+          borderRadius: widget.borderRadius,
+        ),
       );
     }
 
@@ -69,10 +91,13 @@ class _ItemImageGalleryState extends State<ItemImageGallery> {
                   controller: _controller,
                   itemCount: list.length,
                   onPageChanged: (i) => setState(() => _index = i),
-                  itemBuilder: (context, i) => _CarouselImage(
-                    url: list[i],
-                    height: widget.height,
-                    borderRadius: 0,
+                  itemBuilder: (context, i) => GestureDetector(
+                    onTap: () => _openPreview(i),
+                    child: _CarouselImage(
+                      url: list[i],
+                      height: widget.height,
+                      borderRadius: 0,
+                    ),
                   ),
                 ),
                 Positioned(
@@ -161,6 +186,99 @@ class _CarouselImage extends StatelessWidget {
     return ClipRRect(
       borderRadius: BorderRadius.circular(borderRadius),
       child: child,
+    );
+  }
+}
+
+/// 全屏图片预览：左右滑动、双指缩放、点空白关闭
+class _ImagePreviewPage extends StatefulWidget {
+  const _ImagePreviewPage({
+    required this.urls,
+    required this.initialIndex,
+  });
+
+  final List<String> urls;
+  final int initialIndex;
+
+  @override
+  State<_ImagePreviewPage> createState() => _ImagePreviewPageState();
+}
+
+class _ImagePreviewPageState extends State<_ImagePreviewPage> {
+  late final PageController _controller;
+  late int _index;
+
+  @override
+  void initState() {
+    super.initState();
+    _index = widget.initialIndex;
+    _controller = PageController(initialPage: widget.initialIndex);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final list = widget.urls;
+    return Scaffold(
+      backgroundColor: Colors.black,
+      body: Stack(
+        fit: StackFit.expand,
+        children: [
+          PageView.builder(
+            controller: _controller,
+            itemCount: list.length,
+            onPageChanged: (i) => setState(() => _index = i),
+            itemBuilder: (context, i) {
+              return GestureDetector(
+                onTap: () => Navigator.of(context).maybePop(),
+                child: InteractiveViewer(
+                  minScale: 1,
+                  maxScale: 4,
+                  child: Center(
+                    child: Image.network(
+                      list[i],
+                      fit: BoxFit.contain,
+                      errorBuilder: (_, __, ___) => const Icon(
+                        Icons.broken_image_outlined,
+                        color: Colors.white54,
+                        size: 48,
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+          SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(8, 4, 12, 0),
+              child: Row(
+                children: [
+                  IconButton(
+                    onPressed: () => Navigator.of(context).maybePop(),
+                    icon: const Icon(Icons.close, color: Colors.white),
+                  ),
+                  const Spacer(),
+                  if (list.length > 1)
+                    Text(
+                      '${_index + 1}/${list.length}',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

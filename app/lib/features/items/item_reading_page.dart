@@ -51,12 +51,8 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
     return ArticleBodyText.splitParagraphs(raw).join('\n\n');
   }
 
-  /// 阅读页：小红书 / 微信展示图集（微信外打开时常只有摘要+配图）
-  bool get _showReadingImages {
-    final platform = (_item.platform ?? '').toLowerCase();
-    return (platform == 'xiaohongshu' || platform == 'weixin') &&
-        _item.displayImages.isNotEmpty;
-  }
+  /// 阅读页：有图集则展示（小红书 / 微信等）
+  bool get _showReadingImages => _item.displayImages.isNotEmpty;
 
   String _metaLine() {
     final date = _item.createdAt?.toLocal();

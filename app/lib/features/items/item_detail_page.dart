@@ -494,12 +494,10 @@ class _SuccessCard extends StatelessWidget {
         children: [
           if (images.isEmpty)
             const CoverImage(url: null, height: 160, borderRadius: 12)
-          else if (images.length == 1)
-            CoverImage(url: images.first, height: 160, borderRadius: 12)
           else
             ItemImageGallery(
               urls: images.take(12).toList(),
-              height: 220,
+              height: images.length == 1 ? 200 : 220,
             ),
           const SizedBox(height: 12),
           const Text(

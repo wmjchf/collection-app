@@ -145,33 +145,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       constraints: const BoxConstraints(minWidth: 188, maxWidth: 188),
       items: const [
         PopupMenuItem<String>(
-          value: 'paste',
-          height: 64,
-          padding: EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Text(
-                '粘贴链接',
-                style: TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w500,
-                  color: Color(0xFF1F242E),
-                ),
-              ),
-              SizedBox(height: 4),
-              Text(
-                '读取剪贴板并直接保存',
-                style: TextStyle(
-                  fontSize: 12,
-                  color: Color(0xFF737A85),
-                ),
-              ),
-            ],
-          ),
-        ),
-        PopupMenuItem<String>(
           value: 'shortcuts',
           height: 64,
           padding: EdgeInsets.symmetric(horizontal: 14, vertical: 10),
@@ -202,30 +175,11 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     );
 
     if (!mounted || action == null) return;
-    if (action == 'paste') {
-      // 等 menu 关闭后再粘贴，避免 dropdown 滞留
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) unawaited(_pasteAndSave());
-      });
-    } else if (action == 'shortcuts') {
+    if (action == 'shortcuts') {
       await Navigator.of(context).push(
         MaterialPageRoute<void>(builder: (_) => const ShortcutsHelpPage()),
       );
     }
-  }
-
-  Future<void> _pasteAndSave() async {
-    if (_pasting) return;
-    final url = await readClipboardHttpUrl();
-    if (!mounted) return;
-    if (url == null || !isValidHttpUrl(url)) {
-      AppToast.show(
-        context,
-        url == null || url.isEmpty ? '剪贴板里没有链接' : '链接无效，请检查后重试',
-      );
-      return;
-    }
-    await _saveClipboardUrl(url);
   }
 
   /// 进首页 / 从后台回前台：剪贴板有可用链接则直接保存
@@ -242,7 +196,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
 
     _clipboardOfferRunning = true;
     try {
-      final url = await readClipboardHttpUrl();
+      final url = await readClipboardHttpUrl(probeFirst: true);
       if (!mounted) return;
       if (url == null || !isValidHttpUrl(url)) return;
       if (url == _lastClipboardHandledUrl) return;
