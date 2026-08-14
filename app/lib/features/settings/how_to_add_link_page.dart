@@ -50,9 +50,10 @@ class HowToAddLinkPage extends StatelessWidget {
                 '先在其他 App 复制可用链接，再打开超级收藏夹（或从后台切回），会自动读取剪贴板并保存。',
           ),
           SizedBox(height: 12),
-          _HelpCard(
+          const _HelpCard(
             title: '快捷指令（iOS）',
-            desc: '复制链接后点主屏幕图标即可入库，一步完成。可在「iOS 快捷指令说明」里一键添加。',
+            desc:
+                '复制链接后点主屏幕「保存剪贴板链接」即可后台入库（不必打开 App）。可在设置 → 快捷指令说明里配置。',
           ),
         ],
       ),

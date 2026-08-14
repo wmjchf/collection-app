@@ -20,10 +20,17 @@ import 'package:super_collection/features/search/search_page.dart';
 
 /// 一级页：首页 — 未读 / 标注 / 最近阅读
 class HomePage extends StatefulWidget {
-  const HomePage({super.key, this.isActive = true});
+  const HomePage({
+    super.key,
+    this.isActive = true,
+    this.refreshTick = 0,
+  });
 
   /// 是否为当前 Tab；切回时静默刷新。
   final bool isActive;
+
+  /// 外部递增时静默刷新（如后台补齐正文完成）。
+  final int refreshTick;
 
   @override
   State<HomePage> createState() => _HomePageState();
@@ -79,6 +86,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         unawaited(_maybeOfferClipboardLink());
       });
+    }
+    if (widget.refreshTick != oldWidget.refreshTick) {
+      _load(quiet: true);
     }
   }
 

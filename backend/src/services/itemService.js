@@ -404,6 +404,33 @@ async function getParseStatus(userId, itemId) {
   };
 }
 
+/** 待客户端抓取的 pending 条目（快捷指令后台入库后补齐） */
+async function listNeedsClientFetch(userId, { limit = 20 } = {}) {
+  const safeLimit = Math.min(Math.max(Number(limit) || 20, 1), 50);
+  const [rows] = await pool.execute(
+    `SELECT id, title, url, canonical_url, platform, status, error_message, updated_at
+     FROM items
+     WHERE user_id = :userId
+       AND deleted_at IS NULL
+       AND status = 'pending'
+       AND (
+         error_message = :needClientFetch
+         OR platform = 'weixin'
+       )
+     ORDER BY updated_at ASC
+     LIMIT ${safeLimit}`,
+    { userId, needClientFetch: NEED_CLIENT_FETCH },
+  );
+  return rows.map((row) => ({
+    id: row.id,
+    title: row.title,
+    url: row.canonical_url || row.url,
+    platform: row.platform,
+    status: row.status,
+    updatedAt: row.updated_at,
+  }));
+}
+
 const systemFilterService = require('./systemFilterService');
 
 async function listBySystemFilter(userId, code, options = {}) {
@@ -798,6 +825,7 @@ module.exports = {
   createItem,
   getByIdForUser,
   getParseStatus,
+  listNeedsClientFetch,
   reparseItem,
   runContentParse,
   parseWithClientHtml,

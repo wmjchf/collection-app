@@ -65,6 +65,18 @@ router.get('/search', async (req, res, next) => {
   }
 });
 
+/** GET /api/items/needs-client-fetch — 待本机抓取补齐的条目 */
+router.get('/needs-client-fetch', async (req, res, next) => {
+  try {
+    const items = await itemService.listNeedsClientFetch(req.auth.userId, {
+      limit: Number(req.query.limit) || 20,
+    });
+    return res.json({ items });
+  } catch (err) {
+    return next(err);
+  }
+});
+
 /** GET /api/items/:id — 详情（含最近删除中的条目） */
 router.get('/:id', async (req, res, next) => {
   try {

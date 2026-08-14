@@ -113,6 +113,32 @@ class ItemsRepository {
     );
   }
 
+  /// 待本机抓页补齐的 pending 条目（快捷指令后台入库等）
+  Future<
+      List<
+          ({
+            int id,
+            String? title,
+            String url,
+            String? platform,
+          })>> listNeedsClientFetch({int limit = 20}) async {
+    final token = await _token();
+    final json = await _api.get(
+      '/api/items/needs-client-fetch?limit=$limit',
+      accessToken: token,
+    );
+    final list = json['items'] as List<dynamic>? ?? [];
+    return list.map((e) {
+      final m = e as Map<String, dynamic>;
+      return (
+        id: (m['id'] as num).toInt(),
+        title: m['title'] as String?,
+        url: m['url'] as String? ?? '',
+        platform: m['platform'] as String?,
+      );
+    }).where((e) => e.url.isNotEmpty).toList();
+  }
+
   /// 客户端抓到的 HTML 交给服务端抽取
   Future<CollectionItem> parseWithHtml(int id, String html) async {
     final token = await _token();

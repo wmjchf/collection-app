@@ -1,4 +1,5 @@
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:super_collection/core/config/api_config.dart';
 import 'package:super_collection/core/network/api_client.dart';
 
 class AuthSession {
@@ -27,6 +28,7 @@ class AuthRepository {
   static const _kUserId = 'auth.userId';
   static const _kPhone = 'auth.phone';
   static const _kNickname = 'auth.nickname';
+  static const _kApiBase = 'shortcut.apiBaseUrl';
 
   Future<String> sendCode(String phone) async {
     final json = await _api.post('/api/auth/sms/send', body: {'phone': phone});
@@ -60,6 +62,7 @@ class AuthRepository {
     await prefs.setInt(_kUserId, session.userId);
     await prefs.setString(_kPhone, session.phone);
     await prefs.setString(_kNickname, session.nickname);
+    await prefs.setString(_kApiBase, ApiConfig.baseUrl);
   }
 
   Future<AuthSession?> readSession() async {
@@ -91,5 +94,6 @@ class AuthRepository {
     await prefs.remove(_kUserId);
     await prefs.remove(_kPhone);
     await prefs.remove(_kNickname);
+    await prefs.remove(_kApiBase);
   }
 }

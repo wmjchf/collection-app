@@ -85,6 +85,8 @@ class _AuthGateState extends State<_AuthGate> {
   Future<Widget> _resolveHome() async {
     final session = await _auth.readSession();
     if (session == null) return const LoginPage();
+    // 供桌面快捷指令后台保存使用
+    await _auth.saveSession(session);
     final seen = await OnboardingPrefs.isSeen(userId: session.userId);
     if (!seen) return OnboardingPage(userId: session.userId);
     // 进入主壳后再消化待处理快捷指令，避免无 Scaffold 丢 SnackBar

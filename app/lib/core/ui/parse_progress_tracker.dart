@@ -18,6 +18,13 @@ class ParseProgressTracker {
   static bool _clientFetchStarted = false;
   static int? _watchingId;
 
+  /// 是否正在解析 / 本机抓取（后台补齐队列需避开）
+  static bool get isBusy =>
+      _watchingId != null ||
+      _progress.phase == ParseProgressPhase.running ||
+      _progress.phase == ParseProgressPhase.success ||
+      _progress.phase == ParseProgressPhase.failed;
+
   /// 一点击就显示底栏上方进度条（不等待 create 返回）。
   static void begin({
     String title = '正在解析内容',
@@ -130,6 +137,9 @@ class ParseProgressTracker {
   }
 
   static Future<void> _finishSuccess() async {
+    _timer?.cancel();
+    _watchingId = null;
+    _clientFetchStarted = false;
     _progress.markSuccess();
     await _notifySettled();
     await Future<void>.delayed(const Duration(milliseconds: 1200));
@@ -139,6 +149,9 @@ class ParseProgressTracker {
   }
 
   static Future<void> _finishFailed({String? subtitle}) async {
+    _timer?.cancel();
+    _watchingId = null;
+    _clientFetchStarted = false;
     _progress.markFailed(subtitle: subtitle ?? '可稍后在详情中重试');
     await _notifySettled();
     await Future<void>.delayed(const Duration(milliseconds: 1800));
