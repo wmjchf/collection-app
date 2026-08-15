@@ -143,11 +143,13 @@ async function createItem(userId, rawUrl) {
 
   const itemId = result.insertId;
 
-  // 异步正文解析；把阶段 1 HTML 暂存在内存任务里避免立刻再抓
+  // 异步正文解析；把阶段 1 HTML / 专项结果暂存，供 runContentParse 复用
   const { enqueueParse } = require('./parseQueue');
-  // 先挂到全局弱缓存，供 runContentParse 复用
   if (meta.html) {
     _htmlCache.set(itemId, { html: meta.html, at: Date.now() });
+  }
+  if (meta.adapterParsed) {
+    _parsedCache.set(itemId, { parsed: meta.adapterParsed, at: Date.now() });
   }
   enqueueParse(itemId);
 
@@ -157,6 +159,8 @@ async function createItem(userId, rawUrl) {
 
 /** itemId -> { html, at }，5 分钟过期 */
 const _htmlCache = new Map();
+/** itemId -> { parsed, at }，专项 API 结果缓存 */
+const _parsedCache = new Map();
 
 function takeCachedHtml(itemId) {
   const entry = _htmlCache.get(itemId);
@@ -164,6 +168,14 @@ function takeCachedHtml(itemId) {
   if (!entry) return null;
   if (Date.now() - entry.at > 5 * 60 * 1000) return null;
   return entry.html;
+}
+
+function takeCachedParsed(itemId) {
+  const entry = _parsedCache.get(itemId);
+  _parsedCache.delete(itemId);
+  if (!entry) return null;
+  if (Date.now() - entry.at > 5 * 60 * 1000) return null;
+  return entry.parsed;
 }
 
 async function runContentParse(itemId) {
@@ -185,12 +197,14 @@ async function runContentParse(itemId) {
   }
 
   const cachedHtml = takeCachedHtml(itemId);
+  const adapterParsed = takeCachedParsed(itemId);
 
   try {
     const parsed = await parseFullContent(row.canonical_url || row.url, {
       platform: row.platform,
       existingSummary: row.summary,
       html: cachedHtml,
+      adapterParsed,
     });
 
     if (parsed.ok) {

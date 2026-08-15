@@ -1,6 +1,7 @@
 const { fetchHtml } = require('./fetchHtml');
 const { extractMeta } = require('./extractMeta');
 const { extractContent } = require('./extractContent');
+const { getAdapter } = require('./adapters/registry');
 const {
   detectPlatform,
   placeholderTitle,
@@ -11,17 +12,64 @@ function fetchTargetUrl(url) {
   return resolveFetchUrl(url) || url;
 }
 
+function mapAdapterParsed(parsed, existingSummary) {
+  if (!parsed || !parsed.ok) {
+    return {
+      ok: false,
+      blocked: false,
+      title: parsed?.title || null,
+      summary: parsed?.summary || existingSummary || null,
+      coverImageUrl: parsed?.coverImageUrl || null,
+      imageUrls: parsed?.imageUrls || [],
+      content: null,
+      errorMessage: parsed?.errorMessage || '专项抓取失败',
+    };
+  }
+  return {
+    ok: true,
+    blocked: false,
+    title: parsed.title,
+    summary: parsed.summary || existingSummary || null,
+    coverImageUrl: parsed.coverImageUrl || (parsed.imageUrls && parsed.imageUrls[0]) || null,
+    imageUrls: parsed.imageUrls || [],
+    content: parsed.content,
+    errorMessage: null,
+  };
+}
+
 /**
  * 阶段 1：短超时抓取 + 元信息
  */
 async function fetchQuickMeta(url) {
   let platform = detectPlatform(url);
+  const adapter = getAdapter(platform);
+
+  // 微博等：专项 API，避免访客系统空壳
+  if (typeof adapter.fetchParsed === 'function') {
+    const parsed = await adapter.fetchParsed(url);
+    const title =
+      parsed.title || placeholderTitle(url);
+    return {
+      platform: adapter.id || platform,
+      finalUrl: url,
+      httpStatus: parsed.ok ? 200 : 502,
+      fetchOk: !!parsed.ok,
+      title,
+      summary: parsed.summary,
+      coverImageUrl: parsed.coverImageUrl,
+      author: parsed.author,
+      blocked: false,
+      html: null,
+      // 供阶段 2 复用，避免再打接口
+      adapterParsed: parsed.ok ? parsed : null,
+    };
+  }
+
   const target = fetchTargetUrl(url);
   const { html, finalUrl, status, ok } = await fetchHtml(target, {
     timeoutMs: 8000,
   });
   const pageUrl = finalUrl || target;
-  // 短链跳转后按最终域名纠正平台
   try {
     platform = detectPlatform(pageUrl) || platform;
   } catch {
@@ -44,7 +92,6 @@ async function fetchQuickMeta(url) {
     coverImageUrl: meta.coverImageUrl,
     author: meta.author,
     blocked: meta.blocked,
-    // 复用同一份 HTML，避免阶段 2 再抓一次（失败/风控时阶段 2 可重抓）
     html,
   };
 }
@@ -53,19 +100,44 @@ async function fetchQuickMeta(url) {
  * 阶段 2：从 HTML 抽正文；必要时重新抓取
  * @param {object} [opts]
  * @param {boolean} [opts.preferProvidedHtml] 仅用调用方提供的 HTML（客户端抓取），不再向源站请求
+ * @param {object} [opts.adapterParsed] 阶段 1 专项抓取结果
  */
 async function parseFullContent(
   url,
-  { platform, existingSummary, html, preferProvidedHtml = false } = {},
+  {
+    platform,
+    existingSummary,
+    html,
+    preferProvidedHtml = false,
+    adapterParsed = null,
+  } = {},
 ) {
   const resolvedPlatform = platform || detectPlatform(url);
+  const adapter = getAdapter(resolvedPlatform);
   const target = fetchTargetUrl(url);
   let sourceHtml = html;
   let blocked = false;
   let pageUrl = target;
 
+  // 专项 API 结果优先（微博）
+  if (adapterParsed && adapterParsed.ok) {
+    return mapAdapterParsed(adapterParsed, existingSummary);
+  }
+  if (
+    !preferProvidedHtml &&
+    typeof adapter.fetchParsed === 'function'
+  ) {
+    const parsed = await adapter.fetchParsed(url);
+    return mapAdapterParsed(parsed, existingSummary);
+  }
+
   if (preferProvidedHtml) {
     if (!sourceHtml || String(sourceHtml).trim().length < 80) {
+      // 本机 HTML 无效时，微博仍可回退 API
+      if (typeof adapter.fetchParsed === 'function') {
+        const parsed = await adapter.fetchParsed(url);
+        return mapAdapterParsed(parsed, existingSummary);
+      }
       return {
         ok: false,
         blocked: false,
@@ -82,6 +154,10 @@ async function parseFullContent(
       baseUrl: pageUrl,
     });
     if (meta.blocked) {
+      if (typeof adapter.fetchParsed === 'function') {
+        const parsed = await adapter.fetchParsed(url);
+        return mapAdapterParsed(parsed, existingSummary);
+      }
       return {
         ok: false,
         blocked: true,
@@ -98,6 +174,10 @@ async function parseFullContent(
       existingSummary: existingSummary || meta.summary,
     });
     if (!content && !(imageUrls && imageUrls.length)) {
+      if (typeof adapter.fetchParsed === 'function') {
+        const parsed = await adapter.fetchParsed(url);
+        return mapAdapterParsed(parsed, existingSummary);
+      }
       return {
         ok: false,
         blocked: false,
@@ -145,7 +225,6 @@ async function parseFullContent(
   blocked = meta.blocked;
 
   if (blocked) {
-    // 风控页：改走可读页再试 / 或再抓一次
     const retryUrl = fetchTargetUrl(url);
     const retry = await fetchHtml(retryUrl, { timeoutMs: 15000 });
     sourceHtml = retry.html;
@@ -199,7 +278,6 @@ async function parseFullContent(
     summary: summary || meta.summary || existingSummary || null,
     coverImageUrl: cover,
     imageUrls: imageUrls || [],
-    // 纯图笔记也允许成功
     content: content || (meta.title ? String(meta.title) : '（图片笔记）'),
     errorMessage: null,
   };

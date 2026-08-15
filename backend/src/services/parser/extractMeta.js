@@ -15,6 +15,8 @@ function looksBlocked(html, $) {
   if (html.includes('环境异常') && html.includes('完成验证后即可继续访问')) {
     return true;
   }
+  // 微博未过访客系统
+  if (/Sina Visitor System/i.test(html.slice(0, 2000))) return true;
   if (/please\s*wait/i.test(text) && text.length < 80) return true;
   if (/please\s*wait/i.test(html.slice(0, 2000)) && text.length < 120) {
     return true;
