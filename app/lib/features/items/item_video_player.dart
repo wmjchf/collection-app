@@ -1,32 +1,48 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:video_player/video_player.dart';
+import 'package:webview_flutter/webview_flutter.dart';
 
 /// 阅读页内嵌视频：固定高度 + 全屏播放
+///
+/// B站 CDN 强依赖 Referer；iOS AVPlayer 的 httpHeaders 不可靠，
+/// 因此 bilivideo 走 WebView（HTML video + baseUrl=bilibili.com）。
 class ItemVideoPlayer extends StatefulWidget {
   const ItemVideoPlayer({
     super.key,
     required this.url,
     this.coverUrl,
     this.height = 220,
+    this.onRefreshUrl,
   });
 
   final String url;
   final String? coverUrl;
   final double height;
 
+  /// 直链失效时回调，返回新 URL；阅读页可对接 refresh-video
+  final Future<String?> Function()? onRefreshUrl;
+
   @override
   State<ItemVideoPlayer> createState() => _ItemVideoPlayerState();
 }
 
+bool _needsBilibiliWebView(String url) {
+  final lower = url.toLowerCase();
+  return lower.contains('bilivideo') ||
+      lower.contains('bilibili.com') ||
+      lower.contains('hdslb.com') ||
+      lower.contains('akamaized.net');
+}
+
 Map<String, String> _httpHeadersFor(String url) {
-  const ua =
+  const mobileUa =
       'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1';
   final lower = url.toLowerCase();
   if (lower.contains('xhscdn') || lower.contains('xiaohongshu')) {
     return {
       'Referer': 'https://www.xiaohongshu.com/',
-      'User-Agent': ua,
+      'User-Agent': mobileUa,
     };
   }
   if (lower.contains('weibo') ||
@@ -35,43 +51,131 @@ Map<String, String> _httpHeadersFor(String url) {
       lower.contains('sina.com')) {
     return {
       'Referer': 'https://weibo.com/',
-      'User-Agent': ua,
+      'User-Agent': mobileUa,
     };
   }
-  return {'User-Agent': ua};
+  if (lower.contains('douyin') ||
+      lower.contains('douyinvod') ||
+      lower.contains('byteicdn') ||
+      lower.contains('bytevod') ||
+      lower.contains('iesdouyin')) {
+    return {
+      'Referer': 'https://www.douyin.com/',
+      'User-Agent': mobileUa,
+    };
+  }
+  return {'User-Agent': mobileUa};
+}
+
+bool _bilibiliDeadlineExpired(String url) {
+  final uri = Uri.tryParse(url);
+  if (uri == null) return false;
+  final raw = uri.queryParameters['deadline'];
+  if (raw == null) return false;
+  final ts = int.tryParse(raw);
+  if (ts == null) return false;
+  return DateTime.now().millisecondsSinceEpoch ~/ 1000 >= ts - 60;
+}
+
+String _escapeHtmlAttr(String s) {
+  return s
+      .replaceAll('&', '&amp;')
+      .replaceAll('"', '&quot;')
+      .replaceAll("'", '&#39;')
+      .replaceAll('<', '&lt;')
+      .replaceAll('>', '&gt;');
+}
+
+String _bilibiliPlayerHtml(String videoUrl) {
+  final src = _escapeHtmlAttr(videoUrl);
+  return '''
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no"/>
+<style>
+  html,body{margin:0;padding:0;background:#000;width:100%;height:100%;overflow:hidden;}
+  video{width:100%;height:100%;object-fit:contain;background:#000;}
+</style>
+</head>
+<body>
+<video id="v" controls playsinline webkit-playsinline preload="metadata" src="$src"></video>
+</body>
+</html>
+''';
 }
 
 class _ItemVideoPlayerState extends State<ItemVideoPlayer> {
   static const _muted = Color(0xFF737A85);
   static const _blue = Color(0xFF2F6FED);
+  static const _desktopUa =
+      'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36';
 
   VideoPlayerController? _controller;
+  WebViewController? _webController;
+  bool _useWeb = false;
+  bool _webReady = false;
   bool _initializing = true;
   bool _showControls = true;
   bool _inFullscreen = false;
+  bool _refreshing = false;
   String? _error;
+  late String _playUrl;
+  bool _didAutoRefresh = false;
+  bool _didFailRefresh = false;
 
   @override
   void initState() {
     super.initState();
-    _init();
+    _playUrl = widget.url.trim();
+    _bootstrap();
   }
 
   @override
   void didUpdateWidget(covariant ItemVideoPlayer oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.url != widget.url) {
-      _disposeController();
-      _init();
+    if (oldWidget.url == widget.url) return;
+    // 父组件换了直链：只更新播放地址，勿重置刷新标记以免失败重试死循环
+    final next = widget.url.trim();
+    if (next.isEmpty || next == _playUrl) return;
+    _playUrl = next;
+    _disposePlayers();
+    _init();
+  }
+
+  Future<void> _bootstrap() async {
+    // 仅在 deadline 将过期时预刷新；不要每次打开都 refresh，
+    // 否则父组件更新 videoUrl 可能触发重建死循环。
+    final refresh = widget.onRefreshUrl;
+    if (refresh != null &&
+        !_didAutoRefresh &&
+        _bilibiliDeadlineExpired(_playUrl)) {
+      _didAutoRefresh = true;
+      setState(() {
+        _initializing = true;
+        _error = null;
+        _refreshing = true;
+      });
+      try {
+        final next = await refresh();
+        if (next != null && next.trim().isNotEmpty) {
+          _playUrl = next.trim();
+        }
+      } catch (_) {}
+      if (!mounted) return;
+      setState(() => _refreshing = false);
     }
+    await _init();
   }
 
   Future<void> _init() async {
     setState(() {
       _initializing = true;
       _error = null;
+      _webReady = false;
     });
-    final uri = Uri.tryParse(widget.url.trim());
+    final uri = Uri.tryParse(_playUrl);
     if (uri == null || !uri.hasScheme) {
       setState(() {
         _initializing = false;
@@ -80,9 +184,83 @@ class _ItemVideoPlayerState extends State<ItemVideoPlayer> {
       return;
     }
 
+    if (_needsBilibiliWebView(_playUrl)) {
+      await _initWeb();
+      return;
+    }
+    await _initNative(uri);
+  }
+
+  Future<void> _initWeb() async {
+    _useWeb = true;
+    _disposeNative();
+    var finished = false;
+    late final WebViewController controller;
+    controller = WebViewController()
+      ..setJavaScriptMode(JavaScriptMode.unrestricted)
+      ..setUserAgent(_desktopUa)
+      ..setBackgroundColor(Colors.black)
+      ..setNavigationDelegate(
+        NavigationDelegate(
+          onNavigationRequest: (req) {
+            final u = Uri.tryParse(req.url);
+            final scheme = (u?.scheme ?? '').toLowerCase();
+            if (scheme == 'http' ||
+                scheme == 'https' ||
+                scheme == 'about' ||
+                scheme == 'blob' ||
+                scheme == 'data') {
+              // 避免主框架被导航到 mp4 CDN（应仅作 <video> 子资源）
+              if (req.isMainFrame &&
+                  (req.url.contains('bilivideo.com') ||
+                      req.url.toLowerCase().contains('.mp4'))) {
+                return NavigationDecision.prevent;
+              }
+              return NavigationDecision.navigate;
+            }
+            return NavigationDecision.prevent;
+          },
+          onPageFinished: (_) {
+            if (!mounted || finished || _webController != controller) return;
+            finished = true;
+            setState(() {
+              _initializing = false;
+              _webReady = true;
+            });
+          },
+          onWebResourceError: (err) {
+            debugPrint('[bili-web] resource err ${err.description}');
+          },
+        ),
+      );
+
+    _webController = controller;
+    try {
+      await controller.loadHtmlString(
+        _bilibiliPlayerHtml(_playUrl),
+        baseUrl: 'https://www.bilibili.com/',
+      );
+      // 兜底：部分机型 onPageFinished 不可靠
+      await Future<void>.delayed(const Duration(milliseconds: 800));
+      if (mounted && !finished && _webController == controller) {
+        finished = true;
+        setState(() {
+          _initializing = false;
+          _webReady = true;
+        });
+      }
+    } catch (e) {
+      debugPrint('[bili-web] load err $e');
+      await _onPlayFailed();
+    }
+  }
+
+  Future<void> _initNative(Uri uri) async {
+    _useWeb = false;
+    _webController = null;
     final controller = VideoPlayerController.networkUrl(
       uri,
-      httpHeaders: _httpHeadersFor(widget.url),
+      httpHeaders: _httpHeadersFor(_playUrl),
     );
     _controller = controller;
     controller.addListener(_onTick);
@@ -98,11 +276,57 @@ class _ItemVideoPlayerState extends State<ItemVideoPlayer> {
       await controller.dispose();
       if (_controller == controller) _controller = null;
       if (!mounted) return;
-      setState(() {
-        _initializing = false;
-        _error = '无法播放（链接可能已过期）';
-      });
+      await _onPlayFailed();
     }
+  }
+
+  Future<void> _onPlayFailed() async {
+    final refresh = widget.onRefreshUrl;
+    if (refresh != null && !_refreshing && !_didFailRefresh) {
+      _didFailRefresh = true;
+      setState(() => _refreshing = true);
+      try {
+        final next = await refresh();
+        if (next != null &&
+            next.trim().isNotEmpty &&
+            next.trim() != _playUrl) {
+          _playUrl = next.trim();
+          if (!mounted) return;
+          setState(() => _refreshing = false);
+          await _init();
+          return;
+        }
+      } catch (_) {}
+      if (!mounted) return;
+      setState(() => _refreshing = false);
+    }
+
+    setState(() {
+      _initializing = false;
+      _error = '无法播放（需防盗链或链接已失效，可点重试刷新）';
+    });
+  }
+
+  Future<void> _retry() async {
+    _didFailRefresh = false;
+    final refresh = widget.onRefreshUrl;
+    if (refresh != null) {
+      setState(() {
+        _initializing = true;
+        _error = null;
+        _refreshing = true;
+      });
+      try {
+        final next = await refresh();
+        if (next != null && next.trim().isNotEmpty) {
+          _playUrl = next.trim();
+        }
+      } catch (_) {}
+      if (!mounted) return;
+      setState(() => _refreshing = false);
+    }
+    _disposePlayers();
+    await _init();
   }
 
   void _onTick() {
@@ -110,16 +334,23 @@ class _ItemVideoPlayerState extends State<ItemVideoPlayer> {
     setState(() {});
   }
 
-  void _disposeController() {
+  void _disposeNative() {
     final c = _controller;
     _controller = null;
     c?.removeListener(_onTick);
     c?.dispose();
   }
 
+  void _disposePlayers() {
+    _disposeNative();
+    _webController = null;
+    _webReady = false;
+    _useWeb = false;
+  }
+
   @override
   void dispose() {
-    _disposeController();
+    _disposePlayers();
     super.dispose();
   }
 
@@ -133,7 +364,7 @@ class _ItemVideoPlayerState extends State<ItemVideoPlayer> {
     }
   }
 
-  Future<void> _enterFullscreen() async {
+  Future<void> _enterFullscreenNative() async {
     final c = _controller;
     if (c == null || !c.value.isInitialized || _inFullscreen) return;
     setState(() => _inFullscreen = true);
@@ -153,6 +384,23 @@ class _ItemVideoPlayerState extends State<ItemVideoPlayer> {
     );
     if (!mounted) return;
     setState(() => _inFullscreen = false);
+  }
+
+  Future<void> _enterFullscreenWeb() async {
+    if (_webController == null || _inFullscreen) return;
+    setState(() => _inFullscreen = true);
+    await Navigator.of(context, rootNavigator: true).push(
+      MaterialPageRoute<void>(
+        builder: (_) => _FullscreenWebVideoPage(
+          playUrl: _playUrl,
+          userAgent: _desktopUa,
+        ),
+      ),
+    );
+    if (!mounted) return;
+    setState(() => _inFullscreen = false);
+    // 全屏页独立 WebView，返回后重建内嵌播放器
+    await _initWeb();
   }
 
   @override
@@ -178,7 +426,7 @@ class _ItemVideoPlayerState extends State<ItemVideoPlayer> {
               ),
             ),
             TextButton(
-              onPressed: _init,
+              onPressed: _retry,
               child: const Text('重试'),
             ),
           ],
@@ -186,6 +434,58 @@ class _ItemVideoPlayerState extends State<ItemVideoPlayer> {
       );
     }
 
+    if (_useWeb) {
+      return _buildWebShell();
+    }
+    return _buildNativeShell();
+  }
+
+  Widget _buildWebShell() {
+    final web = _webController;
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(12),
+      child: ColoredBox(
+        color: Colors.black,
+        child: SizedBox(
+          width: double.infinity,
+          height: widget.height,
+          child: Stack(
+            children: [
+              if (web != null && !_inFullscreen)
+                Positioned.fill(child: WebViewWidget(controller: web)),
+              if (_initializing || _refreshing)
+                const Center(
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: Colors.white,
+                  ),
+                ),
+              if (_webReady && !_initializing)
+                Positioned(
+                  right: 6,
+                  bottom: 6,
+                  child: Material(
+                    color: Colors.black54,
+                    borderRadius: BorderRadius.circular(8),
+                    child: IconButton(
+                      tooltip: '全屏',
+                      onPressed: _enterFullscreenWeb,
+                      icon: const Icon(
+                        Icons.fullscreen_rounded,
+                        color: Colors.white,
+                        size: 22,
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildNativeShell() {
     final c = _controller;
     final ready = !_inFullscreen && c != null && c.value.isInitialized;
 
@@ -202,7 +502,7 @@ class _ItemVideoPlayerState extends State<ItemVideoPlayer> {
               if (ready)
                 GestureDetector(
                   onTap: () => setState(() => _showControls = !_showControls),
-                  onDoubleTap: _enterFullscreen,
+                  onDoubleTap: _enterFullscreenNative,
                   child: SizedBox.expand(
                     child: FittedBox(
                       fit: BoxFit.contain,
@@ -240,7 +540,7 @@ class _ItemVideoPlayerState extends State<ItemVideoPlayer> {
                   child: _VideoBottomBar(
                     controller: c,
                     accent: _blue,
-                    onFullscreen: _enterFullscreen,
+                    onFullscreen: _enterFullscreenNative,
                     fullscreen: false,
                   ),
                 ),
@@ -255,6 +555,75 @@ class _ItemVideoPlayerState extends State<ItemVideoPlayer> {
                 ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+class _FullscreenWebVideoPage extends StatefulWidget {
+  const _FullscreenWebVideoPage({
+    required this.playUrl,
+    required this.userAgent,
+  });
+
+  final String playUrl;
+  final String userAgent;
+
+  @override
+  State<_FullscreenWebVideoPage> createState() =>
+      _FullscreenWebVideoPageState();
+}
+
+class _FullscreenWebVideoPageState extends State<_FullscreenWebVideoPage> {
+  late final WebViewController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+    SystemChrome.setPreferredOrientations(const [
+      DeviceOrientation.portraitUp,
+      DeviceOrientation.landscapeLeft,
+      DeviceOrientation.landscapeRight,
+    ]);
+    _controller = WebViewController()
+      ..setJavaScriptMode(JavaScriptMode.unrestricted)
+      ..setUserAgent(widget.userAgent)
+      ..setBackgroundColor(Colors.black)
+      ..loadHtmlString(
+        _bilibiliPlayerHtml(widget.playUrl),
+        baseUrl: 'https://www.bilibili.com/',
+      );
+  }
+
+  @override
+  void dispose() {
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+    SystemChrome.setPreferredOrientations(const [
+      DeviceOrientation.portraitUp,
+    ]);
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      body: SafeArea(
+        child: Stack(
+          children: [
+            Positioned.fill(child: WebViewWidget(controller: _controller)),
+            Positioned(
+              top: 4,
+              left: 4,
+              child: IconButton(
+                onPressed: () => Navigator.of(context).pop(),
+                icon: const Icon(Icons.close_rounded, color: Colors.white),
+                tooltip: '退出全屏',
+              ),
+            ),
+          ],
         ),
       ),
     );

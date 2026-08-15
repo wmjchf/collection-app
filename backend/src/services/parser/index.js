@@ -16,7 +16,7 @@ function mapAdapterParsed(parsed, existingSummary) {
   if (!parsed || !parsed.ok) {
     return {
       ok: false,
-      blocked: false,
+      blocked: !!parsed?.blocked,
       title: parsed?.title || null,
       summary: parsed?.summary || existingSummary || null,
       coverImageUrl: parsed?.coverImageUrl || null,
@@ -135,11 +135,6 @@ async function parseFullContent(
 
   if (preferProvidedHtml) {
     if (!sourceHtml || String(sourceHtml).trim().length < 80) {
-      // 本机 HTML 无效时，微博仍可回退 API
-      if (typeof adapter.fetchParsed === 'function') {
-        const parsed = await adapter.fetchParsed(url);
-        return mapAdapterParsed(parsed, existingSummary);
-      }
       return {
         ok: false,
         blocked: false,
@@ -156,21 +151,18 @@ async function parseFullContent(
       platform: resolvedPlatform,
       baseUrl: pageUrl,
     });
+    // 本机已抓到页：不要再回落云端 fetchParsed（抖音云端必 WAF）
     if (meta.blocked) {
-      if (typeof adapter.fetchParsed === 'function') {
-        const parsed = await adapter.fetchParsed(url);
-        return mapAdapterParsed(parsed, existingSummary);
-      }
       return {
         ok: false,
-        blocked: true,
+        blocked: false,
         title: meta.title,
         summary: meta.summary || existingSummary || null,
         coverImageUrl: meta.coverImageUrl,
         imageUrls: [],
         videoUrl: null,
         content: null,
-        errorMessage: '页面需验证，暂时无法解析正文',
+        errorMessage: '本机页面仍需验证，请稍后重试',
       };
     }
     const { content, summary, imageUrls, videoUrl } = extractContent(sourceHtml, {
@@ -178,10 +170,6 @@ async function parseFullContent(
       existingSummary: existingSummary || meta.summary,
     });
     if (!content && !(imageUrls && imageUrls.length) && !videoUrl) {
-      if (typeof adapter.fetchParsed === 'function') {
-        const parsed = await adapter.fetchParsed(url);
-        return mapAdapterParsed(parsed, existingSummary);
-      }
       return {
         ok: false,
         blocked: false,

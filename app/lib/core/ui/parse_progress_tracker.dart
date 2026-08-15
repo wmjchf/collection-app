@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:super_collection/core/network/api_client.dart';
 import 'package:super_collection/core/network/client_page_fetch.dart';
+import 'package:super_collection/core/network/client_webview_fetch.dart';
 import 'package:super_collection/core/ui/parse_progress_controller.dart';
 import 'package:super_collection/features/items/items_repository.dart';
 
@@ -68,11 +69,14 @@ class ParseProgressTracker {
       return;
     }
 
-    // 微信 / 已知 URL：尽早用客户端抓，不等服务端确认
+    // 微信 / 抖音：尽早用客户端抓，不等服务端确认
+    final p = (platform ?? '').toLowerCase();
     if (url != null &&
         url.isNotEmpty &&
-        ((platform ?? '').toLowerCase() == 'weixin' ||
-            (platform ?? '').toLowerCase() == 'wechat')) {
+        (p == 'weixin' ||
+            p == 'wechat' ||
+            p == 'douyin' ||
+            ClientWebViewFetch.needsWebView(url))) {
       unawaited(_tryClientFetch(itemId, url));
     }
 
@@ -115,7 +119,7 @@ class ParseProgressTracker {
     _progress.start(
       itemId: itemId,
       title: _progress.title,
-      subtitle: '使用本机网络拉取页面…',
+      subtitle: '使用本机打开页面提取…',
     );
     try {
       final html = await ClientPageFetch.fetchHtml(url);

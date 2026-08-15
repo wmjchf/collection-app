@@ -55,6 +55,21 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
   /// 阅读页：有图集则展示（小红书 / 微信等）
   bool get _showReadingImages => _item.displayImages.isNotEmpty;
 
+  bool get _platformNeedsVideoRefresh {
+    final p = (_item.platform ?? '').toLowerCase();
+    final v = (_item.videoUrl ?? '').toLowerCase();
+    return p == 'bilibili' ||
+        v.contains('bilivideo') ||
+        v.contains('bilibili');
+  }
+
+  Future<String?> _refreshVideoUrl() async {
+    final updated = await _repo.refreshVideo(_item.id);
+    // 不 setState：避免 url 变化触发播放器重建死循环；由播放器内部换链
+    _item = updated;
+    return updated.videoUrl;
+  }
+
   String _metaLine() {
     final date = _item.createdAt?.toLocal();
     final dateStr = date == null
@@ -491,11 +506,16 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
                 const SizedBox(height: 22),
                 if (_item.hasVideo) ...[
                   ItemVideoPlayer(
+                    // 勿用 videoUrl 做 key：刷新直链会重建并死循环转圈
+                    key: ValueKey('item-video-${_item.id}'),
                     url: _item.videoUrl!.trim(),
                     coverUrl: _item.coverImageUrl ??
                         (_item.displayImages.isNotEmpty
                             ? _item.displayImages.first
                             : null),
+                    onRefreshUrl: _platformNeedsVideoRefresh
+                        ? _refreshVideoUrl
+                        : null,
                   ),
                   const SizedBox(height: 18),
                 ] else if (_showReadingImages) ...[

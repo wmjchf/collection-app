@@ -1,7 +1,11 @@
 const { pool } = require('../db');
 const { normalizeUrl, detectPlatform, placeholderTitle } = require('../utils/url');
 const { fetchQuickMeta, parseFullContent } = require('./parser');
-const { prefersClientFetch, listClientFetchPlatformIds } = require('./parser/adapters/registry');
+const {
+  getAdapter,
+  prefersClientFetch,
+  listClientFetchPlatformIds,
+} = require('./parser/adapters/registry');
 
 /** 服务端抓取被拦时，等待客户端上报 HTML */
 const NEED_CLIENT_FETCH = 'NEED_CLIENT_FETCH';
@@ -394,6 +398,48 @@ async function reparseItem(userId, itemId) {
 
   const { enqueueParse } = require('./parseQueue');
   enqueueParse(itemId);
+
+  return getByIdForUser(userId, itemId);
+}
+
+/**
+ * 刷新易过期的 CDN 播放直链（如 B站 playurl，含 deadline）。
+ * 不重跑全文解析，只更新 video_url。
+ */
+async function refreshItemVideo(userId, itemId) {
+  const item = await getByIdForUser(userId, itemId);
+  if (!item) {
+    throw Object.assign(new Error('条目不存在'), { status: 404 });
+  }
+
+  const adapter = getAdapter(item.platform);
+  if (typeof adapter.fetchParsed !== 'function') {
+    throw Object.assign(new Error('该平台不支持刷新视频链接'), {
+      status: 400,
+    });
+  }
+
+  const parsed = await adapter.fetchParsed(item.canonicalUrl || item.url);
+  if (!parsed?.ok || !parsed.videoUrl) {
+    throw Object.assign(
+      new Error(parsed?.errorMessage || '未能获取到新的视频链接'),
+      { status: 502 },
+    );
+  }
+
+  await pool.execute(
+    `UPDATE items
+     SET video_url = :videoUrl,
+         cover_image_url = COALESCE(:coverImageUrl, cover_image_url),
+         updated_at = CURRENT_TIMESTAMP
+     WHERE id = :itemId AND user_id = :userId`,
+    {
+      itemId,
+      userId,
+      videoUrl: parsed.videoUrl,
+      coverImageUrl: parsed.coverImageUrl || null,
+    },
+  );
 
   return getByIdForUser(userId, itemId);
 }
@@ -856,6 +902,7 @@ module.exports = {
   getParseStatus,
   listNeedsClientFetch,
   reparseItem,
+  refreshItemVideo,
   runContentParse,
   parseWithClientHtml,
   mapItem,

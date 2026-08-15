@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:super_collection/core/network/client_page_fetch.dart';
 import 'package:super_collection/core/ui/client_fetch_backfill.dart';
 import 'package:super_collection/core/ui/parse_progress_banner.dart';
 import 'package:super_collection/core/ui/parse_progress_controller.dart';
@@ -29,6 +30,9 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
       setState(() => _homeRefreshTick++);
     };
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        ClientPageFetch.overlayContext = context;
+      }
       unawaited(ClientFetchBackfill.run());
     });
   }
@@ -36,6 +40,9 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    if (identical(ClientPageFetch.overlayContext, context)) {
+      ClientPageFetch.overlayContext = null;
+    }
     ClientFetchBackfill.onItemSettled = null;
     super.dispose();
   }
@@ -43,12 +50,16 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
+      if (mounted) {
+        ClientPageFetch.overlayContext = context;
+      }
       unawaited(ClientFetchBackfill.run());
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    ClientPageFetch.overlayContext = context;
     return Scaffold(
       body: Stack(
         children: [

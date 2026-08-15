@@ -120,6 +120,19 @@ router.post('/:id/reparse', async (req, res, next) => {
   }
 });
 
+/** POST /api/items/:id/refresh-video — 刷新 CDN 播放直链（B站等） */
+router.post('/:id/refresh-video', async (req, res, next) => {
+  try {
+    const item = await itemService.refreshItemVideo(
+      req.auth.userId,
+      Number(req.params.id),
+    );
+    return res.json({ item, message: '视频链接已刷新' });
+  } catch (err) {
+    return next(err);
+  }
+});
+
 /** POST /api/items/:id/parse-with-html — 客户端抓取 HTML 后交由服务端抽取 */
 router.post('/:id/parse-with-html', async (req, res, next) => {
   try {

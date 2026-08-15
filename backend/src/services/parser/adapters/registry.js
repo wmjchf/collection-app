@@ -32,11 +32,15 @@ const channelsAdapter = require('./channels');
 const jikeAdapter = require('./jike');
 const xiaohongshuAdapter = require('./xiaohongshu');
 const weiboAdapter = require('./weibo');
+const douyinAdapter = require('./douyin');
+const bilibiliAdapter = require('./bilibili');
 
 /** @type {PlatformAdapter[]} */
 const ADAPTERS = [
   channelsAdapter,
   weixinAdapter,
+  douyinAdapter,
+  bilibiliAdapter,
   jikeAdapter,
   xiaohongshuAdapter,
   weiboAdapter,

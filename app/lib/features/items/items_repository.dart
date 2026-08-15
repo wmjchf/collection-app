@@ -74,6 +74,17 @@ class ItemsRepository {
     return CollectionItem.fromJson(itemJson);
   }
 
+  /// 刷新易过期的 CDN 播放直链（如 B站）
+  Future<CollectionItem> refreshVideo(int id) async {
+    final token = await _token();
+    final json = await _api.post(
+      '/api/items/$id/refresh-video',
+      accessToken: token,
+    );
+    final itemJson = json['item'] as Map<String, dynamic>? ?? {};
+    return CollectionItem.fromJson(itemJson);
+  }
+
   Future<({String status, String? title, String? errorMessage})> getParseStatus(
     int id,
   ) async {
