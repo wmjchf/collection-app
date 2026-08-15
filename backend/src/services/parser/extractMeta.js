@@ -1,6 +1,5 @@
 const cheerio = require('cheerio');
-const { extractXiaohongshuNote } = require('./extractXiaohongshu');
-const { extractJikePost } = require('./extractJike');
+const { getAdapter } = require('./adapters/registry');
 
 function attr($, selectors) {
   for (const sel of selectors) {
@@ -10,41 +9,20 @@ function attr($, selectors) {
   return null;
 }
 
-function decodeJsString(value) {
-  if (!value) return null;
-  return value
-    .replace(/\\x([0-9a-fA-F]{2})/g, (_, h) => String.fromCharCode(parseInt(h, 16)))
-    .replace(/\\u([0-9a-fA-F]{4})/g, (_, h) => String.fromCharCode(parseInt(h, 16)))
-    .replace(/\\'/g, "'")
-    .replace(/\\"/g, '"')
-    .replace(/\\\\/g, '\\')
-    .trim();
-}
-
-function weixinMsgTitle(html) {
-  const m =
-    html.match(/var\s+msg_title\s*=\s*'((?:\\'|[^'])*)'\.html\(false\)/) ||
-    html.match(/var\s+msg_title\s*=\s*"((?:\\"|[^"])*)"/);
-  return m ? decodeJsString(m[1]) : null;
-}
-
-/** 微信头图 CDN */
-function weixinCdnCover(html) {
-  const m =
-    html.match(/var\s+msg_cdn_url\s*=\s*"([^"]+)"/) ||
-    html.match(/var\s+msg_cdn_url\s*=\s*'((?:\\'|[^'])*)'/);
-  return m ? decodeJsString(m[1]) : null;
-}
-
 function looksBlocked(html, $) {
   const text = $('body').text().replace(/\s+/g, '');
   if (text.includes('环境异常') && text.includes('去验证')) return true;
-  if (html.includes('环境异常') && html.includes('完成验证后即可继续访问')) return true;
-  // 掘金 / 字节系偶发挑战页
+  if (html.includes('环境异常') && html.includes('完成验证后即可继续访问')) {
+    return true;
+  }
   if (/please\s*wait/i.test(text) && text.length < 80) return true;
-  if (/please\s*wait/i.test(html.slice(0, 2000)) && text.length < 120) return true;
-  // 长亭 / 河图验证码壳页（如 myzaker 桌面站）
-  if (html.includes('challenge.rivers.chaitin.cn') && html.includes('window.captcha')) {
+  if (/please\s*wait/i.test(html.slice(0, 2000)) && text.length < 120) {
+    return true;
+  }
+  if (
+    html.includes('challenge.rivers.chaitin.cn') &&
+    html.includes('window.captcha')
+  ) {
     return true;
   }
   if (html.includes('window.captcha') && html.includes('entrypoint')) {
@@ -75,12 +53,10 @@ function isLikelyTinyOrIcon(src, $el) {
   return false;
 }
 
-/**
- * 从正文区域取第一张可用图片（微信常用 data-src）
- */
-function firstContentImage($, { platform, baseUrl } = {}) {
+function firstContentImage($, { platform, baseUrl, adapter } = {}) {
   const selectors =
-    platform === 'weixin'
+    (adapter && adapter.contentImageSelectors) ||
+    (platform === 'weixin'
       ? ['#js_content img', '#img-content img', '.rich_media_content img']
       : [
           'article img',
@@ -90,7 +66,7 @@ function firstContentImage($, { platform, baseUrl } = {}) {
           '#content img',
           '.content img',
           'img',
-        ];
+        ]);
 
   for (const sel of selectors) {
     const imgs = $(sel).toArray();
@@ -109,44 +85,45 @@ function firstContentImage($, { platform, baseUrl } = {}) {
   return null;
 }
 
+function stripSiteSuffix(title) {
+  if (!title) return title;
+  return (
+    title
+      .replace(/\s*[-_|]\s*小红书\s*$/i, '')
+      .replace(/\s*[-_|]\s*即刻App?\s*$/i, '')
+      .replace(/\s*[-_|]\s*掘金\s*$/i, '')
+      .trim() || title
+  );
+}
+
 /**
  * 快速元信息：title / summary / cover / author
- * @param {string} html
- * @param {{ platform?: string, baseUrl?: string }} opts
+ * 专项字段由 PlatformAdapter.extractMeta 提供，再与通用 og 合并。
  */
 function extractMeta(html, { platform, baseUrl } = {}) {
   const $ = cheerio.load(html);
-  const xhs = extractXiaohongshuNote(html);
-  const jike =
-    platform === 'jike' ||
-    (html.includes('__NEXT_DATA__') && /okjike\.com|jike\.city/i.test(html))
-      ? extractJikePost(html)
-      : null;
+  const adapter = getAdapter(platform, html);
+  const specialized =
+    typeof adapter.extractMeta === 'function'
+      ? adapter.extractMeta(html, { baseUrl, $ }) || {}
+      : {};
 
   let title =
-    (jike && jike.title) ||
-    (xhs && xhs.title) ||
+    specialized.title ||
     attr($, [
       'meta[property="og:title"]',
       'meta[name="og:title"]',
       'meta[name="twitter:title"]',
       'meta[itemprop="name"]',
     ]) ||
-    weixinMsgTitle(html) ||
     null;
 
-  if (title) {
-    title = title
-      .replace(/\s*[-_|]\s*小红书\s*$/i, '')
-      .replace(/\s*[-_|]\s*即刻App?\s*$/i, '')
-      .trim() || title;
-  }
+  if (title) title = stripSiteSuffix(title);
 
   if (!title) {
     const h1 = $('#activity-name').text().replace(/\s+/g, ' ').trim();
     if (h1) title = h1;
   }
-  // 掘金等：优先文章 h1，避免 title 标签过长或成作者名
   {
     const h1 =
       $('h1.article-title').first().text().replace(/\s+/g, ' ').trim() ||
@@ -159,18 +136,11 @@ function extractMeta(html, { platform, baseUrl } = {}) {
   }
   if (!title) {
     const t = $('title').first().text().replace(/\s+/g, ' ').trim();
-    if (t) {
-      title =
-        t
-          .replace(/\s*[-_|]\s*小红书\s*$/i, '')
-          .replace(/\s*[-_|]\s*掘金\s*$/i, '')
-          .trim() || t;
-    }
+    if (t) title = stripSiteSuffix(t);
   }
 
   const summary =
-    (jike && jike.summary) ||
-    (xhs && xhs.summary) ||
+    specialized.summary ||
     attr($, [
       'meta[property="og:description"]',
       'meta[name="description"]',
@@ -185,18 +155,15 @@ function extractMeta(html, { platform, baseUrl } = {}) {
       'meta[itemprop="image"]',
     ]) || null;
 
-  // 小红书 og:image 常是站点默认图，优先笔记首图
+  // 适配器封面优先（小红书 og 常是默认图；微信用 msg_cdn_url）
   const coverImageUrl =
-    (jike && jike.coverImageUrl) ||
-    (xhs && xhs.coverImageUrl) ||
+    specialized.coverImageUrl ||
     absolutize(baseUrl, metaCover) ||
-    absolutize(baseUrl, weixinCdnCover(html)) ||
-    firstContentImage($, { platform, baseUrl }) ||
+    firstContentImage($, { platform, baseUrl, adapter }) ||
     null;
 
   const author =
-    (jike && jike.author) ||
-    (xhs && xhs.author) ||
+    specialized.author ||
     attr($, [
       'meta[name="author"]',
       'meta[property="og:article:author"]',
@@ -204,15 +171,13 @@ function extractMeta(html, { platform, baseUrl } = {}) {
     ]) ||
     null;
 
-  const blocked = looksBlocked(html, $);
-
   return {
     title: title || null,
     summary: summary || null,
     coverImageUrl: coverImageUrl || null,
     author: author || null,
-    blocked,
-    platform: platform || null,
+    blocked: looksBlocked(html, $),
+    platform: platform || adapter.id || null,
   };
 }
 

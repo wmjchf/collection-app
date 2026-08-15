@@ -6,8 +6,9 @@ import UIKit
 ///
 /// 注意：iOS 16+ 后台直接读剪贴板常被隐私拦截。
 /// 推荐快捷指令：获取剪贴板 → 本 Intent（填入「链接」）→ 拷贝到剪贴板（留空）。
-@available(iOS 16.0, *)
-struct SaveClipboardLinkIntent: AppIntent {
+/// 进度条需 iOS 17+（ProgressReportingIntent）。
+@available(iOS 17.0, *)
+struct SaveClipboardLinkIntent: AppIntent, ProgressReportingIntent {
   static var title: LocalizedStringResource = "保存剪贴板链接"
   static var description = IntentDescription(
     "保存链接到超级收藏夹并尽量完成解析（不打开 App）。建议先「获取剪贴板」再传入「链接」。"
@@ -23,6 +24,9 @@ struct SaveClipboardLinkIntent: AppIntent {
   var url: String?
 
   func perform() async throws -> some IntentResult & ProvidesDialog {
+    progress.totalUnitCount = 100
+    reportProgress(5, "准备中…")
+
     let token = ShortcutAuthStore.accessToken
     let base = ShortcutAuthStore.apiBaseUrl
     guard let token, !token.isEmpty, let base, !base.isEmpty else {
@@ -41,10 +45,12 @@ struct SaveClipboardLinkIntent: AppIntent {
       throw ShortcutSaveError.noLink
     }
 
+    reportProgress(15, "正在保存…")
     let created = try await ShortcutAuthStore.createItem(baseUrl: base, token: token, url: link)
     await ShortcutAuthStore.clearClipboard()
 
     if created.existed, (created.status ?? "").lowercased() == "success" {
+      reportProgress(100, "完成")
       return .result(dialog: IntentDialog("该链接已收藏"))
     }
 
@@ -55,9 +61,19 @@ struct SaveClipboardLinkIntent: AppIntent {
       itemId: created.itemId,
       pageUrl: pageUrl,
       platform: created.platform,
-      existed: created.existed
+      existed: created.existed,
+      onProgress: { [progress] completed, label in
+        progress.completedUnitCount = completed
+        progress.localizedDescription = label
+      }
     )
+    reportProgress(100, "完成")
     return .result(dialog: IntentDialog(LocalizedStringResource(stringLiteral: dialog)))
+  }
+
+  private func reportProgress(_ completed: Int64, _ label: String) {
+    progress.completedUnitCount = completed
+    progress.localizedDescription = label
   }
 }
 
@@ -72,7 +88,7 @@ enum ShortcutSaveError: Error, CustomLocalizedStringResourceConvertible {
     case .notLoggedIn:
       return "请先打开超级收藏夹并登录"
     case .noLink:
-      return "读不到链接。请在快捷指令中：①获取剪贴板 ②把内容填入「链接」参数后再运行"
+      return "剪贴板里没有可用链接"
     case .api(let message):
       return "\(message)"
     }
@@ -234,7 +250,8 @@ enum ShortcutAuthStore {
     itemId: Int,
     pageUrl: String,
     platform: String?,
-    existed: Bool
+    existed: Bool,
+    onProgress: ((Int64, String) -> Void)? = nil
   ) async throws -> String {
     let plat = (platform ?? "").lowercased()
     let isWeixin = plat == "weixin" || plat == "wechat"
@@ -245,16 +262,21 @@ enum ShortcutAuthStore {
         token: token,
         itemId: itemId,
         pageUrl: pageUrl,
-        existed: existed
+        existed: existed,
+        onProgress: onProgress
       )
     }
 
+    onProgress?(25, "正在解析…")
     // 非微信：等服务端异步解析；若中途变为需本机抓页则补抓
-    for _ in 0..<20 {
+    for i in 0..<20 {
       try await Task.sleep(nanoseconds: 700_000_000)
+      let pct = min(Int64(25 + i * 2), 70)
+      onProgress?(pct, "正在解析…")
       let st = try await getParseStatus(baseUrl: baseUrl, token: token, itemId: itemId)
       let status = st.status.lowercased()
       if status == "success" {
+        onProgress?(95, "即将完成…")
         return existed ? "该链接已收藏" : "已保存并解析完成"
       }
       if status == "failed" {
@@ -270,7 +292,8 @@ enum ShortcutAuthStore {
           token: token,
           itemId: itemId,
           pageUrl: st.url ?? pageUrl,
-          existed: existed
+          existed: existed,
+          onProgress: onProgress
         )
       }
     }
@@ -281,7 +304,8 @@ enum ShortcutAuthStore {
       token: token,
       itemId: itemId,
       pageUrl: pageUrl,
-      existed: existed
+      existed: existed,
+      onProgress: onProgress
     )
   }
 
@@ -291,15 +315,19 @@ enum ShortcutAuthStore {
     token: String,
     itemId: Int,
     pageUrl: String,
-    existed: Bool
+    existed: Bool,
+    onProgress: ((Int64, String) -> Void)? = nil
   ) async throws -> String {
+    onProgress?(35, "正在抓取页面…")
     let html = try await fetchHtml(pageUrl)
+    onProgress?(70, "正在解析正文…")
     let item = try await parseWithHtml(
       baseUrl: baseUrl,
       token: token,
       itemId: itemId,
       html: html
     )
+    onProgress?(92, "即将完成…")
     let status = (item["status"] as? String ?? "").lowercased()
     if status == "success" {
       return existed ? "已收藏并补齐解析" : "已保存并解析完成"
@@ -409,7 +437,7 @@ enum ShortcutAuthStore {
   }
 }
 
-@available(iOS 16.0, *)
+@available(iOS 17.0, *)
 struct SuperCollectionShortcuts: AppShortcutsProvider {
   static var appShortcuts: [AppShortcut] {
     AppShortcut(

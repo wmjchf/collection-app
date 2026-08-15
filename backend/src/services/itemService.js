@@ -1,6 +1,7 @@
 const { pool } = require('../db');
 const { normalizeUrl, detectPlatform, placeholderTitle } = require('../utils/url');
 const { fetchQuickMeta, parseFullContent } = require('./parser');
+const { prefersClientFetch, listClientFetchPlatformIds } = require('./parser/adapters/registry');
 
 /** 服务端抓取被拦时，等待客户端上报 HTML */
 const NEED_CLIENT_FETCH = 'NEED_CLIENT_FETCH';
@@ -173,8 +174,8 @@ async function runContentParse(itemId) {
   const row = rows[0];
   if (!row) return;
 
-  // 微信公众号：云主机出口常被「环境异常」拦截，改由客户端抓 HTML 再回传
-  if (row.platform === 'weixin') {
+  // 适配器声明 fetchMode=client（如微信）：云端不抓正文，等本机回传 HTML
+  if (prefersClientFetch(row.platform)) {
     await pool.execute(
       `UPDATE items SET status = 'pending', error_message = :errorMessage
        WHERE id = :itemId`,
@@ -390,7 +391,7 @@ async function getParseStatus(userId, itemId) {
   }
   const needsClientFetch =
     row.error_message === NEED_CLIENT_FETCH ||
-    (row.status === 'pending' && row.platform === 'weixin');
+    (row.status === 'pending' && prefersClientFetch(row.platform));
   return {
     id: row.id,
     status: row.status,
@@ -407,19 +408,24 @@ async function getParseStatus(userId, itemId) {
 /** 待客户端抓取的 pending 条目（快捷指令后台入库后补齐） */
 async function listNeedsClientFetch(userId, { limit = 20 } = {}) {
   const safeLimit = Math.min(Math.max(Number(limit) || 20, 1), 50);
-  const [rows] = await pool.execute(
+  const clientPlatforms = listClientFetchPlatformIds();
+  const platformClause =
+    clientPlatforms.length > 0
+      ? `OR platform IN (${clientPlatforms.map(() => '?').join(', ')})`
+      : '';
+  const [rows] = await pool.query(
     `SELECT id, title, url, canonical_url, platform, status, error_message, updated_at
      FROM items
-     WHERE user_id = :userId
+     WHERE user_id = ?
        AND deleted_at IS NULL
        AND status = 'pending'
        AND (
-         error_message = :needClientFetch
-         OR platform = 'weixin'
+         error_message = ?
+         ${platformClause}
        )
      ORDER BY updated_at ASC
      LIMIT ${safeLimit}`,
-    { userId, needClientFetch: NEED_CLIENT_FETCH },
+    [userId, NEED_CLIENT_FETCH, ...clientPlatforms],
   );
   return rows.map((row) => ({
     id: row.id,
