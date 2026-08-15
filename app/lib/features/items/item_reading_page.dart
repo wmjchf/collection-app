@@ -7,6 +7,7 @@ import 'package:super_collection/features/home/home_format.dart';
 import 'package:super_collection/features/items/article_body_text.dart';
 import 'package:super_collection/features/items/item_image_gallery.dart';
 import 'package:super_collection/features/items/item_models.dart';
+import 'package:super_collection/features/items/item_video_player.dart';
 import 'package:super_collection/features/items/items_repository.dart';
 import 'package:super_collection/features/items/reading_annotation_sheet.dart';
 import 'package:super_collection/features/items/reading_delete_confirm_dialog.dart';
@@ -488,7 +489,16 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
                   ),
                 ),
                 const SizedBox(height: 22),
-                if (_showReadingImages) ...[
+                if (_item.hasVideo) ...[
+                  ItemVideoPlayer(
+                    url: _item.videoUrl!.trim(),
+                    coverUrl: _item.coverImageUrl ??
+                        (_item.displayImages.isNotEmpty
+                            ? _item.displayImages.first
+                            : null),
+                  ),
+                  const SizedBox(height: 18),
+                ] else if (_showReadingImages) ...[
                   ItemImageGallery(urls: _item.displayImages),
                   const SizedBox(height: 18),
                 ],

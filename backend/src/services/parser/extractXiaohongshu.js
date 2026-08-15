@@ -45,6 +45,53 @@ function pickImageUrl(img) {
   return null;
 }
 
+function preferHttps(url) {
+  if (!url) return null;
+  let u = String(url).trim();
+  if (u.startsWith('//')) u = `https:${u}`;
+  if (u.startsWith('http://')) u = `https://${u.slice(7)}`;
+  return u.startsWith('https://') ? u : null;
+}
+
+/** 从 note.video.media.stream 取最高可用 MP4 */
+function pickVideoUrl(video) {
+  if (!video || typeof video !== 'object') return null;
+  const stream = video.media?.stream || video.stream;
+  if (!stream || typeof stream !== 'object') {
+    return preferHttps(video.masterUrl || video.url || null);
+  }
+  const codecs = ['h265', 'h264', 'av1', 'h266'];
+  let best = null;
+  let bestScore = -1;
+  for (const codec of codecs) {
+    const list = stream[codec];
+    if (!Array.isArray(list)) continue;
+    for (const s of list) {
+      const url = preferHttps(s?.masterUrl || s?.url || null);
+      if (!url) continue;
+      const score =
+        (Number(s.width) || 0) * (Number(s.height) || 0) +
+        (Number(s.videoBitrate) || 0) / 1000;
+      if (score >= bestScore) {
+        bestScore = score;
+        best = url;
+      }
+    }
+  }
+  if (best) return best;
+  // backup
+  for (const codec of codecs) {
+    const list = stream[codec];
+    if (!Array.isArray(list)) continue;
+    for (const s of list) {
+      const bak = Array.isArray(s?.backupUrls) ? s.backupUrls[0] : null;
+      const url = preferHttps(bak);
+      if (url) return url;
+    }
+  }
+  return null;
+}
+
 /**
  * @returns {{
  *   noteId: string|null,
@@ -55,6 +102,7 @@ function pickImageUrl(img) {
  *   coverImageUrl: string|null,
  *   author: string|null,
  *   imageUrls: string[],
+ *   videoUrl: string|null,
  * } | null}
  */
 function extractXiaohongshuNote(html) {
@@ -85,13 +133,21 @@ function extractXiaohongshuNote(html) {
     if (u && !imageUrls.includes(u)) imageUrls.push(u);
   }
 
+  const videoUrl = pickVideoUrl(note.video);
+
   // 视频封面兜底
   if (!imageUrls.length && note.video) {
     const vCover =
       pickImageUrl(note.video) ||
       pickImageUrl(note.video?.image) ||
       (typeof note.video?.cover === 'string' ? note.video.cover : null);
-    if (vCover) imageUrls.push(vCover.startsWith('http://') ? vCover.replace('http://', 'https://') : vCover);
+    if (vCover) {
+      imageUrls.push(
+        vCover.startsWith('http://')
+          ? vCover.replace('http://', 'https://')
+          : vCover,
+      );
+    }
   }
 
   const parts = [];
@@ -110,10 +166,12 @@ function extractXiaohongshuNote(html) {
     coverImageUrl: imageUrls[0] || null,
     author,
     imageUrls,
+    videoUrl,
   };
 }
 
 module.exports = {
   parseInitialState,
   extractXiaohongshuNote,
+  pickVideoUrl,
 };

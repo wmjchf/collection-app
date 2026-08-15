@@ -21,6 +21,7 @@ function mapAdapterParsed(parsed, existingSummary) {
       summary: parsed?.summary || existingSummary || null,
       coverImageUrl: parsed?.coverImageUrl || null,
       imageUrls: parsed?.imageUrls || [],
+      videoUrl: parsed?.videoUrl || null,
       content: null,
       errorMessage: parsed?.errorMessage || '专项抓取失败',
     };
@@ -32,6 +33,7 @@ function mapAdapterParsed(parsed, existingSummary) {
     summary: parsed.summary || existingSummary || null,
     coverImageUrl: parsed.coverImageUrl || (parsed.imageUrls && parsed.imageUrls[0]) || null,
     imageUrls: parsed.imageUrls || [],
+    videoUrl: parsed.videoUrl || null,
     content: parsed.content,
     errorMessage: null,
   };
@@ -145,6 +147,7 @@ async function parseFullContent(
         summary: existingSummary || null,
         coverImageUrl: null,
         imageUrls: [],
+        videoUrl: null,
         content: null,
         errorMessage: '未提供有效页面内容',
       };
@@ -165,15 +168,16 @@ async function parseFullContent(
         summary: meta.summary || existingSummary || null,
         coverImageUrl: meta.coverImageUrl,
         imageUrls: [],
+        videoUrl: null,
         content: null,
         errorMessage: '页面需验证，暂时无法解析正文',
       };
     }
-    const { content, summary, imageUrls } = extractContent(sourceHtml, {
+    const { content, summary, imageUrls, videoUrl } = extractContent(sourceHtml, {
       platform: resolvedPlatform,
       existingSummary: existingSummary || meta.summary,
     });
-    if (!content && !(imageUrls && imageUrls.length)) {
+    if (!content && !(imageUrls && imageUrls.length) && !videoUrl) {
       if (typeof adapter.fetchParsed === 'function') {
         const parsed = await adapter.fetchParsed(url);
         return mapAdapterParsed(parsed, existingSummary);
@@ -185,6 +189,7 @@ async function parseFullContent(
         summary: summary || meta.summary || existingSummary || null,
         coverImageUrl: meta.coverImageUrl,
         imageUrls: [],
+        videoUrl: null,
         content: null,
         errorMessage: '未能提取到可读正文',
       };
@@ -198,6 +203,7 @@ async function parseFullContent(
       summary: summary || meta.summary || existingSummary || null,
       coverImageUrl: cover,
       imageUrls: imageUrls || [],
+      videoUrl: videoUrl || null,
       content: content || (meta.title ? String(meta.title) : '（图片笔记）'),
       errorMessage: null,
     };
@@ -242,18 +248,19 @@ async function parseFullContent(
         summary: meta.summary || existingSummary || null,
         coverImageUrl: meta.coverImageUrl,
         imageUrls: [],
+        videoUrl: null,
         content: null,
         errorMessage: '页面需验证，暂时无法解析正文',
       };
     }
   }
 
-  const { content, summary, imageUrls } = extractContent(sourceHtml, {
+  const { content, summary, imageUrls, videoUrl } = extractContent(sourceHtml, {
     platform: resolvedPlatform,
     existingSummary: existingSummary || meta.summary,
   });
 
-  if (!content && !(imageUrls && imageUrls.length)) {
+  if (!content && !(imageUrls && imageUrls.length) && !videoUrl) {
     return {
       ok: false,
       blocked: false,
@@ -261,6 +268,7 @@ async function parseFullContent(
       summary: summary || meta.summary || existingSummary || null,
       coverImageUrl: meta.coverImageUrl,
       imageUrls: [],
+      videoUrl: null,
       content: null,
       errorMessage: '未能提取到可读正文',
     };
@@ -278,6 +286,7 @@ async function parseFullContent(
     summary: summary || meta.summary || existingSummary || null,
     coverImageUrl: cover,
     imageUrls: imageUrls || [],
+    videoUrl: videoUrl || null,
     content: content || (meta.title ? String(meta.title) : '（图片笔记）'),
     errorMessage: null,
   };

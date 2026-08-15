@@ -61,6 +61,7 @@ function extractContent(html, opts = {}) {
   let content = null;
   let summaryOverride = null;
   let imageUrls = [];
+  let videoUrl = null;
 
   if (typeof adapter.extractContent === 'function') {
     const specialized = adapter.extractContent(html, opts);
@@ -68,6 +69,7 @@ function extractContent(html, opts = {}) {
       content = specialized.content || null;
       summaryOverride = specialized.summary || null;
       imageUrls = specialized.imageUrls || [];
+      videoUrl = specialized.videoUrl || null;
     }
   }
 
@@ -79,6 +81,7 @@ function extractContent(html, opts = {}) {
     content,
     summary: buildSummary(summaryOverride || opts.existingSummary, content),
     imageUrls,
+    videoUrl,
   };
 }
 

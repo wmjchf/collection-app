@@ -26,11 +26,14 @@ module.exports = {
   },
   extractContent(html) {
     const note = extractXiaohongshuNote(html);
-    if (!note?.content) return null;
+    if (!note?.content && !(note?.imageUrls?.length) && !note?.videoUrl) {
+      return null;
+    }
     return {
       content: note.content,
       summary: note.summary,
       imageUrls: note.imageUrls || [],
+      videoUrl: note.videoUrl || null,
     };
   },
 };

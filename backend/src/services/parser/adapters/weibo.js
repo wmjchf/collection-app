@@ -33,11 +33,14 @@ module.exports = {
   },
   extractContent(html) {
     const post = extractWeiboFromHtml(html);
-    if (!post?.content) return null;
+    if (!post?.content && !(post?.imageUrls?.length) && !post?.videoUrl) {
+      return null;
+    }
     return {
       content: post.content,
       summary: post.summary,
       imageUrls: post.imageUrls || [],
+      videoUrl: post.videoUrl || null,
     };
   },
 };

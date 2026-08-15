@@ -127,6 +127,7 @@ async function fetchJson(url, cookie) {
  *   coverImageUrl: string|null,
  *   author: string|null,
  *   imageUrls: string[],
+ *   videoUrl: string|null,
  *   errorMessage: string|null,
  * }}
  */
@@ -141,6 +142,7 @@ async function fetchWeiboStatus(rawUrl) {
       coverImageUrl: null,
       author: null,
       imageUrls: [],
+      videoUrl: null,
       errorMessage: '无法识别微博状态 ID',
     };
   }
@@ -161,6 +163,7 @@ async function fetchWeiboStatus(rawUrl) {
         coverImageUrl: null,
         author: null,
         imageUrls: [],
+        videoUrl: null,
         errorMessage: '微博状态不存在或不可见',
       };
     }
@@ -208,12 +211,20 @@ async function fetchWeiboStatus(rawUrl) {
     if (!imageUrls.length && data.original_pic) push(data.original_pic);
     if (!imageUrls.length && data.bmiddle_pic) push(data.bmiddle_pic);
 
+    const videoUrl = pickWeiboVideoUrl(data.page_info);
+    const pageCover =
+      data.page_info?.page_pic?.url ||
+      (typeof data.page_info?.page_pic === 'string'
+        ? data.page_info.page_pic
+        : null);
+    if (!imageUrls.length && pageCover) push(pageCover);
+
     const bodyParts = [];
     if (author) bodyParts.push(`作者：${author}`);
     if (plain) bodyParts.push(plain);
     const content = bodyParts.join('\n\n').trim() || null;
 
-    if (!content && imageUrls.length === 0) {
+    if (!content && imageUrls.length === 0 && !videoUrl) {
       return {
         ok: false,
         title,
@@ -222,6 +233,7 @@ async function fetchWeiboStatus(rawUrl) {
         coverImageUrl: null,
         author,
         imageUrls: [],
+        videoUrl: null,
         errorMessage: '未能提取到微博正文',
       };
     }
@@ -229,11 +241,12 @@ async function fetchWeiboStatus(rawUrl) {
     return {
       ok: true,
       title,
-      content: content || title || '（微博图片）',
+      content: content || title || (videoUrl ? '（微博视频）' : '（微博图片）'),
       summary: (plain || title || '').replace(/\s+/g, ' ').trim().slice(0, 180) || null,
-      coverImageUrl: imageUrls[0] || null,
+      coverImageUrl: imageUrls[0] || pageCover || null,
       author,
       imageUrls: imageUrls.slice(0, 30),
+      videoUrl,
       errorMessage: null,
     };
   } catch (err) {
@@ -245,9 +258,60 @@ async function fetchWeiboStatus(rawUrl) {
       coverImageUrl: null,
       author: null,
       imageUrls: [],
+      videoUrl: null,
       errorMessage: err.message || '微博抓取失败',
     };
   }
+}
+
+/** 从 page_info 取最高清晰度 MP4 */
+function preferHttps(url) {
+  if (!url) return null;
+  let u = String(url).trim();
+  if (u.startsWith('//')) u = `https:${u}`;
+  if (u.startsWith('http://')) u = `https://${u.slice(7)}`;
+  return u.startsWith('https://') ? u : null;
+}
+
+function pickWeiboVideoUrl(pageInfo) {
+  if (!pageInfo || typeof pageInfo !== 'object') return null;
+  const type = String(pageInfo.type || pageInfo.object_type || '').toLowerCase();
+  const looksVideo =
+    type === 'video' ||
+    type === '11' ||
+    pageInfo.media_info ||
+    pageInfo.urls;
+  if (!looksVideo && !pageInfo.media_info) return null;
+
+  const urls = pageInfo.urls && typeof pageInfo.urls === 'object' ? pageInfo.urls : {};
+  const preference = [
+    'mp4_720p_mp4',
+    'mp4_hd_mp4',
+    'mp4_ld_mp4',
+    'mp4_720p',
+    'mp4_hd',
+    'mp4_ld',
+  ];
+  for (const key of preference) {
+    const u = preferHttps(urls[key]);
+    if (u) return u;
+  }
+  for (const v of Object.values(urls)) {
+    const u = preferHttps(v);
+    if (u && /\.mp4(\?|$)/i.test(u)) return u;
+  }
+
+  const media = pageInfo.media_info;
+  if (media && typeof media === 'object') {
+    return (
+      preferHttps(media.stream_url_hd) ||
+      preferHttps(media.stream_url) ||
+      preferHttps(media.mp4_720p_mp4) ||
+      preferHttps(media.mp4_hd_url) ||
+      null
+    );
+  }
+  return null;
 }
 
 /** 从 m.weibo.cn 详情页 HTML 的 $render_data 兜底抽（本机抓到真页时） */
@@ -270,7 +334,15 @@ function extractWeiboFromHtml(html) {
         if (u && !imageUrls.includes(u)) imageUrls.push(u);
       }
     }
-    if (!plain && !imageUrls.length) return null;
+    const videoUrl = pickWeiboVideoUrl(status.page_info);
+    const pageCover =
+      status.page_info?.page_pic?.url ||
+      (typeof status.page_info?.page_pic === 'string'
+        ? status.page_info.page_pic
+        : null);
+    if (!imageUrls.length && pageCover) imageUrls.push(pageCover);
+
+    if (!plain && !imageUrls.length && !videoUrl) return null;
     const title =
       stripHtml(status.status_title || '').slice(0, 40) ||
       plain.split(/\n+/).find((s) => s.trim())?.slice(0, 40) ||
@@ -280,11 +352,12 @@ function extractWeiboFromHtml(html) {
     if (plain) parts.push(plain);
     return {
       title,
-      content: parts.join('\n\n') || title,
+      content: parts.join('\n\n') || title || (videoUrl ? '（微博视频）' : null),
       summary: (plain || title || '').replace(/\s+/g, ' ').trim().slice(0, 180) || null,
-      coverImageUrl: imageUrls[0] || null,
+      coverImageUrl: imageUrls[0] || pageCover || null,
       author,
       imageUrls,
+      videoUrl,
     };
   } catch {
     return null;
@@ -295,5 +368,6 @@ module.exports = {
   extractWeiboStatusId,
   fetchWeiboStatus,
   extractWeiboFromHtml,
+  pickWeiboVideoUrl,
   stripHtml,
 };

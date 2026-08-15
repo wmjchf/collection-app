@@ -9,6 +9,7 @@ class CollectionItem {
     this.summary,
     this.coverImageUrl,
     this.imageUrls = const [],
+    this.videoUrl,
     this.platform,
     this.errorMessage,
     this.note,
@@ -30,6 +31,8 @@ class CollectionItem {
   final String? summary;
   final String? coverImageUrl;
   final List<String> imageUrls;
+  /// 视频直链（如小红书）；CDN 签名可能过期
+  final String? videoUrl;
   final String? platform;
   final String status; // pending | success | failed
   final String? errorMessage;
@@ -47,6 +50,10 @@ class CollectionItem {
   bool get isSuccess => status == 'success';
   bool get isFailed => status == 'failed';
   bool get isInTrash => deletedAt != null;
+  bool get hasVideo {
+    final v = videoUrl?.trim();
+    return v != null && v.isNotEmpty;
+  }
 
   /// 展示用图集：有 imageUrls 用它，否则退回单封面
   List<String> get displayImages {
@@ -74,6 +81,7 @@ class CollectionItem {
       summary: json['summary'] as String?,
       coverImageUrl: json['coverImageUrl'] as String?,
       imageUrls: images,
+      videoUrl: json['videoUrl'] as String?,
       platform: json['platform'] as String?,
       status: json['status'] as String? ?? 'pending',
       errorMessage: json['errorMessage'] as String?,

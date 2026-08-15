@@ -32,6 +32,7 @@ function mapItem(row) {
     summary: row.summary,
     coverImageUrl: row.cover_image_url,
     imageUrls,
+    videoUrl: row.video_url || null,
     platform: row.platform,
     status: row.status,
     errorMessage: row.error_message,
@@ -217,6 +218,7 @@ async function runContentParse(itemId) {
            summary = :summary,
            cover_image_url = COALESCE(:coverImageUrl, cover_image_url),
            image_urls = CAST(:imageUrls AS JSON),
+           video_url = COALESCE(:videoUrl, video_url),
            content = :content,
            status = 'success',
            error_message = NULL
@@ -227,6 +229,7 @@ async function runContentParse(itemId) {
           summary: parsed.summary || null,
           coverImageUrl: parsed.coverImageUrl || null,
           imageUrls: JSON.stringify(imageUrls),
+          videoUrl: parsed.videoUrl || null,
           content: parsed.content,
         },
       );
@@ -256,7 +259,9 @@ async function runContentParse(itemId) {
     // 云上常拿到壳页/空正文（如掘金 Please wait）：改由客户端抓取
     if (
       parsed.errorMessage === '未能提取到可读正文' ||
-      (!parsed.content && !(parsed.imageUrls && parsed.imageUrls.length))
+      (!parsed.content &&
+        !(parsed.imageUrls && parsed.imageUrls.length) &&
+        !parsed.videoUrl)
     ) {
       await pool.execute(
         `UPDATE items SET
@@ -336,6 +341,7 @@ async function parseWithClientHtml(userId, itemId, html) {
          summary = :summary,
          cover_image_url = COALESCE(:coverImageUrl, cover_image_url),
          image_urls = CAST(:imageUrls AS JSON),
+         video_url = COALESCE(:videoUrl, video_url),
          content = :content,
          status = 'success',
          error_message = NULL
@@ -347,6 +353,7 @@ async function parseWithClientHtml(userId, itemId, html) {
         summary: parsed.summary || null,
         coverImageUrl: parsed.coverImageUrl || null,
         imageUrls: JSON.stringify(imageUrls),
+        videoUrl: parsed.videoUrl || null,
         content: parsed.content,
       },
     );
