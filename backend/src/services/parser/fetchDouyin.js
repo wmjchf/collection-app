@@ -26,7 +26,10 @@ function extractAwemeId(rawUrl) {
     let m =
       path.match(/\/video\/(\d{5,})/i) ||
       path.match(/\/share\/video\/(\d{5,})/i) ||
-      path.match(/\/note\/(\d{5,})/i);
+      path.match(/\/slides\/(\d{5,})/i) ||
+      path.match(/\/share\/slides\/(\d{5,})/i) ||
+      path.match(/\/note\/(\d{5,})/i) ||
+      path.match(/\/share\/note\/(\d{5,})/i);
     if (m) return m[1];
     const q =
       uri.searchParams.get('modal_id') ||
@@ -37,6 +40,30 @@ function extractAwemeId(rawUrl) {
     // ignore
   }
   return null;
+}
+
+function isNoteOrSlidesUrl(rawUrl) {
+  try {
+    const path = new URL(String(rawUrl || '').trim()).pathname;
+    return /\/note\//i.test(path) || /\/slides\//i.test(path);
+  } catch {
+    return false;
+  }
+}
+
+function isJunkMediaUrl(url) {
+  return /logo_launcher|fe_app_new|\/eden-cn\/[^"'\\\s]*logo/i.test(
+    String(url || ''),
+  );
+}
+
+function hasRealMedia(note) {
+  if (!note) return false;
+  if (note.videoUrl) return true;
+  const imgs = (note.imageUrls || []).filter(
+    (u) => u && !isJunkMediaUrl(u),
+  );
+  return imgs.length > 0;
 }
 
 function isWafChallenge(html) {
@@ -145,7 +172,6 @@ function pickFromAweme(aweme) {
     firstUrlList(video.download_addr) ||
     null;
   if (!videoUrl && Array.isArray(video.bit_rate)) {
-    // 取最高档
     const sorted = [...video.bit_rate].sort(
       (a, b) => (Number(b.bit_rate) || 0) - (Number(a.bit_rate) || 0),
     );
@@ -155,27 +181,43 @@ function pickFromAweme(aweme) {
     }
   }
 
-  const imageUrls = [];
-  const push = (u) => {
-    const https = preferHttps(u);
-    if (https && !imageUrls.includes(https)) imageUrls.push(https);
-  };
-  push(firstUrlList(video.cover));
-  push(firstUrlList(video.origin_cover));
-  push(firstUrlList(video.dynamic_cover));
+  // 真图集：只从 aweme.images 取，每张一个 URL
+  const gallery = [];
   if (Array.isArray(aweme.images)) {
     for (const img of aweme.images) {
-      // 每张图只取一个地址，避免 url_list + download_url_list 导致 *2
-      push(
+      const one =
         firstUrlList(img?.url_list ? img : img) ||
-          firstUrlList(
-            img?.download_url_list
-              ? { url_list: img.download_url_list }
-              : null,
-          ),
-      );
+        firstUrlList(
+          img?.download_url_list ? { url_list: img.download_url_list } : null,
+        );
+      const https = preferHttps(one);
+      if (https && !isJunkMediaUrl(https) && !gallery.includes(https)) {
+        gallery.push(https);
+      }
     }
   }
+
+  // note/动图有图集时不当视频
+  if (gallery.length > 0) videoUrl = null;
+
+  const coverCandidates = [
+    gallery[0],
+    firstUrlList(video.cover),
+    firstUrlList(video.origin_cover),
+    firstUrlList(video.dynamic_cover),
+  ]
+    .map((u) => preferHttps(u))
+    .filter((u) => u && !isJunkMediaUrl(u));
+  const coverImageUrl = coverCandidates[0] || null;
+
+  // 纯视频：imageUrls 空，封面单独在 coverImageUrl
+  // 图文：imageUrls = 图集
+  const imageUrls =
+    gallery.length > 0
+      ? gallery
+      : !videoUrl && coverImageUrl
+        ? [coverImageUrl]
+        : [];
 
   const title =
     (desc.split(/\n+/).map((s) => s.trim()).find(Boolean) || '').slice(0, 40) ||
@@ -186,13 +228,15 @@ function pickFromAweme(aweme) {
   if (desc) parts.push(desc);
   const content = parts.join('\n\n').trim() || null;
 
-  if (!content && !imageUrls.length && !videoUrl) return null;
+  if (!content && !imageUrls.length && !videoUrl && !coverImageUrl) return null;
 
   return {
     title,
-    content: content || title || (videoUrl ? '（抖音视频）' : '（抖音图片）'),
-    summary: (desc || title || '').replace(/\s+/g, ' ').trim().slice(0, 180) || null,
-    coverImageUrl: imageUrls[0] || null,
+    content:
+      content || title || (videoUrl ? '（抖音视频）' : '（抖音图片）'),
+    summary:
+      (desc || title || '').replace(/\s+/g, ' ').trim().slice(0, 180) || null,
+    coverImageUrl,
     author,
     imageUrls,
     videoUrl,
@@ -201,9 +245,19 @@ function pickFromAweme(aweme) {
 
 function findAwemeInTree(node, depth = 0) {
   if (!node || typeof node !== 'object' || depth > 12) return null;
-  if (node.video && (node.desc != null || node.author) && (node.aweme_id || node.awemeId || node.video)) {
+  if (
+    (node.video || Array.isArray(node.images)) &&
+    (node.desc != null || node.author || node.aweme_id || node.awemeId)
+  ) {
     const picked = pickFromAweme(node);
-    if (picked?.videoUrl || picked?.content) return picked;
+    if (
+      picked &&
+      (picked.videoUrl ||
+        (picked.imageUrls && picked.imageUrls.length) ||
+        picked.content)
+    ) {
+      return picked;
+    }
   }
   if (Array.isArray(node.item_list) && node.item_list[0]) {
     const picked = pickFromAweme(node.item_list[0]);
@@ -246,30 +300,51 @@ function extractDouyinFromHtml(html) {
     try {
       const data = JSON.parse(injected[1].trim());
       const videoUrl = preferHttps(data.videoUrl);
-      const cover = preferHttps(data.cover);
+      const coverRaw = preferHttps(data.cover);
+      const cover =
+        coverRaw && !isJunkMediaUrl(coverRaw) ? coverRaw : null;
       const desc = data.desc ? String(data.desc).trim() : '';
       const author = data.author ? String(data.author).trim() : null;
       const title =
         (data.title ? String(data.title).trim().slice(0, 80) : null) ||
         (desc.split(/\n+/).map((s) => s.trim()).find(Boolean) || '').slice(0, 40) ||
         null;
-      if (videoUrl || cover || title || desc) {
-        const parts = [];
-        if (author) parts.push(`作者：${author}`);
-        if (desc) parts.push(desc);
-        else if (title) parts.push(title);
-        return {
-          title: title || (author ? `${author}的抖音` : null),
-          content:
-            parts.join('\n\n').trim() ||
-            title ||
-            (videoUrl ? '（抖音视频）' : null),
-          summary: (desc || title || '').replace(/\s+/g, ' ').trim().slice(0, 180) || null,
-          coverImageUrl: cover,
-          author,
-          imageUrls: cover ? [cover] : [],
-          videoUrl,
-        };
+      const imageUrls = [];
+      const pushImg = (u) => {
+        const https = preferHttps(u);
+        if (https && !isJunkMediaUrl(https) && !imageUrls.includes(https)) {
+          imageUrls.push(https);
+        }
+      };
+      if (Array.isArray(data.imageUrls)) {
+        for (const u of data.imageUrls) pushImg(u);
+      }
+      // 有图集则不当视频；封面仅在无图集时补一张
+      const finalVideo = imageUrls.length > 0 ? null : videoUrl;
+      if (!finalVideo && cover && !imageUrls.length) pushImg(cover);
+      if (finalVideo || imageUrls.length || cover || title || desc) {
+        if (!finalVideo && !imageUrls.length && !cover) {
+          // 仅标题文案、无媒体：当作没抽到（note 壳页）
+        } else {
+          const parts = [];
+          if (author) parts.push(`作者：${author}`);
+          if (desc) parts.push(desc);
+          else if (title) parts.push(title);
+          return {
+            title: title || (author ? `${author}的抖音` : null),
+            content:
+              parts.join('\n\n').trim() ||
+              title ||
+              (finalVideo ? '（抖音视频）' : '（抖音图文）'),
+            summary:
+              (desc || title || '').replace(/\s+/g, ' ').trim().slice(0, 180) ||
+              null,
+            coverImageUrl: cover || imageUrls[0] || null,
+            author,
+            imageUrls: imageUrls.slice(0, 30),
+            videoUrl: finalVideo,
+          };
+        }
       }
     } catch {
       // fall through
@@ -299,7 +374,9 @@ function extractDouyinFromHtml(html) {
       [])[1] || null;
 
   const videoUrl = preferHttps(videoTag || ogVideo);
-  const cover = preferHttps(ogImage);
+  const coverRaw = preferHttps(ogImage);
+  const cover =
+    coverRaw && !isJunkMediaUrl(coverRaw) ? coverRaw : null;
   const title = ogTitle ? String(ogTitle).trim().slice(0, 80) : null;
   if (!videoUrl && !cover && !title) return null;
 
@@ -309,7 +386,7 @@ function extractDouyinFromHtml(html) {
     summary: title,
     coverImageUrl: cover,
     author: null,
-    imageUrls: cover ? [cover] : [],
+    imageUrls: cover && !videoUrl ? [cover] : [],
     videoUrl,
   };
 }
@@ -332,13 +409,24 @@ async function fetchDouyin(rawUrl) {
   try {
     let shareUrl = await resolveShareUrl(rawUrl);
     let awemeId = extractAwemeId(shareUrl) || extractAwemeId(rawUrl);
+    const noteLike =
+      isNoteOrSlidesUrl(shareUrl) || isNoteOrSlidesUrl(rawUrl);
 
-    // 无追踪参数的分享页兜底
+    // 优先保留短链重定向后的带签 URL；note 不要硬改成 video
     const candidates = [];
-    if (shareUrl) candidates.push(shareUrl);
+    const pushUnique = (u) => {
+      if (u && !candidates.includes(u)) candidates.push(u);
+    };
+    pushUnique(shareUrl);
     if (awemeId) {
-      candidates.push(`https://www.iesdouyin.com/share/video/${awemeId}/`);
-      candidates.push(`https://m.douyin.com/share/video/${awemeId}`);
+      if (noteLike) {
+        pushUnique(
+          `https://www.iesdouyin.com/share/note/${awemeId}/?from_ssr=1`,
+        );
+      } else {
+        pushUnique(`https://www.iesdouyin.com/share/video/${awemeId}/`);
+        pushUnique(`https://m.douyin.com/share/video/${awemeId}`);
+      }
     }
 
     let lastHtml = '';
@@ -352,7 +440,7 @@ async function fetchDouyin(rawUrl) {
       }
       if (!awemeId) awemeId = extractAwemeId(finalUrl);
       const note = extractDouyinFromHtml(lastHtml);
-      if (note) {
+      if (note && hasRealMedia(note)) {
         return {
           ok: true,
           blocked: false,
@@ -366,9 +454,24 @@ async function fetchDouyin(rawUrl) {
           errorMessage: null,
         };
       }
+      // note/slides：SSR 常无正文，必须本机 WebView
+      if (noteLike || isNoteOrSlidesUrl(finalUrl)) {
+        return {
+          ok: false,
+          blocked: true,
+          title: note?.title || null,
+          content: null,
+          summary: null,
+          coverImageUrl: null,
+          author: null,
+          imageUrls: [],
+          videoUrl: null,
+          errorMessage: '图文页需本机加载',
+        };
+      }
     }
 
-    if (sawWaf) {
+    if (sawWaf || noteLike) {
       return {
         ok: false,
         blocked: true,
@@ -379,7 +482,9 @@ async function fetchDouyin(rawUrl) {
         author: null,
         imageUrls: [],
         videoUrl: null,
-        errorMessage: '页面需验证，暂时无法解析正文',
+        errorMessage: sawWaf
+          ? '页面需验证，暂时无法解析正文'
+          : '图文页需本机加载',
       };
     }
 

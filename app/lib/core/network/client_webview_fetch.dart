@@ -28,7 +28,7 @@ class ClientWebViewFetch {
   static Future<String> fetchHtml(
     BuildContext context,
     String url, {
-    Duration timeout = const Duration(seconds: 45),
+    Duration timeout = const Duration(seconds: 55),
   }) async {
     final uri = Uri.tryParse(url.trim());
     if (uri == null || !(uri.isScheme('http') || uri.isScheme('https'))) {
@@ -94,6 +94,14 @@ class ClientWebViewFetch {
       }
     }
 
+    Future<void> injectCaptureHook() async {
+      try {
+        await controller.runJavaScript(_networkCaptureJs);
+      } catch (e) {
+        debugPrint('[douyin-fetch] capture hook err $e');
+      }
+    }
+
     controller = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..setUserAgent(_ua)
@@ -114,9 +122,15 @@ class ClientWebViewFetch {
             debugPrint('[douyin-fetch] skip scheme=$scheme');
             return NavigationDecision.prevent;
           },
+          onPageStarted: (u) {
+            debugPrint('[douyin-fetch] start $u');
+            unawaited(injectCaptureHook());
+          },
           onPageFinished: (u) async {
             debugPrint('[douyin-fetch] finished $u');
-            await Future<void>.delayed(const Duration(milliseconds: 800));
+            await injectCaptureHook();
+            // note 页正文靠异步接口
+            await Future<void>.delayed(const Duration(milliseconds: 1600));
             await tryExtract();
           },
           onWebResourceError: (err) {
@@ -131,18 +145,15 @@ class ClientWebViewFetch {
         ),
       );
 
-    // 视口内加载；过小会导致部分脚本不跑
+    // note 页异步脚本需要足够视口；屏外完整尺寸
     _entry = OverlayEntry(
       builder: (ctx) => Positioned(
-        right: 0,
-        bottom: 0,
-        width: 320,
-        height: 180,
+        left: -1200,
+        top: 0,
+        width: 390,
+        height: 844,
         child: IgnorePointer(
-          child: Opacity(
-            opacity: 0.02,
-            child: WebViewWidget(controller: controller),
-          ),
+          child: WebViewWidget(controller: controller),
         ),
       ),
     );
@@ -375,8 +386,25 @@ class ClientWebViewFetch {
       client.close();
     }
 
+    // 已落到带签分享页则原样保留（note/slides/video），勿改写成无签名 video
+    final pathLower = current.path.toLowerCase();
+    if (pathLower.contains('/share/note/') ||
+        pathLower.contains('/share/slides/') ||
+        pathLower.contains('/share/video/')) {
+      debugPrint('[douyin-fetch] keep share $current');
+      return current;
+    }
+
     final id = _awemeIdFromUri(current) ?? _awemeIdFromUri(raw);
     if (id != null) {
+      if (pathLower.contains('/note/') ||
+          raw.path.toLowerCase().contains('/note/')) {
+        final share = Uri.parse(
+          'https://www.iesdouyin.com/share/note/$id/?from_ssr=1',
+        );
+        debugPrint('[douyin-fetch] note $share');
+        return share;
+      }
       final share = Uri.parse(
         'https://www.iesdouyin.com/share/video/$id/?from_ssr=1',
       );
@@ -388,7 +416,7 @@ class ClientWebViewFetch {
 
   static String? _awemeIdFromUri(Uri uri) {
     final path = uri.path;
-    final m = RegExp(r'/(?:video|note)/(\d{5,})', caseSensitive: false)
+    final m = RegExp(r'/(?:video|note|slides)/(\d{5,})', caseSensitive: false)
         .firstMatch(path);
     if (m != null) return m.group(1);
     for (final key in ['modal_id', 'aweme_id', 'item_ids']) {
@@ -416,7 +444,47 @@ class ClientWebViewFetch {
     return raw.toString();
   }
 
-  /// 抽取视频/标题/封面，只回传精简 HTML（避免整页过大）
+  /// 拦截 fetch/XHR，抓住 note 页异步下发的 aweme JSON
+  static const _networkCaptureJs = r'''
+(function(){
+  if (window.__SC_DY_HOOKED) return;
+  window.__SC_DY_HOOKED = true;
+  window.__SC_DY_JSON = window.__SC_DY_JSON || [];
+  function keep(t){
+    if (!t || t.length < 80 || t.length > 4000000) return;
+    if (!/\"images\"|play_addr|aweme_detail|item_list/i.test(t)) return;
+    if (window.__SC_DY_JSON.length > 10) window.__SC_DY_JSON.shift();
+    window.__SC_DY_JSON.push(t);
+  }
+  try {
+    var ofetch = window.fetch;
+    if (ofetch) {
+      window.fetch = function(){
+        return ofetch.apply(this, arguments).then(function(res){
+          try { res.clone().text().then(keep).catch(function(){}); } catch (e) {}
+          return res;
+        });
+      };
+    }
+  } catch (e) {}
+  try {
+    var XO = XMLHttpRequest.prototype.open;
+    var XS = XMLHttpRequest.prototype.send;
+    XMLHttpRequest.prototype.open = function(){
+      this.__sc_url = arguments[1];
+      return XO.apply(this, arguments);
+    };
+    XMLHttpRequest.prototype.send = function(){
+      this.addEventListener('load', function(){
+        try { keep(this.responseText); } catch (e) {}
+      });
+      return XS.apply(this, arguments);
+    };
+  } catch (e) {}
+})();
+''';
+
+  /// 抽取视频/标题/封面/图集，只回传精简 HTML
   static const _extractJs = r'''
 (function(){
   function abs(u){
@@ -427,9 +495,14 @@ class ClientWebViewFetch {
     if(u.indexOf('https://')!==0) return null;
     return u.replace(/\/playwm\//g,'/play/');
   }
+  function isJunk(u){
+    if(!u) return true;
+    return /logo_launcher|fe_app_new|\/eden-cn\/[^"'\\\s]*logo|\/(avatar|logo|icon|emoji|favicon)([_\/.-]|$)/i.test(String(u));
+  }
   function firstUrlList(obj){
     if(!obj) return null;
-    var list = obj.url_list || obj.urlList;
+    if(typeof obj==='string') return abs(obj);
+    var list = obj.url_list || obj.urlList || obj.uri_list;
     if(list && list.length){
       for(var i=0;i<list.length;i++){
         var u=abs(list[i]);
@@ -437,6 +510,19 @@ class ClientWebViewFetch {
       }
     }
     return abs(obj.url||obj.uri||null);
+  }
+  function collectGallery(aweme){
+    var out = [];
+    var src = aweme.images || aweme.image_list || (aweme.image_post_info && aweme.image_post_info.images) || [];
+    if(!Array.isArray(src)) return out;
+    for(var i=0;i<src.length;i++){
+      var im = src[i];
+      var one = firstUrlList(im && im.url_list ? im : im) ||
+                (im && im.download_url_list ? firstUrlList({url_list: im.download_url_list}) : null);
+      one = abs(one);
+      if(one && !isJunk(one) && out.indexOf(one)<0) out.push(one);
+    }
+    return out;
   }
   function fromAweme(aweme){
     if(!aweme) return null;
@@ -450,38 +536,51 @@ class ClientWebViewFetch {
         if(videoUrl) break;
       }
     }
+    var imageUrls = collectGallery(aweme);
+    if(imageUrls.length) videoUrl = null;
     var cover = firstUrlList(video.cover) || firstUrlList(video.origin_cover) || firstUrlList(video.dynamic_cover);
+    if(isJunk(cover)) cover = null;
+    if(!cover && imageUrls.length) cover = imageUrls[0];
     var title = (desc.split(/\n+/).filter(Boolean)[0]||'').slice(0,80) || (author ? author+'的抖音' : null);
-    if(!videoUrl && !cover && !title) return null;
-    return { title:title, author:author, desc:desc, videoUrl:videoUrl, cover:cover };
+    if(!videoUrl && !cover && !title && !imageUrls.length) return null;
+    return { title:title, author:author, desc:desc, videoUrl:videoUrl, cover:cover, imageUrls:imageUrls };
   }
   function walk(node, depth){
     if(!node || typeof node!=='object' || depth>14) return null;
-    if(node.video && (node.desc!=null || node.author)){
-      var p = fromAweme(node);
-      if(p && (p.videoUrl || p.title || p.cover)) return p;
+    var best = null;
+    function consider(p){
+      if(!p) return;
+      if(p.imageUrls && p.imageUrls.length){ best = p; return true; }
+      if(p.videoUrl){ best = p; return true; }
+      if(!best) best = p;
+      return false;
     }
-    if(node.item_list && node.item_list[0]){
-      var p2 = fromAweme(node.item_list[0]);
-      if(p2) return p2;
+    if((node.video || node.images || node.image_list) && (node.desc!=null || node.author || node.aweme_id || node.awemeId)){
+      if(consider(fromAweme(node))) return best;
     }
-    if(node.aweme_detail){ var p3=fromAweme(node.aweme_detail); if(p3) return p3; }
-    if(node.awemeDetail){ var p4=fromAweme(node.awemeDetail); if(p4) return p4; }
+    if(node.item_list && node.item_list[0] && consider(fromAweme(node.item_list[0]))) return best;
+    if(node.aweme_detail && consider(fromAweme(node.aweme_detail))) return best;
+    if(node.awemeDetail && consider(fromAweme(node.awemeDetail))) return best;
     if(Array.isArray(node)){
-      for(var i=0;i<node.length;i++){ var f=walk(node[i], depth+1); if(f) return f; }
-      return null;
+      for(var i=0;i<node.length;i++){
+        var f=walk(node[i], depth+1);
+        if(f && f.imageUrls && f.imageUrls.length) return f;
+        if(f && f.videoUrl) return f;
+        if(f && !best) best = f;
+      }
+      return best;
     }
     for(var k in node){
       if(!Object.prototype.hasOwnProperty.call(node,k)) continue;
       var f2=walk(node[k], depth+1);
-      if(f2) return f2;
+      if(f2 && f2.imageUrls && f2.imageUrls.length) return f2;
+      if(f2 && f2.videoUrl) return f2;
+      if(f2 && !best) best = f2;
     }
-    return null;
+    return best;
   }
   function parseRouter(){
-    try {
-      if (window._ROUTER_DATA) return window._ROUTER_DATA;
-    } catch (e) {}
+    try { if (window._ROUTER_DATA) return window._ROUTER_DATA; } catch (e) {}
     var el = document.getElementById('_ROUTER_DATA');
     if (el && el.textContent) {
       try { return JSON.parse(el.textContent); } catch (e) {}
@@ -489,6 +588,8 @@ class ClientWebViewFetch {
     return null;
   }
   try {
+    var isNotePage = false;
+    try { isNotePage = /\/note\//i.test(location.pathname||'') || /\/slides\//i.test(location.pathname||''); } catch(e){}
     var head = document.documentElement.innerHTML.slice(0, 5000);
     var waf = /waf_js|waf-jschallenge/i.test(head);
     var videoUrl = '';
@@ -507,49 +608,65 @@ class ClientWebViewFetch {
     if(!picked && ud && ud.textContent){
       try { picked = walk(JSON.parse(ud.textContent), 0); } catch(e){}
     }
-    if(!picked){
-      var htmlAll = document.documentElement.innerHTML;
-      var m = htmlAll.match(/https:[^"'\s<>]+douyinvod[^"'\s<>]+/i) ||
-              htmlAll.match(/https:\\\/\\\/[^"\\]+douyinvod[^"\\]+/i);
-      if(m){
-        videoUrl = abs(m[0].replace(/\\\//g,'/'));
+    // note：吃拦截到的接口 JSON
+    if((!picked || !(picked.imageUrls && picked.imageUrls.length)) && window.__SC_DY_JSON){
+      for(var ci=window.__SC_DY_JSON.length-1; ci>=0; ci--){
+        try {
+          var cp = walk(JSON.parse(window.__SC_DY_JSON[ci]), 0);
+          if(cp && ((cp.imageUrls && cp.imageUrls.length) || cp.videoUrl)){
+            picked = cp;
+            break;
+          }
+        } catch(e){}
       }
     }
     if(picked && picked.videoUrl) videoUrl = picked.videoUrl;
+    if(picked && picked.imageUrls && picked.imageUrls.length) videoUrl = '';
     var title = (picked && picked.title) || document.title || '';
     if(title.indexOf('抖音')===0 && title.length<8) title = (picked && picked.desc) || title;
     var cover = (picked && picked.cover) || poster || null;
-    var ogImg = document.querySelector('meta[property="og:image"]');
-    if(!cover && ogImg) cover = abs(ogImg.getAttribute('content'));
-    // 页面上较大封面图兜底
-    if(!cover){
+    if(isJunk(cover)) cover = null;
+    var gallery = (picked && picked.imageUrls) ? picked.imageUrls.slice() : [];
+    gallery = gallery.filter(function(u){ return u && !isJunk(u); });
+    // DOM 上的正文图（仅 tos 内容图，不做全页 URL 扫）
+    if(!gallery.length){
       var imgs = document.querySelectorAll('img');
       for(var j=0;j<imgs.length;j++){
         var isrc = abs(imgs[j].currentSrc || imgs[j].src || '');
-        if(!isrc) continue;
-        if(/avatar|logo|icon|emoji/i.test(isrc)) continue;
-        if(/tos-cn-p-|jpeg|jpg|webp|image/i.test(isrc)){ cover = isrc; break; }
+        if(!isrc || isJunk(isrc)) continue;
+        if(/tos-cn-p-|tos-cn-i-|~tplv-/i.test(isrc) && gallery.indexOf(isrc)<0) gallery.push(isrc);
       }
     }
+    if(!cover && gallery.length) cover = gallery[0];
     var ogTitle = document.querySelector('meta[property="og:title"]');
     if((!title || title==='抖音') && ogTitle) title = ogTitle.getAttribute('content') || title;
 
-    var ready = !waf && (!!videoUrl || !!(picked && (picked.desc||picked.title||picked.cover)) || (!!cover && title && title.length>4));
+    // note/slides：必须有真图集或视频；禁止默认封面冒充成功
+    var ready = !waf && (
+      !!videoUrl ||
+      gallery.length > 0 ||
+      (!isNotePage && !!picked && !!(picked.desc||picked.title) && !!cover)
+    );
     if(!ready){
-      return JSON.stringify({ ready:false, waf:waf, hasVideo:!!videoUrl, hasCover:!!cover, title:title });
+      return JSON.stringify({ ready:false, waf:waf, hasVideo:!!videoUrl, gallery:gallery.length, note:isNotePage, captured:(window.__SC_DY_JSON&&window.__SC_DY_JSON.length)||0, title:title });
     }
+    if(gallery.length) videoUrl = '';
     var payload = {
       videoUrl: videoUrl || null,
       title: title || null,
-      cover: cover || null,
+      cover: cover || gallery[0] || null,
+      imageUrls: gallery,
       author: (picked && picked.author) || null,
       desc: (picked && picked.desc) || null
     };
+    if(!payload.videoUrl && !(payload.imageUrls && payload.imageUrls.length)){
+      return JSON.stringify({ ready:false, reason:'no-real-media' });
+    }
     var safeTitle = (payload.title || '抖音').replace(/</g,'');
     var html = '<!DOCTYPE html><html><head><meta charset="utf-8"><title>'+safeTitle+
       '</title></head><body><script id="SC_DOUYIN_EXTRACT" type="application/json">'+
       JSON.stringify(payload)+'</script></body></html>';
-    return JSON.stringify({ ready:true, html:html, title:payload.title, hasVideo:!!payload.videoUrl, hasCover:!!payload.cover });
+    return JSON.stringify({ ready:true, html:html, title:payload.title, hasVideo:!!payload.videoUrl, hasCover:!!payload.cover, gallery:gallery.length });
   } catch (e) {
     return JSON.stringify({ ready:false, error:String(e) });
   }

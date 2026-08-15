@@ -52,7 +52,10 @@ class CollectionItem {
   bool get isInTrash => deletedAt != null;
   bool get hasVideo {
     final v = videoUrl?.trim();
-    return v != null && v.isNotEmpty;
+    if (v == null || v.isEmpty) return false;
+    // 有图集时走图文（note/动图可能误带 play_addr）
+    if (imageUrls.any((e) => e.trim().isNotEmpty)) return false;
+    return true;
   }
 
   /// 展示用图集：有 imageUrls 用它，否则退回单封面（按 path 去重，避免同图不同 query *2）
