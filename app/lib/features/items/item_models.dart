@@ -55,12 +55,26 @@ class CollectionItem {
     return v != null && v.isNotEmpty;
   }
 
-  /// 展示用图集：有 imageUrls 用它，否则退回单封面
+  /// 展示用图集：有 imageUrls 用它，否则退回单封面（按 path 去重，避免同图不同 query *2）
   List<String> get displayImages {
-    if (imageUrls.isNotEmpty) return imageUrls;
-    final cover = coverImageUrl?.trim();
-    if (cover != null && cover.isNotEmpty) return [cover];
-    return const [];
+    final raw = <String>[];
+    if (imageUrls.isNotEmpty) {
+      raw.addAll(imageUrls);
+    } else {
+      final cover = coverImageUrl?.trim();
+      if (cover != null && cover.isNotEmpty) raw.add(cover);
+    }
+    final out = <String>[];
+    final seen = <String>{};
+    for (final u in raw) {
+      final t = u.trim();
+      if (t.isEmpty) continue;
+      final key = t.split('?').first;
+      if (seen.contains(key)) continue;
+      seen.add(key);
+      out.add(t);
+    }
+    return out;
   }
 
   factory CollectionItem.fromJson(Map<String, dynamic> json) {

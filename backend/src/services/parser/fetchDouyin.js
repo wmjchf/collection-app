@@ -165,8 +165,15 @@ function pickFromAweme(aweme) {
   push(firstUrlList(video.dynamic_cover));
   if (Array.isArray(aweme.images)) {
     for (const img of aweme.images) {
-      push(firstUrlList(img.url_list ? img : img));
-      push(firstUrlList(img.download_url_list ? { url_list: img.download_url_list } : null));
+      // 每张图只取一个地址，避免 url_list + download_url_list 导致 *2
+      push(
+        firstUrlList(img?.url_list ? img : img) ||
+          firstUrlList(
+            img?.download_url_list
+              ? { url_list: img.download_url_list }
+              : null,
+          ),
+      );
     }
   }
 
