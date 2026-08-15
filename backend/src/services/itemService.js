@@ -707,6 +707,8 @@ const HIT_LABELS = {
 
 const PLATFORM_ALIASES = {
   微信: 'weixin',
+  视频号: 'channels',
+  channels: 'channels',
   小红书: 'xiaohongshu',
   抖音: 'douyin',
   微博: 'weibo',

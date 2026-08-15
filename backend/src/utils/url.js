@@ -53,7 +53,19 @@ function normalizeUrl(raw) {
 }
 
 function detectPlatform(url) {
-  const host = new URL(url).hostname.replace(/^www\./, '').toLowerCase();
+  const uri = new URL(url);
+  const host = uri.hostname.replace(/^www\./, '').toLowerCase();
+  const path = uri.pathname;
+
+  // 视频号（须先于通用 weixin）
+  if (
+    host === 'channels.weixin.qq.com' ||
+    (host === 'weixin.qq.com' && /\/sph\b/i.test(path)) ||
+    (host.endsWith('weixin.qq.com') &&
+      /finder-preview|\/web\/pages\/feed/i.test(path + uri.search))
+  ) {
+    return 'channels';
+  }
   if (host.includes('mp.weixin.qq.com') || host.endsWith('weixin.qq.com')) {
     return 'weixin';
   }

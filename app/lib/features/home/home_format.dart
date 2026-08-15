@@ -5,6 +5,8 @@ String platformLabel(String? platform) {
   switch (platform) {
     case 'weixin':
       return '微信';
+    case 'channels':
+      return '视频号';
     case 'xiaohongshu':
       return '小红书';
     case 'douyin':
