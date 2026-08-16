@@ -21,8 +21,7 @@ class ClientWebViewFetch {
     final u = url.toLowerCase();
     return u.contains('douyin.com') ||
         u.contains('iesdouyin.com') ||
-        u.contains('v.douyin.com') ||
-        u.contains('36kr.com');
+        u.contains('v.douyin.com');
   }
 
   /// 需在有 Overlay 的上下文中调用（App 前台）
@@ -244,17 +243,17 @@ class ClientWebViewFetch {
     var title = document.title || '';
     var head = html.slice(0, 12000);
     var compact = text.replace(/\s+/g,'');
-    var challenge = /正在进行安全检测|_wafchallengeid|wafchallenge|waf_js|waf-jschallenge/i.test(head) ||
-      (/火山引擎/.test(head) && /安全检测/.test(head)) ||
+    // 扫全文：检测脚本很长时关键词可能不在前 12k
+    var challenge = /_wafchallengeid|wafchallenge|waf_js|waf-jschallenge|正在进行安全检测/i.test(html) ||
+      (/火山引擎/.test(html) && /安全检测/.test(html)) ||
       (compact.indexOf('环境异常')>=0 && (compact.indexOf('去验证')>=0 || compact.indexOf('完成验证')>=0)) ||
       (/please\s*wait/i.test(head) && compact.length < 120);
     var hasArticle = !!(document.querySelector(
-      'article, .article-content, .articleDetailContent, .kr-rich-text-wrapper, .markdown-body, #js_content, main'
-    ));
+      'article, .article-content, .articleDetailContent, .kr-rich-text-wrapper, .kr-mobile-article, #body-content, .markdown-body, #js_content, main'
+    )) || /window\.initialState/i.test(html);
     var ready = !challenge && (
       hasArticle ||
-      (compact.length > 180 && compact.indexOf('安全检测') < 0) ||
-      (html.length > 12000 && compact.length > 120 && compact.indexOf('安全检测') < 0)
+      (compact.length > 180 && compact.indexOf('安全检测') < 0)
     );
     return JSON.stringify({
       ready: ready,

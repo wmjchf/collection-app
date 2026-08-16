@@ -258,14 +258,26 @@ enum ShortcutAuthStore {
     let isWeixin = plat == "weixin" || plat == "wechat"
     let isDouyin = plat == "douyin" || pageUrl.lowercased().contains("douyin.com")
       || pageUrl.lowercased().contains("iesdouyin.com")
-    let isKr36 = plat == "kr36" || pageUrl.lowercased().contains("36kr.com")
 
-    if isDouyin || isKr36 {
+    if isDouyin {
       onProgress?(40, "已入库，打开 App 完成解析…")
-      // 抖音 / 36氪依赖 WebView 过检测；Intent 纯 HTTP 只会拿到壳页
+      // 抖音依赖 WebView 过检测；Intent 纯 HTTP 只会拿到壳页
       return existed
         ? "已收藏。打开超级收藏夹即可自动补齐解析"
         : "已保存。打开超级收藏夹即可自动补齐解析"
+    }
+
+    // 36氪：桌面站有检测壳，改移动站后本机 HTTP 可抽 initialState
+    if plat == "kr36" || pageUrl.lowercased().contains("36kr.com") {
+      let mobile = Self.preferMobile36kr(pageUrl)
+      return try await clientFetchAndParse(
+        baseUrl: baseUrl,
+        token: token,
+        itemId: itemId,
+        pageUrl: mobile,
+        existed: existed,
+        onProgress: onProgress
+      )
     }
 
     if isWeixin {
@@ -300,17 +312,19 @@ enum ShortcutAuthStore {
       }
       if st.needsClientFetch {
         let fetchUrl = (st.url ?? pageUrl).lowercased()
-        if fetchUrl.contains("douyin.com") || fetchUrl.contains("iesdouyin.com")
-          || fetchUrl.contains("36kr.com") {
+        if fetchUrl.contains("douyin.com") || fetchUrl.contains("iesdouyin.com") {
           return existed
             ? "已收藏。打开超级收藏夹即可自动补齐解析"
             : "已保存。打开超级收藏夹即可自动补齐解析"
         }
+        let nextUrl = fetchUrl.contains("36kr.com")
+          ? Self.preferMobile36kr(st.url ?? pageUrl)
+          : (st.url ?? pageUrl)
         return try await clientFetchAndParse(
           baseUrl: baseUrl,
           token: token,
           itemId: itemId,
-          pageUrl: st.url ?? pageUrl,
+          pageUrl: nextUrl,
           existed: existed,
           onProgress: onProgress
         )
@@ -326,6 +340,18 @@ enum ShortcutAuthStore {
       existed: existed,
       onProgress: onProgress
     )
+  }
+
+  static func preferMobile36kr(_ raw: String) -> String {
+    guard var comps = URLComponents(string: raw) else { return raw }
+    let host = (comps.host ?? "").lowercased().replacingOccurrences(of: "www.", with: "")
+    guard host == "36kr.com" else { return raw }
+    let path = comps.path
+    guard path.range(of: #"^/p/\d+"#, options: .regularExpression) != nil else {
+      return raw
+    }
+    comps.host = "m.36kr.com"
+    return comps.string ?? raw
   }
 
   @available(iOS 16.0, *)

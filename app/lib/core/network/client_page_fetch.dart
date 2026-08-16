@@ -20,19 +20,32 @@ class ClientPageFetch {
 
   /// 返回 HTML；失败抛 [ClientPageFetchException]
   static Future<String> fetchHtml(String url) async {
-    // 抖音 / 36氪：必须 WebView（WAF / 安全检测壳）
-    if (ClientWebViewFetch.needsWebView(url)) {
-      final preferDouyin = url.toLowerCase().contains('douyin');
-      return _fetchViaWebView(url, preferDouyin: preferDouyin);
+    final target = _preferFetchUrl(url);
+
+    // 抖音：必须 WebView（WAF / 分享页数据）
+    if (ClientWebViewFetch.needsWebView(target)) {
+      return _fetchViaWebView(target, preferDouyin: true);
     }
 
-    // 其它：先 HTTP（更快）；失败或验证码壳再 WebView
+    // 其它（含 m.36kr）：先 HTTP；失败或验证码壳再 WebView
     try {
-      return await _fetchHtmlHttp(url);
+      return await _fetchHtmlHttp(target);
     } on ClientPageFetchException catch (e) {
       debugPrint('[client-fetch] http failed: ${e.message}, try webview');
-      return _fetchViaWebView(url, preferDouyin: false);
+      return _fetchViaWebView(target, preferDouyin: false);
     }
+  }
+
+  /// 桌面风控页改可读页（与后端 resolveFetchUrl 对齐）
+  static String _preferFetchUrl(String raw) {
+    final uri = Uri.tryParse(raw.trim());
+    if (uri == null) return raw.trim();
+    final host = uri.host.toLowerCase().replaceFirst(RegExp(r'^www\.'), '');
+    if (host == '36kr.com' &&
+        RegExp(r'^/p/\d+', caseSensitive: false).hasMatch(uri.path)) {
+      return uri.replace(host: 'm.36kr.com').toString();
+    }
+    return raw.trim();
   }
 
   static Future<String> _fetchViaWebView(

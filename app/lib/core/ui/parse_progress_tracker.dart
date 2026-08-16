@@ -77,7 +77,8 @@ class ParseProgressTracker {
             p == 'wechat' ||
             p == 'douyin' ||
             p == 'kr36' ||
-            ClientWebViewFetch.needsWebView(url))) {
+            ClientWebViewFetch.needsWebView(url) ||
+            url.toLowerCase().contains('36kr.com'))) {
       unawaited(_tryClientFetch(itemId, url));
     }
 

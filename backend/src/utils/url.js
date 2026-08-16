@@ -111,6 +111,14 @@ function resolveFetchUrl(rawUrl) {
         return `https://app.myzaker.com/news/article.php?pk=${m[1]}`;
       }
     }
+    // 36氪桌面站火山引擎检测壳；移动站带 initialState 正文
+    if (host === '36kr.com' || host === 'www.36kr.com') {
+      const path = uri.pathname || '';
+      if (/^\/p\/\d+/i.test(path)) {
+        const q = uri.search || '';
+        return `https://m.36kr.com${path}${q}`;
+      }
+    }
   } catch {
     // ignore
   }
