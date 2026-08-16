@@ -8,6 +8,7 @@ import 'package:super_collection/features/onboarding/onboarding_page.dart';
 import 'package:super_collection/features/onboarding/onboarding_prefs.dart';
 import 'package:super_collection/features/shell/main_shell.dart';
 import 'package:super_collection/features/shortcuts/app_navigator.dart';
+import 'package:super_collection/features/shortcuts/share_inbound.dart';
 import 'package:super_collection/features/shortcuts/shortcut_inbound.dart';
 
 class SuperCollectionApp extends StatefulWidget {
@@ -27,6 +28,7 @@ class _SuperCollectionAppState extends State<SuperCollectionApp> {
   }
 
   Future<void> _listenLinks() async {
+    await ShareInbound.start();
     final appLinks = AppLinks();
     try {
       final initial = await appLinks.getInitialLink();

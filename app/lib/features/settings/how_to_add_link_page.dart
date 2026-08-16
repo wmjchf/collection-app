@@ -45,12 +45,18 @@ class HowToAddLinkPage extends StatelessWidget {
           ),
           SizedBox(height: 16),
           _HelpCard(
+            title: '系统分享',
+            desc:
+                '在微信、Safari、备忘录、抖音等 App 里点「分享」，选择「超级收藏夹」即可入库。若列表里没有，可在分享面板右滑到「更多」打开开关。',
+          ),
+          SizedBox(height: 12),
+          _HelpCard(
             title: '复制链接自动保存',
             desc:
                 '先在其他 App 复制可用链接，再打开超级收藏夹（或从后台切回），会自动读取剪贴板并保存。',
           ),
           SizedBox(height: 12),
-          const _HelpCard(
+          _HelpCard(
             title: '快捷指令（iOS）',
             desc:
                 '复制链接后点主屏幕「保存剪贴板链接」即可后台入库（不必打开 App）。可在设置 → 快捷指令说明里配置。',

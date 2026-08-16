@@ -60,7 +60,7 @@ class OnboardingPage extends StatelessWidget {
               ),
               const SizedBox(height: 28),
               const Text(
-                '两种入库方式（任选）',
+                '三种入库方式（任选）',
                 style: TextStyle(
                   fontSize: 13,
                   fontWeight: FontWeight.w500,
@@ -68,6 +68,12 @@ class OnboardingPage extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 12),
+              const _WayCard(
+                title: '系统分享',
+                desc:
+                    '在微信、Safari、抖音等 App 点「分享」，选择「超级收藏夹」即可保存',
+              ),
+              const SizedBox(height: 10),
               const _WayCard(
                 title: '复制链接',
                 desc: '在其他 App 复制可用链接后打开本 App，会自动读取剪贴板并保存',

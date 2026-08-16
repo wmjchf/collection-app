@@ -9,6 +9,7 @@ import 'package:super_collection/core/ui/parse_progress_tracker.dart';
 import 'package:super_collection/core/utils/clipboard_utils.dart';
 import 'package:super_collection/core/utils/link_utils.dart';
 import 'package:super_collection/features/collection/system_filter_list_page.dart';
+import 'package:super_collection/features/home/add_link_sheet.dart';
 import 'package:super_collection/features/home/home_format.dart';
 import 'package:super_collection/features/home/home_mock_data.dart';
 import 'package:super_collection/features/home/home_repository.dart';
@@ -156,6 +157,60 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       constraints: const BoxConstraints(minWidth: 188, maxWidth: 188),
       items: const [
         PopupMenuItem<String>(
+          value: 'add',
+          height: 64,
+          padding: EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text(
+                '添加链接',
+                style: TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w500,
+                  color: Color(0xFF1F242E),
+                ),
+              ),
+              SizedBox(height: 4),
+              Text(
+                '手动输入或编辑链接',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Color(0xFF737A85),
+                ),
+              ),
+            ],
+          ),
+        ),
+        PopupMenuItem<String>(
+          value: 'paste',
+          height: 64,
+          padding: EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text(
+                '粘贴链接',
+                style: TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w500,
+                  color: Color(0xFF1F242E),
+                ),
+              ),
+              SizedBox(height: 4),
+              Text(
+                '从剪贴板直接保存',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Color(0xFF737A85),
+                ),
+              ),
+            ],
+          ),
+        ),
+        PopupMenuItem<String>(
           value: 'shortcuts',
           height: 64,
           padding: EdgeInsets.symmetric(horizontal: 14, vertical: 10),
@@ -186,11 +241,29 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     );
 
     if (!mounted || action == null) return;
-    if (action == 'shortcuts') {
-      await Navigator.of(context).push(
-        MaterialPageRoute<void>(builder: (_) => const ShortcutsHelpPage()),
-      );
+    switch (action) {
+      case 'add':
+        await showAddLinkSheet(context);
+        if (mounted) await _load(quiet: true);
+      case 'paste':
+        await _pasteClipboardLink();
+      case 'shortcuts':
+        await Navigator.of(context).push(
+          MaterialPageRoute<void>(builder: (_) => const ShortcutsHelpPage()),
+        );
     }
+  }
+
+  /// 主动从剪贴板读取并保存链接（菜单「粘贴链接」）
+  Future<void> _pasteClipboardLink() async {
+    if (_pasting) return;
+    final url = await readClipboardHttpUrl();
+    if (!mounted) return;
+    if (url == null || !isValidHttpUrl(url)) {
+      AppToast.show(context, '剪贴板里没有链接');
+      return;
+    }
+    await _saveClipboardUrl(url);
   }
 
   /// 进首页 / 从后台回前台：剪贴板有可用链接则直接保存
@@ -207,18 +280,20 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
 
     _clipboardOfferRunning = true;
     try {
-      // 补齐队列进行中时不要 begin() 打断，否则会挂死排队
-      var wait = 0;
-      while (ClientFetchBackfill.isRunning && wait < 120) {
-        await Future<void>.delayed(const Duration(milliseconds: 500));
-        wait++;
-        if (!mounted) return;
-      }
-
+      // 先读剪贴板：尽快弹出系统「允许粘贴」，不要被补齐队列拖住
       final url = await readClipboardHttpUrl(probeFirst: true);
       if (!mounted) return;
       if (url == null || !isValidHttpUrl(url)) return;
       if (url == _lastClipboardHandledUrl) return;
+
+      // 仅入库前短等补齐（避免 begin 抢进度条）；最多约 2s
+      var wait = 0;
+      while (ClientFetchBackfill.isRunning && wait < 20) {
+        await Future<void>.delayed(const Duration(milliseconds: 100));
+        wait++;
+        if (!mounted) return;
+      }
+
       await _saveClipboardUrl(url);
     } finally {
       _clipboardOfferRunning = false;

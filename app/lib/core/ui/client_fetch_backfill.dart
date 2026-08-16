@@ -10,6 +10,7 @@ class ClientFetchBackfill {
   ClientFetchBackfill._();
 
   static bool _running = false;
+  static bool _starting = false;
   static bool _rerunRequested = false;
   static final _items = ItemsRepository();
 
@@ -20,18 +21,31 @@ class ClientFetchBackfill {
   /// 可选：每条补齐结束后刷新列表
   static Future<void> Function()? onItemSettled;
 
+  /// 真正在抓页排队时才为 true（启动空等不算），避免挡住首页剪贴板检测
   static bool get isRunning => _running;
 
   static Future<void> run({Duration delay = _startupDelay}) async {
+    if (_running || _starting) {
+      _rerunRequested = true;
+      return;
+    }
+    _starting = true;
+    _rerunRequested = false;
+    try {
+      // 空等期间不占 isRunning，首页可立刻弹系统「允许粘贴」
+      if (delay > Duration.zero) {
+        await Future<void>.delayed(delay);
+      }
+    } finally {
+      _starting = false;
+    }
+
     if (_running) {
       _rerunRequested = true;
       return;
     }
     _running = true;
-    _rerunRequested = false;
     try {
-      // 让剪贴板自动保存等前台流程先占用进度条
-      await Future<void>.delayed(delay);
       await _drainAll();
     } on ApiException {
       // 未登录 / 网络失败：下次回前台再试

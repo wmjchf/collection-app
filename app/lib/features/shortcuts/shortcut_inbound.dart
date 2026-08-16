@@ -9,6 +9,7 @@ import 'package:super_collection/features/items/items_repository.dart';
 import 'package:super_collection/features/shortcuts/app_navigator.dart';
 
 /// 处理 `supercollection://save` / `supercollection://save?url=`
+/// 以及系统分享 / 快捷指令传入的 HTTP 链接。
 class ShortcutInbound {
   ShortcutInbound._();
 
@@ -44,6 +45,19 @@ class ShortcutInbound {
     await _executeSave(uri);
   }
 
+  /// 系统分享等场景：直接保存 HTTP 链接（不读剪贴板、不清空剪贴板）。
+  static Future<void> saveHttpUrl(String url) async {
+    final trimmed = url.trim();
+    if (!isValidHttpUrl(trimmed)) return;
+    await handleUri(
+      Uri(
+        scheme: 'supercollection',
+        host: 'save',
+        queryParameters: {'url': trimmed},
+      ),
+    );
+  }
+
   /// 登录成功或进入主壳后调用，消化待处理的快捷指令。
   static Future<void> flushPending() async {
     if (!_overlayReady) return;
@@ -66,19 +80,25 @@ class ShortcutInbound {
     _handling = true;
     try {
       var url = uri.queryParameters['url']?.trim() ?? '';
-      if (url.isEmpty) {
+      final usedClipboard = url.isEmpty;
+      if (usedClipboard) {
         url = await _readClipboardUrl() ?? '';
       }
       if (!isValidHttpUrl(url)) {
         AppNavigator.showSnackBar(
-          url.isEmpty ? '剪贴板里没有链接' : '链接无效，请检查后重试',
+          url.isEmpty
+              ? (usedClipboard ? '剪贴板里没有链接' : '未识别到有效链接')
+              : '链接无效，请检查后重试',
         );
         return;
       }
 
       ParseProgressTracker.begin();
       final result = await ItemsRepository().createItem(url);
-      await clearClipboard();
+      // 仅「从剪贴板保存」时清空，避免系统分享误清用户剪贴板
+      if (usedClipboard) {
+        await clearClipboard();
+      }
       if (result.existed && result.item.isSuccess) {
         ParseProgressTracker.cancel();
         AppNavigator.showSnackBar('该链接已收藏');
