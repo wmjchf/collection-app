@@ -227,7 +227,7 @@ router.post('/:id/restore', async (req, res, next) => {
   }
 });
 
-/** DELETE /api/items/:id/permanent — 彻底删除（仅回收站） */
+/** DELETE /api/items/:id/permanent — 彻底删除（不可恢复） */
 router.delete('/:id/permanent', async (req, res, next) => {
   try {
     const result = await itemService.purgeFromTrash(

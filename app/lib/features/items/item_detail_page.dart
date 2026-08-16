@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:super_collection/core/network/api_client.dart';
+import 'package:super_collection/core/ui/app_confirm_dialog.dart';
 import 'package:super_collection/core/ui/app_toast.dart';
 import 'package:super_collection/core/ui/parse_progress_tracker.dart';
 import 'package:super_collection/features/home/home_format.dart';
@@ -11,7 +12,6 @@ import 'package:super_collection/features/items/item_image_gallery.dart';
 import 'package:super_collection/features/items/item_models.dart';
 import 'package:super_collection/features/items/item_reading_page.dart';
 import 'package:super_collection/features/items/items_repository.dart';
-import 'package:super_collection/features/items/reading_delete_confirm_dialog.dart';
 
 /// 内容详情：头部元信息 + 随解析状态变化的内容区；成功时底部固定「进入阅读」。
 class ItemDetailPage extends StatefulWidget {
@@ -209,12 +209,17 @@ class _ItemDetailPageState extends State<ItemDetailPage> {
   Future<void> _confirmDelete() async {
     final item = _item;
     if (item == null) return;
-    final ok = await showReadingDeleteConfirmDialog(context);
+    final ok = await showAppConfirmDialog(
+      context,
+      title: '彻底删除？',
+      message: '删除后不可恢复。',
+      confirmLabel: '删除',
+    );
     if (ok != true || !mounted) return;
     try {
-      await _repo.softDelete(item.id);
+      await _repo.purgeFromTrash(item.id);
       if (!mounted) return;
-      AppToast.show(context, '已移入最近删除');
+      AppToast.show(context, '已彻底删除');
       Navigator.of(context).pop(true);
     } on ApiException catch (e) {
       if (!mounted) return;

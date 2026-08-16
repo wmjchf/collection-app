@@ -640,17 +640,17 @@ async function restoreFromTrash(userId, itemId) {
   return getByIdForUser(userId, itemId);
 }
 
-/** 彻底删除（仅回收站内） */
+/** 彻底删除（详情页 / 回收站均可） */
 async function purgeFromTrash(userId, itemId) {
   const existing = await getByIdForUser(userId, itemId, {
     includeDeleted: true,
   });
-  if (!existing || !existing.deletedAt) {
-    throw Object.assign(new Error('回收站中不存在该条目'), { status: 404 });
+  if (!existing) {
+    throw Object.assign(new Error('条目不存在'), { status: 404 });
   }
   await pool.execute(
     `DELETE FROM items
-     WHERE id = :itemId AND user_id = :userId AND deleted_at IS NOT NULL`,
+     WHERE id = :itemId AND user_id = :userId`,
     { itemId, userId },
   );
   return { id: itemId, purged: true };
