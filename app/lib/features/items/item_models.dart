@@ -82,6 +82,26 @@ class CollectionItem {
     return false;
   }
 
+  /// 阅读页是否应按「图集」展示（文章站 / 仅封面不算）
+  bool get isImageGallery {
+    if (imageUrls.isEmpty) return false;
+    final p = (platform ?? '').toLowerCase();
+    if (p == 'kr36' ||
+        p == 'web' ||
+        p == 'zhihu' ||
+        p == 'zaker' ||
+        p == 'bilibili') {
+      return false;
+    }
+    if (p == 'weixin' || p == 'wechat') return true;
+    if (_isDouyinNoteOrSlidesPath) return true;
+    if (p == 'douyin') return !hasVideo;
+    if (p == 'xiaohongshu' || p == 'jike' || p == 'weibo') {
+      return (videoUrl ?? '').trim().isEmpty;
+    }
+    return imageUrls.length >= 2;
+  }
+
   /// 展示用图集：有 imageUrls 用它，否则退回单封面（按 path 去重，避免同图不同 query *2）
   List<String> get displayImages {
     final raw = <String>[];

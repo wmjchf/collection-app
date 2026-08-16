@@ -52,24 +52,15 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
     return ArticleBodyText.splitParagraphs(raw).join('\n\n');
   }
 
-  /// 阅读页媒体：微信仅图文（imageUrls）出轮播；标准文章不放图
-  bool get _showReadingImages {
-    final p = (_item.platform ?? '').toLowerCase();
-    if (p == 'weixin') {
-      return _readingImageUrls.isNotEmpty;
-    }
-    return _item.displayImages.isNotEmpty;
-  }
+  /// 阅读页媒体：仅真图集出轮播；文章 / 单封面不放图
+  bool get _showReadingImages => _readingImageUrls.isNotEmpty;
 
   List<String> get _readingImageUrls {
-    final p = (_item.platform ?? '').toLowerCase();
-    if (p == 'weixin') {
-      return _item.imageUrls
-          .map((e) => e.trim())
-          .where((e) => e.isNotEmpty)
-          .toList(growable: false);
-    }
-    return _item.displayImages;
+    if (!_item.isImageGallery) return const [];
+    return _item.imageUrls
+        .map((e) => e.trim())
+        .where((e) => e.isNotEmpty)
+        .toList(growable: false);
   }
 
   bool get _platformNeedsVideoRefresh {

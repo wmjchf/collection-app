@@ -86,11 +86,11 @@ module.exports = {
     const content = htmlToText(contentHtml);
     if (!content || content.replace(/\s+/g, '').length < 40) return null;
     const summary = (article.summary || '').trim() || null;
-    const imageUrls = imagesFromHtml(contentHtml, baseUrl);
+    // 文章站：图只作封面，不进阅读页图集
     return {
       content,
       summary,
-      imageUrls,
+      imageUrls: [],
       videoUrl: null,
     };
   },

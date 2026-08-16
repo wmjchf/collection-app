@@ -9,11 +9,14 @@ class ItemImageGallery extends StatefulWidget {
     required this.urls,
     this.borderRadius = 12,
     this.height = 360,
+    this.fit = BoxFit.contain,
   });
 
   final List<String> urls;
   final double borderRadius;
   final double height;
+  /// 详情/阅读预览默认 contain 完整显示；需要铺满裁切时传 [BoxFit.cover]
+  final BoxFit fit;
 
   @override
   State<ItemImageGallery> createState() => _ItemImageGalleryState();
@@ -74,6 +77,7 @@ class _ItemImageGalleryState extends State<ItemImageGallery> {
           url: list.first,
           height: widget.height,
           borderRadius: widget.borderRadius,
+          fit: widget.fit,
         ),
       );
     }
@@ -98,6 +102,7 @@ class _ItemImageGalleryState extends State<ItemImageGallery> {
                       url: list[i],
                       height: widget.height,
                       borderRadius: 0,
+                      fit: widget.fit,
                     ),
                   ),
                 ),
@@ -155,33 +160,39 @@ class _CarouselImage extends StatelessWidget {
     required this.url,
     required this.height,
     required this.borderRadius,
+    this.fit = BoxFit.contain,
   });
 
   final String url;
   final double height;
   final double borderRadius;
+  final BoxFit fit;
 
   @override
   Widget build(BuildContext context) {
-    final child = Image.network(
-      url,
-      width: double.infinity,
-      height: height,
-      fit: BoxFit.cover,
-      headers: mediaHttpHeadersFor(url),
-      errorBuilder: (_, __, ___) => CoverImage(
-        url: null,
+    final child = ColoredBox(
+      color: const Color(0xFFF0F2F5),
+      child: Image.network(
+        url,
+        width: double.infinity,
         height: height,
-        borderRadius: borderRadius,
-      ),
-      loadingBuilder: (context, child, progress) {
-        if (progress == null) return child;
-        return CoverImage(
+        fit: fit,
+        alignment: Alignment.center,
+        headers: mediaHttpHeadersFor(url),
+        errorBuilder: (_, __, ___) => CoverImage(
           url: null,
           height: height,
           borderRadius: borderRadius,
-        );
-      },
+        ),
+        loadingBuilder: (context, child, progress) {
+          if (progress == null) return child;
+          return CoverImage(
+            url: null,
+            height: height,
+            borderRadius: borderRadius,
+          );
+        },
+      ),
     );
 
     if (borderRadius <= 0) return child;
