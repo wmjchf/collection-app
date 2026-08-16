@@ -1,5 +1,6 @@
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:super_collection/core/network/api_client.dart';
+import 'package:super_collection/core/network/client_page_fetch.dart';
 import 'package:super_collection/core/ui/parse_progress_tracker.dart';
 import 'package:super_collection/core/utils/clipboard_utils.dart';
 import 'package:super_collection/core/utils/link_utils.dart';
@@ -13,6 +14,11 @@ class ShortcutInbound {
 
   static const _pendingKey = 'pending_shortcut_uri';
   static bool _handling = false;
+
+  static bool get _overlayReady {
+    final ctx = ClientPageFetch.overlayContext;
+    return ctx != null && ctx.mounted;
+  }
 
   static Future<void> handleUri(Uri uri) async {
     if (uri.scheme != 'supercollection') return;
@@ -28,11 +34,19 @@ class ShortcutInbound {
       return;
     }
 
+    // 冷启动时 deep link 往往早于 MainShell：此时无 Overlay，本机 WebView 抓页会失败，
+    // 服务端又可能把短链图文误判成视频。先挂起，等主壳就绪再执行。
+    if (!_overlayReady) {
+      await _storePending(uri);
+      return;
+    }
+
     await _executeSave(uri);
   }
 
   /// 登录成功或进入主壳后调用，消化待处理的快捷指令。
   static Future<void> flushPending() async {
+    if (!_overlayReady) return;
     final prefs = await SharedPreferences.getInstance();
     final raw = prefs.getString(_pendingKey);
     if (raw == null || raw.isEmpty) return;

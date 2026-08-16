@@ -138,6 +138,16 @@ class ParseProgressTracker {
       // 仍 pending：继续靠轮询收尾
     } on ClientPageFetchException catch (e) {
       if (_watchingId != itemId) return;
+      // Overlay 未就绪：别标失败，留给主壳就绪后重试 / 补齐队列
+      if (_isOverlayNotReady(e.message)) {
+        _clientFetchStarted = false;
+        _progress.start(
+          itemId: itemId,
+          title: _progress.title,
+          subtitle: '等待页面就绪…',
+        );
+        return;
+      }
       _timer?.cancel();
       await _finishFailed(subtitle: e.message);
     } on ApiException catch (e) {
@@ -149,6 +159,10 @@ class ParseProgressTracker {
       _timer?.cancel();
       await _finishFailed(subtitle: '本机抓取失败，请稍后重试');
     }
+  }
+
+  static bool _isOverlayNotReady(String message) {
+    return message.contains('页面未就绪') || message.contains('打开 App 后重试');
   }
 
   static Future<void> _finishSuccess() async {

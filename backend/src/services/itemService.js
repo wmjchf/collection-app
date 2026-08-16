@@ -222,7 +222,7 @@ async function runContentParse(itemId) {
            summary = :summary,
            cover_image_url = COALESCE(:coverImageUrl, cover_image_url),
            image_urls = CAST(:imageUrls AS JSON),
-           video_url = COALESCE(:videoUrl, video_url),
+           video_url = :videoUrl,
            content = :content,
            status = 'success',
            error_message = NULL
@@ -345,7 +345,7 @@ async function parseWithClientHtml(userId, itemId, html) {
          summary = :summary,
          cover_image_url = COALESCE(:coverImageUrl, cover_image_url),
          image_urls = CAST(:imageUrls AS JSON),
-         video_url = COALESCE(:videoUrl, video_url),
+         video_url = :videoUrl,
          content = :content,
          status = 'success',
          error_message = NULL

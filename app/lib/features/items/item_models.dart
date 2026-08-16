@@ -53,9 +53,24 @@ class CollectionItem {
   bool get hasVideo {
     final v = videoUrl?.trim();
     if (v == null || v.isEmpty) return false;
-    // 抖音 note/slides：按路径当图文（动图可能误带 play_addr），勿「有图集就否视频」
+    // 抖音 note/slides：按路径当图文（动图可能误带 play_addr）
     if (_isDouyinNoteOrSlidesPath) return false;
+    // 短链常无 /note/：有图集则按图文（本产品视频页会清空 imageUrls）
+    if (_isDouyinPlatform && imageUrls.isNotEmpty) return false;
     return true;
+  }
+
+  bool get _isDouyinPlatform {
+    final p = (platform ?? '').toLowerCase();
+    if (p == 'douyin') return true;
+    for (final raw in [canonicalUrl, url]) {
+      if (raw == null || raw.trim().isEmpty) continue;
+      final host = (Uri.tryParse(raw.trim())?.host ?? '').toLowerCase();
+      if (host.contains('douyin.com') || host.contains('iesdouyin.com')) {
+        return true;
+      }
+    }
+    return false;
   }
 
   bool get _isDouyinNoteOrSlidesPath {

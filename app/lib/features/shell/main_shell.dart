@@ -8,6 +8,7 @@ import 'package:super_collection/core/ui/parse_progress_controller.dart';
 import 'package:super_collection/features/collection/collection_page.dart';
 import 'package:super_collection/features/home/home_page.dart';
 import 'package:super_collection/features/shell/app_bottom_nav_bar.dart';
+import 'package:super_collection/features/shortcuts/shortcut_inbound.dart';
 
 class MainShell extends StatefulWidget {
   const MainShell({super.key});
@@ -33,6 +34,8 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
       if (mounted) {
         ClientPageFetch.overlayContext = context;
       }
+      // 先挂好 Overlay，再消化快捷指令 / 补齐队列（避免冷启动抓页失败）
+      unawaited(ShortcutInbound.flushPending());
       unawaited(ClientFetchBackfill.run());
     });
   }
@@ -53,6 +56,7 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
       if (mounted) {
         ClientPageFetch.overlayContext = context;
       }
+      unawaited(ShortcutInbound.flushPending());
       unawaited(ClientFetchBackfill.run());
     }
   }

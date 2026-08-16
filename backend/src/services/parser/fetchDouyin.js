@@ -378,10 +378,12 @@ function extractDouyinFromHtml(html, opts = {}) {
       if (Array.isArray(data.imageUrls)) {
         for (const u of data.imageUrls) pushImg(u);
       }
-      // 媒体类型跟 pageKind/路径：note|slides 清 video；有图集不自动清 videoUrl
+      // 媒体类型：pageKind / 多图图文清 video；勿仅依赖路径（短链无 /note/）
       const pageKind = String(data.pageKind || '').toLowerCase();
       const noteLike =
-        pageKind === 'note' || pageKind === 'slides';
+        pageKind === 'note' ||
+        pageKind === 'slides' ||
+        imageUrls.length > 1;
       const finalVideo = noteLike ? null : videoUrl;
       if (!finalVideo && cover && !imageUrls.length) pushImg(cover);
       if (finalVideo || imageUrls.length || cover || title || desc) {

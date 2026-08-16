@@ -2,7 +2,7 @@ import AppIntents
 import Foundation
 import UIKit
 
-/// 桌面 / 快捷指令：不打开 App，保存链接并尽量在本机完成解析（含微信抓页）。
+/// 桌面 / 快捷指令：不打开 App，保存链接并尽量在本机完成解析（微信可抓页；抖音需打开 App 用 WebView）。
 ///
 /// 注意：iOS 16+ 后台直接读剪贴板常被隐私拦截。
 /// 推荐快捷指令：获取剪贴板 → 本 Intent（填入「链接」）→ 拷贝到剪贴板（留空）。
@@ -242,7 +242,8 @@ enum ShortcutAuthStore {
     )
   }
 
-  /// 微信等：本机抓 HTML 回传；其它：短轮询服务端解析，若需本机抓再补。
+  /// 微信 / 抖音：本机抓 HTML 回传；其它：短轮询服务端解析，若需本机抓再补。
+  /// 抖音图文依赖 JS/WebView，Intent 里纯 HTTP 常拿到壳页并误判视频 → 只入库，等打开 App 用 WebView 补齐。
   @available(iOS 16.0, *)
   static func ensureParsed(
     baseUrl: String,
@@ -255,6 +256,16 @@ enum ShortcutAuthStore {
   ) async throws -> String {
     let plat = (platform ?? "").lowercased()
     let isWeixin = plat == "weixin" || plat == "wechat"
+    let isDouyin = plat == "douyin" || pageUrl.lowercased().contains("douyin.com")
+      || pageUrl.lowercased().contains("iesdouyin.com")
+
+    if isDouyin {
+      onProgress?(40, "已入库，打开 App 完成解析…")
+      // 不在此用 HTTP 硬抓：短链图文易变成错误视频；留给主 App WebView + 补齐队列
+      return existed
+        ? "已收藏。打开超级收藏夹即可自动补齐解析"
+        : "已保存。打开超级收藏夹即可自动补齐解析"
+    }
 
     if isWeixin {
       return try await clientFetchAndParse(
@@ -287,6 +298,12 @@ enum ShortcutAuthStore {
         return existed ? "已收藏，解析失败" : "已保存，解析失败"
       }
       if st.needsClientFetch {
+        let fetchUrl = (st.url ?? pageUrl).lowercased()
+        if fetchUrl.contains("douyin.com") || fetchUrl.contains("iesdouyin.com") {
+          return existed
+            ? "已收藏。打开超级收藏夹即可自动补齐解析"
+            : "已保存。打开超级收藏夹即可自动补齐解析"
+        }
         return try await clientFetchAndParse(
           baseUrl: baseUrl,
           token: token,
@@ -298,7 +315,7 @@ enum ShortcutAuthStore {
       }
     }
 
-    // 超时仍 pending：尝试本机抓一次兜底
+    // 超时仍 pending：尝试本机抓一次兜底（抖音已在上方排除）
     return try await clientFetchAndParse(
       baseUrl: baseUrl,
       token: token,

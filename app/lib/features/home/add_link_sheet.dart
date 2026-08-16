@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:super_collection/core/network/api_client.dart';
+import 'package:super_collection/core/ui/app_toast.dart';
+import 'package:super_collection/core/ui/parse_progress_tracker.dart';
 import 'package:super_collection/core/utils/clipboard_utils.dart';
 import 'package:super_collection/core/utils/link_utils.dart';
 import 'package:super_collection/features/items/item_detail_page.dart';
 import 'package:super_collection/features/items/items_repository.dart';
-import 'package:super_collection/core/ui/app_toast.dart';
 
 /// 弹出「添加链接」底部弹框（对齐 Figma）。
 /// 可预填 [initialUrl]；若为空则尝试读取剪贴板中的 URL。
@@ -89,13 +90,26 @@ class _AddLinkSheetState extends State<AddLinkSheet> {
 
     try {
       final navigator = Navigator.of(context);
+      ParseProgressTracker.begin();
       final result = await _items.createItem(url);
       if (!mounted) return;
       navigator.pop();
-      AppToast.show(
-        context,
-        result.existed ? '该链接已收藏' : '已保存：${result.item.title ?? ''}',
-      );
+      if (result.existed && result.item.isSuccess) {
+        ParseProgressTracker.cancel();
+        AppToast.show(context, '该链接已收藏');
+      } else {
+        // ignore: unawaited_futures
+        ParseProgressTracker.watchItem(
+          result.item.id,
+          initialStatus: result.item.status,
+          platform: result.item.platform,
+          url: result.item.canonicalUrl ?? result.item.url,
+        );
+        AppToast.show(
+          context,
+          result.existed ? '该链接已收藏，继续解析…' : '已保存：${result.item.title ?? ''}',
+        );
+      }
       navigator.push(
         MaterialPageRoute<void>(
           builder: (_) => ItemDetailPage(
@@ -105,12 +119,14 @@ class _AddLinkSheetState extends State<AddLinkSheet> {
         ),
       );
     } on ApiException catch (e) {
+      ParseProgressTracker.cancel();
       if (!mounted) return;
       setState(() {
         _saving = false;
         _error = e.message;
       });
     } catch (_) {
+      ParseProgressTracker.cancel();
       if (!mounted) return;
       setState(() {
         _saving = false;

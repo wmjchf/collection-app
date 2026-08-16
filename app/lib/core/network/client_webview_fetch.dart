@@ -397,12 +397,17 @@ class ClientWebViewFetch {
 
     final id = _awemeIdFromUri(current) ?? _awemeIdFromUri(raw);
     if (id != null) {
-      if (pathLower.contains('/note/') ||
-          raw.path.toLowerCase().contains('/note/')) {
+      final pathHasNote = pathLower.contains('/note/') ||
+          raw.path.toLowerCase().contains('/note/') ||
+          current.toString().toLowerCase().contains('/note/');
+      final pathHasSlides = pathLower.contains('/slides/') ||
+          raw.path.toLowerCase().contains('/slides/');
+      if (pathHasNote || pathHasSlides) {
+        final kind = pathHasSlides ? 'slides' : 'note';
         final share = Uri.parse(
-          'https://www.iesdouyin.com/share/note/$id/?from_ssr=1',
+          'https://www.iesdouyin.com/share/$kind/$id/?from_ssr=1',
         );
-        debugPrint('[douyin-fetch] note $share');
+        debugPrint('[douyin-fetch] $kind $share');
         return share;
       }
       final share = Uri.parse(
@@ -574,8 +579,11 @@ class ClientWebViewFetch {
     if(!cover && imageUrls.length) cover = imageUrls[0];
     var title = (desc.split(/\n+/).filter(Boolean)[0]||'').slice(0,80) || (author ? author+'的抖音' : null);
     var aid = String(aweme.aweme_id || aweme.awemeId || aweme.id || '');
+    var awemeType = Number(aweme.aweme_type || aweme.awemeType || 0);
+    // 68 图文 / 150 图集；多图也按图文
+    var isImagePost = awemeType === 68 || awemeType === 150 || imageUrls.length > 1;
     if(!videoUrl && !cover && !title && !imageUrls.length) return null;
-    return { title:title, author:author, desc:desc, videoUrl:videoUrl, cover:cover, imageUrls:imageUrls, awemeId:aid };
+    return { title:title, author:author, desc:desc, videoUrl:videoUrl, cover:cover, imageUrls:imageUrls, awemeId:aid, isImagePost:isImagePost, awemeType:awemeType };
   }
   function betterPick(a, b, wantId){
     if(!a) return b;
@@ -663,8 +671,16 @@ class ClientWebViewFetch {
       }
     }
     if(picked && picked.videoUrl) videoUrl = picked.videoUrl;
-    // note/slides 动图常带 play_addr，按路径丢掉；video 页即使有图也保留 videoUrl
-    if(isNotePage) videoUrl = '';
+    // note/slides、图文 aweme_type、多图：丢掉误带的 play_addr
+    var imagePost = !!(picked && (
+      picked.isImagePost ||
+      (picked.imageUrls && picked.imageUrls.length > 1)
+    ));
+    if(isNotePage || imagePost){
+      videoUrl = '';
+      if(!isNotePage && imagePost) pageKind = 'note';
+      isNotePage = true;
+    }
     var title = (picked && picked.title) || document.title || '';
     if(title.indexOf('抖音')===0 && title.length<8) title = (picked && picked.desc) || title;
     var cover = (picked && picked.cover) || poster || null;

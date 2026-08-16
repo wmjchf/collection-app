@@ -6,12 +6,12 @@ const {
 } = require('../fetchDouyin');
 
 /**
- * 抖音：服务端优先拉移动分享页；遇 WAF 则 blocked → 本机抓页再抽。
+ * 抖音：云端常遇 WAF / 图文短链易误判视频 → 与微信一样走本机抓页。
  * @type {import('./registry').PlatformAdapter}
  */
 module.exports = {
   id: 'douyin',
-  fetchMode: 'server',
+  fetchMode: 'client',
   detectFromHtml(html) {
     return (
       typeof html === 'string' &&
@@ -42,11 +42,12 @@ module.exports = {
     }
     const pathNote =
       isNoteOrSlidesUrl(opts.pageUrl) || isNoteOrSlidesUrl(opts.baseUrl);
+    const imagePost = Array.isArray(note.imageUrls) && note.imageUrls.length > 1;
     return {
       content: note.content,
       summary: note.summary,
       imageUrls: note.imageUrls || [],
-      videoUrl: pathNote ? null : note.videoUrl || null,
+      videoUrl: pathNote || imagePost ? null : note.videoUrl || null,
     };
   },
 };
