@@ -152,15 +152,20 @@ class _SearchPageState extends State<SearchPage> {
     }
   }
 
-  void _openHit(SearchHit hit) {
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(
+  void _openHit(SearchHit hit) async {
+    final deleted = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
         builder: (_) => ItemDetailPage(
           itemId: hit.item.id,
           initialItem: hit.item,
         ),
       ),
     );
+    if (!mounted || deleted != true) return;
+    setState(() {
+      _hits = _hits.where((e) => e.item.id != hit.item.id).toList();
+      _total = (_total - 1).clamp(0, 1 << 30);
+    });
   }
 
   @override
@@ -361,6 +366,7 @@ class _SearchResultCard extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               CoverImage(
+                key: ValueKey('cover-${item.id}'),
                 url: item.coverImageUrl,
                 width: 64,
                 height: 64,

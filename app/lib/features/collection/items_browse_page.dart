@@ -195,24 +195,27 @@ class _ItemsBrowsePageState extends State<ItemsBrowsePage> {
                       }
                       final item = _items[itemIndex];
                       return Padding(
+                        key: ValueKey('item-${item.id}'),
                         padding: const EdgeInsets.only(bottom: 8),
                         child: Material(
                           color: Colors.white,
                           borderRadius: BorderRadius.circular(12),
                           child: InkWell(
                             borderRadius: BorderRadius.circular(12),
-                            onTap: () {
-                              Navigator.of(context)
-                                  .push(
-                                MaterialPageRoute<void>(
+                            onTap: () async {
+                              final deleted = await Navigator.of(context).push<bool>(
+                                MaterialPageRoute(
                                   builder: (_) => ItemDetailPage(
                                     itemId: item.id,
                                     initialItem: item,
                                   ),
                                 ),
-                              )
-                                  .then((_) {
-                                if (mounted) _load(reset: true);
+                              );
+                              if (!mounted || deleted != true) return;
+                              setState(() {
+                                _items =
+                                    _items.where((e) => e.id != item.id).toList();
+                                _total = (_total - 1).clamp(0, 1 << 30);
                               });
                             },
                             child: Padding(
@@ -224,6 +227,7 @@ class _ItemsBrowsePageState extends State<ItemsBrowsePage> {
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   CoverImage(
+                                    key: ValueKey('cover-${item.id}'),
                                     url: item.coverImageUrl,
                                     width: 64,
                                     height: 64,

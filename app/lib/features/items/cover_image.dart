@@ -32,6 +32,8 @@ class CoverImage extends StatelessWidget {
                 trimmed,
                 fit: BoxFit.cover,
                 headers: mediaHttpHeadersFor(trimmed),
+                gaplessPlayback: true,
+                filterQuality: FilterQuality.low,
                 errorBuilder: (_, __, ___) => const _DefaultCover(),
                 loadingBuilder: (context, child, progress) {
                   if (progress == null) return child;

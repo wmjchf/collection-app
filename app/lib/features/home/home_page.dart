@@ -272,17 +272,35 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     });
   }
 
-  void _openItem(CollectionItem item) {
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(
+  void _openItem(CollectionItem item) async {
+    final deleted = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
         builder: (_) => ItemDetailPage(
           itemId: item.id,
           initialItem: item,
         ),
       ),
-    ).then((_) {
-      if (mounted) _load();
-    });
+    );
+    if (!mounted) return;
+    if (deleted == true) {
+      final data = _data;
+      if (data == null) return;
+      HomeSectionData strip(HomeSectionData s) {
+        final next = s.items.where((e) => e.id != item.id).toList();
+        final removed = s.items.length - next.length;
+        return HomeSectionData(
+          total: (s.total - removed).clamp(0, 1 << 30),
+          items: next,
+        );
+      }
+      setState(() {
+        _data = HomeData(
+          unread: strip(data.unread),
+          annotated: strip(data.annotated),
+          recentRead: strip(data.recentRead),
+        );
+      });
+    }
   }
 
   @override
