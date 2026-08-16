@@ -634,8 +634,8 @@ class ClientWebViewFetch {
     if(isJunk(cover)) cover = null;
     var gallery = (picked && picked.imageUrls) ? picked.imageUrls.slice() : [];
     gallery = gallery.filter(function(u){ return u && !isJunk(u); });
-    // DOM 上的正文图（仅 tos 内容图，不做全页 URL 扫）
-    if(!gallery.length){
+    // DOM 正文图：仅 note/slides；video 页封面不算图集
+    if(isNotePage && !gallery.length){
       var imgs = document.querySelectorAll('img');
       for(var j=0;j<imgs.length;j++){
         var isrc = abs(imgs[j].currentSrc || imgs[j].src || '');
@@ -647,19 +647,20 @@ class ClientWebViewFetch {
     var ogTitle = document.querySelector('meta[property="og:title"]');
     if((!title || title==='抖音') && ogTitle) title = ogTitle.getAttribute('content') || title;
 
-    // note/slides：必须有真图集或视频；禁止默认封面冒充成功
+    // video 页：必须有直链才 ready（封面/DOM 图不算成功，否则会当成图文）
+    // note/slides：要有真图集（动图误带的 play_addr 已按路径清掉）
     var ready = !waf && (
-      !!videoUrl ||
-      gallery.length > 0 ||
-      (!isNotePage && !!picked && !!(picked.desc||picked.title) && !!cover)
+      isNotePage ? gallery.length > 0 : !!videoUrl
     );
     if(!ready){
-      return JSON.stringify({ ready:false, waf:waf, hasVideo:!!videoUrl, gallery:gallery.length, note:isNotePage, captured:(window.__SC_DY_JSON&&window.__SC_DY_JSON.length)||0, title:title });
+      return JSON.stringify({ ready:false, waf:waf, hasVideo:!!videoUrl, gallery:gallery.length, note:isNotePage, kind:pageKind, captured:(window.__SC_DY_JSON&&window.__SC_DY_JSON.length)||0, title:title });
     }
+    // video 页不要把封面塞进 imageUrls（阅读页会优先图集）
+    if(!isNotePage) gallery = [];
     var payload = {
       videoUrl: videoUrl || null,
       title: title || null,
-      cover: cover || gallery[0] || null,
+      cover: cover || null,
       imageUrls: gallery,
       author: (picked && picked.author) || null,
       desc: (picked && picked.desc) || null,

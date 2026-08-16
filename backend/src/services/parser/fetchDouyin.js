@@ -493,6 +493,22 @@ async function fetchDouyin(rawUrl) {
       };
     }
 
+    // 视频分享页 SSR 常只剩壳（有 itemId、无 aweme/play_addr），需本机 WebView
+    if (awemeId || /\/share\/video\//i.test(shareUrl || '')) {
+      return {
+        ok: false,
+        blocked: true,
+        title: null,
+        content: null,
+        summary: null,
+        coverImageUrl: null,
+        author: null,
+        imageUrls: [],
+        videoUrl: null,
+        errorMessage: '视频页需本机加载',
+      };
+    }
+
     return {
       ok: false,
       blocked: false,
