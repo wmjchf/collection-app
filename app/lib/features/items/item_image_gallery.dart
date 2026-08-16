@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:super_collection/core/network/media_http_headers.dart';
 import 'package:super_collection/features/items/cover_image.dart';
 
 /// 多图轮播；点击可全屏预览。
@@ -167,6 +168,7 @@ class _CarouselImage extends StatelessWidget {
       width: double.infinity,
       height: height,
       fit: BoxFit.cover,
+      headers: mediaHttpHeadersFor(url),
       errorBuilder: (_, __, ___) => CoverImage(
         url: null,
         height: height,
@@ -243,6 +245,7 @@ class _ImagePreviewPageState extends State<_ImagePreviewPage> {
                     child: Image.network(
                       list[i],
                       fit: BoxFit.contain,
+                      headers: mediaHttpHeadersFor(list[i]),
                       errorBuilder: (_, __, ___) => const Icon(
                         Icons.broken_image_outlined,
                         color: Colors.white54,

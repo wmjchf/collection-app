@@ -537,7 +537,6 @@ class ClientWebViewFetch {
       }
     }
     var imageUrls = collectGallery(aweme);
-    if(imageUrls.length) videoUrl = null;
     var cover = firstUrlList(video.cover) || firstUrlList(video.origin_cover) || firstUrlList(video.dynamic_cover);
     if(isJunk(cover)) cover = null;
     if(!cover && imageUrls.length) cover = imageUrls[0];
@@ -588,8 +587,14 @@ class ClientWebViewFetch {
     return null;
   }
   try {
-    var isNotePage = false;
-    try { isNotePage = /\/note\//i.test(location.pathname||'') || /\/slides\//i.test(location.pathname||''); } catch(e){}
+    // 媒体类型跟路径走：/note|/slides → 图文；/video → 视频。勿「有图集就清 videoUrl」
+    var pageKind = 'video';
+    try {
+      var pn = location.pathname || '';
+      if (/\/note\//i.test(pn)) pageKind = 'note';
+      else if (/\/slides\//i.test(pn)) pageKind = 'slides';
+    } catch(e){}
+    var isNotePage = pageKind === 'note' || pageKind === 'slides';
     var head = document.documentElement.innerHTML.slice(0, 5000);
     var waf = /waf_js|waf-jschallenge/i.test(head);
     var videoUrl = '';
@@ -621,7 +626,8 @@ class ClientWebViewFetch {
       }
     }
     if(picked && picked.videoUrl) videoUrl = picked.videoUrl;
-    if(picked && picked.imageUrls && picked.imageUrls.length) videoUrl = '';
+    // note/slides 动图常带 play_addr，按路径丢掉；video 页即使有图也保留 videoUrl
+    if(isNotePage) videoUrl = '';
     var title = (picked && picked.title) || document.title || '';
     if(title.indexOf('抖音')===0 && title.length<8) title = (picked && picked.desc) || title;
     var cover = (picked && picked.cover) || poster || null;
@@ -650,14 +656,14 @@ class ClientWebViewFetch {
     if(!ready){
       return JSON.stringify({ ready:false, waf:waf, hasVideo:!!videoUrl, gallery:gallery.length, note:isNotePage, captured:(window.__SC_DY_JSON&&window.__SC_DY_JSON.length)||0, title:title });
     }
-    if(gallery.length) videoUrl = '';
     var payload = {
       videoUrl: videoUrl || null,
       title: title || null,
       cover: cover || gallery[0] || null,
       imageUrls: gallery,
       author: (picked && picked.author) || null,
-      desc: (picked && picked.desc) || null
+      desc: (picked && picked.desc) || null,
+      pageKind: pageKind
     };
     if(!payload.videoUrl && !(payload.imageUrls && payload.imageUrls.length)){
       return JSON.stringify({ ready:false, reason:'no-real-media' });

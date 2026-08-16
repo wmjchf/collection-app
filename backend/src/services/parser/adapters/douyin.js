@@ -1,6 +1,7 @@
 const {
   fetchDouyin,
   extractDouyinFromHtml,
+  isNoteOrSlidesUrl,
   isWafChallenge,
 } = require('../fetchDouyin');
 
@@ -31,16 +32,18 @@ module.exports = {
       author: note.author,
     };
   },
-  extractContent(html) {
+  extractContent(html, opts = {}) {
     const note = extractDouyinFromHtml(html);
     if (!note?.content && !(note?.imageUrls?.length) && !note?.videoUrl) {
       return null;
     }
+    const pathNote =
+      isNoteOrSlidesUrl(opts.pageUrl) || isNoteOrSlidesUrl(opts.baseUrl);
     return {
       content: note.content,
       summary: note.summary,
       imageUrls: note.imageUrls || [],
-      videoUrl: note.videoUrl || null,
+      videoUrl: pathNote ? null : note.videoUrl || null,
     };
   },
 };

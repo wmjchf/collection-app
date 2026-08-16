@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:super_collection/core/network/media_http_headers.dart';
 
 /// 封面图：有 URL 则加载网络图；无图或加载失败则显示默认封面。
 class CoverImage extends StatelessWidget {
@@ -18,7 +19,8 @@ class CoverImage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final radius = BorderRadius.circular(borderRadius);
-    final hasUrl = url != null && url!.trim().isNotEmpty;
+    final trimmed = url?.trim();
+    final hasUrl = trimmed != null && trimmed.isNotEmpty;
 
     return ClipRRect(
       borderRadius: radius,
@@ -27,8 +29,9 @@ class CoverImage extends StatelessWidget {
         width: width ?? double.infinity,
         child: hasUrl
             ? Image.network(
-                url!.trim(),
+                trimmed,
                 fit: BoxFit.cover,
+                headers: mediaHttpHeadersFor(trimmed),
                 errorBuilder: (_, __, ___) => const _DefaultCover(),
                 loadingBuilder: (context, child, progress) {
                   if (progress == null) return child;

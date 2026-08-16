@@ -197,8 +197,7 @@ function pickFromAweme(aweme) {
     }
   }
 
-  // note/动图有图集时不当视频
-  if (gallery.length > 0) videoUrl = null;
+  // 是否丢掉 videoUrl 由调用方按路径决定（note/slides vs video），这里有图也保留 play_addr
 
   const coverCandidates = [
     gallery[0],
@@ -319,8 +318,11 @@ function extractDouyinFromHtml(html) {
       if (Array.isArray(data.imageUrls)) {
         for (const u of data.imageUrls) pushImg(u);
       }
-      // 有图集则不当视频；封面仅在无图集时补一张
-      const finalVideo = imageUrls.length > 0 ? null : videoUrl;
+      // 媒体类型跟 pageKind/路径：note|slides 清 video；有图集不自动清 videoUrl
+      const pageKind = String(data.pageKind || '').toLowerCase();
+      const noteLike =
+        pageKind === 'note' || pageKind === 'slides';
+      const finalVideo = noteLike ? null : videoUrl;
       if (!finalVideo && cover && !imageUrls.length) pushImg(cover);
       if (finalVideo || imageUrls.length || cover || title || desc) {
         if (!finalVideo && !imageUrls.length && !cover) {
@@ -441,6 +443,8 @@ async function fetchDouyin(rawUrl) {
       if (!awemeId) awemeId = extractAwemeId(finalUrl);
       const note = extractDouyinFromHtml(lastHtml);
       if (note && hasRealMedia(note)) {
+        const pathNote =
+          noteLike || isNoteOrSlidesUrl(finalUrl);
         return {
           ok: true,
           blocked: false,
@@ -450,7 +454,8 @@ async function fetchDouyin(rawUrl) {
           coverImageUrl: note.coverImageUrl,
           author: note.author,
           imageUrls: note.imageUrls || [],
-          videoUrl: note.videoUrl || null,
+          // note/slides 按路径丢掉误带的 play_addr；video 页即使有图也保留
+          videoUrl: pathNote ? null : note.videoUrl || null,
           errorMessage: null,
         };
       }
@@ -521,6 +526,7 @@ module.exports = {
   extractAwemeId,
   extractDouyinFromHtml,
   fetchDouyin,
+  isNoteOrSlidesUrl,
   isWafChallenge,
   preferHttps,
 };

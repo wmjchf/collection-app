@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:super_collection/core/network/media_http_headers.dart';
 import 'package:video_player/video_player.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
@@ -33,38 +34,6 @@ bool _needsBilibiliWebView(String url) {
       lower.contains('bilibili.com') ||
       lower.contains('hdslb.com') ||
       lower.contains('akamaized.net');
-}
-
-Map<String, String> _httpHeadersFor(String url) {
-  const mobileUa =
-      'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1';
-  final lower = url.toLowerCase();
-  if (lower.contains('xhscdn') || lower.contains('xiaohongshu')) {
-    return {
-      'Referer': 'https://www.xiaohongshu.com/',
-      'User-Agent': mobileUa,
-    };
-  }
-  if (lower.contains('weibo') ||
-      lower.contains('weibocdn') ||
-      lower.contains('sinaimg') ||
-      lower.contains('sina.com')) {
-    return {
-      'Referer': 'https://weibo.com/',
-      'User-Agent': mobileUa,
-    };
-  }
-  if (lower.contains('douyin') ||
-      lower.contains('douyinvod') ||
-      lower.contains('byteicdn') ||
-      lower.contains('bytevod') ||
-      lower.contains('iesdouyin')) {
-    return {
-      'Referer': 'https://www.douyin.com/',
-      'User-Agent': mobileUa,
-    };
-  }
-  return {'User-Agent': mobileUa};
 }
 
 bool _bilibiliDeadlineExpired(String url) {
@@ -260,7 +229,7 @@ class _ItemVideoPlayerState extends State<ItemVideoPlayer> {
     _webController = null;
     final controller = VideoPlayerController.networkUrl(
       uri,
-      httpHeaders: _httpHeadersFor(_playUrl),
+      httpHeaders: mediaHttpHeadersFor(_playUrl),
     );
     _controller = controller;
     controller.addListener(_onTick);
@@ -520,6 +489,7 @@ class _ItemVideoPlayerState extends State<ItemVideoPlayer> {
                   child: Image.network(
                     widget.coverUrl!.trim(),
                     fit: BoxFit.cover,
+                    headers: mediaHttpHeadersFor(widget.coverUrl!.trim()),
                     errorBuilder: (_, __, ___) => const SizedBox.shrink(),
                   ),
                 ),

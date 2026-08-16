@@ -168,6 +168,8 @@ async function parseFullContent(
     const { content, summary, imageUrls, videoUrl } = extractContent(sourceHtml, {
       platform: resolvedPlatform,
       existingSummary: existingSummary || meta.summary,
+      pageUrl: url,
+      baseUrl: pageUrl,
     });
     if (!content && !(imageUrls && imageUrls.length) && !videoUrl) {
       return {
@@ -246,6 +248,8 @@ async function parseFullContent(
   const { content, summary, imageUrls, videoUrl } = extractContent(sourceHtml, {
     platform: resolvedPlatform,
     existingSummary: existingSummary || meta.summary,
+    pageUrl: url,
+    baseUrl: pageUrl,
   });
 
   if (!content && !(imageUrls && imageUrls.length) && !videoUrl) {
