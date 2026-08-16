@@ -84,7 +84,7 @@ class ClientWebViewFetch {
           final html = map['html'] as String?;
           if (html != null && html.length > 80) {
             debugPrint(
-              '[douyin-fetch] ready title=${map['title']} video=${map['hasVideo']} cover=${map['hasCover']}',
+              '[douyin-fetch] ready title=${map['title']} video=${map['hasVideo']} cover=${map['hasCover']} gallery=${map['gallery']}',
             );
             succeed(html);
           }
@@ -452,7 +452,7 @@ class ClientWebViewFetch {
   window.__SC_DY_JSON = window.__SC_DY_JSON || [];
   function keep(t){
     if (!t || t.length < 80 || t.length > 4000000) return;
-    if (!/\"images\"|play_addr|aweme_detail|item_list/i.test(t)) return;
+    if (!/\"images\"|image_post_info|imagePostInfo|play_addr|aweme_detail|item_list/i.test(t)) return;
     if (window.__SC_DY_JSON.length > 10) window.__SC_DY_JSON.shift();
     window.__SC_DY_JSON.push(t);
   }
@@ -489,6 +489,9 @@ class ClientWebViewFetch {
 (function(){
   function abs(u){
     if(!u) return null;
+    if(typeof u==='object'){
+      return firstUrlList(u) || abs(u.url || u.uri || null);
+    }
     u = String(u).trim();
     if(u.indexOf('//')===0) u='https:'+u;
     if(u.indexOf('http://')===0) u='https://'+u.slice(7);
@@ -505,24 +508,53 @@ class ClientWebViewFetch {
     var list = obj.url_list || obj.urlList || obj.uri_list;
     if(list && list.length){
       for(var i=0;i<list.length;i++){
-        var u=abs(list[i]);
+        var raw = list[i];
+        var u = typeof raw==='string' ? abs(raw) : abs(raw && (raw.url || raw.uri || raw));
         if(u) return u;
       }
     }
     return abs(obj.url||obj.uri||null);
   }
+  function pickImageUrl(im){
+    if(!im) return null;
+    if(typeof im==='string') return abs(im);
+    return firstUrlList(im) ||
+      firstUrlList(im.display_image || im.displayImage) ||
+      firstUrlList(im.owner_watermark_image || im.ownerWatermarkImage) ||
+      firstUrlList(im.origin_thumb || im.thumb) ||
+      firstUrlList(im.download_url_list ? {url_list: im.download_url_list} : null) ||
+      firstUrlList(im.downloadUrlList ? {url_list: im.downloadUrlList} : null) ||
+      abs(im.url);
+  }
   function collectGallery(aweme){
     var out = [];
-    var src = aweme.images || aweme.image_list || (aweme.image_post_info && aweme.image_post_info.images) || [];
-    if(!Array.isArray(src)) return out;
+    var src = [];
+    function pushAll(arr){
+      if(!Array.isArray(arr)) return;
+      for(var i=0;i<arr.length;i++) src.push(arr[i]);
+    }
+    pushAll(aweme.images);
+    pushAll(aweme.image_list);
+    pushAll(aweme.imageList);
+    if(aweme.image_post_info){
+      pushAll(aweme.image_post_info.images);
+      pushAll(aweme.image_post_info.image_list);
+    }
+    if(aweme.imagePostInfo){
+      pushAll(aweme.imagePostInfo.images);
+      pushAll(aweme.imagePostInfo.image_list);
+    }
     for(var i=0;i<src.length;i++){
-      var im = src[i];
-      var one = firstUrlList(im && im.url_list ? im : im) ||
-                (im && im.download_url_list ? firstUrlList({url_list: im.download_url_list}) : null);
-      one = abs(one);
+      var one = pickImageUrl(src[i]);
       if(one && !isJunk(one) && out.indexOf(one)<0) out.push(one);
     }
     return out;
+  }
+  function pageAwemeId(){
+    try {
+      var m = (location.pathname||'').match(/\/(?:note|slides|video)\/(\d{5,})/i);
+      return m ? m[1] : null;
+    } catch(e){ return null; }
   }
   function fromAweme(aweme){
     if(!aweme) return null;
@@ -541,40 +573,47 @@ class ClientWebViewFetch {
     if(isJunk(cover)) cover = null;
     if(!cover && imageUrls.length) cover = imageUrls[0];
     var title = (desc.split(/\n+/).filter(Boolean)[0]||'').slice(0,80) || (author ? author+'的抖音' : null);
+    var aid = String(aweme.aweme_id || aweme.awemeId || aweme.id || '');
     if(!videoUrl && !cover && !title && !imageUrls.length) return null;
-    return { title:title, author:author, desc:desc, videoUrl:videoUrl, cover:cover, imageUrls:imageUrls };
+    return { title:title, author:author, desc:desc, videoUrl:videoUrl, cover:cover, imageUrls:imageUrls, awemeId:aid };
   }
-  function walk(node, depth){
+  function betterPick(a, b, wantId){
+    if(!a) return b;
+    if(!b) return a;
+    var aN = (a.imageUrls && a.imageUrls.length) || 0;
+    var bN = (b.imageUrls && b.imageUrls.length) || 0;
+    if(wantId){
+      var aHit = a.awemeId && String(a.awemeId)===String(wantId);
+      var bHit = b.awemeId && String(b.awemeId)===String(wantId);
+      if(aHit && !bHit) return a;
+      if(bHit && !aHit) return b;
+    }
+    if(bN !== aN) return bN > aN ? b : a;
+    if(!!b.videoUrl !== !!a.videoUrl) return b.videoUrl ? b : a;
+    return a;
+  }
+  function walk(node, depth, wantId){
     if(!node || typeof node!=='object' || depth>14) return null;
     var best = null;
     function consider(p){
       if(!p) return;
-      if(p.imageUrls && p.imageUrls.length){ best = p; return true; }
-      if(p.videoUrl){ best = p; return true; }
-      if(!best) best = p;
-      return false;
+      best = betterPick(best, p, wantId);
     }
-    if((node.video || node.images || node.image_list) && (node.desc!=null || node.author || node.aweme_id || node.awemeId)){
-      if(consider(fromAweme(node))) return best;
+    if((node.video || node.images || node.image_list || node.image_post_info || node.imagePostInfo) && (node.desc!=null || node.author || node.aweme_id || node.awemeId || node.id)){
+      consider(fromAweme(node));
     }
-    if(node.item_list && node.item_list[0] && consider(fromAweme(node.item_list[0]))) return best;
-    if(node.aweme_detail && consider(fromAweme(node.aweme_detail))) return best;
-    if(node.awemeDetail && consider(fromAweme(node.awemeDetail))) return best;
+    if(node.item_list && node.item_list[0]) consider(fromAweme(node.item_list[0]));
+    if(node.aweme_detail) consider(fromAweme(node.aweme_detail));
+    if(node.awemeDetail) consider(fromAweme(node.awemeDetail));
     if(Array.isArray(node)){
       for(var i=0;i<node.length;i++){
-        var f=walk(node[i], depth+1);
-        if(f && f.imageUrls && f.imageUrls.length) return f;
-        if(f && f.videoUrl) return f;
-        if(f && !best) best = f;
+        consider(walk(node[i], depth+1, wantId));
       }
       return best;
     }
     for(var k in node){
       if(!Object.prototype.hasOwnProperty.call(node,k)) continue;
-      var f2=walk(node[k], depth+1);
-      if(f2 && f2.imageUrls && f2.imageUrls.length) return f2;
-      if(f2 && f2.videoUrl) return f2;
-      if(f2 && !best) best = f2;
+      consider(walk(node[k], depth+1, wantId));
     }
     return best;
   }
@@ -588,6 +627,7 @@ class ClientWebViewFetch {
   }
   try {
     // 媒体类型跟路径走：/note|/slides → 图文；/video → 视频。勿「有图集就清 videoUrl」
+    var wantId = pageAwemeId();
     var pageKind = 'video';
     try {
       var pn = location.pathname || '';
@@ -608,20 +648,17 @@ class ClientWebViewFetch {
     }
     var picked = null;
     var router = parseRouter();
-    if(router){ picked = walk(router.loaderData || router, 0); }
+    if(router){ picked = walk(router.loaderData || router, 0, wantId); }
     var ud = document.getElementById('__UNIVERSAL_DATA_FOR_REHYDRATION__');
-    if(!picked && ud && ud.textContent){
-      try { picked = walk(JSON.parse(ud.textContent), 0); } catch(e){}
+    if(ud && ud.textContent){
+      try { picked = betterPick(picked, walk(JSON.parse(ud.textContent), 0, wantId), wantId); } catch(e){}
     }
-    // note：吃拦截到的接口 JSON
-    if((!picked || !(picked.imageUrls && picked.imageUrls.length)) && window.__SC_DY_JSON){
-      for(var ci=window.__SC_DY_JSON.length-1; ci>=0; ci--){
+    // note：吃拦截到的接口 JSON，取图最多 / 命中 awemeId 的那份
+    if(window.__SC_DY_JSON && window.__SC_DY_JSON.length){
+      for(var ci=0; ci<window.__SC_DY_JSON.length; ci++){
         try {
-          var cp = walk(JSON.parse(window.__SC_DY_JSON[ci]), 0);
-          if(cp && ((cp.imageUrls && cp.imageUrls.length) || cp.videoUrl)){
-            picked = cp;
-            break;
-          }
+          var cp = walk(JSON.parse(window.__SC_DY_JSON[ci]), 0, wantId);
+          picked = betterPick(picked, cp, wantId);
         } catch(e){}
       }
     }
@@ -634,8 +671,8 @@ class ClientWebViewFetch {
     if(isJunk(cover)) cover = null;
     var gallery = (picked && picked.imageUrls) ? picked.imageUrls.slice() : [];
     gallery = gallery.filter(function(u){ return u && !isJunk(u); });
-    // DOM 正文图：仅 note/slides；video 页封面不算图集
-    if(isNotePage && !gallery.length){
+    // note/slides：DOM 正文图并入（补 JSON 不全时）
+    if(isNotePage){
       var imgs = document.querySelectorAll('img');
       for(var j=0;j<imgs.length;j++){
         var isrc = abs(imgs[j].currentSrc || imgs[j].src || '');
@@ -647,13 +684,22 @@ class ClientWebViewFetch {
     var ogTitle = document.querySelector('meta[property="og:title"]');
     if((!title || title==='抖音') && ogTitle) title = ogTitle.getAttribute('content') || title;
 
-    // video 页：必须有直链才 ready（封面/DOM 图不算成功，否则会当成图文）
-    // note/slides：要有真图集（动图误带的 play_addr 已按路径清掉）
+    // note：等图集张数稳定，避免 SSR/推荐里先命中 1 张封面就 ready
+    var captured = (window.__SC_DY_JSON && window.__SC_DY_JSON.length) || 0;
+    var idMatched = !!(picked && wantId && picked.awemeId && String(picked.awemeId)===String(wantId));
+    window.__SC_DY_LAST_G = window.__SC_DY_LAST_G || { n: -1, t: 0 };
+    if (gallery.length !== window.__SC_DY_LAST_G.n) {
+      window.__SC_DY_LAST_G = { n: gallery.length, t: Date.now() };
+    }
+    var stableMs = Date.now() - (window.__SC_DY_LAST_G.t || 0);
+    var noteReady = gallery.length > 1
+      ? stableMs >= 900
+      : (gallery.length > 0 && idMatched && stableMs >= 2800);
     var ready = !waf && (
-      isNotePage ? gallery.length > 0 : !!videoUrl
+      isNotePage ? noteReady : !!videoUrl
     );
     if(!ready){
-      return JSON.stringify({ ready:false, waf:waf, hasVideo:!!videoUrl, gallery:gallery.length, note:isNotePage, kind:pageKind, captured:(window.__SC_DY_JSON&&window.__SC_DY_JSON.length)||0, title:title });
+      return JSON.stringify({ ready:false, waf:waf, hasVideo:!!videoUrl, gallery:gallery.length, note:isNotePage, kind:pageKind, captured:captured, title:title, wantId:wantId, matched:idMatched, stableMs:stableMs });
     }
     // video 页不要把封面塞进 imageUrls（阅读页会优先图集）
     if(!isNotePage) gallery = [];

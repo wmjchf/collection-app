@@ -33,7 +33,10 @@ module.exports = {
     };
   },
   extractContent(html, opts = {}) {
-    const note = extractDouyinFromHtml(html);
+    const note = extractDouyinFromHtml(html, {
+      pageUrl: opts.pageUrl,
+      baseUrl: opts.baseUrl,
+    });
     if (!note?.content && !(note?.imageUrls?.length) && !note?.videoUrl) {
       return null;
     }

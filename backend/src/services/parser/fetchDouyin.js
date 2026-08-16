@@ -146,14 +146,62 @@ function parseRouterData(html) {
 
 function firstUrlList(obj) {
   if (!obj) return null;
+  if (typeof obj === 'string') return preferHttps(obj);
   const list = obj.url_list || obj.urlList || obj.uri_list;
   if (Array.isArray(list)) {
-    for (const u of list) {
-      const https = preferHttps(u);
+    for (const raw of list) {
+      const https =
+        typeof raw === 'string'
+          ? preferHttps(raw)
+          : preferHttps(raw?.url || raw?.uri || null);
       if (https) return https;
     }
   }
   return preferHttps(obj.url || obj.uri || null);
+}
+
+function pickImageUrl(img) {
+  if (!img) return null;
+  if (typeof img === 'string') return preferHttps(img);
+  return (
+    firstUrlList(img) ||
+    firstUrlList(img.display_image || img.displayImage) ||
+    firstUrlList(img.owner_watermark_image || img.ownerWatermarkImage) ||
+    firstUrlList(img.origin_thumb || img.thumb) ||
+    firstUrlList(
+      img.download_url_list ? { url_list: img.download_url_list } : null,
+    ) ||
+    firstUrlList(
+      img.downloadUrlList ? { url_list: img.downloadUrlList } : null,
+    ) ||
+    preferHttps(img.url)
+  );
+}
+
+function collectGallery(aweme) {
+  const gallery = [];
+  const src = [];
+  const pushAll = (arr) => {
+    if (Array.isArray(arr)) src.push(...arr);
+  };
+  pushAll(aweme.images);
+  pushAll(aweme.image_list);
+  pushAll(aweme.imageList);
+  if (aweme.image_post_info) {
+    pushAll(aweme.image_post_info.images);
+    pushAll(aweme.image_post_info.image_list);
+  }
+  if (aweme.imagePostInfo) {
+    pushAll(aweme.imagePostInfo.images);
+    pushAll(aweme.imagePostInfo.image_list);
+  }
+  for (const img of src) {
+    const https = preferHttps(pickImageUrl(img));
+    if (https && !isJunkMediaUrl(https) && !gallery.includes(https)) {
+      gallery.push(https);
+    }
+  }
+  return gallery;
 }
 
 function pickFromAweme(aweme) {
@@ -181,21 +229,7 @@ function pickFromAweme(aweme) {
     }
   }
 
-  // 真图集：只从 aweme.images 取，每张一个 URL
-  const gallery = [];
-  if (Array.isArray(aweme.images)) {
-    for (const img of aweme.images) {
-      const one =
-        firstUrlList(img?.url_list ? img : img) ||
-        firstUrlList(
-          img?.download_url_list ? { url_list: img.download_url_list } : null,
-        );
-      const https = preferHttps(one);
-      if (https && !isJunkMediaUrl(https) && !gallery.includes(https)) {
-        gallery.push(https);
-      }
-    }
-  }
+  const gallery = collectGallery(aweme);
 
   // 是否丢掉 videoUrl 由调用方按路径决定（note/slides vs video），这里有图也保留 play_addr
 
@@ -229,6 +263,8 @@ function pickFromAweme(aweme) {
 
   if (!content && !imageUrls.length && !videoUrl && !coverImageUrl) return null;
 
+  const awemeId = String(aweme.aweme_id || aweme.awemeId || aweme.id || '');
+
   return {
     title,
     content:
@@ -239,57 +275,81 @@ function pickFromAweme(aweme) {
     author,
     imageUrls,
     videoUrl,
+    awemeId,
   };
 }
 
-function findAwemeInTree(node, depth = 0) {
+function betterPick(a, b, wantId) {
+  if (!a) return b;
+  if (!b) return a;
+  const aN = a.imageUrls?.length || 0;
+  const bN = b.imageUrls?.length || 0;
+  if (wantId) {
+    const aHit = a.awemeId && String(a.awemeId) === String(wantId);
+    const bHit = b.awemeId && String(b.awemeId) === String(wantId);
+    if (aHit && !bHit) return a;
+    if (bHit && !aHit) return b;
+  }
+  if (bN !== aN) return bN > aN ? b : a;
+  if (!!b.videoUrl !== !!a.videoUrl) return b.videoUrl ? b : a;
+  return a;
+}
+
+function findAwemeInTree(node, depth = 0, wantId = null) {
   if (!node || typeof node !== 'object' || depth > 12) return null;
+  let best = null;
+  const consider = (p) => {
+    if (p) best = betterPick(best, p, wantId);
+  };
   if (
-    (node.video || Array.isArray(node.images)) &&
-    (node.desc != null || node.author || node.aweme_id || node.awemeId)
+    (node.video ||
+      Array.isArray(node.images) ||
+      Array.isArray(node.image_list) ||
+      node.image_post_info ||
+      node.imagePostInfo) &&
+    (node.desc != null ||
+      node.author ||
+      node.aweme_id ||
+      node.awemeId ||
+      node.id)
   ) {
-    const picked = pickFromAweme(node);
-    if (
-      picked &&
-      (picked.videoUrl ||
-        (picked.imageUrls && picked.imageUrls.length) ||
-        picked.content)
-    ) {
-      return picked;
-    }
+    consider(pickFromAweme(node));
   }
   if (Array.isArray(node.item_list) && node.item_list[0]) {
-    const picked = pickFromAweme(node.item_list[0]);
-    if (picked) return picked;
+    consider(pickFromAweme(node.item_list[0]));
   }
-  if (node.aweme_detail) {
-    const picked = pickFromAweme(node.aweme_detail);
-    if (picked) return picked;
-  }
-  if (node.awemeDetail) {
-    const picked = pickFromAweme(node.awemeDetail);
-    if (picked) return picked;
-  }
+  if (node.aweme_detail) consider(pickFromAweme(node.aweme_detail));
+  if (node.awemeDetail) consider(pickFromAweme(node.awemeDetail));
   if (Array.isArray(node)) {
     for (const x of node) {
-      const found = findAwemeInTree(x, depth + 1);
-      if (found) return found;
+      consider(findAwemeInTree(x, depth + 1, wantId));
     }
-    return null;
+    return best;
   }
   for (const v of Object.values(node)) {
     if (v && typeof v === 'object') {
-      const found = findAwemeInTree(v, depth + 1);
-      if (found) return found;
+      consider(findAwemeInTree(v, depth + 1, wantId));
     }
   }
-  return null;
+  return best;
 }
 
 /** 从分享页 / 本机回传 HTML 抽取 */
-function extractDouyinFromHtml(html) {
+function extractDouyinFromHtml(html, opts = {}) {
   if (!html || typeof html !== 'string') return null;
   if (isWafChallenge(html)) return null;
+
+  const wantId =
+    opts.wantId ||
+    extractAwemeId(opts.pageUrl) ||
+    extractAwemeId(opts.baseUrl) ||
+    extractAwemeId(opts.finalUrl) ||
+    (() => {
+      const m = String(html).match(
+        /\/(?:share\/)?(?:note|slides|video)\/(\d{5,})/i,
+      );
+      return m ? m[1] : null;
+    })();
 
   // App WebView 注入的抽取块
   const injected = html.match(
@@ -355,7 +415,11 @@ function extractDouyinFromHtml(html) {
 
   const router = parseRouterData(html);
   if (router) {
-    const fromRouter = findAwemeInTree(router.loaderData || router);
+    const fromRouter = findAwemeInTree(
+      router.loaderData || router,
+      0,
+      wantId,
+    );
     if (fromRouter) return fromRouter;
   }
 
@@ -441,7 +505,10 @@ async function fetchDouyin(rawUrl) {
         continue;
       }
       if (!awemeId) awemeId = extractAwemeId(finalUrl);
-      const note = extractDouyinFromHtml(lastHtml);
+      const note = extractDouyinFromHtml(lastHtml, {
+        wantId: awemeId,
+        finalUrl,
+      });
       if (note && hasRealMedia(note)) {
         const pathNote =
           noteLike || isNoteOrSlidesUrl(finalUrl);
