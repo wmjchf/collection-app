@@ -123,7 +123,12 @@ class _CollectionPageState extends State<CollectionPage> {
       MaterialPageRoute<void>(
         builder: (_) => ItemsBrowsePage(
           title: folder.name,
-          loader: () => _foldersRepo.listFolderItems(folder.id),
+          loader: ({required limit, required offset}) =>
+              _foldersRepo.listFolderItems(
+            folder.id,
+            limit: limit,
+            offset: offset,
+          ),
         ),
       ),
     )
@@ -138,7 +143,11 @@ class _CollectionPageState extends State<CollectionPage> {
       MaterialPageRoute<void>(
         builder: (_) => ItemsBrowsePage(
           title: tag.name,
-          loader: () => _tagsRepo.listTagItems(tag.id),
+          loader: ({required limit, required offset}) => _tagsRepo.listTagItems(
+            tag.id,
+            limit: limit,
+            offset: offset,
+          ),
         ),
       ),
     )

@@ -2,12 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:super_collection/core/network/api_client.dart';
 import 'package:super_collection/core/ui/app_confirm_dialog.dart';
 import 'package:super_collection/core/ui/app_toast.dart';
+import 'package:super_collection/core/ui/paged_list.dart';
 import 'package:super_collection/features/collection/system_filters_repository.dart';
 import 'package:super_collection/features/home/home_format.dart';
 import 'package:super_collection/features/items/cover_image.dart';
 import 'package:super_collection/features/items/item_models.dart';
 import 'package:super_collection/features/items/items_repository.dart';
-
 
 /// 回收站（对齐 Figma `21. 回收站`）：恢复 / 彻底删除 / 清空
 class TrashPage extends StatefulWidget {
@@ -25,31 +25,54 @@ class _TrashPageState extends State<TrashPage> {
 
   final _filtersRepo = SystemFiltersRepository();
   final _itemsRepo = ItemsRepository();
+  final _scroll = ScrollController();
 
   List<CollectionItem> _items = const [];
   int _total = 0;
   bool _loading = true;
+  bool _loadingMore = false;
   String? _error;
   final Set<int> _busyIds = {};
+
+  bool get _hasMore => _items.length < _total;
 
   @override
   void initState() {
     super.initState();
-    _load();
+    _scroll.addListener(_onScroll);
+    _load(reset: true);
   }
 
-  Future<void> _load() async {
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
+  @override
+  void dispose() {
+    _scroll.removeListener(_onScroll);
+    _scroll.dispose();
+    super.dispose();
+  }
+
+  void _onScroll() {
+    if (shouldLoadMore(_scroll)) _loadMore();
+  }
+
+  Future<void> _load({required bool reset}) async {
+    if (reset) {
+      setState(() {
+        _loading = true;
+        _error = null;
+      });
+    }
     try {
-      final result = await _filtersRepo.listItems(filter: 'trash');
+      final result = await _filtersRepo.listItems(
+        filter: 'trash',
+        limit: kItemsPageSize,
+        offset: 0,
+      );
       if (!mounted) return;
       setState(() {
         _items = result.items;
         _total = result.total;
         _loading = false;
+        _error = null;
       });
     } on ApiException catch (e) {
       if (!mounted) return;
@@ -63,6 +86,31 @@ class _TrashPageState extends State<TrashPage> {
         _loading = false;
         _error = '加载失败';
       });
+    }
+  }
+
+  Future<void> _loadMore() async {
+    if (_loading || _loadingMore || !_hasMore) return;
+    setState(() => _loadingMore = true);
+    try {
+      final result = await _filtersRepo.listItems(
+        filter: 'trash',
+        limit: kItemsPageSize,
+        offset: _items.length,
+      );
+      if (!mounted) return;
+      setState(() {
+        final seen = _items.map((e) => e.id).toSet();
+        _items = [
+          ..._items,
+          ...result.items.where((e) => !seen.contains(e.id)),
+        ];
+        _total = result.total;
+        _loadingMore = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _loadingMore = false);
     }
   }
 
@@ -133,7 +181,7 @@ class _TrashPageState extends State<TrashPage> {
   }
 
   Future<void> _emptyAll() async {
-    if (_items.isEmpty) return;
+    if (_total <= 0) return;
     final ok = await _confirm(
       title: '清空回收站？',
       message: '将彻底删除全部条目，不可恢复。',
@@ -215,7 +263,7 @@ class _TrashPageState extends State<TrashPage> {
           ),
           Expanded(
             child: RefreshIndicator(
-              onRefresh: _load,
+              onRefresh: () => _load(reset: true),
               child: _loading && _items.isEmpty
                   ? const Center(child: CircularProgressIndicator())
                   : _error != null && _items.isEmpty
@@ -230,17 +278,19 @@ class _TrashPageState extends State<TrashPage> {
                               ),
                             ),
                             TextButton(
-                              onPressed: _load,
+                              onPressed: () => _load(reset: true),
                               child: const Text('重试'),
                             ),
                           ],
                         )
-                      : ListView(
+                      : ListView.builder(
+                          controller: _scroll,
                           physics: const AlwaysScrollableScrollPhysics(),
                           padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
-                          children: [
-                            if (_items.isEmpty)
-                              const Padding(
+                          itemCount: _items.isEmpty ? 1 : (_items.length + 1),
+                          itemBuilder: (context, index) {
+                            if (_items.isEmpty) {
+                              return const Padding(
                                 padding: EdgeInsets.only(top: 48),
                                 child: Center(
                                   child: Text(
@@ -248,18 +298,26 @@ class _TrashPageState extends State<TrashPage> {
                                     style: TextStyle(color: _muted),
                                   ),
                                 ),
-                              )
-                            else
-                              for (final item in _items) ...[
-                                _TrashCard(
-                                  item: item,
-                                  busy: _busyIds.contains(item.id),
-                                  onRestore: () => _restore(item),
-                                  onPurge: () => _purge(item),
-                                ),
-                                const SizedBox(height: 10),
-                              ],
-                          ],
+                              );
+                            }
+                            if (index >= _items.length) {
+                              return pagedListFooter(
+                                loadingMore: _loadingMore,
+                                hasMore: _hasMore,
+                                isEmpty: false,
+                              );
+                            }
+                            final item = _items[index];
+                            return Padding(
+                              padding: const EdgeInsets.only(bottom: 10),
+                              child: _TrashCard(
+                                item: item,
+                                busy: _busyIds.contains(item.id),
+                                onRestore: () => _restore(item),
+                                onPurge: () => _purge(item),
+                              ),
+                            );
+                          },
                         ),
             ),
           ),

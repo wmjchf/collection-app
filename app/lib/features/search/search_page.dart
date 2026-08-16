@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:super_collection/core/network/api_client.dart';
+import 'package:super_collection/core/ui/paged_list.dart';
 import 'package:super_collection/features/home/home_format.dart';
 import 'package:super_collection/features/items/cover_image.dart';
 import 'package:super_collection/features/items/item_detail_page.dart';
@@ -26,18 +27,23 @@ class _SearchPageState extends State<SearchPage> {
   final _repo = ItemsRepository();
   final _controller = TextEditingController();
   final _focus = FocusNode();
+  final _scroll = ScrollController();
 
   Timer? _debounce;
   String _query = '';
   List<SearchHit> _hits = const [];
   int _total = 0;
   bool _loading = false;
+  bool _loadingMore = false;
   String? _error;
   bool _searched = false;
+
+  bool get _hasMore => _hits.length < _total;
 
   @override
   void initState() {
     super.initState();
+    _scroll.addListener(_onScroll);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _focus.requestFocus();
     });
@@ -46,9 +52,15 @@ class _SearchPageState extends State<SearchPage> {
   @override
   void dispose() {
     _debounce?.cancel();
+    _scroll.removeListener(_onScroll);
+    _scroll.dispose();
     _controller.dispose();
     _focus.dispose();
     super.dispose();
+  }
+
+  void _onScroll() {
+    if (shouldLoadMore(_scroll)) _loadMore();
   }
 
   void _onQueryChanged(String value) {
@@ -61,25 +73,34 @@ class _SearchPageState extends State<SearchPage> {
         _hits = const [];
         _total = 0;
         _loading = false;
+        _loadingMore = false;
         _error = null;
         _searched = false;
       });
       return;
     }
     _debounce = Timer(const Duration(milliseconds: 320), () {
-      _search(q);
+      _search(q, reset: true);
     });
   }
 
-  Future<void> _search(String q) async {
+  Future<void> _search(String q, {required bool reset}) async {
     setState(() {
       _query = q;
       _loading = true;
       _error = null;
       _searched = true;
+      if (reset) {
+        _hits = const [];
+        _total = 0;
+      }
     });
     try {
-      final result = await _repo.search(q);
+      final result = await _repo.search(
+        q,
+        limit: kItemsPageSize,
+        offset: 0,
+      );
       if (!mounted || _controller.text.trim() != q) return;
       setState(() {
         _hits = result.items;
@@ -102,6 +123,32 @@ class _SearchPageState extends State<SearchPage> {
         _hits = const [];
         _total = 0;
       });
+    }
+  }
+
+  Future<void> _loadMore() async {
+    if (_loading || _loadingMore || !_hasMore || _query.isEmpty) return;
+    final q = _query;
+    setState(() => _loadingMore = true);
+    try {
+      final result = await _repo.search(
+        q,
+        limit: kItemsPageSize,
+        offset: _hits.length,
+      );
+      if (!mounted || _controller.text.trim() != q) return;
+      setState(() {
+        final seen = _hits.map((e) => e.item.id).toSet();
+        _hits = [
+          ..._hits,
+          ...result.items.where((e) => !seen.contains(e.item.id)),
+        ];
+        _total = result.total;
+        _loadingMore = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _loadingMore = false);
     }
   }
 
@@ -153,7 +200,7 @@ class _SearchPageState extends State<SearchPage> {
                               onSubmitted: (v) {
                                 _debounce?.cancel();
                                 final q = v.trim();
-                                if (q.isNotEmpty) _search(q);
+                                if (q.isNotEmpty) _search(q, reset: true);
                               },
                               style: const TextStyle(
                                 fontSize: 15,
@@ -220,14 +267,14 @@ class _SearchPageState extends State<SearchPage> {
     if (_loading && _hits.isEmpty) {
       return const Center(child: CircularProgressIndicator());
     }
-    if (_error != null) {
+    if (_error != null && _hits.isEmpty) {
       return Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             Text(_error!, style: const TextStyle(color: _muted)),
             TextButton(
-              onPressed: () => _search(_query),
+              onPressed: () => _search(_query, reset: true),
               child: const Text('重试'),
             ),
           ],
@@ -243,21 +290,35 @@ class _SearchPageState extends State<SearchPage> {
       );
     }
 
-    return ListView.separated(
+    return ListView.builder(
+      controller: _scroll,
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
-      itemCount: _hits.length + 1,
-      separatorBuilder: (_, __) => const SizedBox(height: 10),
+      itemCount: _hits.length + 2,
       itemBuilder: (context, index) {
         if (index == 0) {
-          return Text(
-            '找到 $_total 条结果',
-            style: const TextStyle(fontSize: 12, color: _muted),
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: Text(
+              '找到 $_total 条结果',
+              style: const TextStyle(fontSize: 12, color: _muted),
+            ),
           );
         }
-        final hit = _hits[index - 1];
-        return _SearchResultCard(
-          hit: hit,
-          onTap: () => _openHit(hit),
+        final hitIndex = index - 1;
+        if (hitIndex >= _hits.length) {
+          return pagedListFooter(
+            loadingMore: _loadingMore,
+            hasMore: _hasMore,
+            isEmpty: false,
+          );
+        }
+        final hit = _hits[hitIndex];
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 10),
+          child: _SearchResultCard(
+            hit: hit,
+            onTap: () => _openHit(hit),
+          ),
         );
       },
     );
