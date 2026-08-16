@@ -194,7 +194,14 @@ async function parseFullContent(
       coverImageUrl: cover,
       imageUrls: imageUrls || [],
       videoUrl: videoUrl || null,
-      content: content || (meta.title ? String(meta.title) : '（图片笔记）'),
+      // 有图无文：正文保持空，勿用标题冒充
+      content:
+        content ||
+        (imageUrls && imageUrls.length
+          ? null
+          : meta.title
+            ? String(meta.title)
+            : '（图片笔记）'),
       errorMessage: null,
     };
   }
@@ -279,7 +286,13 @@ async function parseFullContent(
     coverImageUrl: cover,
     imageUrls: imageUrls || [],
     videoUrl: videoUrl || null,
-    content: content || (meta.title ? String(meta.title) : '（图片笔记）'),
+    content:
+      content ||
+      (imageUrls && imageUrls.length
+        ? null
+        : meta.title
+          ? String(meta.title)
+          : '（图片笔记）'),
     errorMessage: null,
   };
 }

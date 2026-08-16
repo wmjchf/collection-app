@@ -52,8 +52,14 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
     return ArticleBodyText.splitParagraphs(raw).join('\n\n');
   }
 
-  /// 阅读页：有图集则展示（小红书 / 微信等）
-  bool get _showReadingImages => _item.displayImages.isNotEmpty;
+  /// 阅读页媒体：微信仅图文（imageUrls）出轮播；文章只看正文
+  bool get _showReadingImages {
+    final p = (_item.platform ?? '').toLowerCase();
+    if (p == 'weixin') {
+      return _item.imageUrls.any((e) => e.trim().isNotEmpty);
+    }
+    return _item.displayImages.isNotEmpty;
+  }
 
   bool get _platformNeedsVideoRefresh {
     final p = (_item.platform ?? '').toLowerCase();
