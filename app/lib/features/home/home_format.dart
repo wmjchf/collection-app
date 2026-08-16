@@ -11,6 +11,8 @@ String platformLabel(String? platform) {
       return '小红书';
     case 'douyin':
       return '抖音';
+    case 'kuaishou':
+      return '快手';
     case 'weibo':
       return '微博';
     case 'bilibili':

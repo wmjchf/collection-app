@@ -250,7 +250,7 @@ class ClientWebViewFetch {
       (/please\s*wait/i.test(head) && compact.length < 120);
     var hasArticle = !!(document.querySelector(
       'article, .article-content, .articleDetailContent, .kr-rich-text-wrapper, .kr-mobile-article, #body-content, .markdown-body, #js_content, main'
-    )) || /window\.initialState/i.test(html);
+    )) || /window\.initialState|window\.INIT_STATE/i.test(html);
     var ready = !challenge && (
       hasArticle ||
       (compact.length > 180 && compact.indexOf('安全检测') < 0)

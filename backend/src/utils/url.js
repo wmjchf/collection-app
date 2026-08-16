@@ -75,6 +75,15 @@ function detectPlatform(url) {
   if (host.includes('douyin.com') || host.includes('iesdouyin.com')) {
     return 'douyin';
   }
+  if (
+    host.includes('kuaishou.com') ||
+    host.includes('chenzhongtech.com') ||
+    host.includes('gifshow.com') ||
+    host.includes('kwai.com') ||
+    host === 'v.kuaishou.com'
+  ) {
+    return 'kuaishou';
+  }
   if (host.includes('weibo.com') || host.includes('weibo.cn')) {
     return 'weibo';
   }

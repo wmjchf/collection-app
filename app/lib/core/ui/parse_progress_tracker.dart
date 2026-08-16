@@ -69,16 +69,18 @@ class ParseProgressTracker {
       return;
     }
 
-    // 微信 / 抖音 / 36氪：尽早用客户端抓，不等服务端确认
+    // 微信 / 抖音 / 快手 / 36氪：尽早用客户端抓
     final p = (platform ?? '').toLowerCase();
     if (url != null &&
         url.isNotEmpty &&
         (p == 'weixin' ||
             p == 'wechat' ||
             p == 'douyin' ||
+            p == 'kuaishou' ||
             p == 'kr36' ||
             ClientWebViewFetch.needsWebView(url) ||
-            url.toLowerCase().contains('36kr.com'))) {
+            url.toLowerCase().contains('36kr.com') ||
+            url.toLowerCase().contains('kuaishou.com'))) {
       unawaited(_tryClientFetch(itemId, url));
     }
 
