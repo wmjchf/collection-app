@@ -1,16 +1,17 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:super_collection/core/network/api_client.dart';
 import 'package:super_collection/core/ui/app_toast.dart';
 import 'package:super_collection/core/ui/parse_progress_tracker.dart';
 import 'package:super_collection/features/home/home_format.dart';
 import 'package:super_collection/features/items/article_body_text.dart';
-import 'package:super_collection/features/items/cover_image.dart';
 import 'package:super_collection/features/items/item_image_gallery.dart';
 import 'package:super_collection/features/items/item_models.dart';
 import 'package:super_collection/features/items/item_reading_page.dart';
 import 'package:super_collection/features/items/items_repository.dart';
+import 'package:super_collection/features/items/reading_delete_confirm_dialog.dart';
 
 /// 内容详情：头部元信息 + 随解析状态变化的内容区；成功时底部固定「进入阅读」。
 class ItemDetailPage extends StatefulWidget {
@@ -170,8 +171,55 @@ class _ItemDetailPageState extends State<ItemDetailPage> {
     return (item.content ?? item.summary ?? '').trim();
   }
 
-  void _toastSoon(String label) {
-    AppToast.show(context, '$label功能即将开放');
+  /// 详情预览：微信图文用图集，标准文章用封面；阅读页另算
+  List<String> _previewImages(CollectionItem item) {
+    final p = (item.platform ?? '').toLowerCase();
+    if (p == 'weixin') {
+      final gallery = item.imageUrls
+          .map((e) => e.trim())
+          .where((e) => e.isNotEmpty)
+          .toList(growable: false);
+      if (gallery.isNotEmpty) return gallery;
+      final cover = item.coverImageUrl?.trim();
+      if (cover != null && cover.isNotEmpty) return [cover];
+      return const [];
+    }
+    return item.displayImages;
+  }
+
+  String get _linkToCopy {
+    final item = _item;
+    if (item == null) return '';
+    final canonical = item.canonicalUrl?.trim();
+    if (canonical != null && canonical.isNotEmpty) return canonical;
+    return item.url.trim();
+  }
+
+  Future<void> _copyLink() async {
+    final link = _linkToCopy;
+    if (link.isEmpty) {
+      AppToast.show(context, '暂无链接');
+      return;
+    }
+    await Clipboard.setData(ClipboardData(text: link));
+    if (!mounted) return;
+    AppToast.show(context, '链接已复制');
+  }
+
+  Future<void> _confirmDelete() async {
+    final item = _item;
+    if (item == null) return;
+    final ok = await showReadingDeleteConfirmDialog(context);
+    if (ok != true || !mounted) return;
+    try {
+      await _repo.softDelete(item.id);
+      if (!mounted) return;
+      AppToast.show(context, '已移入最近删除');
+      Navigator.of(context).pop(true);
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      AppToast.show(context, e.message);
+    }
   }
 
   @override
@@ -185,7 +233,9 @@ class _ItemDetailPageState extends State<ItemDetailPage> {
         children: [
           _TopBar(
             onBack: () => Navigator.of(context).maybePop(),
-            onMore: () => _toastSoon('更多'),
+            enabled: item != null,
+            onCopyLink: _copyLink,
+            onDelete: _confirmDelete,
           ),
           Expanded(
             child: _loading && item == null
@@ -249,7 +299,7 @@ class _ItemDetailPageState extends State<ItemDetailPage> {
                             )
                           else if (item != null)
                             _SuccessCard(
-                              imageUrls: item.displayImages,
+                              imageUrls: _previewImages(item),
                               content: _previewText(item),
                             ),
                         ],
@@ -264,12 +314,20 @@ class _ItemDetailPageState extends State<ItemDetailPage> {
 }
 
 class _TopBar extends StatelessWidget {
-  const _TopBar({required this.onBack, required this.onMore});
+  const _TopBar({
+    required this.onBack,
+    required this.onCopyLink,
+    required this.onDelete,
+    this.enabled = true,
+  });
 
   final VoidCallback onBack;
-  final VoidCallback onMore;
+  final VoidCallback onCopyLink;
+  final VoidCallback onDelete;
+  final bool enabled;
 
   static const _text = Color(0xFF1F242E);
+  static const _danger = Color(0xFFE34D59);
 
   @override
   Widget build(BuildContext context) {
@@ -280,7 +338,7 @@ class _TopBar extends StatelessWidget {
         child: SizedBox(
           height: 52,
           child: Padding(
-            padding: const EdgeInsets.only(left: 4, right: 8),
+            padding: const EdgeInsets.only(left: 4, right: 4),
             child: Row(
               children: [
                 TextButton.icon(
@@ -296,15 +354,61 @@ class _TopBar extends StatelessWidget {
                   ),
                 ),
                 const Spacer(),
-                IconButton(
-                  onPressed: onMore,
-                  icon: const Text(
-                    '⋯',
-                    style: TextStyle(
-                      fontSize: 22,
-                      fontWeight: FontWeight.w700,
-                      color: _text,
-                      height: 1,
+                PopupMenuButton<String>(
+                  enabled: enabled,
+                  tooltip: '更多',
+                  offset: const Offset(0, 40),
+                  elevation: 8,
+                  color: Colors.white,
+                  shadowColor: Colors.black.withValues(alpha: 0.14),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    side: const BorderSide(color: Color(0xFFE6E8EB)),
+                  ),
+                  constraints: const BoxConstraints(minWidth: 148, maxWidth: 168),
+                  onSelected: (value) {
+                    if (value == 'copy') onCopyLink();
+                    if (value == 'delete') onDelete();
+                  },
+                  itemBuilder: (context) => [
+                    const PopupMenuItem<String>(
+                      value: 'copy',
+                      height: 44,
+                      child: Text(
+                        '复制链接',
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w500,
+                          color: _text,
+                        ),
+                      ),
+                    ),
+                    const PopupMenuItem<String>(
+                      value: 'delete',
+                      height: 44,
+                      child: Text(
+                        '删除',
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w500,
+                          color: _danger,
+                        ),
+                      ),
+                    ),
+                  ],
+                  child: const SizedBox(
+                    width: 44,
+                    height: 44,
+                    child: Center(
+                      child: Text(
+                        '⋯',
+                        style: TextStyle(
+                          fontSize: 22,
+                          fontWeight: FontWeight.w700,
+                          color: _text,
+                          height: 1,
+                        ),
+                      ),
                     ),
                   ),
                 ),
@@ -492,14 +596,13 @@ class _SuccessCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          if (images.isEmpty)
-            const CoverImage(url: null, height: 160, borderRadius: 12)
-          else
+          if (images.isNotEmpty) ...[
             ItemImageGallery(
               urls: images.take(12).toList(),
               height: images.length == 1 ? 200 : 220,
             ),
-          const SizedBox(height: 12),
+            const SizedBox(height: 12),
+          ],
           const Text(
             '正文',
             style: TextStyle(
