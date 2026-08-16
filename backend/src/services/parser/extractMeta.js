@@ -11,6 +11,7 @@ function attr($, selectors) {
 
 function looksBlocked(html, $) {
   const text = $('body').text().replace(/\s+/g, '');
+  const head = String(html || '').slice(0, 12000);
   if (text.includes('环境异常') && text.includes('去验证')) return true;
   if (html.includes('环境异常') && html.includes('完成验证后即可继续访问')) {
     return true;
@@ -28,6 +29,13 @@ function looksBlocked(html, $) {
     return true;
   }
   if (html.includes('window.captcha') && html.includes('entrypoint')) {
+    return true;
+  }
+  // 火山引擎 / 36氪等「正在进行安全检测」WAF 壳
+  if (
+    /正在进行安全检测|_wafchallengeid|wafchallenge/i.test(head) ||
+    (/火山引擎/.test(head) && /安全检测/.test(head))
+  ) {
     return true;
   }
   return false;

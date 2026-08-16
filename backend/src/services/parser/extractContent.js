@@ -13,6 +13,8 @@ function extractGenericContent(html) {
     'main',
     '[role="main"]',
     '.article-content',
+    '.articleDetailContent',
+    '.kr-rich-text-wrapper',
     '.markdown-body',
     '.article',
     '.post-content',

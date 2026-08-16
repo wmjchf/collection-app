@@ -21,7 +21,8 @@ class ClientWebViewFetch {
     final u = url.toLowerCase();
     return u.contains('douyin.com') ||
         u.contains('iesdouyin.com') ||
-        u.contains('v.douyin.com');
+        u.contains('v.douyin.com') ||
+        u.contains('36kr.com');
   }
 
   /// 需在有 Overlay 的上下文中调用（App 前台）
@@ -241,9 +242,23 @@ class ClientWebViewFetch {
     var html = document.documentElement ? document.documentElement.outerHTML : '';
     var text = (document.body && document.body.innerText) || '';
     var title = document.title || '';
-    var ready = html.length > 800 || text.replace(/\s+/g,'').length > 40;
+    var head = html.slice(0, 12000);
+    var compact = text.replace(/\s+/g,'');
+    var challenge = /正在进行安全检测|_wafchallengeid|wafchallenge|waf_js|waf-jschallenge/i.test(head) ||
+      (/火山引擎/.test(head) && /安全检测/.test(head)) ||
+      (compact.indexOf('环境异常')>=0 && (compact.indexOf('去验证')>=0 || compact.indexOf('完成验证')>=0)) ||
+      (/please\s*wait/i.test(head) && compact.length < 120);
+    var hasArticle = !!(document.querySelector(
+      'article, .article-content, .articleDetailContent, .kr-rich-text-wrapper, .markdown-body, #js_content, main'
+    ));
+    var ready = !challenge && (
+      hasArticle ||
+      (compact.length > 180 && compact.indexOf('安全检测') < 0) ||
+      (html.length > 12000 && compact.length > 120 && compact.indexOf('安全检测') < 0)
+    );
     return JSON.stringify({
       ready: ready,
+      challenge: !!challenge,
       len: html.length,
       title: title,
       html: html
@@ -258,9 +273,11 @@ class ClientWebViewFetch {
         if (text == null || text.isEmpty || text == 'null') return;
         final map = jsonDecode(text) as Map<String, dynamic>;
         final html = map['html'] as String? ?? '';
-        if (html.length > bestHtml.length) bestHtml = html;
+        final isChallenge = map['challenge'] == true;
+        if (!isChallenge && html.length > bestHtml.length) bestHtml = html;
         final ready = map['ready'] == true;
-        if ((ready && html.length > 800) || (force && bestHtml.length > 200)) {
+        if ((ready && html.length > 800) ||
+            (force && bestHtml.length > 200 && !isChallenge)) {
           debugPrint(
             '[webview-fetch] generic ready len=${bestHtml.length} title=${map['title']}',
           );
@@ -304,24 +321,22 @@ class ClientWebViewFetch {
         ),
       );
 
+    // 通用页也用接近手机的视口，便于过安全检测脚本
     _entry = OverlayEntry(
       builder: (ctx) => Positioned(
-        right: 0,
-        bottom: 0,
-        width: 320,
-        height: 180,
+        left: -1200,
+        top: 0,
+        width: 390,
+        height: 844,
         child: IgnorePointer(
-          child: Opacity(
-            opacity: 0.02,
-            child: WebViewWidget(controller: controller),
-          ),
+          child: WebViewWidget(controller: controller),
         ),
       ),
     );
     overlay.insert(_entry!);
 
     timeoutTimer = Timer(timeout, () {
-      if (bestHtml.length > 200) {
+      if (bestHtml.length > 2000) {
         succeed(bestHtml);
       } else {
         fail('页面抓取超时，请稍后重试');

@@ -84,6 +84,9 @@ function detectPlatform(url) {
   if (host.includes('okjike.com') || host.includes('jike.city')) {
     return 'jike';
   }
+  if (host.includes('36kr.com')) {
+    return 'kr36';
+  }
   if (host.includes('zhihu.com')) {
     return 'zhihu';
   }

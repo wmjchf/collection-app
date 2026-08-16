@@ -20,9 +20,10 @@ class ClientPageFetch {
 
   /// 返回 HTML；失败抛 [ClientPageFetchException]
   static Future<String> fetchHtml(String url) async {
-    // 抖音：必须 WebView（WAF / 分享页数据）
+    // 抖音 / 36氪：必须 WebView（WAF / 安全检测壳）
     if (ClientWebViewFetch.needsWebView(url)) {
-      return _fetchViaWebView(url, preferDouyin: true);
+      final preferDouyin = url.toLowerCase().contains('douyin');
+      return _fetchViaWebView(url, preferDouyin: preferDouyin);
     }
 
     // 其它：先 HTTP（更快）；失败或验证码壳再 WebView
@@ -95,7 +96,7 @@ class ClientPageFetch {
   }
 
   static bool _looksBlocked(String html) {
-    final head = html.length > 4000 ? html.substring(0, 4000) : html;
+    final head = html.length > 12000 ? html.substring(0, 12000) : html;
     if (html.contains('环境异常') &&
         (html.contains('去验证') || html.contains('完成验证后即可继续访问'))) {
       return true;
@@ -105,6 +106,16 @@ class ClientPageFetch {
       r'waf_js|waf-jschallenge|x-tt-system-error|byted-static\.com/obj/waf',
       caseSensitive: false,
     ).hasMatch(head)) {
+      return true;
+    }
+    // 火山引擎 / 36氪「正在进行安全检测」
+    if (RegExp(
+      r'正在进行安全检测|_wafchallengeid|wafchallenge',
+      caseSensitive: false,
+    ).hasMatch(head)) {
+      return true;
+    }
+    if (head.contains('火山引擎') && head.contains('安全检测')) {
       return true;
     }
     // 掘金等 Please wait 挑战壳

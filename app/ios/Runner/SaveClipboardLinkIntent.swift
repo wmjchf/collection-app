@@ -258,10 +258,11 @@ enum ShortcutAuthStore {
     let isWeixin = plat == "weixin" || plat == "wechat"
     let isDouyin = plat == "douyin" || pageUrl.lowercased().contains("douyin.com")
       || pageUrl.lowercased().contains("iesdouyin.com")
+    let isKr36 = plat == "kr36" || pageUrl.lowercased().contains("36kr.com")
 
-    if isDouyin {
+    if isDouyin || isKr36 {
       onProgress?(40, "已入库，打开 App 完成解析…")
-      // 不在此用 HTTP 硬抓：短链图文易变成错误视频；留给主 App WebView + 补齐队列
+      // 抖音 / 36氪依赖 WebView 过检测；Intent 纯 HTTP 只会拿到壳页
       return existed
         ? "已收藏。打开超级收藏夹即可自动补齐解析"
         : "已保存。打开超级收藏夹即可自动补齐解析"
@@ -299,7 +300,8 @@ enum ShortcutAuthStore {
       }
       if st.needsClientFetch {
         let fetchUrl = (st.url ?? pageUrl).lowercased()
-        if fetchUrl.contains("douyin.com") || fetchUrl.contains("iesdouyin.com") {
+        if fetchUrl.contains("douyin.com") || fetchUrl.contains("iesdouyin.com")
+          || fetchUrl.contains("36kr.com") {
           return existed
             ? "已收藏。打开超级收藏夹即可自动补齐解析"
             : "已保存。打开超级收藏夹即可自动补齐解析"

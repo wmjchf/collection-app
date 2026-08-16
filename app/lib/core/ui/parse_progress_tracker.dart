@@ -69,13 +69,14 @@ class ParseProgressTracker {
       return;
     }
 
-    // 微信 / 抖音：尽早用客户端抓，不等服务端确认
+    // 微信 / 抖音 / 36氪：尽早用客户端抓，不等服务端确认
     final p = (platform ?? '').toLowerCase();
     if (url != null &&
         url.isNotEmpty &&
         (p == 'weixin' ||
             p == 'wechat' ||
             p == 'douyin' ||
+            p == 'kr36' ||
             ClientWebViewFetch.needsWebView(url))) {
       unawaited(_tryClientFetch(itemId, url));
     }

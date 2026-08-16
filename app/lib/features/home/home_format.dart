@@ -19,6 +19,8 @@ String platformLabel(String? platform) {
       return '即刻';
     case 'zhihu':
       return '知乎';
+    case 'kr36':
+      return '36氪';
     case 'web':
       return '网页';
     default:
