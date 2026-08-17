@@ -28,6 +28,13 @@ app.get('/privacy', sendPrivacy);
 app.get('/privacy-policy', sendPrivacy);
 app.get('/privacy.html', sendPrivacy);
 
+/** App Store Support URL */
+function sendSupport(_req, res) {
+  res.sendFile(path.join(publicDir, 'support.html'));
+}
+app.get('/support', sendSupport);
+app.get('/support.html', sendSupport);
+
 app.use('/api', healthRouter);
 app.use('/api/auth', authRouter);
 app.use('/api/items', itemsRouter);
