@@ -1,6 +1,6 @@
-# 超级收藏夹
+# Conflux
 
-多源平台内容收藏合一。产品说明见 [`docs/PRD-v1.md`](docs/PRD-v1.md)。
+多源平台内容收藏合一。产品说明见 [`docs/PRD-v1.md`](docs/PRD-v1.md)，推广计划见 [`docs/Conflux-推广计划书.md`](docs/Conflux-推广计划书.md)，[`用户协议`](docs/用户协议.md) / [`隐私政策`](docs/隐私政策.md)。
 
 ## 目录
 

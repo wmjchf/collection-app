@@ -50,7 +50,7 @@ class _SuperCollectionAppState extends State<SuperCollectionApp> {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: '超级收藏夹',
+      title: 'Conflux',
       debugShowCheckedModeBanner: false,
       navigatorKey: AppNavigator.key,
       theme: ThemeData(

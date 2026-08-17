@@ -42,7 +42,7 @@ class OnboardingPage extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               const Text(
-                '超级收藏夹',
+                'Conflux',
                 style: TextStyle(
                   fontSize: 28,
                   fontWeight: FontWeight.w700,
@@ -71,7 +71,7 @@ class OnboardingPage extends StatelessWidget {
               const _WayCard(
                 title: '系统分享',
                 desc:
-                    '在微信、Safari、抖音等 App 点「分享」，选择「超级收藏夹」即可保存',
+                    '在微信、Safari、抖音等 App 点「分享」，选择「Conflux」即可保存',
               ),
               const SizedBox(height: 10),
               const _WayCard(

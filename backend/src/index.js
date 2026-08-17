@@ -15,6 +15,10 @@ async function start() {
 
   app.listen(config.port, () => {
     console.log(`[server] http://127.0.0.1:${config.port}`);
+    const aliyunSms = require('./services/aliyunSms');
+    console.log(
+      `[auth] smsDevMode=${config.auth.smsDevMode} aliyunConfigured=${aliyunSms.isConfigured()}`,
+    );
   });
 }
 

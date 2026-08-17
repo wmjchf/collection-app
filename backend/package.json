@@ -1,7 +1,7 @@
 {
   "name": "collection-backend",
   "version": "1.0.0",
-  "description": "超级收藏夹 API（Express + MySQL）",
+  "description": "Conflux API（Express + MySQL）",
   "main": "src/index.js",
   "engines": {
     "node": "23.6.0"
@@ -17,6 +17,9 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@alicloud/dypnsapi20170525": "^2.0.0",
+    "@alicloud/openapi-client": "^0.4.15",
+    "@alicloud/openapi-core": "^1.0.8",
     "cheerio": "^1.2.0",
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",

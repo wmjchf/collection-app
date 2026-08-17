@@ -12,7 +12,7 @@ void main() {
   testWidgets('app boots to login page', (tester) async {
     await tester.pumpWidget(const SuperCollectionApp());
     await tester.pumpAndSettle();
-    expect(find.text('超级收藏夹'), findsOneWidget);
+    expect(find.text('Conflux'), findsOneWidget);
     expect(find.text('登录'), findsOneWidget);
     expect(find.text('获取验证码'), findsOneWidget);
   });

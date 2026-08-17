@@ -1,16 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:super_collection/core/config/api_config.dart';
 import 'package:super_collection/core/network/api_client.dart';
 import 'package:super_collection/core/ui/app_toast.dart';
 import 'package:super_collection/features/auth/auth_repository.dart';
 import 'package:super_collection/features/onboarding/onboarding_page.dart';
 import 'package:super_collection/features/onboarding/onboarding_prefs.dart';
+import 'package:super_collection/features/settings/legal_docs.dart';
+import 'package:super_collection/features/settings/simple_doc_page.dart';
 import 'package:super_collection/features/shell/main_shell.dart';
 import 'package:super_collection/features/shortcuts/shortcut_inbound.dart';
 
 /// 登录页（对齐 Figma：手机号 + 验证码）
-/// 开发阶段后端写死验证码，默认 123456。
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key, this.authRepository});
 
@@ -37,6 +37,7 @@ class _LoginPageState extends State<LoginPage> {
 
   bool _sending = false;
   bool _loggingIn = false;
+  bool _agreed = false;
   int _countdown = 0;
 
   @override
@@ -55,6 +56,10 @@ class _LoginPageState extends State<LoginPage> {
 
   Future<void> _onSendCode() async {
     final phone = _phoneController.text.trim();
+    if (!_agreed) {
+      _toast('请先勾选同意用户协议和隐私政策');
+      return;
+    }
     if (!_isValidPhone(phone)) {
       _toast('请输入正确的手机号');
       return;
@@ -63,8 +68,8 @@ class _LoginPageState extends State<LoginPage> {
 
     setState(() => _sending = true);
     try {
-      final message = await _auth.sendCode(phone);
-      _toast(message);
+      await _auth.sendCode(phone);
+      _toast('验证码已发送');
       _startCountdown();
     } on ApiException catch (e) {
       _toast(e.message);
@@ -92,6 +97,10 @@ class _LoginPageState extends State<LoginPage> {
   Future<void> _onLogin() async {
     final phone = _phoneController.text.trim();
     final code = _codeController.text.trim();
+    if (!_agreed) {
+      _toast('请先勾选同意用户协议和隐私政策');
+      return;
+    }
     if (!_isValidPhone(phone)) {
       _toast('请输入正确的手机号');
       return;
@@ -158,7 +167,7 @@ class _LoginPageState extends State<LoginPage> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               const Text(
-                '超级收藏夹',
+                'Conflux',
                 style: TextStyle(
                   fontSize: 32,
                   fontWeight: FontWeight.w700,
@@ -245,6 +254,83 @@ class _LoginPageState extends State<LoginPage> {
                 ],
               ),
               const SizedBox(height: 16),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  SizedBox(
+                    width: 24,
+                    height: 24,
+                    child: Checkbox(
+                      value: _agreed,
+                      onChanged: (v) => setState(() => _agreed = v ?? false),
+                      activeColor: _blue,
+                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      visualDensity: VisualDensity.compact,
+                      side: const BorderSide(color: _border, width: 1.5),
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.only(top: 2),
+                      child: Wrap(
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        children: [
+                          const Text(
+                            '我已阅读并同意',
+                            style: TextStyle(fontSize: 12, color: _muted, height: 1.4),
+                          ),
+                          GestureDetector(
+                            onTap: () {
+                              Navigator.of(context).push(
+                                MaterialPageRoute<void>(
+                                  builder: (_) => const SimpleDocPage(
+                                    title: '用户协议',
+                                    body: LegalDocs.userAgreement,
+                                  ),
+                                ),
+                              );
+                            },
+                            child: const Text(
+                              '《用户协议》',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: _blue,
+                                height: 1.4,
+                              ),
+                            ),
+                          ),
+                          const Text(
+                            '与',
+                            style: TextStyle(fontSize: 12, color: _muted, height: 1.4),
+                          ),
+                          GestureDetector(
+                            onTap: () {
+                              Navigator.of(context).push(
+                                MaterialPageRoute<void>(
+                                  builder: (_) => const SimpleDocPage(
+                                    title: '隐私政策',
+                                    body: LegalDocs.privacyPolicy,
+                                  ),
+                                ),
+                              );
+                            },
+                            child: const Text(
+                              '《隐私政策》',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: _blue,
+                                height: 1.4,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
               SizedBox(
                 height: 52,
                 child: FilledButton(
@@ -272,24 +358,6 @@ class _LoginPageState extends State<LoginPage> {
                           ),
                         ),
                 ),
-              ),
-              const SizedBox(height: 16),
-              const Text(
-                '未注册手机号验证后将自动创建账号',
-                textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 12, color: _muted),
-              ),
-              const SizedBox(height: 8),
-              const Text(
-                '开发环境验证码：123456',
-                textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 12, color: _blue),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'API：${ApiConfig.baseUrl}',
-                textAlign: TextAlign.center,
-                style: const TextStyle(fontSize: 12, color: _muted),
               ),
             ],
           ),

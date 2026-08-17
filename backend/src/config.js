@@ -17,4 +17,14 @@ module.exports = {
     smsDevMode: process.env.SMS_DEV_MODE !== 'false',
     smsDevCode: process.env.SMS_DEV_CODE || '123456',
   },
+  aliyun: {
+    accessKeyId: process.env.ALIYUN_ACCESS_KEY_ID || '',
+    accessKeySecret: process.env.ALIYUN_ACCESS_KEY_SECRET || '',
+    signName: process.env.ALIYUN_SMS_SIGN_NAME || '',
+    templateCode: process.env.ALIYUN_SMS_TEMPLATE_CODE || '',
+    /** 与控制台赠送模板变量一致；##code## 表示由阿里云生成并可核验 */
+    templateParam:
+      process.env.ALIYUN_SMS_TEMPLATE_PARAM ||
+      JSON.stringify({ code: '##code##', min: '5' }),
+  },
 };

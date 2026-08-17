@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-/// 简易说明文稿页（协议 / 隐私等占位）
+/// 简易说明文稿页（协议 / 隐私等）
 class SimpleDocPage extends StatelessWidget {
   const SimpleDocPage({
     super.key,
@@ -43,18 +43,20 @@ class SimpleDocPage extends StatelessWidget {
           ),
         ),
       ),
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(20, 20, 20, 32),
-        children: [
-          Text(
-            body,
-            style: const TextStyle(
-              fontSize: 15,
-              color: _muted,
-              height: 1.55,
+      body: SelectionArea(
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(20, 20, 20, 40),
+          children: [
+            Text(
+              body.trim(),
+              style: const TextStyle(
+                fontSize: 14,
+                color: _muted,
+                height: 1.65,
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

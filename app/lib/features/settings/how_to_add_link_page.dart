@@ -40,20 +40,20 @@ class HowToAddLinkPage extends StatelessWidget {
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
         children: const [
           Text(
-            '任选一种方式即可把链接存进超级收藏夹。',
+            '任选一种方式即可把链接存进 Conflux。',
             style: TextStyle(fontSize: 14, color: _muted, height: 1.4),
           ),
           SizedBox(height: 16),
           _HelpCard(
             title: '系统分享',
             desc:
-                '在微信、Safari、B站、抖音等 App 里点「分享」，选择「超级收藏夹」即可入库。图标行可左右滑动；若没有，点「编辑」打开开关。',
+                '在微信、Safari、B站、抖音等 App 里点「分享」，选择「Conflux」即可入库。图标行可左右滑动；若没有，点「编辑」打开开关。',
           ),
           SizedBox(height: 12),
           _HelpCard(
             title: '复制链接自动保存',
             desc:
-                '先在其他 App 复制可用链接，再打开超级收藏夹（或从后台切回），会自动读取剪贴板并保存。',
+                '先在其他 App 复制可用链接，再打开 Conflux（或从后台切回），会自动读取剪贴板并保存。',
           ),
           SizedBox(height: 12),
           _HelpCard(

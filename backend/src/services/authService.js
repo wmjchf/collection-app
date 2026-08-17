@@ -3,6 +3,7 @@ const jwt = require('jsonwebtoken');
 const { pool } = require('../db');
 const config = require('../config');
 const { normalizePhone } = require('../utils/phone');
+const aliyunSms = require('./aliyunSms');
 
 function hashToken(token) {
   return crypto.createHash('sha256').update(token).digest('hex');
@@ -30,7 +31,7 @@ async function logSmsSend(phone, scene = 'login', providerRequestId = null) {
 
 /**
  * 开发模式：不真正发短信，固定验证码见 config.auth.smsDevCode
- * 正式环境：再接阿里云 SendSmsVerifyCode
+ * 正式环境：阿里云号码认证 SendSmsVerifyCode
  */
 async function sendLoginCode(phone) {
   const normalized = normalizePhone(phone);
@@ -40,14 +41,16 @@ async function sendLoginCode(phone) {
     return {
       ok: true,
       devMode: true,
-      // 仅开发环境返回，方便联调；正式切阿里云后绝不返回验证码
-      devCode: config.auth.smsDevCode,
-      message: `开发环境验证码：${config.auth.smsDevCode}`,
+      message: '验证码已发送',
     };
   }
 
-  // TODO: 阿里云 Dypnsapi SendSmsVerifyCode
-  throw Object.assign(new Error('短信服务未配置'), { status: 503 });
+  const result = await aliyunSms.sendSmsVerifyCode(normalized);
+  await logSmsSend(normalized, 'login', result.bizId || result.requestId);
+  return {
+    ok: true,
+    message: result.message || '验证码已发送',
+  };
 }
 
 async function findUserByPhone(phone) {
@@ -104,9 +107,10 @@ async function createSession(userId) {
 
 /**
  * 开发模式：校验固定验证码
- * 正式环境：再接阿里云 CheckSmsVerifyCode
+ * 正式环境：阿里云 CheckSmsVerifyCode
  */
 async function verifyLoginCode(phone, code) {
+  const normalized = normalizePhone(phone);
   const normalizedCode = String(code || '').trim();
 
   if (config.auth.smsDevMode) {
@@ -118,8 +122,8 @@ async function verifyLoginCode(phone, code) {
     return true;
   }
 
-  // TODO: 阿里云 Dypnsapi CheckSmsVerifyCode
-  throw Object.assign(new Error('短信服务未配置'), { status: 503 });
+  await aliyunSms.checkSmsVerifyCode(normalized, normalizedCode);
+  return true;
 }
 
 async function loginWithSms(phone, code) {

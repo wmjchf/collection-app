@@ -11,7 +11,7 @@ import UIKit
 struct SaveClipboardLinkIntent: AppIntent, ProgressReportingIntent {
   static var title: LocalizedStringResource = "保存剪贴板链接"
   static var description = IntentDescription(
-    "保存链接到超级收藏夹并尽量完成解析（不打开 App）。建议先「获取剪贴板」再传入「链接」。"
+    "保存链接到 Conflux 并尽量完成解析（不打开 App）。建议先「获取剪贴板」再传入「链接」。"
   )
 
   static var openAppWhenRun: Bool = false
@@ -86,7 +86,7 @@ enum ShortcutSaveError: Error, CustomLocalizedStringResourceConvertible {
   var localizedStringResource: LocalizedStringResource {
     switch self {
     case .notLoggedIn:
-      return "请先打开超级收藏夹并登录"
+      return "请先打开 Conflux 并登录"
     case .noLink:
       return "剪贴板里没有可用链接"
     case .api(let message):
@@ -263,8 +263,8 @@ enum ShortcutAuthStore {
       onProgress?(40, "已入库，打开 App 完成解析…")
       // 抖音依赖 WebView 过检测；Intent 纯 HTTP 只会拿到壳页
       return existed
-        ? "已收藏。打开超级收藏夹即可自动补齐解析"
-        : "已保存。打开超级收藏夹即可自动补齐解析"
+        ? "已收藏。打开 Conflux 即可自动补齐解析"
+        : "已保存。打开 Conflux 即可自动补齐解析"
     }
 
     // 36氪：桌面站有检测壳，改移动站后本机 HTTP 可抽 initialState
@@ -314,8 +314,8 @@ enum ShortcutAuthStore {
         let fetchUrl = (st.url ?? pageUrl).lowercased()
         if fetchUrl.contains("douyin.com") || fetchUrl.contains("iesdouyin.com") {
           return existed
-            ? "已收藏。打开超级收藏夹即可自动补齐解析"
-            : "已保存。打开超级收藏夹即可自动补齐解析"
+            ? "已收藏。打开 Conflux 即可自动补齐解析"
+            : "已保存。打开 Conflux 即可自动补齐解析"
         }
         let nextUrl = fetchUrl.contains("36kr.com")
           ? Self.preferMobile36kr(st.url ?? pageUrl)

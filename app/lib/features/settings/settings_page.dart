@@ -3,6 +3,7 @@ import 'package:super_collection/features/auth/auth_repository.dart';
 import 'package:super_collection/features/auth/login_page.dart';
 import 'package:super_collection/features/onboarding/shortcuts_help_page.dart';
 import 'package:super_collection/features/settings/how_to_add_link_page.dart';
+import 'package:super_collection/features/settings/legal_docs.dart';
 import 'package:super_collection/features/settings/logout_confirm_dialog.dart';
 import 'package:super_collection/features/settings/simple_doc_page.dart';
 
@@ -145,7 +146,7 @@ class _SettingsPageState extends State<SettingsPage> {
                       onTap: () => _open(
                         const SimpleDocPage(
                           title: '用户协议',
-                          body: '用户协议内容将在正式上架前补充。使用本产品即表示你理解：收藏内容仅供个人阅读与整理。',
+                          body: LegalDocs.userAgreement,
                         ),
                       ),
                     ),
@@ -155,13 +156,12 @@ class _SettingsPageState extends State<SettingsPage> {
                       onTap: () => _open(
                         const SimpleDocPage(
                           title: '隐私政策',
-                          body:
-                              '我们会处理手机号用于登录鉴权；剪贴板仅用于识别你主动复制的链接以便入库。详细隐私政策将在正式上架前补充。',
+                          body: LegalDocs.privacyPolicy,
                         ),
                       ),
                     ),
                     const _InfoRow(
-                      title: '关于超级收藏夹',
+                      title: '关于 Conflux',
                       trailing: Text(
                         _version,
                         style: TextStyle(fontSize: 14, color: _muted),
