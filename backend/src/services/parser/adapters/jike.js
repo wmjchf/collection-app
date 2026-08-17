@@ -1,7 +1,10 @@
-const { extractJikePost } = require('../extractJike');
+const {
+  extractJikePost,
+  extractJikePostWithVideo,
+} = require('../extractJike');
 
 /**
- * 即刻：服务端可抓；正文在 __NEXT_DATA__。
+ * 即刻：服务端可抓；正文在 __NEXT_DATA__；视频走 mediaMeta/play。
  * @type {import('./registry').PlatformAdapter}
  */
 module.exports = {
@@ -24,13 +27,16 @@ module.exports = {
       author: post.author,
     };
   },
-  extractContent(html) {
-    const post = extractJikePost(html);
-    if (!post?.content) return null;
+  async extractContent(html) {
+    const post = await extractJikePostWithVideo(html);
+    if (!post?.content && !(post?.imageUrls?.length) && !post?.videoUrl) {
+      return null;
+    }
     return {
       content: post.content,
       summary: post.summary,
       imageUrls: post.imageUrls || [],
+      videoUrl: post.videoUrl || null,
     };
   },
 };

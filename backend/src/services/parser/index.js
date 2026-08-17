@@ -165,12 +165,15 @@ async function parseFullContent(
         errorMessage: '本机页面仍需验证，请稍后重试',
       };
     }
-    const { content, summary, imageUrls, videoUrl } = extractContent(sourceHtml, {
-      platform: resolvedPlatform,
-      existingSummary: existingSummary || meta.summary,
-      pageUrl: url,
-      baseUrl: pageUrl,
-    });
+    const { content, summary, imageUrls, videoUrl } = await extractContent(
+      sourceHtml,
+      {
+        platform: resolvedPlatform,
+        existingSummary: existingSummary || meta.summary,
+        pageUrl: url,
+        baseUrl: pageUrl,
+      },
+    );
     if (!content && !(imageUrls && imageUrls.length) && !videoUrl) {
       return {
         ok: false,
@@ -252,12 +255,15 @@ async function parseFullContent(
     }
   }
 
-  const { content, summary, imageUrls, videoUrl } = extractContent(sourceHtml, {
-    platform: resolvedPlatform,
-    existingSummary: existingSummary || meta.summary,
-    pageUrl: url,
-    baseUrl: pageUrl,
-  });
+  const { content, summary, imageUrls, videoUrl } = await extractContent(
+    sourceHtml,
+    {
+      platform: resolvedPlatform,
+      existingSummary: existingSummary || meta.summary,
+      pageUrl: url,
+      baseUrl: pageUrl,
+    },
+  );
 
   if (!content && !(imageUrls && imageUrls.length) && !videoUrl) {
     return {

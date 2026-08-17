@@ -22,6 +22,12 @@
  *     content?: string|null,
  *     summary?: string|null,
  *     imageUrls?: string[],
+ *     videoUrl?: string|null,
+ *   } | null) | Promise<{
+ *     content?: string|null,
+ *     summary?: string|null,
+ *     imageUrls?: string[],
+ *     videoUrl?: string|null,
  *   } | null),
  * }} PlatformAdapter
  */

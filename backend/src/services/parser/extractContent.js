@@ -56,7 +56,7 @@ function buildSummary(existingSummary, content) {
  * @param {string} html
  * @param {{ platform?: string, existingSummary?: string|null }} opts
  */
-function extractContent(html, opts = {}) {
+async function extractContent(html, opts = {}) {
   const platform = opts.platform || 'web';
   const adapter = getAdapter(platform, html);
 
@@ -66,7 +66,7 @@ function extractContent(html, opts = {}) {
   let videoUrl = null;
 
   if (typeof adapter.extractContent === 'function') {
-    const specialized = adapter.extractContent(html, opts);
+    const specialized = await adapter.extractContent(html, opts);
     if (specialized) {
       content = specialized.content || null;
       summaryOverride = specialized.summary || null;
