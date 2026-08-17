@@ -17,11 +17,146 @@ class ClientWebViewFetch {
   static OverlayEntry? _entry;
   static Completer<String>? _active;
 
+  /// 抖音域预热（过 WAF / 拉起 WKWebView），首链常明显变快
+  static OverlayEntry? _warmupEntry;
+  static Completer<void>? _warmupDone;
+  static bool _warmed = false;
+  static DateTime? _warmedAt;
+
   static bool needsWebView(String url) {
     final u = url.toLowerCase();
     return u.contains('douyin.com') ||
         u.contains('iesdouyin.com') ||
         u.contains('v.douyin.com');
+  }
+
+  /// App 进主壳后调用：后台预热抖音分享域，不改变正式抓取逻辑。
+  static Future<void> warmup(BuildContext context) async {
+    if (!context.mounted) return;
+    if (_active != null) return;
+    if (_warmed &&
+        _warmedAt != null &&
+        DateTime.now().difference(_warmedAt!) < const Duration(minutes: 25)) {
+      return;
+    }
+    if (_warmupDone != null) {
+      try {
+        await _warmupDone!.future.timeout(const Duration(seconds: 12));
+      } catch (_) {}
+      return;
+    }
+
+    final overlay = Overlay.maybeOf(context, rootOverlay: true);
+    if (overlay == null) return;
+
+    final done = Completer<void>();
+    _warmupDone = done;
+    debugPrint('[douyin-fetch] warmup start');
+
+    late final WebViewController controller;
+    Timer? safety;
+
+    void finish({required bool ok}) {
+      safety?.cancel();
+      _warmupEntry?.remove();
+      _warmupEntry = null;
+      if (ok) {
+        _warmed = true;
+        _warmedAt = DateTime.now();
+        debugPrint('[douyin-fetch] warmup ok');
+      } else {
+        debugPrint('[douyin-fetch] warmup end');
+      }
+      if (!done.isCompleted) done.complete();
+      if (identical(_warmupDone, done)) _warmupDone = null;
+    }
+
+    controller = WebViewController()
+      ..setJavaScriptMode(JavaScriptMode.unrestricted)
+      ..setUserAgent(_ua)
+      ..setBackgroundColor(const Color(0x00000000))
+      ..setNavigationDelegate(
+        NavigationDelegate(
+          onNavigationRequest: (request) {
+            final u = Uri.tryParse(request.url);
+            final scheme = (u?.scheme ?? '').toLowerCase();
+            if (scheme == 'http' ||
+                scheme == 'https' ||
+                scheme == 'about' ||
+                scheme == 'blob' ||
+                scheme == 'data') {
+              return NavigationDecision.navigate;
+            }
+            return NavigationDecision.prevent;
+          },
+          onPageFinished: (u) {
+            // 分享域首页加载完即可；再留一点时间给 WAF cookie
+            unawaited(
+              Future<void>.delayed(const Duration(milliseconds: 1200), () {
+                if (_warmupDone == done) finish(ok: true);
+              }),
+            );
+          },
+        ),
+      );
+
+    // 预热必须在可见树内，否则 WKWebView 可能不跑网络/JS
+    _warmupEntry = OverlayEntry(
+      builder: (ctx) => Positioned(
+        left: 0,
+        top: 0,
+        width: 320,
+        height: 568,
+        child: IgnorePointer(
+          child: Opacity(
+            opacity: 0.01,
+            child: WebViewWidget(controller: controller),
+          ),
+        ),
+      ),
+    );
+    overlay.insert(_warmupEntry!);
+
+    safety = Timer(const Duration(seconds: 14), () {
+      if (_warmupDone == done) finish(ok: _warmed);
+    });
+
+    try {
+      await controller.loadRequest(
+        Uri.parse('https://www.iesdouyin.com/'),
+        headers: const {
+          'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
+          'Accept': 'text/html,application/xhtml+xml;q=0.9,*/*;q=0.8',
+        },
+      );
+    } catch (_) {
+      finish(ok: false);
+    }
+
+    try {
+      await done.future.timeout(const Duration(seconds: 15));
+    } catch (_) {
+      finish(ok: false);
+    }
+  }
+
+  /// 正式抓取前：若预热未完成则短等，避免两套 WebView 抢资源。
+  static Future<void> _awaitWarmupBriefly() async {
+    final pending = _warmupDone;
+    if (pending == null) return;
+    try {
+      await pending.future.timeout(const Duration(seconds: 4));
+    } catch (_) {}
+  }
+
+  static void _abortWarmup() {
+    final pending = _warmupDone;
+    _warmupEntry?.remove();
+    _warmupEntry = null;
+    _warmupDone = null;
+    if (pending != null && !pending.isCompleted) {
+      pending.complete();
+    }
   }
 
   /// 需在有 Overlay 的上下文中调用（App 前台）
@@ -37,6 +172,10 @@ class ClientWebViewFetch {
     if (_active != null) {
       throw ClientWebViewFetchException('已有页面正在抓取');
     }
+
+    // 预热进行中：先短等吃 Cookie；仍未结束则中止预热，优先正式抓取
+    await _awaitWarmupBriefly();
+    if (_warmupDone != null) _abortWarmup();
 
     final overlay = Overlay.maybeOf(context, rootOverlay: true);
     if (overlay == null) {
@@ -67,6 +206,8 @@ class ClientWebViewFetch {
       pollTimer?.cancel();
       timeoutTimer?.cancel();
       _removeOverlay();
+      _warmed = true;
+      _warmedAt = DateTime.now();
       if (!completer.isCompleted) {
         completer.complete(html);
       }

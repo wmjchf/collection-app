@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:super_collection/core/network/client_page_fetch.dart';
+import 'package:super_collection/core/network/client_webview_fetch.dart';
 import 'package:super_collection/core/ui/client_fetch_backfill.dart';
 import 'package:super_collection/core/ui/parse_progress_banner.dart';
 import 'package:super_collection/core/ui/parse_progress_controller.dart';
@@ -37,6 +38,13 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
       // 先挂好 Overlay，再消化快捷指令 / 补齐队列（避免冷启动抓页失败）
       unawaited(ShortcutInbound.flushPending());
       unawaited(ClientFetchBackfill.run());
+      // 后台预热抖音域：首链抓取往往明显变快（不挡补齐）
+      unawaited(
+        Future<void>.delayed(const Duration(milliseconds: 900), () async {
+          if (!mounted) return;
+          await ClientWebViewFetch.warmup(context);
+        }),
+      );
     });
   }
 
@@ -58,6 +66,13 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
       }
       unawaited(ShortcutInbound.flushPending());
       unawaited(ClientFetchBackfill.run());
+      // 长时间后台后 Cookie 可能失效，回前台再轻量预热
+      unawaited(
+        Future<void>.delayed(const Duration(milliseconds: 600), () async {
+          if (!mounted) return;
+          await ClientWebViewFetch.warmup(context);
+        }),
+      );
     }
   }
 
