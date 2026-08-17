@@ -22,6 +22,7 @@
 	<dict>
 		<key>NSExtensionAttributes</key>
 		<dict>
+			<!-- 字典规则：分享里若还带图片/视频附件，未声明对应类型时扩展会被整项隐藏（B 站等常见）。 -->
 			<key>NSExtensionActivationRule</key>
 			<dict>
 				<key>NSExtensionActivationSupportsText</key>
@@ -29,6 +30,10 @@
 				<key>NSExtensionActivationSupportsWebURLWithMaxCount</key>
 				<integer>1</integer>
 				<key>NSExtensionActivationSupportsWebPageWithMaxCount</key>
+				<integer>1</integer>
+				<key>NSExtensionActivationSupportsImageWithMaxCount</key>
+				<integer>10</integer>
+				<key>NSExtensionActivationSupportsMovieWithMaxCount</key>
 				<integer>1</integer>
 			</dict>
 		</dict>

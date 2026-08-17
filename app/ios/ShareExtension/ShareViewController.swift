@@ -22,12 +22,18 @@ final class ShareViewController: UIViewController {
     guard let items = extensionContext?.inputItems as? [NSExtensionItem] else {
       return nil
     }
+    // 先扫一遍 URL（B 站等常把缩略图排在链接前面）
     for item in items {
       guard let attachments = item.attachments else { continue }
       for provider in attachments {
         if let url = await loadUrl(from: provider) {
           return url
         }
+      }
+    }
+    for item in items {
+      guard let attachments = item.attachments else { continue }
+      for provider in attachments {
         if let text = await loadText(from: provider),
            let url = firstHttpUrl(in: text) {
           return url

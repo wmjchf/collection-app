@@ -47,7 +47,7 @@ class HowToAddLinkPage extends StatelessWidget {
           _HelpCard(
             title: '系统分享',
             desc:
-                '在微信、Safari、备忘录、抖音等 App 里点「分享」，选择「超级收藏夹」即可入库。若列表里没有，可在分享面板右滑到「更多」打开开关。',
+                '在微信、Safari、B站、抖音等 App 里点「分享」，选择「超级收藏夹」即可入库。图标行可左右滑动；若没有，点「编辑」打开开关。',
           ),
           SizedBox(height: 12),
           _HelpCard(
