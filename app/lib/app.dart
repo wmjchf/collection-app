@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:app_links/app_links.dart';
 import 'package:flutter/material.dart';
+import 'package:super_collection/core/network/api_client.dart';
 import 'package:super_collection/features/auth/auth_repository.dart';
 import 'package:super_collection/features/auth/login_page.dart';
 import 'package:super_collection/features/onboarding/onboarding_page.dart';
@@ -87,11 +88,23 @@ class _AuthGateState extends State<_AuthGate> {
   Future<Widget> _resolveHome() async {
     final session = await _auth.readSession();
     if (session == null) return const LoginPage();
-    // 供桌面快捷指令后台保存使用
-    await _auth.saveSession(session);
-    final seen = await OnboardingPrefs.isSeen(userId: session.userId);
-    if (!seen) return OnboardingPage(userId: session.userId);
-    // 进入主壳后再消化待处理快捷指令，避免无 Scaffold 丢 SnackBar
+
+    // 启动时校验 access；过期则自动 refresh，仍失败则回登录页
+    try {
+      await ApiClient().get(
+        '/api/auth/me',
+        accessToken: session.accessToken,
+        handleExpiry: false,
+      );
+    } on ApiException catch (e) {
+      if (e.statusCode == 401) return const LoginPage();
+      // 网络等临时错误：仍进入主界面，后续请求再处理
+    } catch (_) {}
+
+    final latest = await _auth.readSession() ?? session;
+    await _auth.saveSession(latest);
+    final seen = await OnboardingPrefs.isSeen(userId: latest.userId);
+    if (!seen) return OnboardingPage(userId: latest.userId);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ShortcutInbound.flushPending();
     });

@@ -159,6 +159,78 @@ async function loginWithSms(phone, code) {
   };
 }
 
+async function findUserById(id) {
+  const [rows] = await pool.execute(
+    'SELECT id, phone, nickname, avatar_url, status FROM users WHERE id = :id LIMIT 1',
+    { id },
+  );
+  return rows[0] || null;
+}
+
+/**
+ * 用 refreshToken 换新的 access + refresh（轮换旧会话）
+ */
+async function refreshSession(refreshToken) {
+  const raw = String(refreshToken || '').trim();
+  if (!raw) {
+    const err = new Error('登录已失效');
+    err.status = 401;
+    throw err;
+  }
+
+  const tokenHash = hashToken(raw);
+  const [rows] = await pool.execute(
+    `SELECT id, user_id, expires_at, revoked_at
+     FROM user_sessions
+     WHERE refresh_token_hash = :tokenHash
+     LIMIT 1`,
+    { tokenHash },
+  );
+  const session = rows[0];
+  if (!session || session.revoked_at) {
+    const err = new Error('登录已失效');
+    err.status = 401;
+    throw err;
+  }
+  if (new Date(session.expires_at).getTime() <= Date.now()) {
+    await pool.execute(
+      'UPDATE user_sessions SET revoked_at = CURRENT_TIMESTAMP(3) WHERE id = :id',
+      { id: session.id },
+    );
+    const err = new Error('登录已失效');
+    err.status = 401;
+    throw err;
+  }
+
+  const user = await findUserById(session.user_id);
+  if (!user || user.status !== 'active') {
+    const err = new Error('账号不可用');
+    err.status = 403;
+    throw err;
+  }
+
+  // 轮换：作废旧 refresh，发新一对
+  await pool.execute(
+    'UPDATE user_sessions SET revoked_at = CURRENT_TIMESTAMP(3) WHERE id = :id',
+    { id: session.id },
+  );
+
+  const accessToken = issueAccessToken(user);
+  const next = await createSession(user.id);
+
+  return {
+    accessToken,
+    refreshToken: next.refreshToken,
+    refreshExpiresAt: next.expiresAt,
+    user: {
+      id: user.id,
+      phone: user.phone,
+      nickname: user.nickname,
+      avatarUrl: user.avatar_url,
+    },
+  };
+}
+
 function verifyAccessToken(token) {
   return jwt.verify(token, config.auth.jwtSecret);
 }
@@ -166,6 +238,8 @@ function verifyAccessToken(token) {
 module.exports = {
   sendLoginCode,
   loginWithSms,
+  refreshSession,
   findUserByPhone,
+  findUserById,
   verifyAccessToken,
 };

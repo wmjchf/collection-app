@@ -35,6 +35,19 @@ router.post('/sms/login', async (req, res, next) => {
   }
 });
 
+router.post('/refresh', async (req, res, next) => {
+  try {
+    const refreshToken = String(req.body?.refreshToken || '').trim();
+    if (!refreshToken) {
+      return res.status(401).json({ message: '登录已失效' });
+    }
+    const result = await authService.refreshSession(refreshToken);
+    return res.json(result);
+  } catch (err) {
+    return next(err);
+  }
+});
+
 router.get('/me', requireAuth, async (req, res, next) => {
   try {
     const user = await authService.findUserByPhone(req.auth.phone);
