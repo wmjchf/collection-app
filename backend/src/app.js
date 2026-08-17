@@ -1,4 +1,5 @@
 const express = require('express');
+const path = require('path');
 const cors = require('cors');
 const healthRouter = require('./routes/health');
 const authRouter = require('./routes/auth');
@@ -9,6 +10,7 @@ const systemFiltersRouter = require('./routes/systemFilters');
 const homeRouter = require('./routes/home');
 
 const app = express();
+const publicDir = path.join(__dirname, '..', 'public');
 
 app.use(cors());
 // 客户端上报微信等整页 HTML 可能达数 MB
@@ -17,6 +19,14 @@ app.use(express.json({ limit: '8mb' }));
 app.get('/', (_req, res) => {
   res.json({ name: 'collection-backend', version: '1.0.0' });
 });
+
+/** App Store / 外链用的隐私政策页 */
+function sendPrivacy(_req, res) {
+  res.sendFile(path.join(publicDir, 'privacy.html'));
+}
+app.get('/privacy', sendPrivacy);
+app.get('/privacy-policy', sendPrivacy);
+app.get('/privacy.html', sendPrivacy);
 
 app.use('/api', healthRouter);
 app.use('/api/auth', authRouter);

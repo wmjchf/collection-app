@@ -255,77 +255,85 @@ class _LoginPageState extends State<LoginPage> {
               ),
               const SizedBox(height: 16),
               Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
+                crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
                   SizedBox(
-                    width: 24,
-                    height: 24,
+                    width: 18,
+                    height: 18,
                     child: Checkbox(
                       value: _agreed,
                       onChanged: (v) => setState(() => _agreed = v ?? false),
                       activeColor: _blue,
                       materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                      visualDensity: VisualDensity.compact,
+                      visualDensity: const VisualDensity(
+                        horizontal: -4,
+                        vertical: -4,
+                      ),
                       side: const BorderSide(color: _border, width: 1.5),
                     ),
                   ),
-                  const SizedBox(width: 6),
+                  const SizedBox(width: 8),
                   Expanded(
-                    child: Padding(
-                      padding: const EdgeInsets.only(top: 2),
-                      child: Wrap(
-                        crossAxisAlignment: WrapCrossAlignment.center,
-                        children: [
-                          const Text(
-                            '我已阅读并同意',
-                            style: TextStyle(fontSize: 12, color: _muted, height: 1.4),
+                    child: Wrap(
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        const Text(
+                          '我已阅读并同意',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: _muted,
+                            height: 1.2,
                           ),
-                          GestureDetector(
-                            onTap: () {
-                              Navigator.of(context).push(
-                                MaterialPageRoute<void>(
-                                  builder: (_) => const SimpleDocPage(
-                                    title: '用户协议',
-                                    body: LegalDocs.userAgreement,
-                                  ),
+                        ),
+                        GestureDetector(
+                          onTap: () {
+                            Navigator.of(context).push(
+                              MaterialPageRoute<void>(
+                                builder: (_) => const SimpleDocPage(
+                                  title: '用户协议',
+                                  body: LegalDocs.userAgreement,
                                 ),
-                              );
-                            },
-                            child: const Text(
-                              '《用户协议》',
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: _blue,
-                                height: 1.4,
                               ),
+                            );
+                          },
+                          child: const Text(
+                            '《用户协议》',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: _blue,
+                              height: 1.2,
                             ),
                           ),
-                          const Text(
-                            '与',
-                            style: TextStyle(fontSize: 12, color: _muted, height: 1.4),
+                        ),
+                        const Text(
+                          '与',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: _muted,
+                            height: 1.2,
                           ),
-                          GestureDetector(
-                            onTap: () {
-                              Navigator.of(context).push(
-                                MaterialPageRoute<void>(
-                                  builder: (_) => const SimpleDocPage(
-                                    title: '隐私政策',
-                                    body: LegalDocs.privacyPolicy,
-                                  ),
+                        ),
+                        GestureDetector(
+                          onTap: () {
+                            Navigator.of(context).push(
+                              MaterialPageRoute<void>(
+                                builder: (_) => const SimpleDocPage(
+                                  title: '隐私政策',
+                                  body: LegalDocs.privacyPolicy,
                                 ),
-                              );
-                            },
-                            child: const Text(
-                              '《隐私政策》',
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: _blue,
-                                height: 1.4,
                               ),
+                            );
+                          },
+                          child: const Text(
+                            '《隐私政策》',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: _blue,
+                              height: 1.2,
                             ),
                           ),
-                        ],
-                      ),
+                        ),
+                      ],
                     ),
                   ),
                 ],
