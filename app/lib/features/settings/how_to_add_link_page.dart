@@ -59,7 +59,7 @@ class HowToAddLinkPage extends StatelessWidget {
           _HelpCard(
             title: '快捷指令（iOS）',
             desc:
-                '复制链接后点主屏幕「保存剪贴板链接」即可后台入库（不必打开 App）。可在设置 → 快捷指令说明里配置。',
+                '复制链接后，点主屏幕图标，或在手机背面连点两下（需在系统里把该指令绑到「轻点背面」）。不必打开 App。设置 → iOS 快捷指令说明里可安装并查看步骤。',
           ),
         ],
       ),

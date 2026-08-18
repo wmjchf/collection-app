@@ -16,7 +16,7 @@ class ShortcutConfig {
   static const installIcloudUrl = String.fromEnvironment(
     'SHORTCUT_INSTALL_URL',
     defaultValue:
-        'https://www.icloud.com/shortcuts/5ec7d104f39f4f8d95c924289306ccb7',
+        'https://www.icloud.com/shortcuts/84284ece487f4e74a805fb82d4df9211',
   );
 
   /// 旧版：会打开 App（仅兼容，不用于一键安装）

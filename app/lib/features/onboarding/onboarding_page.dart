@@ -81,7 +81,7 @@ class OnboardingPage extends StatelessWidget {
               const SizedBox(height: 10),
               const _WayCard(
                 title: '快捷指令',
-                desc: 'iOS 可加到主屏幕：复制链接后点一下后台保存，不必打开 App',
+                desc: 'iOS 可加到主屏幕，也可绑到「轻点背面」：复制链接后点一下或连点两下背面即可保存',
               ),
               const Spacer(),
               SizedBox(
