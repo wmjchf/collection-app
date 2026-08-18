@@ -46,12 +46,12 @@ class ShortcutsHelpPage extends StatelessWidget {
         children: [
           Text(
             hasOneTap
-                ? '点下方按钮一键安装即可，不用在快捷指令里自己搜索、拼接操作。装好后可加到主屏幕，也可绑到「轻点背面」。'
+                ? '先安装「保存链接到Conflux」。主屏幕、控制中心、轻点背面互不影响，装好后任选，也可一起开。'
                 : '预置安装链接配置后，用户只需点「添加快捷指令」一键安装，无需自己搜索拼接。',
             style: const TextStyle(
               fontSize: 14,
               color: _muted,
-              height: 1.4,
+              height: 1.45,
             ),
           ),
           const SizedBox(height: 16),
@@ -85,29 +85,58 @@ class ShortcutsHelpPage extends StatelessWidget {
               style: TextStyle(fontSize: 12, color: _muted, height: 1.35),
             ),
           ],
-          const SizedBox(height: 16),
+          const SizedBox(height: 28),
+          const _SectionLabel(text: '只需一次'),
+          const SizedBox(height: 10),
           const _HelpCard(
-            title: '安装后怎么用',
+            title: '添加指令',
             desc:
-                '1. 先打开本 App 并登录一次\n'
-                '2. 点「添加快捷指令」→ 系统里点「添加」\n'
-                '3. 打开「保存链接到Conflux」→ 分享 →「加到主屏幕」\n'
-                '之后：复制链接 → 点主屏幕图标（不进 App）',
+                '先打开本 App 并登录，再点上方按钮，在系统页点「添加」。\n'
+                '装好后即可分别设置下面的用法，不必按顺序做完。',
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 28),
+          const _SectionLabel(text: '用法互不影响，任选'),
+          const SizedBox(height: 10),
           const _HelpCard(
-            title: '轻点背面（连点两下）',
+            title: '加到主屏幕',
             desc:
-                '用同一条快捷指令，不用另装。iPhone 8 及更新机型：\n'
-                '\n'
-                '1. 设置 → 辅助功能 → 触控 → 轻点背面\n'
-                '2. 选「轻点两下」\n'
-                '3. 在快捷指令里选刚添加的「保存链接到Conflux」\n'
-                '\n'
-                '之后：复制链接 → 在手机背面连点两下即可保存。\n'
-                '主屏幕图标可以继续留着，两种方式都能用。',
+                '打开「保存链接到Conflux」→ 分享 →「加到主屏幕」。\n'
+                '之后：复制链接 → 点主屏幕图标。',
+          ),
+          const SizedBox(height: 10),
+          const _HelpCard(
+            title: '加到控制中心',
+            desc:
+                'iOS 18 及更新：打开控制中心 → 点左上角「+」→「添加控件」→ 搜「快捷指令」→ 选「保存链接到Conflux」。\n'
+                '之后：复制链接 → 从右上角下滑，点该控件。',
+          ),
+          const SizedBox(height: 10),
+          const _HelpCard(
+            title: '轻点背面',
+            desc:
+                'iPhone 8 及更新：设置 → 辅助功能 → 触控 → 轻点背面 → 轻点两下，选「保存链接到Conflux」。\n'
+                '之后：复制链接 → 在手机背面连点两下。',
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _SectionLabel extends StatelessWidget {
+  const _SectionLabel({required this.text});
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      text,
+      style: const TextStyle(
+        fontSize: 13,
+        fontWeight: FontWeight.w600,
+        color: Color(0xFF737A85),
+        letterSpacing: 0.2,
       ),
     );
   }
@@ -148,7 +177,7 @@ class _HelpCard extends StatelessWidget {
             style: const TextStyle(
               fontSize: 13,
               color: _muted,
-              height: 1.35,
+              height: 1.45,
             ),
           ),
         ],

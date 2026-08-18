@@ -59,7 +59,7 @@ class HowToAddLinkPage extends StatelessWidget {
           _HelpCard(
             title: '快捷指令（iOS）',
             desc:
-                '复制链接后，点主屏幕图标，或在手机背面连点两下（需在系统里把该指令绑到「轻点背面」）。不必打开 App。设置 → iOS 快捷指令说明里可安装并查看步骤。',
+                '复制链接后，可用主屏幕图标、控制中心或「轻点背面」（互不影响，任选）。不必打开 App。设置 → iOS 快捷指令说明里可安装。',
           ),
         ],
       ),
