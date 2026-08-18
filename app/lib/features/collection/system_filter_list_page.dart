@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:super_collection/core/network/api_client.dart';
+import 'package:super_collection/core/ui/app_subpage_app_bar.dart';
 import 'package:super_collection/core/ui/paged_list.dart';
 import 'package:super_collection/features/collection/system_filters_repository.dart';
 import 'package:super_collection/features/home/home_format.dart';
@@ -134,19 +135,7 @@ class _SystemFilterListPageState extends State<SystemFilterListPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: _bg,
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        surfaceTintColor: Colors.transparent,
-        elevation: 0,
-        title: Text(
-          widget.title,
-          style: const TextStyle(
-            fontSize: 17,
-            fontWeight: FontWeight.w700,
-            color: _text,
-          ),
-        ),
-      ),
+      appBar: AppSubpageAppBar(title: widget.title),
       body: RefreshIndicator(
         onRefresh: () => _load(reset: true),
         child: _loading && _items.isEmpty

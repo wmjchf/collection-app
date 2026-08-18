@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:super_collection/core/network/api_client.dart';
+import 'package:super_collection/core/ui/app_subpage_app_bar.dart';
 import 'package:super_collection/core/ui/app_confirm_dialog.dart';
 import 'package:super_collection/core/ui/app_toast.dart';
 import 'package:super_collection/core/ui/paged_list.dart';
@@ -209,30 +210,7 @@ class _TrashPageState extends State<TrashPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: _bg,
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        surfaceTintColor: Colors.transparent,
-        elevation: 0,
-        centerTitle: true,
-        leadingWidth: 80,
-        leading: TextButton.icon(
-          onPressed: () => Navigator.of(context).pop(),
-          style: TextButton.styleFrom(
-            foregroundColor: _text,
-            padding: const EdgeInsets.only(left: 8),
-          ),
-          icon: const Icon(Icons.chevron_left, size: 28),
-          label: const Text('返回', style: TextStyle(fontSize: 15)),
-        ),
-        title: const Text(
-          '回收站',
-          style: TextStyle(
-            fontSize: 17,
-            fontWeight: FontWeight.w700,
-            color: _text,
-          ),
-        ),
-      ),
+      appBar: const AppSubpageAppBar(title: '回收站'),
       body: Column(
         children: [
           Container(
