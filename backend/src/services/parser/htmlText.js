@@ -201,11 +201,12 @@ function htmlToText(fragment) {
 }
 
 /**
- * 文章正文：只保留基础样式与排版（不加正文插图）。
+ * 文章正文：图片位置 + 标题/加粗/斜体/字号（轻量 Markdown）。
+ * - 图：![image](url)
  * - 标题：# / ## / ###
  * - 加粗：**text**  斜体：*text*
  * - 行内偏大字号：{{18|text}}
- * 封面仍走 meta.coverImageUrl；图集类内容走 imageUrls，不经此函数。
+ * 图集类内容走 imageUrls，不经此函数。
  */
 function htmlToRichText(fragment, { baseUrl } = {}) {
   const cheerio = require('cheerio');
@@ -214,8 +215,21 @@ function htmlToRichText(fragment, { baseUrl } = {}) {
   });
   $('#__root script, #__root style, #__root noscript').remove();
 
-  // 正文阅读不插图：直接去掉 img（避免 ![image] 占位）
-  $('#__root img').remove();
+  $('#__root img').each((_, el) => {
+    const $el = $(el);
+    const w = parseInt($el.attr('width') || '0', 10);
+    const h = parseInt($el.attr('height') || '0', 10);
+    if ((w > 0 && w <= 8) || (h > 0 && h <= 8)) {
+      $el.remove();
+      return;
+    }
+    const src = absolutize(baseUrl, imgSrc($el));
+    if (!src) {
+      $el.remove();
+      return;
+    }
+    $el.replaceWith(`\n\n![image](${src})\n\n`);
+  });
 
   // 2) 语义标题
   for (const [sel, level] of [

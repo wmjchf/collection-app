@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:super_collection/core/network/api_client.dart';
+import 'package:super_collection/core/network/media_http_headers.dart';
 import 'package:super_collection/core/ui/app_toast.dart';
 import 'package:super_collection/features/home/home_format.dart';
 import 'package:super_collection/features/items/article_body_text.dart';
@@ -59,7 +60,7 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
 
   List<ArticleBlock> get _bodyBlocks => ArticleContentBlocks.parse(_rawBody);
 
-  /// 阅读页顶部轮播：仅真图集；普通文章图在正文流里
+  /// 阅读页顶部轮播：仅真图集；普通文章图插在正文对应位置
   bool get _showReadingImages => _readingImageUrls.isNotEmpty;
 
   List<String> get _readingImageUrls {
@@ -730,8 +731,11 @@ class _InlineArticleBody extends StatelessWidget {
     for (var i = 0; i < blocks.length; i++) {
       final block = blocks[i];
 
-      // 阅读页：标准文章不展示插图，只留文字样式与排版
-      if (block is ArticleImageBlock) continue;
+      if (block is ArticleImageBlock) {
+        if (children.isNotEmpty) children.add(const SizedBox(height: 18));
+        children.add(_ReadingInlineImage(url: block.url));
+        continue;
+      }
 
       if (children.isNotEmpty) children.add(const SizedBox(height: 14));
 
@@ -845,6 +849,62 @@ class _InlineArticleBody extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: children,
+    );
+  }
+}
+
+/// 正文插图：居中，宽度略小于正文栏。
+class _ReadingInlineImage extends StatelessWidget {
+  const _ReadingInlineImage({required this.url});
+
+  final String url;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final maxW = constraints.maxWidth;
+        final width = (maxW * 0.78).clamp(0.0, 360.0);
+        return Align(
+          alignment: Alignment.center,
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: ConstrainedBox(
+              constraints: BoxConstraints(maxWidth: width),
+              child: Image.network(
+                url,
+                width: width,
+                fit: BoxFit.contain,
+                headers: mediaHttpHeadersFor(url),
+                filterQuality: FilterQuality.medium,
+                errorBuilder: (_, __, ___) => const SizedBox(
+                  height: 72,
+                  child: Center(
+                    child: Icon(
+                      Icons.broken_image_outlined,
+                      color: Color(0xFFB2B8BF),
+                      size: 28,
+                    ),
+                  ),
+                ),
+                loadingBuilder: (context, child, progress) {
+                  if (progress == null) return child;
+                  return const SizedBox(
+                    height: 120,
+                    child: Center(
+                      child: SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 }
