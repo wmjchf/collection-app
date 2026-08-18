@@ -15,8 +15,11 @@ class ArticleHeadingBlock extends ArticleBlock {
 }
 
 class ArticleImageBlock extends ArticleBlock {
-  const ArticleImageBlock(this.url);
+  const ArticleImageBlock(this.url, {this.width, this.height});
   final String url;
+  /// 原文声明的展示宽高（CSS 像素）；解码后可再校正。
+  final double? width;
+  final double? height;
 }
 
 /// 解析正文中的 Markdown 图片 / 标题，按阅读顺序拆块。
@@ -33,6 +36,21 @@ class ArticleContentBlocks {
   );
 
   static final RegExp headingLine = RegExp(r'^(#{1,4})\s+(.+)$');
+  static final RegExp _altSize = RegExp(r'^(\d+)x(\d+)$');
+
+  static ArticleImageBlock _imageFromMatch(RegExpMatch m) {
+    final url = (m.group(2) ?? '').trim();
+    final size = _sizeFromAlt(m.group(1));
+    return ArticleImageBlock(url, width: size.$1, height: size.$2);
+  }
+
+  static (double?, double?) _sizeFromAlt(String? alt) {
+    final m = _altSize.firstMatch((alt ?? '').trim());
+    if (m == null) return (null, null);
+    final w = double.parse(m.group(1)!);
+    final h = double.parse(m.group(2)!);
+    return (w > 0 ? w : null, h > 0 ? h : null);
+  }
 
   /// 去掉图片与 Markdown 标记后的可见纯文字（标注偏移用）。
   static String plainText(String content) {
@@ -88,8 +106,8 @@ class ArticleContentBlocks {
       final m = imageLine.firstMatch(trimmed);
       if (m != null) {
         flushText();
-        final url = m.group(2)!.trim();
-        if (url.isNotEmpty) blocks.add(ArticleImageBlock(url));
+        final img = _imageFromMatch(m);
+        if (img.url.isNotEmpty) blocks.add(img);
         continue;
       }
 
@@ -120,8 +138,8 @@ class ArticleContentBlocks {
           } else if (buffer.isNotEmpty) {
             flushText();
           }
-          final url = im.group(2)!.trim();
-          if (url.isNotEmpty) blocks.add(ArticleImageBlock(url));
+          final img = _imageFromMatch(im);
+          if (img.url.isNotEmpty) blocks.add(img);
           rest = rest.substring(im.end);
         }
         continue;

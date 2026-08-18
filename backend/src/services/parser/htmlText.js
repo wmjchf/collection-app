@@ -21,6 +21,40 @@ function imgSrc($el) {
   );
 }
 
+/** 原文图展示尺寸：微信 data-w / data-ratio，或 width/height / style。 */
+function imgDisplaySize($el) {
+  const num = (v) => {
+    const n = parseInt(v || '', 10);
+    return Number.isFinite(n) && n > 0 ? n : 0;
+  };
+  let w =
+    num($el.attr('data-w')) ||
+    num($el.attr('data-width')) ||
+    num($el.attr('width'));
+  let h =
+    num($el.attr('data-h')) ||
+    num($el.attr('data-height')) ||
+    num($el.attr('height'));
+  const style = String($el.attr('style') || '');
+  if (!w) {
+    const m = style.match(/(?:^|;)\s*width\s*:\s*([\d.]+)px/i);
+    if (m) w = Math.round(parseFloat(m[1]));
+  }
+  if (!h) {
+    const m = style.match(/(?:^|;)\s*height\s*:\s*([\d.]+)px/i);
+    if (m) h = Math.round(parseFloat(m[1]));
+  }
+  const ratio = parseFloat($el.attr('data-ratio') || '');
+  if (w && !h && Number.isFinite(ratio) && ratio > 0) {
+    h = Math.round(w * ratio);
+  }
+  if (!w && h && Number.isFinite(ratio) && ratio > 0) {
+    w = Math.round(h / ratio);
+  }
+  if (w <= 8) return null;
+  return { w, h: h > 0 ? h : 0 };
+}
+
 function escapeMdInline(text) {
   return String(text || '')
     .replace(/\*/g, '')
@@ -202,7 +236,7 @@ function htmlToText(fragment) {
 
 /**
  * 文章正文：图片位置 + 标题/加粗/斜体/字号（轻量 Markdown）。
- * - 图：![image](url)
+ * - 图：![1080x720](url) 或 ![image](url)
  * - 标题：# / ## / ###
  * - 加粗：**text**  斜体：*text*
  * - 行内偏大字号：{{18|text}}
@@ -217,9 +251,10 @@ function htmlToRichText(fragment, { baseUrl } = {}) {
 
   $('#__root img').each((_, el) => {
     const $el = $(el);
-    const w = parseInt($el.attr('width') || '0', 10);
-    const h = parseInt($el.attr('height') || '0', 10);
-    if ((w > 0 && w <= 8) || (h > 0 && h <= 8)) {
+    const size = imgDisplaySize($el);
+    const tinyW = parseInt($el.attr('width') || $el.attr('data-w') || '0', 10);
+    const tinyH = parseInt($el.attr('height') || '0', 10);
+    if ((tinyW > 0 && tinyW <= 8) || (tinyH > 0 && tinyH <= 8)) {
       $el.remove();
       return;
     }
@@ -228,7 +263,8 @@ function htmlToRichText(fragment, { baseUrl } = {}) {
       $el.remove();
       return;
     }
-    $el.replaceWith(`\n\n![image](${src})\n\n`);
+    const alt = size ? `${size.w}x${size.h || 0}` : 'image';
+    $el.replaceWith(`\n\n![${alt}](${src})\n\n`);
   });
 
   // 2) 语义标题

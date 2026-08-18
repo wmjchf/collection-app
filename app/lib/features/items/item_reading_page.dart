@@ -733,7 +733,13 @@ class _InlineArticleBody extends StatelessWidget {
 
       if (block is ArticleImageBlock) {
         if (children.isNotEmpty) children.add(const SizedBox(height: 18));
-        children.add(_ReadingInlineImage(url: block.url));
+        children.add(
+          _ReadingInlineImage(
+            url: block.url,
+            hintWidth: block.width,
+            hintHeight: block.height,
+          ),
+        );
         continue;
       }
 
@@ -853,54 +859,136 @@ class _InlineArticleBody extends StatelessWidget {
   }
 }
 
-/// 正文插图：居中，宽度略小于正文栏。
-class _ReadingInlineImage extends StatelessWidget {
-  const _ReadingInlineImage({required this.url});
+/// 正文插图：栏宽内按原文尺寸显示，超过则占满。
+class _ReadingInlineImage extends StatefulWidget {
+  const _ReadingInlineImage({
+    required this.url,
+    this.hintWidth,
+    this.hintHeight,
+  });
 
   final String url;
+  final double? hintWidth;
+  final double? hintHeight;
+
+  @override
+  State<_ReadingInlineImage> createState() => _ReadingInlineImageState();
+}
+
+class _ReadingInlineImageState extends State<_ReadingInlineImage> {
+  ImageStream? _stream;
+  ImageStreamListener? _listener;
+  double? _decodedW;
+  double? _decodedH;
+
+  @override
+  void initState() {
+    super.initState();
+    _listen();
+  }
+
+  @override
+  void didUpdateWidget(covariant _ReadingInlineImage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.url != widget.url) {
+      _stop();
+      _decodedW = null;
+      _decodedH = null;
+      _listen();
+    }
+  }
+
+  @override
+  void dispose() {
+    _stop();
+    super.dispose();
+  }
+
+  void _listen() {
+    final provider = NetworkImage(
+      widget.url,
+      headers: mediaHttpHeadersFor(widget.url),
+    );
+    _stream = provider.resolve(const ImageConfiguration());
+    _listener = ImageStreamListener(
+      (info, _) {
+        if (!mounted) return;
+        setState(() {
+          _decodedW = info.image.width.toDouble();
+          _decodedH = info.image.height.toDouble();
+        });
+      },
+      onError: (_, __) {},
+    );
+    _stream!.addListener(_listener!);
+  }
+
+  void _stop() {
+    if (_stream != null && _listener != null) {
+      _stream!.removeListener(_listener!);
+    }
+    _stream = null;
+    _listener = null;
+  }
 
   @override
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
         final maxW = constraints.maxWidth;
-        final width = (maxW * 0.78).clamp(0.0, 360.0);
+        final naturalW = widget.hintWidth ?? _decodedW;
+        final naturalH = widget.hintHeight ?? _decodedH;
+        final aspect = (naturalW != null &&
+                naturalH != null &&
+                naturalW > 0 &&
+                naturalH > 0)
+            ? naturalH / naturalW
+            : (_decodedW != null &&
+                    _decodedH != null &&
+                    _decodedW! > 0)
+                ? _decodedH! / _decodedW!
+                : null;
+        final width = naturalW == null
+            ? maxW
+            : (naturalW < maxW ? naturalW : maxW);
+        final height = aspect != null ? width * aspect : null;
         return Align(
-          alignment: Alignment.center,
+          alignment: Alignment.centerLeft,
           child: ClipRRect(
             borderRadius: BorderRadius.circular(8),
-            child: ConstrainedBox(
-              constraints: BoxConstraints(maxWidth: width),
-              child: Image.network(
-                url,
-                width: width,
-                fit: BoxFit.contain,
-                headers: mediaHttpHeadersFor(url),
-                filterQuality: FilterQuality.medium,
-                errorBuilder: (_, __, ___) => const SizedBox(
-                  height: 72,
-                  child: Center(
-                    child: Icon(
-                      Icons.broken_image_outlined,
-                      color: Color(0xFFB2B8BF),
-                      size: 28,
-                    ),
+            child: Image.network(
+              widget.url,
+              width: width,
+              height: height,
+              fit: BoxFit.contain,
+              alignment: Alignment.centerLeft,
+              headers: mediaHttpHeadersFor(widget.url),
+              filterQuality: FilterQuality.medium,
+              gaplessPlayback: true,
+              errorBuilder: (_, __, ___) => const SizedBox(
+                height: 72,
+                child: Center(
+                  child: Icon(
+                    Icons.broken_image_outlined,
+                    color: Color(0xFFB2B8BF),
+                    size: 28,
                   ),
                 ),
-                loadingBuilder: (context, child, progress) {
-                  if (progress == null) return child;
-                  return const SizedBox(
-                    height: 120,
-                    child: Center(
-                      child: SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      ),
-                    ),
-                  );
-                },
               ),
+              loadingBuilder: (context, child, progress) {
+                if (progress == null) return child;
+                return SizedBox(
+                  width: width,
+                  height: height ?? 160,
+                  child: const Center(
+                    child: SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                  ),
+                );
+              },
             ),
           ),
         );
