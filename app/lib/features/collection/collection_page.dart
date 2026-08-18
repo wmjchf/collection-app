@@ -41,8 +41,10 @@ class _CollectionPageState extends State<CollectionPage> {
   List<SystemFilter> _otherFilters = const [];
   bool _loading = true;
   String? _error;
+  bool _systemExpanded = true;
   bool _foldersExpanded = true;
   bool _tagsExpanded = true;
+  bool _othersExpanded = true;
 
   @override
   void initState() {
@@ -278,38 +280,58 @@ class _CollectionPageState extends State<CollectionPage> {
           physics: const AlwaysScrollableScrollPhysics(),
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
           children: [
-            const _SectionLabel('系统分类'),
-            const SizedBox(height: 8),
-            if (_systemFilters.isEmpty)
-              const SizedBox.shrink()
-            else ...[
-              _EntityGroup(
-                entries: [
-                  for (final f in _systemFilters.where((e) => e.code == 'unread'))
-                    _EntityEntry(
-                      title: f.name,
-                      countLabel: f.countLabel,
-                      icon: _CollectionNavIcon.forSystemCode(f.code),
-                      onTap: () => _openSystemFilter(f),
-                    ),
-                ],
-              ),
-              if (_systemFilters.any((f) => f.code != 'unread')) ...[
-                const SizedBox(height: 16),
-                _EntityGroup(
-                  entries: [
-                    for (final f
-                        in _systemFilters.where((e) => e.code != 'unread'))
-                      _EntityEntry(
-                        title: f.name,
-                        countLabel: f.countLabel,
-                        icon: _CollectionNavIcon.forSystemCode(f.code),
-                        onTap: () => _openSystemFilter(f),
+            _SectionLabel(
+              '系统分类',
+              expanded: _systemExpanded,
+              onToggleExpand: () {
+                setState(() => _systemExpanded = !_systemExpanded);
+              },
+            ),
+            AnimatedSize(
+              duration: const Duration(milliseconds: 200),
+              curve: Curves.easeInOut,
+              alignment: Alignment.topCenter,
+              child: _systemExpanded && _systemFilters.isNotEmpty
+                  ? Padding(
+                      padding: const EdgeInsets.only(top: 8),
+                      child: Column(
+                        children: [
+                          if (_systemFilters.any((e) => e.code == 'unread'))
+                            _EntityGroup(
+                              entries: [
+                                for (final f in _systemFilters
+                                    .where((e) => e.code == 'unread'))
+                                  _EntityEntry(
+                                    title: f.name,
+                                    countLabel: f.countLabel,
+                                    icon:
+                                        _CollectionNavIcon.forSystemCode(f.code),
+                                    onTap: () => _openSystemFilter(f),
+                                  ),
+                              ],
+                            ),
+                          if (_systemFilters.any((f) => f.code != 'unread')) ...[
+                            if (_systemFilters.any((e) => e.code == 'unread'))
+                              const SizedBox(height: 16),
+                            _EntityGroup(
+                              entries: [
+                                for (final f in _systemFilters
+                                    .where((e) => e.code != 'unread'))
+                                  _EntityEntry(
+                                    title: f.name,
+                                    countLabel: f.countLabel,
+                                    icon:
+                                        _CollectionNavIcon.forSystemCode(f.code),
+                                    onTap: () => _openSystemFilter(f),
+                                  ),
+                              ],
+                            ),
+                          ],
+                        ],
                       ),
-                  ],
-                ),
-              ],
-            ],
+                    )
+                  : const SizedBox(width: double.infinity),
+            ),
             const SizedBox(height: 16),
             _SectionLabel(
               '收藏夹',
@@ -402,18 +424,33 @@ class _CollectionPageState extends State<CollectionPage> {
               ),
             ],
             const SizedBox(height: 16),
-            const _SectionLabel('其他'),
-            const SizedBox(height: 8),
-            _EntityGroup(
-              entries: [
-                for (final f in _otherFilters)
-                  _EntityEntry(
-                    title: f.name,
-                    countLabel: f.countLabel,
-                    icon: _CollectionNavIcon.forSystemCode(f.code),
-                    onTap: () => _openSystemFilter(f),
-                  ),
-              ],
+            _SectionLabel(
+              '其他',
+              expanded: _othersExpanded,
+              onToggleExpand: () {
+                setState(() => _othersExpanded = !_othersExpanded);
+              },
+            ),
+            AnimatedSize(
+              duration: const Duration(milliseconds: 200),
+              curve: Curves.easeInOut,
+              alignment: Alignment.topCenter,
+              child: _othersExpanded
+                  ? Padding(
+                      padding: const EdgeInsets.only(top: 8),
+                      child: _EntityGroup(
+                        entries: [
+                          for (final f in _otherFilters)
+                            _EntityEntry(
+                              title: f.name,
+                              countLabel: f.countLabel,
+                              icon: _CollectionNavIcon.forSystemCode(f.code),
+                              onTap: () => _openSystemFilter(f),
+                            ),
+                        ],
+                      ),
+                    )
+                  : const SizedBox(width: double.infinity),
             ),
           ],
         ),

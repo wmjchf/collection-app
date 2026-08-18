@@ -154,8 +154,10 @@ function emptyCollection() {
     tags: [],
     filters: [],
     others: [],
+    systemExpanded: true,
     foldersExpanded: true,
     tagsExpanded: true,
+    othersExpanded: true,
     loading: false,
     error: null,
   };
@@ -741,10 +743,13 @@ function sectionLabel(title, { expandable, expanded, onToggle, onAdd } = {}) {
   const main = document.createElement('button');
   main.type = 'button';
   main.className = 'label-main';
+  const chevron = expanded
+    ? '<svg class="chevron" width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M7.41 8.59 12 13.17l4.59-4.58L18 10l-6 6-6-6z"/></svg>'
+    : '<svg class="chevron" width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M8.59 16.59 13.17 12 8.59 7.41 10 6l6 6-6 6z"/></svg>';
   main.innerHTML = expandable
-    ? `<span></span><span class="chevron">${expanded ? '▾' : '›'}</span>`
-    : '<span></span>';
-  main.querySelector('span').textContent = title;
+    ? `<span class="label-text"></span>${chevron}`
+    : '<span class="label-text"></span>';
+  main.querySelector('.label-text').textContent = title;
   if (expandable) main.addEventListener('click', onToggle);
   row.append(main);
   if (onAdd) {
@@ -763,7 +768,16 @@ function renderCollection() {
   const s = collectionState;
   collectionBody.replaceChildren();
 
-  collectionBody.append(sectionLabel('系统分类'));
+  collectionBody.append(
+    sectionLabel('系统分类', {
+      expandable: true,
+      expanded: s.systemExpanded,
+      onToggle: () => {
+        collectionState.systemExpanded = !s.systemExpanded;
+        renderCollection();
+      },
+    }),
+  );
   if (s.loading && !s.filters.length) {
     const msg = document.createElement('p');
     msg.className = 'list-msg';
@@ -785,15 +799,15 @@ function renderCollection() {
     return;
   }
 
-  const unread = s.filters.filter((f) => f.code === 'unread');
-  const rest = s.filters.filter((f) => f.code !== 'unread');
-  if (unread.length) {
-    collectionBody.append(
-      entityGroup(unread.map((f) => filterRow(f))),
-    );
-  }
-  if (rest.length) {
-    collectionBody.append(entityGroup(rest.map((f) => filterRow(f))));
+  if (s.systemExpanded) {
+    const unread = s.filters.filter((f) => f.code === 'unread');
+    const rest = s.filters.filter((f) => f.code !== 'unread');
+    if (unread.length) {
+      collectionBody.append(entityGroup(unread.map((f) => filterRow(f))));
+    }
+    if (rest.length) {
+      collectionBody.append(entityGroup(rest.map((f) => filterRow(f))));
+    }
   }
 
   collectionBody.append(
@@ -830,10 +844,19 @@ function renderCollection() {
     );
   }
 
-  collectionBody.append(sectionLabel('其他'));
   collectionBody.append(
-    entityGroup(s.others.map((f) => filterRow(f))),
+    sectionLabel('其他', {
+      expandable: true,
+      expanded: s.othersExpanded,
+      onToggle: () => {
+        collectionState.othersExpanded = !s.othersExpanded;
+        renderCollection();
+      },
+    }),
   );
+  if (s.othersExpanded) {
+    collectionBody.append(entityGroup(s.others.map((f) => filterRow(f))));
+  }
 }
 
 function filterRow(filter) {
@@ -973,15 +996,14 @@ function finishDialog(ok) {
 
 async function openAddLink() {
   await syncCurrentTab();
-  addUrl.value = canSaveUrl(currentTab?.url) ? currentTab.url : '';
-  addError.hidden = true;
-  addError.textContent = '';
+  const url = canSaveUrl(currentTab?.url) ? currentTab.url : '';
+  addUrl.value = url;
+  addError.hidden = Boolean(url);
+  addError.textContent = url ? '' : '当前页不是网页，无法收藏';
   addHint.hidden = true;
-  addSave.disabled = false;
+  addSave.disabled = !url;
   addSave.textContent = '保存';
   openOverlay('add');
-  addUrl.focus();
-  addUrl.select();
 }
 
 async function submitAddLink() {
@@ -1772,19 +1794,7 @@ for (const btn of tabbarEl.querySelectorAll('.tab-item')) {
   btn.addEventListener('click', () => switchTab(btn.dataset.tab));
 }
 
-$('add-current').addEventListener('click', async () => {
-  await syncCurrentTab();
-  if (!canSaveUrl(currentTab?.url)) {
-    toast('当前页不是网页，无法填入');
-    return;
-  }
-  addUrl.value = currentTab.url;
-  addError.hidden = true;
-});
 $('add-save').addEventListener('click', submitAddLink);
-addUrl.addEventListener('keydown', (e) => {
-  if (e.key === 'Enter') submitAddLink();
-});
 nameSave.addEventListener('click', submitNameSheet);
 nameInput.addEventListener('keydown', (e) => {
   if (e.key === 'Enter') submitNameSheet();

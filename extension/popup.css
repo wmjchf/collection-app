@@ -126,16 +126,6 @@ button {
   cursor: default;
 }
 
-.ghost {
-  width: 100%;
-  height: 40px;
-  margin: -4px 0 12px;
-  border-radius: 12px;
-  color: var(--blue);
-  font-size: 14px;
-  font-weight: 500;
-}
-
 .agree {
   display: flex;
   align-items: flex-start;
@@ -205,8 +195,9 @@ button {
   cursor: default;
 }
 
+.topbar-sub,
 .topbar-detail {
-  padding: 0 4px 0 4px;
+  padding: 0 4px;
 }
 
 .more-wrap {
@@ -252,14 +243,22 @@ button {
 }
 
 .back-btn {
-  color: var(--blue);
-  font-size: 16px;
+  display: inline-flex;
+  align-items: center;
+  gap: 0;
+  min-width: 80px;
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 400;
   padding: 8px 8px 8px 4px;
   white-space: nowrap;
 }
 
-.back-dark {
-  color: var(--text);
+.back-btn svg {
+  width: 26px;
+  height: 26px;
+  flex: 0 0 26px;
+  margin-right: -2px;
 }
 
 .text-action {
@@ -414,7 +413,7 @@ button {
   align-items: center;
   gap: 8px;
   height: 56px;
-  padding: 0 12px 0 8px;
+  padding: 0 12px 0 4px;
   background: var(--white);
 }
 
@@ -462,8 +461,10 @@ button {
 }
 
 .col-label .chevron {
-  font-size: 16px;
-  line-height: 1;
+  width: 18px;
+  height: 18px;
+  flex: 0 0 18px;
+  display: block;
 }
 
 .col-add {
@@ -826,7 +827,17 @@ button {
   margin-bottom: 8px;
 }
 
-.sheet #add-url:focus,
+.sheet #add-url[readonly] {
+  color: var(--muted);
+  cursor: default;
+}
+
+.sheet #add-url[readonly]:focus {
+  padding: 16px;
+  border: 0;
+  box-shadow: none;
+}
+
 .sheet #name-input:focus {
   padding: 15.5px;
   box-shadow: 0 0 0 1.5px var(--blue);
