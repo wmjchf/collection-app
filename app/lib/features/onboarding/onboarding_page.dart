@@ -51,7 +51,7 @@ class OnboardingPage extends StatelessWidget {
               ),
               const SizedBox(height: 12),
               const Text(
-                '把好内容收到一处，需要时搜得到、读得进。',
+                '把好内容收到一处，想看的时候翻得出来。',
                 style: TextStyle(
                   fontSize: 15,
                   color: _muted,
@@ -60,7 +60,7 @@ class OnboardingPage extends StatelessWidget {
               ),
               const SizedBox(height: 28),
               const Text(
-                '三种入库方式（任选）',
+                '三种收藏方式（任选）',
                 style: TextStyle(
                   fontSize: 13,
                   fontWeight: FontWeight.w500,
