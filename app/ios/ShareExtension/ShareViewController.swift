@@ -129,40 +129,39 @@ final class ShareViewController: UIViewController {
       return
     }
 
-    let complete = { [weak self] in
+    openContainingApp(openUrl)
+    // 扩展立刻 complete 会被系统杀掉，主 App 来不及被拉起
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) { [weak self] in
       self?.finish()
     }
-
-    if let context = extensionContext {
-      context.open(openUrl) { success in
-        if success {
-          complete()
-          return
-        }
-        self.openViaResponderChain(openUrl)
-        complete()
-      }
-      return
-    }
-
-    openViaResponderChain(openUrl)
-    complete()
   }
 
-  private func openViaResponderChain(_ url: URL) {
+  /// iOS 18+：`extensionContext.open` 和已废弃的 `openURL:` 在分享扩展里经常失败。
+  /// 沿 responder 找到 UIApplication 再 `open`。
+  private func openContainingApp(_ url: URL) {
     var responder: UIResponder? = self
-    let selector = sel_registerName("openURL:")
     while let current = responder {
-      if current.responds(to: selector) {
-        _ = current.perform(selector, with: url)
-        break
-      }
-      if #available(iOS 18.0, *), let app = current as? UIApplication {
-        app.open(url, options: [:], completionHandler: nil)
-        break
+      if let application = current as? UIApplication {
+        application.open(url, options: [:], completionHandler: nil)
+        return
       }
       responder = current.next
     }
+    if let application = sharedApplication() {
+      application.open(url, options: [:], completionHandler: nil)
+      return
+    }
+    extensionContext?.open(url, completionHandler: nil)
+  }
+
+  /// 扩展里不能直接用 `UIApplication.shared`，运行时取。
+  private func sharedApplication() -> UIApplication? {
+    let selector = NSSelectorFromString("sharedApplication")
+    guard UIApplication.responds(to: selector),
+          let unmanaged = UIApplication.perform(selector) else {
+      return nil
+    }
+    return unmanaged.takeUnretainedValue() as? UIApplication
   }
 
   private func finish() {
