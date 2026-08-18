@@ -859,7 +859,7 @@ class _InlineArticleBody extends StatelessWidget {
   }
 }
 
-/// 正文插图：栏宽内按原文尺寸显示，超过则占满。
+/// 正文插图：与正文同宽（含左右边距对齐），按比例定高。
 class _ReadingInlineImage extends StatefulWidget {
   const _ReadingInlineImage({
     required this.url,
@@ -935,62 +935,52 @@ class _ReadingInlineImageState extends State<_ReadingInlineImage> {
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        final maxW = constraints.maxWidth;
-        final naturalW = widget.hintWidth ?? _decodedW;
-        final naturalH = widget.hintHeight ?? _decodedH;
-        final aspect = (naturalW != null &&
-                naturalH != null &&
-                naturalW > 0 &&
-                naturalH > 0)
-            ? naturalH / naturalW
+        final width = constraints.maxWidth;
+        final declaredW = widget.hintWidth;
+        final aspect = (declaredW != null &&
+                widget.hintHeight != null &&
+                declaredW > 0 &&
+                widget.hintHeight! > 0)
+            ? widget.hintHeight! / declaredW
             : (_decodedW != null &&
                     _decodedH != null &&
                     _decodedW! > 0)
                 ? _decodedH! / _decodedW!
                 : null;
-        final width = naturalW == null
-            ? maxW
-            : (naturalW < maxW ? naturalW : maxW);
         final height = aspect != null ? width * aspect : null;
-        return Align(
-          alignment: Alignment.centerLeft,
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(8),
-            child: Image.network(
-              widget.url,
-              width: width,
-              height: height,
-              fit: BoxFit.contain,
-              alignment: Alignment.centerLeft,
-              headers: mediaHttpHeadersFor(widget.url),
-              filterQuality: FilterQuality.medium,
-              gaplessPlayback: true,
-              errorBuilder: (_, __, ___) => const SizedBox(
-                height: 72,
-                child: Center(
-                  child: Icon(
-                    Icons.broken_image_outlined,
-                    color: Color(0xFFB2B8BF),
-                    size: 28,
-                  ),
-                ),
+        return Image.network(
+          widget.url,
+          width: width,
+          height: height,
+          fit: BoxFit.fitWidth,
+          alignment: Alignment.center,
+          headers: mediaHttpHeadersFor(widget.url),
+          filterQuality: FilterQuality.medium,
+          gaplessPlayback: true,
+          errorBuilder: (_, __, ___) => const SizedBox(
+            height: 72,
+            child: Center(
+              child: Icon(
+                Icons.broken_image_outlined,
+                color: Color(0xFFB2B8BF),
+                size: 28,
               ),
-              loadingBuilder: (context, child, progress) {
-                if (progress == null) return child;
-                return SizedBox(
-                  width: width,
-                  height: height ?? 160,
-                  child: const Center(
-                    child: SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    ),
-                  ),
-                );
-              },
             ),
           ),
+          loadingBuilder: (context, child, progress) {
+            if (progress == null) return child;
+            return SizedBox(
+              width: width,
+              height: height ?? 160,
+              child: const Center(
+                child: SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+              ),
+            );
+          },
         );
       },
     );
