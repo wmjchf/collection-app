@@ -1,7 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:super_collection/core/network/api_client.dart';
+import 'package:super_collection/core/ui/app_toast.dart';
 import 'package:super_collection/features/auth/auth_repository.dart';
 import 'package:super_collection/features/auth/login_page.dart';
+import 'package:super_collection/features/onboarding/onboarding_prefs.dart';
 import 'package:super_collection/features/onboarding/shortcuts_help_page.dart';
+import 'package:super_collection/features/settings/delete_account_confirm_dialog.dart';
 import 'package:super_collection/features/settings/how_to_add_link_page.dart';
 import 'package:super_collection/features/settings/legal_docs.dart';
 import 'package:super_collection/features/settings/logout_confirm_dialog.dart';
@@ -24,6 +28,7 @@ class _SettingsPageState extends State<SettingsPage> {
   final _auth = AuthRepository();
   AuthSession? _session;
   bool _loading = true;
+  bool _deleting = false;
 
   @override
   void initState() {
@@ -61,6 +66,33 @@ class _SettingsPageState extends State<SettingsPage> {
       MaterialPageRoute<void>(builder: (_) => const LoginPage()),
       (_) => false,
     );
+  }
+
+  Future<void> _deleteAccount() async {
+    if (_deleting) return;
+    final ok = await showDeleteAccountConfirmDialog(context);
+    if (ok != true || !mounted) return;
+    setState(() => _deleting = true);
+    final userId = _session?.userId;
+    try {
+      await _auth.deleteAccount();
+      if (userId != null) {
+        await OnboardingPrefs.clear(userId: userId);
+      }
+      if (!mounted) return;
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute<void>(builder: (_) => const LoginPage()),
+        (_) => false,
+      );
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() => _deleting = false);
+      AppToast.show(context, e.message);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _deleting = false);
+      AppToast.show(context, '注销失败，请稍后重试');
+    }
   }
 
   void _open(Widget page) {
@@ -115,6 +147,11 @@ class _SettingsPageState extends State<SettingsPage> {
                       title: '退出登录',
                       titleColor: const Color(0xFFD14343),
                       onTap: _logout,
+                    ),
+                    _InfoRow(
+                      title: '注销账号',
+                      titleColor: const Color(0xFFD14343),
+                      onTap: _deleting ? null : _deleteAccount,
                     ),
                   ],
                 ),

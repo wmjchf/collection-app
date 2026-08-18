@@ -109,6 +109,19 @@ class AuthRepository {
     await prefs.remove(_kApiBase);
   }
 
+  /// 注销账号：服务端删除用户数据后清本地登录态。
+  Future<void> deleteAccount() async {
+    final session = await readSession();
+    if (session == null) {
+      throw ApiException('未登录', statusCode: 401);
+    }
+    await _api.delete(
+      '/api/auth/account',
+      accessToken: session.accessToken,
+    );
+    await clearSession();
+  }
+
   /// 刷新成功返回新的 accessToken；失败返回 null（并清本地会话）。
   static Future<String?> tryRefreshAccessToken() {
     return _refreshInFlight ??= _refreshAccessTokenOnce().whenComplete(() {

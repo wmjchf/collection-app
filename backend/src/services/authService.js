@@ -235,6 +235,45 @@ function verifyAccessToken(token) {
   return jwt.verify(token, config.auth.jwtSecret);
 }
 
+async function deleteAccount(userId) {
+  const id = Number(userId);
+  if (!id) {
+    const err = new Error('未登录');
+    err.status = 401;
+    throw err;
+  }
+
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    const [rows] = await conn.execute(
+      'SELECT id, phone FROM users WHERE id = :id LIMIT 1',
+      { id },
+    );
+    const user = rows[0];
+    if (!user) {
+      const err = new Error('账号不存在');
+      err.status = 404;
+      throw err;
+    }
+
+    await conn.execute('DELETE FROM items WHERE user_id = :id', { id });
+    await conn.execute('DELETE FROM categories WHERE user_id = :id', { id });
+    await conn.execute('DELETE FROM user_sessions WHERE user_id = :id', { id });
+    await conn.execute('DELETE FROM sms_send_logs WHERE phone = :phone', {
+      phone: user.phone,
+    });
+    await conn.execute('DELETE FROM users WHERE id = :id', { id });
+    await conn.commit();
+    return { ok: true };
+  } catch (err) {
+    await conn.rollback();
+    throw err;
+  } finally {
+    conn.release();
+  }
+}
+
 module.exports = {
   sendLoginCode,
   loginWithSms,
@@ -242,4 +281,5 @@ module.exports = {
   findUserByPhone,
   findUserById,
   verifyAccessToken,
+  deleteAccount,
 };

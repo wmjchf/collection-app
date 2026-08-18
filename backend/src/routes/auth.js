@@ -67,4 +67,13 @@ router.get('/me', requireAuth, async (req, res, next) => {
   }
 });
 
+router.delete('/account', requireAuth, async (req, res, next) => {
+  try {
+    await authService.deleteAccount(req.auth.userId);
+    return res.json({ ok: true, message: '账号已注销' });
+  } catch (err) {
+    return next(err);
+  }
+});
+
 module.exports = router;
