@@ -1,0 +1,35 @@
+---
+description: Conflux / 收藏家 visual language from the collector splash reference
+alwaysApply: true
+---
+
+# Visual style（收藏家）
+
+Reference: `docs/design/style-reference-collector.png`
+
+Quiet, atmospheric collector — not a dashboard, not purple SaaS, not cream-serif editorial.
+
+## Atmosphere (branded surfaces)
+
+Splash / onboarding / App Store / about: dark black-green field, soft out-of-focus botanical glow, brand as the hero.
+
+- Brand 「收藏家」 large, pale mint-green, centered
+- One short supporting thought, two lines max, white, secondary to the brand
+- One dominant product shot (phone mockup). No stats, chips, or overlay badges
+
+## Layout (all content surfaces)
+
+「占满」= fill the **content column**, not the physical screen.
+
+- Keep the same left/right page inset as body text (reading page: 22)
+- Images/cards align with text on both edges — never narrower than the text, never past the text into the screen edge
+- Inside a card, the image is full-bleed to the card; caption/avatar share that same edge
+- Page gutters stay; column gutters stay. No edge-to-edge bleed
+
+## Cards / feed
+
+If using a grid: two-column masonry, rounded cards, image fills the card, metadata sits on the same width as the image.
+
+## Reading vs brand
+
+Long-form reading stays paper-white for legibility. Do not restyle the reading page to dark unless asked. The alignment rule above still applies.
