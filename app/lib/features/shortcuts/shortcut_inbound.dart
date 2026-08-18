@@ -99,6 +99,7 @@ class ShortcutInbound {
       if (usedClipboard) {
         await clearClipboard();
       }
+      await ParseProgressTracker.pingLists();
       if (result.existed && result.item.isSuccess) {
         ParseProgressTracker.cancel();
         AppNavigator.showSnackBar('该链接已收藏');

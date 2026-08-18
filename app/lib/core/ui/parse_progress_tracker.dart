@@ -19,6 +19,9 @@ class ParseProgressTracker {
   static bool _clientFetchStarted = false;
   static int? _watchingId;
 
+  /// 解析结束或条目入库后刷新首页 / 我的收藏。
+  static Future<void> Function()? onListsChanged;
+
   /// 是否正在解析 / 本机抓取（后台补齐队列需避开）
   static bool get isBusy =>
       _watchingId != null ||
@@ -201,6 +204,16 @@ class ParseProgressTracker {
         await cb();
       } catch (_) {}
     }
+    await pingLists();
+  }
+
+  /// 分享 / 快捷指令入库后立刻刷新列表（不等解析结束）。
+  static Future<void> pingLists() async {
+    final cb = onListsChanged;
+    if (cb == null) return;
+    try {
+      await cb();
+    } catch (_) {}
   }
 
   static void cancel() {

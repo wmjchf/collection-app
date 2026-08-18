@@ -17,10 +17,17 @@ import 'package:super_collection/features/settings/settings_page.dart';
 
 /// 我的收藏（对齐 Figma：系统分类 / 收藏夹 / 标签 / 其他）
 class CollectionPage extends StatefulWidget {
-  const CollectionPage({super.key, this.isActive = true});
+  const CollectionPage({
+    super.key,
+    this.isActive = true,
+    this.refreshTick = 0,
+  });
 
   /// 是否为当前 Tab；切回时静默刷新数量。
   final bool isActive;
+
+  /// 外部递增时静默刷新（分享入库、解析完成）。
+  final int refreshTick;
 
   @override
   State<CollectionPage> createState() => _CollectionPageState();
@@ -56,6 +63,9 @@ class _CollectionPageState extends State<CollectionPage> {
   void didUpdateWidget(covariant CollectionPage oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (widget.isActive && !oldWidget.isActive) {
+      _load(quiet: true);
+    }
+    if (widget.refreshTick != oldWidget.refreshTick) {
       _load(quiet: true);
     }
   }

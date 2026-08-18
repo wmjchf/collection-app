@@ -6,6 +6,7 @@ import 'package:super_collection/core/network/client_webview_fetch.dart';
 import 'package:super_collection/core/ui/client_fetch_backfill.dart';
 import 'package:super_collection/core/ui/parse_progress_banner.dart';
 import 'package:super_collection/core/ui/parse_progress_controller.dart';
+import 'package:super_collection/core/ui/parse_progress_tracker.dart';
 import 'package:super_collection/features/collection/collection_page.dart';
 import 'package:super_collection/features/home/home_page.dart';
 import 'package:super_collection/features/shell/app_bottom_nav_bar.dart';
@@ -27,10 +28,13 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    ClientFetchBackfill.onItemSettled = () async {
+    void bumpLists() {
       if (!mounted) return;
       setState(() => _homeRefreshTick++);
-    };
+    }
+
+    ClientFetchBackfill.onItemSettled = () async => bumpLists();
+    ParseProgressTracker.onListsChanged = () async => bumpLists();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
         ClientPageFetch.overlayContext = context;
@@ -55,6 +59,7 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
       ClientPageFetch.overlayContext = null;
     }
     ClientFetchBackfill.onItemSettled = null;
+    ParseProgressTracker.onListsChanged = null;
     super.dispose();
   }
 
@@ -89,7 +94,10 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
                 isActive: _index == 0,
                 refreshTick: _homeRefreshTick,
               ),
-              CollectionPage(isActive: _index == 1),
+              CollectionPage(
+                isActive: _index == 1,
+                refreshTick: _homeRefreshTick,
+              ),
             ],
           ),
           Positioned(
