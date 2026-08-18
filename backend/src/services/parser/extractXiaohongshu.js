@@ -17,11 +17,15 @@ function cleanDesc(desc) {
   if (!desc) return '';
   return String(desc)
     .replace(/\[话题\]#/g, '')
-    .replace(/#/g, (match, offset, str) => {
-      // keep hashtag spaces readable: "#a #b" ok
-      return match;
-    })
-    .replace(/\s+/g, ' ')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/p>/gi, '\n')
+    .replace(/<[^>]+>/g, '')
+    .replace(/\r\n/g, '\n')
+    .replace(/\u00a0/g, ' ')
+    .replace(/[ \t]+\n/g, '\n')
+    .replace(/\n[ \t]+/g, '\n')
+    .replace(/[ \t]{2,}/g, ' ')
+    .replace(/\n{3,}/g, '\n\n')
     .trim();
 }
 
@@ -151,11 +155,12 @@ function extractXiaohongshuNote(html) {
   }
 
   const parts = [];
-  if (title) parts.push(title);
   if (desc && desc !== title) parts.push(desc);
+  else if (!desc && title) parts.push(title);
   const content = parts.join('\n\n').trim() || null;
 
-  const summary = (desc || title || '').slice(0, 500) || null;
+  const summary =
+    (desc || title || '').replace(/\s+/g, ' ').trim().slice(0, 500) || null;
 
   return {
     noteId: note.noteId || null,
@@ -174,4 +179,5 @@ module.exports = {
   parseInitialState,
   extractXiaohongshuNote,
   pickVideoUrl,
+  cleanDesc,
 };
