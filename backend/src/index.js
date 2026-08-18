@@ -13,8 +13,8 @@ async function start() {
     console.warn('[db] API will start anyway; /api/health will report db status');
   }
 
-  app.listen(config.port, () => {
-    console.log(`[server] http://127.0.0.1:${config.port}`);
+  app.listen(config.port, '0.0.0.0', () => {
+    console.log(`[server] http://0.0.0.0:${config.port}`);
     const aliyunSms = require('./services/aliyunSms');
     console.log(
       `[auth] smsDevMode=${config.auth.smsDevMode} aliyunConfigured=${aliyunSms.isConfigured()}`,

@@ -102,6 +102,7 @@ function stripSiteSuffix(title) {
       .replace(/\s*[-_|]\s*小红书\s*$/i, '')
       .replace(/\s*[-_|]\s*即刻App?\s*$/i, '')
       .replace(/\s*[-_|]\s*掘金\s*$/i, '')
+      .replace(/\s*[-_|]\s*金色财经\s*$/i, '')
       .trim() || title
   );
 }

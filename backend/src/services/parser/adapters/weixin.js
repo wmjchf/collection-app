@@ -1,4 +1,4 @@
-const { htmlToText } = require('../htmlText');
+const { htmlToText, htmlToRichText } = require('../htmlText');
 
 function decodeJsString(value) {
   if (!value) return null;
@@ -145,13 +145,20 @@ function pickCgiCaption(html) {
   return null;
 }
 
-function extractBodyText(html) {
+function extractBodyText(html, { baseUrl, rich } = {}) {
   const cheerio = require('cheerio');
   const $ = cheerio.load(html);
   const node = $('#js_content');
   if (node.length) {
-    const t = htmlToText(node.html() || '');
-    if (t.replace(/\s+/g, '').length >= 20) return t;
+    const htmlFrag = node.html() || '';
+    // 普通文章：图随正文；图文短帖：只要纯文字，图走 imageUrls 轮播
+    const t = rich
+      ? htmlToRichText(htmlFrag, { baseUrl })
+      : htmlToText(htmlFrag);
+    if (t.replace(/\s+/g, '').replace(/!\[[^\]]*\]\([^)]+\)/g, '').length >= 20) {
+      return t;
+    }
+    if (rich && /!\[[^\]]*\]\([^)]+\)/.test(t)) return t;
   }
 
   const fromCgi = pickCgiCaption(html);
@@ -164,12 +171,15 @@ function extractBodyText(html) {
   return null;
 }
 
-function extractWeixinBody(html) {
+function extractWeixinBody(html, { baseUrl } = {}) {
   const picturePost = isPicturePost(html);
-  let text = extractBodyText(html);
+  let text = extractBodyText(html, {
+    baseUrl,
+    rich: !picturePost,
+  });
 
   const nick = pickJsField(html, 'nick_name');
-  // 图文：图集 + 短文；文章：正文为主，不把内嵌图/picture_list 塞进 imageUrls
+  // 图文(type=8)：图集 + 短文；普通文章：图留在正文，不进 imageUrls
   let imageUrls = [];
   if (picturePost) {
     imageUrls = extractPicturePageImages(html);
@@ -219,7 +229,7 @@ module.exports = {
       author: author || null,
     };
   },
-  extractContent(html) {
-    return extractWeixinBody(html);
+  extractContent(html, { baseUrl } = {}) {
+    return extractWeixinBody(html, { baseUrl });
   },
 };

@@ -5,6 +5,8 @@ import 'package:super_collection/core/network/api_client.dart';
 import 'package:super_collection/core/ui/app_toast.dart';
 import 'package:super_collection/features/home/home_format.dart';
 import 'package:super_collection/features/items/article_body_text.dart';
+import 'package:super_collection/features/items/article_content_blocks.dart';
+import 'package:super_collection/features/items/article_markdown.dart';
 import 'package:super_collection/features/items/item_image_gallery.dart';
 import 'package:super_collection/features/items/item_models.dart';
 import 'package:super_collection/features/items/item_video_player.dart';
@@ -47,12 +49,17 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
     _loadAnnotations();
   }
 
+  String get _rawBody => (_item.content ?? _item.summary ?? '').trim();
+
+  /// 标注 / 选区用的可见纯文字（去掉图标记与 ** / # 等）
   String get _bodyText {
-    final raw = (_item.content ?? _item.summary ?? '').trim();
-    return ArticleBodyText.splitParagraphs(raw).join('\n\n');
+    final plain = ArticleMarkdown.visiblePlain(_rawBody);
+    return ArticleBodyText.splitParagraphs(plain).join('\n\n');
   }
 
-  /// 阅读页媒体：仅真图集出轮播；文章 / 单封面不放图
+  List<ArticleBlock> get _bodyBlocks => ArticleContentBlocks.parse(_rawBody);
+
+  /// 阅读页顶部轮播：仅真图集；普通文章图在正文流里
   bool get _showReadingImages => _readingImageUrls.isNotEmpty;
 
   List<String> get _readingImageUrls {
@@ -393,18 +400,43 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
   }
 
   List<InlineSpan> _bodySpans(String text) {
-    final ranges = _annotationRanges(text);
+    return _bodySpansForRange(text, 0, text.length);
+  }
+
+  /// [globalStart, globalEnd) 对应 plainText 切片，生成带高亮的 spans（本地坐标）。
+  List<InlineSpan> _bodySpansForRange(
+    String plainText,
+    int globalStart,
+    int globalEnd,
+  ) {
+    if (globalStart >= globalEnd ||
+        globalStart < 0 ||
+        globalEnd > plainText.length) {
+      return [TextSpan(text: '')];
+    }
+    final localText = plainText.substring(globalStart, globalEnd);
+    final ranges = _annotationRanges(plainText)
+        .where((r) => r.end > globalStart && r.start < globalEnd)
+        .map(
+          (r) => (
+            start: (r.start - globalStart).clamp(0, localText.length),
+            end: (r.end - globalStart).clamp(0, localText.length),
+            ann: r.ann,
+          ),
+        )
+        .where((r) => r.start < r.end)
+        .toList();
+
     final spans = <InlineSpan>[];
     var cursor = 0;
     for (final r in ranges) {
       if (r.start < cursor) continue;
       if (r.start > cursor) {
-        spans.add(TextSpan(text: text.substring(cursor, r.start)));
+        spans.add(TextSpan(text: localText.substring(cursor, r.start)));
       }
-      final chunk = text.substring(r.start, r.end);
       spans.add(
         TextSpan(
-          text: chunk,
+          text: localText.substring(r.start, r.end),
           style: const TextStyle(
             backgroundColor: _highlight,
             color: _text,
@@ -413,19 +445,20 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
       );
       cursor = r.end;
     }
-    if (cursor < text.length) {
-      spans.add(TextSpan(text: text.substring(cursor)));
+    if (cursor < localText.length) {
+      spans.add(TextSpan(text: localText.substring(cursor)));
     }
     if (spans.isEmpty) {
-      spans.add(TextSpan(text: text));
+      spans.add(TextSpan(text: localText));
     }
     return spans;
   }
 
   Widget _selectionToolbar(
     BuildContext context,
-    EditableTextState editableTextState,
-  ) {
+    EditableTextState editableTextState, {
+    int baseOffset = 0,
+  }) {
     final value = editableTextState.textEditingValue;
     final sel = value.selection;
     if (!sel.isValid || sel.isCollapsed) {
@@ -436,6 +469,8 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
       return const SizedBox.shrink();
     }
     final anchors = editableTextState.contextMenuAnchors;
+    final start = sel.start + baseOffset;
+    final end = sel.end + baseOffset;
     return TextSelectionToolbar(
       anchorAbove: anchors.primaryAnchor,
       anchorBelow: anchors.secondaryAnchor ?? anchors.primaryAnchor,
@@ -454,8 +489,8 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
           onTap: () => _onHighlight(
             editableTextState,
             selected,
-            sel.start,
-            sel.end,
+            start,
+            end,
           ),
         ),
         _ToolbarAction(
@@ -463,8 +498,8 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
           onTap: () => _onAddNote(
             editableTextState,
             selected,
-            sel.start,
-            sel.end,
+            start,
+            end,
           ),
         ),
         _ToolbarAction(
@@ -473,6 +508,11 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
         ),
       ],
     );
+  }
+
+  EditableTextContextMenuBuilder _toolbarAt(int baseOffset) {
+    return (context, state) =>
+        _selectionToolbar(context, state, baseOffset: baseOffset);
   }
 
   @override
@@ -530,10 +570,18 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
                   ItemImageGallery(urls: _readingImageUrls),
                   const SizedBox(height: 18),
                 ],
-                if (body.isEmpty)
+                if (_rawBody.isEmpty)
                   const Text(
                     '暂无正文',
                     style: TextStyle(fontSize: 15, color: _muted),
+                  )
+                else if (ArticleContentBlocks.hasRichMarkup(_rawBody))
+                  _InlineArticleBody(
+                    blocks: _bodyBlocks,
+                    plainText: body,
+                    annotationRanges: _annotationRanges(body),
+                    toolbarAt: _toolbarAt,
+                    onTapAnnotation: _openAnnotation,
                   )
                 else
                   _AnnotatedBodyStack(
@@ -611,6 +659,196 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
   }
 }
 
+/// 普通文章：标题 / 加粗 / 图片随正文混排；文字段可标注。
+class _InlineArticleBody extends StatelessWidget {
+  const _InlineArticleBody({
+    required this.blocks,
+    required this.plainText,
+    required this.annotationRanges,
+    required this.toolbarAt,
+    required this.onTapAnnotation,
+  });
+
+  final List<ArticleBlock> blocks;
+  final String plainText;
+  final List<({int start, int end, ItemAnnotation ann})> annotationRanges;
+  final EditableTextContextMenuBuilder Function(int baseOffset) toolbarAt;
+  final ValueChanged<ItemAnnotation> onTapAnnotation;
+
+  static const _text = Color(0xFF1F242E);
+  static const _highlight = Color(0xFFFFF2C7);
+
+  static const _bodyStyle = TextStyle(
+    fontSize: 15,
+    height: 1.85,
+    letterSpacing: 0.2,
+    color: _text,
+  );
+
+  TextStyle _headingStyle(int level) {
+    final size = switch (level) {
+      1 => 21.0,
+      2 => 19.0,
+      3 => 17.0,
+      _ => 16.0,
+    };
+    return TextStyle(
+      fontSize: size,
+      height: 1.35,
+      fontWeight: FontWeight.w700,
+      color: _text,
+      letterSpacing: 0.2,
+    );
+  }
+
+  ({int start, int end, String visible}) _advance(
+    String visible,
+    int cursor,
+  ) {
+    if (visible.isEmpty) {
+      return (start: cursor, end: cursor, visible: visible);
+    }
+    var start = plainText.indexOf(visible, cursor);
+    if (start < 0) start = cursor;
+    final end = (start + visible.length).clamp(0, plainText.length);
+    var next = end;
+    if (next + 2 <= plainText.length &&
+        plainText.substring(next, next + 2) == '\n\n') {
+      next += 2;
+    } else if (next + 1 <= plainText.length &&
+        plainText.substring(next, next + 1) == '\n') {
+      next += 1;
+    }
+    return (start: start, end: end, visible: visible);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final children = <Widget>[];
+    var cursor = 0;
+
+    for (var i = 0; i < blocks.length; i++) {
+      final block = blocks[i];
+
+      // 阅读页：标准文章不展示插图，只留文字样式与排版
+      if (block is ArticleImageBlock) continue;
+
+      if (children.isNotEmpty) children.add(const SizedBox(height: 14));
+
+      if (block is ArticleHeadingBlock) {
+        final md = block.text.trim();
+        final visible = ArticleMarkdown.stripMarkers(md);
+        if (visible.isEmpty) continue;
+        final pos = _advance(visible, cursor);
+        cursor = pos.end;
+        if (cursor + 2 <= plainText.length &&
+            plainText.substring(cursor, cursor + 2) == '\n\n') {
+          cursor += 2;
+        } else if (cursor < plainText.length && plainText[cursor] == '\n') {
+          cursor += 1;
+        }
+
+        final localAnns = annotationRanges
+            .where((r) => r.end > pos.start && r.start < pos.end)
+            .map(
+              (r) => (
+                start: (r.start - pos.start).clamp(0, visible.length),
+                end: (r.end - pos.start).clamp(0, visible.length),
+                ann: r.ann,
+              ),
+            )
+            .where((r) => r.start < r.end)
+            .toList();
+
+        final style = _headingStyle(block.level);
+        final spans = ArticleMarkdown.inlineSpans(
+          md,
+          style: style,
+          highlights: [
+            for (final a in localAnns) (start: a.start, end: a.end),
+          ],
+          highlightColor: _highlight,
+        );
+
+        children.add(
+          _AnnotatedBodyStack(
+            text: visible,
+            spans: spans.isEmpty
+                ? [TextSpan(text: visible, style: style)]
+                : spans,
+            annotations: localAnns,
+            contextMenuBuilder: toolbarAt(pos.start),
+            onTapAnnotation: onTapAnnotation,
+            textStyle: style,
+          ),
+        );
+        continue;
+      }
+
+      if (block is! ArticleTextBlock) continue;
+
+      final mdParagraphs = ArticleBodyText.splitParagraphs(block.text);
+      for (var pi = 0; pi < mdParagraphs.length; pi++) {
+        if (pi > 0) children.add(const SizedBox(height: 14));
+        final md = mdParagraphs[pi];
+        final visible = ArticleMarkdown.visiblePlain(md);
+        if (visible.isEmpty) continue;
+
+        final pos = _advance(visible, cursor);
+        cursor = pos.end;
+        if (cursor + 2 <= plainText.length &&
+            plainText.substring(cursor, cursor + 2) == '\n\n') {
+          cursor += 2;
+        }
+
+        final localAnns = annotationRanges
+            .where((r) => r.end > pos.start && r.start < pos.end)
+            .map(
+              (r) => (
+                start: (r.start - pos.start).clamp(0, visible.length),
+                end: (r.end - pos.start).clamp(0, visible.length),
+                ann: r.ann,
+              ),
+            )
+            .where((r) => r.start < r.end)
+            .toList();
+
+        final spans = ArticleMarkdown.inlineSpans(
+          md,
+          style: _bodyStyle,
+          highlights: [
+            for (final a in localAnns) (start: a.start, end: a.end),
+          ],
+          highlightColor: _highlight,
+        );
+
+        children.add(
+          _AnnotatedBodyStack(
+            text: visible,
+            spans: spans.isEmpty
+                ? [const TextSpan(text: '', style: _bodyStyle)]
+                : spans,
+            annotations: localAnns,
+            contextMenuBuilder: toolbarAt(pos.start),
+            onTapAnnotation: onTapAnnotation,
+          ),
+        );
+      }
+    }
+
+    if (children.isEmpty) {
+      return const Text(
+        '暂无正文',
+        style: TextStyle(fontSize: 15, color: Color(0xFF737A85)),
+      );
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: children,
+    );
+  }
+}
+
 /// 正文可选中；标注热区与短注图标用 Stack 绝对定位，不抢 SelectableText 手势状态。
 class _AnnotatedBodyStack extends StatefulWidget {
   const _AnnotatedBodyStack({
@@ -619,6 +857,7 @@ class _AnnotatedBodyStack extends StatefulWidget {
     required this.annotations,
     required this.contextMenuBuilder,
     required this.onTapAnnotation,
+    this.textStyle,
   });
 
   final String text;
@@ -626,6 +865,7 @@ class _AnnotatedBodyStack extends StatefulWidget {
   final List<({int start, int end, ItemAnnotation ann})> annotations;
   final EditableTextContextMenuBuilder contextMenuBuilder;
   final ValueChanged<ItemAnnotation> onTapAnnotation;
+  final TextStyle? textStyle;
 
   static const _text = Color(0xFF1F242E);
   static const _blue = Color(0xFF2F6FED);
@@ -785,7 +1025,7 @@ class _AnnotatedBodyStackState extends State<_AnnotatedBodyStack> {
               ),
               child: SelectableText.rich(
                 TextSpan(
-                  style: _AnnotatedBodyStack.bodyStyle,
+                  style: widget.textStyle ?? _AnnotatedBodyStack.bodyStyle,
                   children: widget.spans,
                 ),
                 key: _textKey,

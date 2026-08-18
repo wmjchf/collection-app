@@ -168,23 +168,31 @@ class _ItemDetailPageState extends State<ItemDetailPage> {
   }
 
   String _previewText(CollectionItem item) {
-    return (item.content ?? item.summary ?? '').trim();
+    final content = (item.content ?? '').trim();
+    if (content.isNotEmpty) {
+      // 用正文开头几段作导语（如 36氪「谁比谁高贵？」这类摘要不适合详情展示）
+      final lede = ArticleBodyText.ledePreview(content, maxParagraphs: 3);
+      if (lede.isNotEmpty) return lede;
+    }
+    return (item.summary ?? '').trim();
   }
 
-  /// 详情预览：微信图文用图集，标准文章用封面；阅读页另算
+  /// 详情预览：图集出轮播；普通文章只留一张封面
   List<String> _previewImages(CollectionItem item) {
-    final p = (item.platform ?? '').toLowerCase();
-    if (p == 'weixin') {
-      final gallery = item.imageUrls
+    if (item.isImageGallery) {
+      return item.imageUrls
           .map((e) => e.trim())
           .where((e) => e.isNotEmpty)
           .toList(growable: false);
-      if (gallery.isNotEmpty) return gallery;
-      final cover = item.coverImageUrl?.trim();
-      if (cover != null && cover.isNotEmpty) return [cover];
-      return const [];
     }
-    return item.displayImages;
+    final cover = item.coverImageUrl?.trim();
+    if (cover != null && cover.isNotEmpty) return [cover];
+    // 无独立封面时，退回展示图第一张
+    for (final u in item.displayImages) {
+      final t = u.trim();
+      if (t.isNotEmpty) return [t];
+    }
+    return const [];
   }
 
   String get _linkToCopy {
@@ -620,7 +628,6 @@ class _SuccessCard extends StatelessWidget {
           const SizedBox(height: 10),
           ArticleBodyText(
             content: body,
-            maxChars: 320,
             fontSize: 14,
             lineHeight: 1.8,
           ),

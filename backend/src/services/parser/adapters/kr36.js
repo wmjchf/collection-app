@@ -1,5 +1,5 @@
 const cheerio = require('cheerio');
-const { htmlToText } = require('../htmlText');
+const { htmlToRichText } = require('../htmlText');
 
 /**
  * 36氪：桌面 www 常停在火山引擎安全检测壳；
@@ -83,10 +83,12 @@ module.exports = {
     const article = pickArticle(pickInitialState(html));
     if (!article) return null;
     const contentHtml = article.widgetContent || '';
-    const content = htmlToText(contentHtml);
-    if (!content || content.replace(/\s+/g, '').length < 40) return null;
+    const content = htmlToRichText(contentHtml, { baseUrl });
+    if (!content || content.replace(/\s+/g, '').replace(/!\[[^\]]*\]\([^)]+\)/g, '').length < 40) {
+      return null;
+    }
     const summary = (article.summary || '').trim() || null;
-    // 文章站：图只作封面，不进阅读页图集
+    // 文章站：图随正文展示，不拆成图集
     return {
       content,
       summary,
