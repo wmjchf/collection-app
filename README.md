@@ -8,6 +8,7 @@
 collection-app/
 ├── app/          # Flutter 客户端
 ├── backend/      # Express + MySQL API
+├── extension/    # Chrome 扩展（只负责收藏）
 └── docs/         # PRD 等文档
 ```
 
@@ -33,4 +34,4 @@ flutter pub get
 flutter run
 ```
 
-当前 App 仅搭好「主页 / 我的收藏」导航壳，业务功能按 PRD 逐步实现。
+Chrome 扩展（浏览器里一键收藏，整理/阅读仍用手机）：见 [`extension/README.md`](extension/README.md)。
