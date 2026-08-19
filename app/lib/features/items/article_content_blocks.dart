@@ -22,6 +22,13 @@ class ArticleImageBlock extends ArticleBlock {
   final double? height;
 }
 
+/// 正文内嵌视频：`!v[posterUrl](playUrl)`
+class ArticleVideoBlock extends ArticleBlock {
+  const ArticleVideoBlock(this.url, {this.posterUrl});
+  final String url;
+  final String? posterUrl;
+}
+
 /// 解析正文中的 Markdown 图片 / 标题，按阅读顺序拆块。
 class ArticleContentBlocks {
   ArticleContentBlocks._();
@@ -33,6 +40,12 @@ class ArticleContentBlocks {
 
   static final RegExp imageInline = RegExp(
     r'!\[([^\]]*)\]\(([^)\s]+)\)',
+  );
+
+  /// `!v[poster](playUrl)` 单独一行。
+  static final RegExp videoLine = RegExp(
+    r'^[ \t]*!v\[([^\]]*)\]\(([^)\s]+)\)[ \t]*$',
+    multiLine: true,
   );
 
   static final RegExp headingLine = RegExp(r'^(#{1,4})\s+(.+)$');
@@ -68,6 +81,7 @@ class ArticleContentBlocks {
         if (buf.isNotEmpty) buf.write('\n');
         continue;
       }
+      if (videoLine.hasMatch(trimmed)) continue;
       if (imageLine.hasMatch(trimmed)) continue;
       final hm = headingLine.firstMatch(trimmed);
       var body = hm != null ? hm.group(2)! : line;
@@ -103,6 +117,22 @@ class ArticleContentBlocks {
 
     for (final line in normalized.split('\n')) {
       final trimmed = line.trim();
+      final vm = videoLine.firstMatch(trimmed);
+      if (vm != null) {
+        flushText();
+        final url = (vm.group(2) ?? '').trim();
+        final poster = (vm.group(1) ?? '').trim();
+        if (url.isNotEmpty) {
+          blocks.add(
+            ArticleVideoBlock(
+              url,
+              posterUrl: poster.isEmpty ? null : poster,
+            ),
+          );
+        }
+        continue;
+      }
+
       final m = imageLine.firstMatch(trimmed);
       if (m != null) {
         flushText();
@@ -153,8 +183,19 @@ class ArticleContentBlocks {
   static bool hasInlineImages(String content) =>
       imageInline.hasMatch(content);
 
+  static bool hasInlineVideos(String content) => videoLine.hasMatch(content);
+
+  static List<String> inlineVideoUrls(String content) {
+    return parse(content)
+        .whereType<ArticleVideoBlock>()
+        .map((b) => b.url)
+        .where((u) => u.trim().isNotEmpty)
+        .toList(growable: false);
+  }
+
   static bool hasRichMarkup(String content) =>
       hasInlineImages(content) ||
+      hasInlineVideos(content) ||
       headingLine.hasMatch(content) ||
       content.contains('**') ||
       content.contains('{{') ||

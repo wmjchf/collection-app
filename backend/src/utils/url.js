@@ -96,6 +96,9 @@ function detectPlatform(url) {
   if (host.includes('36kr.com')) {
     return 'kr36';
   }
+  if (host.includes('toutiao.com')) {
+    return 'toutiao';
+  }
   if (host.includes('zhihu.com')) {
     return 'zhihu';
   }
@@ -127,6 +130,12 @@ function resolveFetchUrl(rawUrl) {
         const q = uri.search || '';
         return `https://m.36kr.com${path}${q}`;
       }
+    }
+    // 头条桌面站是 JS 空壳；分享短链用手机 UA 才停在 m 站 RENDER_DATA
+    if (host === 'toutiao.com') {
+      uri.hostname = 'm.toutiao.com';
+      uri.searchParams.delete('source');
+      return uri.toString();
     }
   } catch {
     // ignore

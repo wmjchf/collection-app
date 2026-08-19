@@ -94,18 +94,32 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
         .toList(growable: false);
   }
 
+  bool get _hasInlineVideos =>
+      ArticleContentBlocks.hasInlineVideos(_rawBody);
+
   bool get _platformNeedsVideoRefresh {
     final p = (_item.platform ?? '').toLowerCase();
     final v = (_item.videoUrl ?? '').toLowerCase();
     return p == 'bilibili' ||
+        p == 'toutiao' ||
         v.contains('bilivideo') ||
-        v.contains('bilibili');
+        v.contains('bilibili') ||
+        v.contains('toutiaovod');
   }
 
   Future<String?> _refreshVideoUrl() async {
     final updated = await _repo.refreshVideo(_item.id);
     // 不 setState：避免 url 变化触发播放器重建死循环；由播放器内部换链
     _item = updated;
+    return updated.videoUrl;
+  }
+
+  Future<String?> _refreshInlineVideo(int index) async {
+    final updated = await _repo.refreshVideo(_item.id);
+    if (!mounted) return null;
+    setState(() => _item = updated);
+    final urls = ArticleContentBlocks.inlineVideoUrls(_rawBody);
+    if (index >= 0 && index < urls.length) return urls[index];
     return updated.videoUrl;
   }
 
@@ -586,7 +600,7 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
                     ),
                   ),
                   const SizedBox(height: 22),
-                  if (_item.hasVideo) ...[
+                  if (_item.hasVideo && !_hasInlineVideos) ...[
                     ItemVideoPlayer(
                       // 勿用 videoUrl 做 key：刷新直链会重建并死循环转圈
                       key: ValueKey('item-video-${_item.id}'),
@@ -618,6 +632,10 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
                       onTapAnnotation: _openAnnotation,
                       onBodyTap: _toggleReadingChrome,
                       onSelectionChanged: _onBodySelectionChanged,
+                      itemId: _item.id,
+                      onRefreshInlineVideo: _platformNeedsVideoRefresh
+                          ? _refreshInlineVideo
+                          : null,
                     )
                   else
                     _AnnotatedBodyStack(
@@ -744,6 +762,8 @@ class _InlineArticleBody extends StatelessWidget {
     required this.onTapAnnotation,
     this.onBodyTap,
     this.onSelectionChanged,
+    this.itemId,
+    this.onRefreshInlineVideo,
   });
 
   final List<ArticleBlock> blocks;
@@ -753,6 +773,8 @@ class _InlineArticleBody extends StatelessWidget {
   final ValueChanged<ItemAnnotation> onTapAnnotation;
   final VoidCallback? onBodyTap;
   final ValueChanged<TextSelection>? onSelectionChanged;
+  final int? itemId;
+  final Future<String?> Function(int index)? onRefreshInlineVideo;
 
   static const _text = Color(0xFF1F242E);
   static const _highlight = Color(0xFFFFF2C7);
@@ -805,9 +827,33 @@ class _InlineArticleBody extends StatelessWidget {
   Widget build(BuildContext context) {
     final children = <Widget>[];
     var cursor = 0;
+    var videoIndex = 0;
 
     for (var i = 0; i < blocks.length; i++) {
       final block = blocks[i];
+
+      if (block is ArticleVideoBlock) {
+        if (children.isNotEmpty) children.add(const SizedBox(height: 18));
+        final index = videoIndex++;
+        children.add(
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final w = constraints.maxWidth;
+              final h = (w * 9 / 16).clamp(180.0, 280.0);
+              return ItemVideoPlayer(
+                key: ValueKey('body-video-${itemId ?? 0}-$index'),
+                url: block.url,
+                coverUrl: block.posterUrl,
+                height: h,
+                onRefreshUrl: onRefreshInlineVideo == null
+                    ? null
+                    : () => onRefreshInlineVideo!(index),
+              );
+            },
+          ),
+        );
+        continue;
+      }
 
       if (block is ArticleImageBlock) {
         if (children.isNotEmpty) children.add(const SizedBox(height: 18));

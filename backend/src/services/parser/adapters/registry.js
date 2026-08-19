@@ -42,6 +42,7 @@ const douyinAdapter = require('./douyin');
 const bilibiliAdapter = require('./bilibili');
 const kuaishouAdapter = require('./kuaishou');
 const kr36Adapter = require('./kr36');
+const toutiaoAdapter = require('./toutiao');
 
 /** @type {PlatformAdapter[]} */
 const ADAPTERS = [
@@ -54,6 +55,7 @@ const ADAPTERS = [
   xiaohongshuAdapter,
   weiboAdapter,
   kr36Adapter,
+  toutiaoAdapter,
   defaultAdapter,
 ];
 

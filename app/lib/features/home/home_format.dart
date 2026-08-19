@@ -23,6 +23,8 @@ String platformLabel(String? platform) {
       return '知乎';
     case 'kr36':
       return '36氪';
+    case 'toutiao':
+      return '头条';
     case 'web':
       return '网页';
     default:

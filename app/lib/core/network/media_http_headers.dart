@@ -27,6 +27,15 @@ Map<String, String> mediaHttpHeadersFor(String url) {
       'User-Agent': mobileUa,
     };
   }
+  if (lower.contains('toutiaoimg') ||
+      lower.contains('toutiao.com') ||
+      lower.contains('toutiaovod') ||
+      lower.contains('toutiaostatic')) {
+    return {
+      'Referer': 'https://www.toutiao.com/',
+      'User-Agent': mobileUa,
+    };
+  }
   if (lower.contains('douyin') ||
       lower.contains('douyinpic') ||
       lower.contains('douyinvod') ||

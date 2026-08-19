@@ -3,10 +3,11 @@ const DEFAULT_UA =
 
 /**
  * @param {string} url
- * @param {{ timeoutMs?: number }} [opts]
+ * @param {{ timeoutMs?: number, userAgent?: string }} [opts]
  */
 async function fetchHtml(url, opts = {}) {
   const timeoutMs = opts.timeoutMs ?? 12000;
+  const userAgent = opts.userAgent || DEFAULT_UA;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
 
@@ -15,7 +16,7 @@ async function fetchHtml(url, opts = {}) {
       redirect: 'follow',
       signal: controller.signal,
       headers: {
-        'User-Agent': DEFAULT_UA,
+        'User-Agent': userAgent,
         Accept: 'text/html,application/xhtml+xml;q=0.9,*/*;q=0.8',
         'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
         'Cache-Control': 'no-cache',

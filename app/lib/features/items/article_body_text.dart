@@ -31,6 +31,7 @@ class ArticleBodyText extends StatelessWidget {
       final t = chunk.trim();
       if (t.isEmpty) continue;
       if (ArticleContentBlocks.imageLine.hasMatch(t)) continue;
+      if (ArticleContentBlocks.videoLine.hasMatch(t)) continue;
       if (ArticleContentBlocks.headingLine.hasMatch(t)) continue;
       parts.add(t);
     }
@@ -53,6 +54,7 @@ class ArticleBodyText extends StatelessWidget {
       final t = chunk.trim();
       if (t.isEmpty) continue;
       if (ArticleContentBlocks.imageLine.hasMatch(t)) continue;
+      if (ArticleContentBlocks.videoLine.hasMatch(t)) continue;
       if (ArticleContentBlocks.headingLine.hasMatch(t)) break;
       out.add(t);
       if (out.length >= maxParagraphs) break;
@@ -68,8 +70,8 @@ class ArticleBodyText extends StatelessWidget {
     final out = <ArticleBlock>[];
     var used = 0;
     for (final b in all) {
-      if (b is ArticleImageBlock) {
-        // 文章阅读/预览不展示插图
+      if (b is ArticleImageBlock || b is ArticleVideoBlock) {
+        // 文章阅读/预览不展示插图 / 视频
         continue;
       }
       if (b is ArticleHeadingBlock) {

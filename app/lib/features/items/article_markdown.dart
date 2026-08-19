@@ -35,6 +35,9 @@ class ArticleMarkdown {
       if (ArticleContentBlocks.imageLine.hasMatch(t.trim())) {
         continue;
       }
+      if (ArticleContentBlocks.videoLine.hasMatch(t.trim())) {
+        continue;
+      }
       final hm = _headingLine.firstMatch(t.trim());
       final body = hm != null ? hm.group(2)! : t;
       final visible = stripMarkers(body);

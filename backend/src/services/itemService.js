@@ -403,8 +403,8 @@ async function reparseItem(userId, itemId) {
 }
 
 /**
- * 刷新易过期的 CDN 播放直链（如 B站 playurl，含 deadline）。
- * 不重跑全文解析，只更新 video_url。
+ * 刷新易过期的 CDN 播放直链（B站顶栏、头条正文内嵌等）。
+ * 会重跑该平台专项抓取，更新 video_url 与正文里的播放地址。
  */
 async function refreshItemVideo(userId, itemId) {
   const item = await getByIdForUser(userId, itemId);
@@ -420,7 +420,9 @@ async function refreshItemVideo(userId, itemId) {
   }
 
   const parsed = await adapter.fetchParsed(item.canonicalUrl || item.url);
-  if (!parsed?.ok || !parsed.videoUrl) {
+  const hasInlineVideo =
+    typeof parsed.content === 'string' && /(?:^|\n)\s*!v\[/m.test(parsed.content);
+  if (!parsed?.ok || (!parsed.videoUrl && !hasInlineVideo)) {
     throw Object.assign(
       new Error(parsed?.errorMessage || '未能获取到新的视频链接'),
       { status: 502 },
@@ -430,13 +432,15 @@ async function refreshItemVideo(userId, itemId) {
   await pool.execute(
     `UPDATE items
      SET video_url = :videoUrl,
+         content = COALESCE(:content, content),
          cover_image_url = COALESCE(:coverImageUrl, cover_image_url),
          updated_at = CURRENT_TIMESTAMP
      WHERE id = :itemId AND user_id = :userId`,
     {
       itemId,
       userId,
-      videoUrl: parsed.videoUrl,
+      videoUrl: parsed.videoUrl || null,
+      content: parsed.content || null,
       coverImageUrl: parsed.coverImageUrl || null,
     },
   );
@@ -763,6 +767,9 @@ const PLATFORM_ALIASES = {
   即刻: 'jike',
   jike: 'jike',
   知乎: 'zhihu',
+  头条: 'toutiao',
+  今日头条: 'toutiao',
+  toutiao: 'toutiao',
   网页: 'web',
   zaker: 'zaker',
   扎克: 'zaker',

@@ -90,7 +90,8 @@ class CollectionItem {
         p == 'web' ||
         p == 'zhihu' ||
         p == 'zaker' ||
-        p == 'bilibili') {
+        p == 'bilibili' ||
+        p == 'toutiao') {
       return false;
     }
     // 微信：仅图文短帖把图放进 imageUrls；标准文章图在正文标记里
