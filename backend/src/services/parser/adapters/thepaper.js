@@ -40,9 +40,12 @@ function httpsUrl(raw, baseUrl) {
 
 function pickPlayUrl(item) {
   if (!item || typeof item !== 'object') return null;
+  const fromInfos = pickBestPlayInfo(item.playInfos);
+  if (fromInfos) return fromInfos;
   const keys = [
-    'mp4Url',
+    'hdurl',
     'hdUrl',
+    'mp4Url',
     'sdUrl',
     'videoUrl',
     'url',
@@ -57,9 +60,38 @@ function pickPlayUrl(item) {
   return null;
 }
 
+function pickBestPlayInfo(list) {
+  if (!Array.isArray(list) || !list.length) return null;
+  const scored = list
+    .map((p) => {
+      const url = httpsUrl(p && p.url);
+      if (!url) return null;
+      const q = String(p.quality || '').toLowerCase();
+      const height = Number(p.height || 0);
+      let score = 0;
+      if (q === 'hd' || /\/hd\//i.test(url)) score += 50;
+      else if (q === 'sd' || /\/sd\//i.test(url)) score += 20;
+      else if (q === 'ld' || /\/ld\//i.test(url)) score -= 20;
+      if (height >= 720 && height <= 1080) score += 20;
+      else if (height > 1080) score += 12;
+      if (/\.mp4(\?|$)/i.test(url)) score += 8;
+      return { url, score };
+    })
+    .filter(Boolean)
+    .sort((a, b) => b.score - a.score);
+  return scored[0]?.url || null;
+}
+
 function pickPoster(item, fallback) {
   if (item && typeof item === 'object') {
-    const keys = ['coverPic', 'coverUrl', 'pic', 'imageUrl', 'poster'];
+    const keys = [
+      'coverUrl',
+      'coverPic',
+      'coverUrlFirstFrame',
+      'pic',
+      'imageUrl',
+      'poster',
+    ];
     for (const key of keys) {
       const u = httpsUrl(item[key]);
       if (u) return u;
@@ -68,14 +100,34 @@ function pickPoster(item, fallback) {
   return httpsUrl(fallback) || null;
 }
 
-function takeVideos(detail) {
-  const list = Array.isArray(detail?.videoDTOList) ? detail.videoDTOList : [];
+function takeHtmlVideos(fragment, baseUrl) {
+  const $ = cheerio.load(`<div id="__root">${fragment || ''}</div>`);
+  const videos = [];
+  $('#__root video').each((_, el) => {
+    const $el = $(el);
+    const i = videos.length;
+    const play = httpsUrl($el.attr('src'), baseUrl);
+    const poster = httpsUrl($el.attr('poster'), baseUrl);
+    if (play) videos.push({ play, poster });
+    $el.replaceWith(`<p>%%PAPERVIDEO_${i}%%</p>`);
+  });
+  return { html: $('#__root').html() || '', videos };
+}
+
+function takeDetailVideos(detail) {
   const out = [];
-  for (const item of list) {
+  const seen = new Set();
+  const push = (item, fallbackPoster) => {
     const play = pickPlayUrl(item);
-    if (!play) continue;
-    out.push({ play, poster: pickPoster(item, detail?.pic) });
+    if (!play || seen.has(play)) return;
+    seen.add(play);
+    out.push({ play, poster: pickPoster(item, fallbackPoster) });
+  };
+  if (detail?.videos && typeof detail.videos === 'object') {
+    push(detail.videos, detail.pic);
   }
+  const list = Array.isArray(detail?.videoDTOList) ? detail.videoDTOList : [];
+  for (const item of list) push(item, detail?.pic);
   return out;
 }
 
@@ -131,9 +183,10 @@ module.exports = {
     const author =
       String(detail.authorInfo?.sname || detail.source || '').trim() || null;
     const cover =
+      pickPoster(detail.videos, null) ||
       firstContentImage(detail.content, pageBase) ||
-      httpsUrl(detail.sharePic || detail.pic, pageBase);
-    if (!title && !cover && !detail.content) return null;
+      httpsUrl(detail.pic, pageBase);
+    if (!title && !cover && !detail.content && !detail.videos) return null;
     return {
       title,
       summary,
@@ -145,31 +198,53 @@ module.exports = {
     const detail = pickNextDetail(html);
     if (!detail) return null;
     const pageBase = baseUrl || 'https://m.thepaper.cn';
-    const videos = takeVideos(detail);
-    let content =
-      htmlToRichText(scrubChrome(detail.content || ''), {
-        baseUrl: pageBase,
-      }) || '';
-
-    if (videos.length && !/!v\[/.test(content)) {
-      const prefix = videos
-        .map((v) => videoMarkdown(v.play, v.poster || ''))
-        .join('');
-      content = `${prefix}${content}`;
+    const fromHtml = takeHtmlVideos(detail.content || '', pageBase);
+    const fromDetail = takeDetailVideos(detail);
+    const videos = fromHtml.videos.length ? fromHtml.videos : fromDetail;
+    if (videos.length && fromDetail[0]?.poster) {
+      videos.forEach((v, i) => {
+        if (!v.poster) v.poster = fromDetail[i]?.poster || fromDetail[0].poster;
+      });
     }
-    content = content.replace(/\n{3,}/g, '\n\n').trim();
 
-    const plain = content
+    let content =
+      htmlToRichText(scrubChrome(fromHtml.html), { baseUrl: pageBase }) ||
+      '';
+
+    for (let i = 0; i < videos.length; i += 1) {
+      const v = videos[i];
+      const replacement = v.play
+        ? videoMarkdown(v.play, v.poster || '')
+        : v.poster
+          ? `\n\n![image](${mdUrl(v.poster)})\n\n`
+          : '';
+      content = content.split(`%%PAPERVIDEO_${i}%%`).join(replacement);
+    }
+    if (videos.length && !/!v\[/.test(content)) {
+      content = `${videos
+        .map((v) => (v.play ? videoMarkdown(v.play, v.poster || '') : ''))
+        .join('')}${content}`;
+    }
+
+    const summary = String(detail.summary || '').trim() || null;
+    let plain = content
       .replace(/!v\[[^\]]*\]\([^)]+\)/g, '')
       .replace(/!\[[^\]]*\]\([^)]+\)/g, '')
       .replace(/\s+/g, '');
-    if ((!plain || plain.length < 40) && videos.length === 0) return null;
+    if (summary && plain.length < 40) {
+      content = [content, summary].filter(Boolean).join('\n\n').trim();
+      plain = summary.replace(/\s+/g, '');
+    }
+    content = content.replace(/\n{3,}/g, '\n\n').trim();
 
-    const summary = String(detail.summary || '').trim() || null;
+    if ((!plain || plain.length < 40) && videos.every((v) => !v.play)) {
+      return null;
+    }
+
     return {
       content:
         content ||
-        (videos.length ? detail.name || '（澎湃视频）' : null),
+        (videos.some((v) => v.play) ? detail.name || '（澎湃视频）' : null),
       summary,
       imageUrls: [],
       videoUrl: null,
