@@ -81,6 +81,9 @@ const PLATFORMS = {
   jike: '即刻',
   zhihu: '知乎',
   kr36: '36氪',
+  toutiao: '头条',
+  qqnews: '腾讯新闻',
+  sina: '新浪',
   web: '网页',
 };
 

@@ -44,6 +44,8 @@ const kuaishouAdapter = require('./kuaishou');
 const kr36Adapter = require('./kr36');
 const toutiaoAdapter = require('./toutiao');
 const peopleAdapter = require('./people');
+const qqnewsAdapter = require('./qqnews');
+const sinaAdapter = require('./sina');
 
 /** @type {PlatformAdapter[]} */
 const ADAPTERS = [
@@ -58,6 +60,8 @@ const ADAPTERS = [
   kr36Adapter,
   toutiaoAdapter,
   peopleAdapter,
+  qqnewsAdapter,
+  sinaAdapter,
   defaultAdapter,
 ];
 

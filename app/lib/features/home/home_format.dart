@@ -25,6 +25,10 @@ String platformLabel(String? platform) {
       return '36氪';
     case 'toutiao':
       return '头条';
+    case 'qqnews':
+      return '腾讯新闻';
+    case 'sina':
+      return '新浪';
     case 'web':
       return '网页';
     default:

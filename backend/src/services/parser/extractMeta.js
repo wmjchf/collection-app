@@ -105,6 +105,10 @@ function stripSiteSuffix(title) {
       .replace(/\s*[-_|]\s*金色财经\s*$/i, '')
       .replace(/\s*[-_|]\s*今日头条\s*$/i, '')
       .replace(/\s*[-_|]\s*人民日报\s*$/i, '')
+      .replace(/\s*[-_|]\s*腾讯新闻\s*$/i, '')
+      .replace(/\s*[-_|]\s*手机新浪网\s*$/i, '')
+      .replace(/\s*[-_|]\s*新浪新闻\s*$/i, '')
+      .replace(/\s*[-_|]\s*新浪网\s*$/i, '')
       .trim() || title
   );
 }

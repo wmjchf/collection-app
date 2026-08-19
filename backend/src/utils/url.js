@@ -13,6 +13,11 @@ const TRACKING_PARAMS = new Set([
   'gclid',
   'spm',
   'share_token',
+  'sinawapsharesource',
+  'wm',
+  'devid',
+  'qimei',
+  'uid',
 ]);
 
 function assertHttpUrl(raw) {
@@ -101,6 +106,20 @@ function detectPlatform(url) {
   }
   if (host.includes('peopleapp.com')) {
     return 'people';
+  }
+  if (
+    host.includes('inews.qq.com') ||
+    host === 'news.qq.com' ||
+    host === 'new.qq.com' ||
+    host === 'xw.qq.com'
+  ) {
+    return 'qqnews';
+  }
+  if (
+    host.includes('sina.cn') ||
+    (host.includes('sina.com.cn') && /\/(detail-|doc-)/i.test(path))
+  ) {
+    return 'sina';
   }
   if (host.includes('zhihu.com')) {
     return 'zhihu';
