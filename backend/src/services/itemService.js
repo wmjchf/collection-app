@@ -770,6 +770,8 @@ const PLATFORM_ALIASES = {
   头条: 'toutiao',
   今日头条: 'toutiao',
   toutiao: 'toutiao',
+  人民日报: 'people',
+  people: 'people',
   网页: 'web',
   zaker: 'zaker',
   扎克: 'zaker',

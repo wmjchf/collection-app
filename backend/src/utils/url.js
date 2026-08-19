@@ -99,6 +99,9 @@ function detectPlatform(url) {
   if (host.includes('toutiao.com')) {
     return 'toutiao';
   }
+  if (host.includes('peopleapp.com')) {
+    return 'people';
+  }
   if (host.includes('zhihu.com')) {
     return 'zhihu';
   }

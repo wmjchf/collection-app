@@ -8,6 +8,8 @@ function extractGenericContent(html, { baseUrl } = {}) {
 
   const candidates = [
     '#content_text',
+    '#newsContent',
+    '.newsContent',
     '#content',
     'article',
     'main',

@@ -43,6 +43,7 @@ const bilibiliAdapter = require('./bilibili');
 const kuaishouAdapter = require('./kuaishou');
 const kr36Adapter = require('./kr36');
 const toutiaoAdapter = require('./toutiao');
+const peopleAdapter = require('./people');
 
 /** @type {PlatformAdapter[]} */
 const ADAPTERS = [
@@ -56,6 +57,7 @@ const ADAPTERS = [
   weiboAdapter,
   kr36Adapter,
   toutiaoAdapter,
+  peopleAdapter,
   defaultAdapter,
 ];
 
