@@ -1,39 +1,10 @@
 import 'package:super_collection/features/home/home_mock_data.dart';
 import 'package:super_collection/features/items/item_models.dart';
 
+/// 来源标签：直接展示平台 id，避免每加一个站都要发版改映射。
 String platformLabel(String? platform) {
-  switch (platform) {
-    case 'weixin':
-      return '微信';
-    case 'channels':
-      return '视频号';
-    case 'xiaohongshu':
-      return '小红书';
-    case 'douyin':
-      return '抖音';
-    case 'kuaishou':
-      return '快手';
-    case 'weibo':
-      return '微博';
-    case 'bilibili':
-      return 'B站';
-    case 'jike':
-      return '即刻';
-    case 'zhihu':
-      return '知乎';
-    case 'kr36':
-      return '36氪';
-    case 'toutiao':
-      return '头条';
-    case 'qqnews':
-      return '腾讯新闻';
-    case 'sina':
-      return '新浪';
-    case 'web':
-      return '网页';
-    default:
-      return platform?.isNotEmpty == true ? platform! : '网页';
-  }
+  final p = (platform ?? '').trim();
+  return p.isEmpty ? 'web' : p;
 }
 
 String formatRelativeDay(DateTime? time, {DateTime? now}) {

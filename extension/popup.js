@@ -70,22 +70,10 @@ const nameInput = $('name-input');
 const nameError = $('name-error');
 const nameSave = $('name-save');
 
-const PLATFORMS = {
-  weixin: '微信',
-  channels: '视频号',
-  xiaohongshu: '小红书',
-  douyin: '抖音',
-  kuaishou: '快手',
-  weibo: '微博',
-  bilibili: 'B站',
-  jike: '即刻',
-  zhihu: '知乎',
-  kr36: '36氪',
-  toutiao: '头条',
-  qqnews: '腾讯新闻',
-  sina: '新浪',
-  web: '网页',
-};
+function platformLabel(platform) {
+  const p = String(platform || '').trim();
+  return p || 'web';
+}
 
 const EMPTY_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="#C5CAD3" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>`;
 
@@ -226,11 +214,6 @@ function switchTab(name) {
     return;
   }
   showHome();
-}
-
-function platformLabel(platform) {
-  if (!platform) return '网页';
-  return PLATFORMS[platform] || platform;
 }
 
 function formatDay(iso) {
