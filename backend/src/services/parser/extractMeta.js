@@ -109,6 +109,8 @@ function stripSiteSuffix(title) {
       .replace(/\s*[-_|]\s*手机新浪网\s*$/i, '')
       .replace(/\s*[-_|]\s*新浪新闻\s*$/i, '')
       .replace(/\s*[-_|]\s*新浪网\s*$/i, '')
+      .replace(/\s*[-_|]\s*澎湃新闻.*$/i, '')
+      .replace(/\s*[-_|]\s*The Paper\s*$/i, '')
       .trim() || title
   );
 }

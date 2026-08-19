@@ -121,6 +121,9 @@ function detectPlatform(url) {
   ) {
     return 'sina';
   }
+  if (host.includes('thepaper.cn')) {
+    return 'thepaper';
+  }
   if (host.includes('zhihu.com')) {
     return 'zhihu';
   }
