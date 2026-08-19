@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:http/http.dart' as http;
+import 'package:super_collection/core/network/media_http_headers.dart';
 
 /// 腾讯新闻视频：云主机调 getinfo 常被拦，改由手机出口解直链。
 class QqVideoResolver {
@@ -32,6 +33,7 @@ class QqVideoResolver {
   static Future<String?> resolveIfNeeded(
     String url, {
     String? posterUrl,
+    String? pageUrl,
     bool force = false,
   }) async {
     final trimmed = url.trim();
@@ -42,19 +44,23 @@ class QqVideoResolver {
         trimmed.startsWith('https://');
     if (isHttp && !force && !isPlaceholder(trimmed)) return null;
 
-    return fetchPlayUrl(vid);
+    return fetchPlayUrl(vid, pageUrl: pageUrl);
   }
 
-  static Future<String?> fetchPlayUrl(String vid) async {
+  static Future<String?> fetchPlayUrl(String vid, {String? pageUrl}) async {
     if (vid.isEmpty) return null;
     for (final platform in const ['101001', '11']) {
-      final play = await _getinfo(vid, platform);
+      final play = await _getinfo(vid, platform, pageUrl: pageUrl);
       if (play != null) return play;
     }
     return null;
   }
 
-  static Future<String?> _getinfo(String vid, String platform) async {
+  static Future<String?> _getinfo(
+    String vid,
+    String platform, {
+    String? pageUrl,
+  }) async {
     final uri = Uri.parse(
       'https://vv.video.qq.com/getinfo'
       '?vids=${Uri.encodeQueryComponent(vid)}'
@@ -66,7 +72,7 @@ class QqVideoResolver {
             uri,
             headers: {
               'User-Agent': _ua,
-              'Referer': 'https://news.qq.com/',
+              'Referer': mediaRefererOrigin(pageUrl) ?? 'https://news.qq.com/',
               'Accept': '*/*',
             },
           )

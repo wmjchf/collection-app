@@ -31,6 +31,7 @@ class HomeItemCard extends StatelessWidget {
             children: [
               CoverImage(
                 url: item.coverImageUrl,
+                pageUrl: item.pageUrl,
                 width: 64,
                 height: 64,
                 borderRadius: 8,

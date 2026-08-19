@@ -344,6 +344,7 @@ class _TrashCard extends StatelessWidget {
                 children: [
                   CoverImage(
                     url: item.coverImageUrl,
+                    pageUrl: item.sourcePageUrl,
                     width: 64,
                     height: 64,
                     borderRadius: 8,

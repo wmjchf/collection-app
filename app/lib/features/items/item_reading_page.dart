@@ -616,13 +616,17 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
                           (_item.displayImages.isNotEmpty
                               ? _item.displayImages.first
                               : null),
+                      pageUrl: _item.sourcePageUrl,
                       onRefreshUrl: _platformNeedsVideoRefresh
                           ? _refreshVideoUrl
                           : null,
                     ),
                     const SizedBox(height: 18),
                   ] else if (_showReadingImages) ...[
-                    ItemImageGallery(urls: _readingImageUrls),
+                    ItemImageGallery(
+                      urls: _readingImageUrls,
+                      pageUrl: _item.sourcePageUrl,
+                    ),
                     const SizedBox(height: 18),
                   ],
                   if (_rawBody.isEmpty)
@@ -640,6 +644,7 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
                       onBodyTap: _toggleReadingChrome,
                       onSelectionChanged: _onBodySelectionChanged,
                       itemId: _item.id,
+                      pageUrl: _item.sourcePageUrl,
                       onRefreshInlineVideo: _platformNeedsVideoRefresh
                           ? _refreshInlineVideo
                           : null,
@@ -770,6 +775,7 @@ class _InlineArticleBody extends StatelessWidget {
     this.onBodyTap,
     this.onSelectionChanged,
     this.itemId,
+    this.pageUrl,
     this.onRefreshInlineVideo,
   });
 
@@ -781,6 +787,7 @@ class _InlineArticleBody extends StatelessWidget {
   final VoidCallback? onBodyTap;
   final ValueChanged<TextSelection>? onSelectionChanged;
   final int? itemId;
+  final String? pageUrl;
   final Future<String?> Function(int index)? onRefreshInlineVideo;
 
   static const _text = Color(0xFF1F242E);
@@ -851,6 +858,7 @@ class _InlineArticleBody extends StatelessWidget {
                 key: ValueKey('body-video-${itemId ?? 0}-$index'),
                 url: block.url,
                 coverUrl: block.posterUrl,
+                pageUrl: pageUrl,
                 height: h,
                 onRefreshUrl: onRefreshInlineVideo == null
                     ? null
@@ -867,6 +875,7 @@ class _InlineArticleBody extends StatelessWidget {
         children.add(
           _ReadingInlineImage(
             url: block.url,
+            pageUrl: pageUrl,
             hintWidth: block.width,
             hintHeight: block.height,
           ),
@@ -998,11 +1007,13 @@ class _InlineArticleBody extends StatelessWidget {
 class _ReadingInlineImage extends StatefulWidget {
   const _ReadingInlineImage({
     required this.url,
+    this.pageUrl,
     this.hintWidth,
     this.hintHeight,
   });
 
   final String url;
+  final String? pageUrl;
   final double? hintWidth;
   final double? hintHeight;
 
@@ -1025,7 +1036,7 @@ class _ReadingInlineImageState extends State<_ReadingInlineImage> {
   @override
   void didUpdateWidget(covariant _ReadingInlineImage oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.url != widget.url) {
+    if (oldWidget.url != widget.url || oldWidget.pageUrl != widget.pageUrl) {
       _stop();
       _decodedW = null;
       _decodedH = null;
@@ -1042,7 +1053,7 @@ class _ReadingInlineImageState extends State<_ReadingInlineImage> {
   void _listen() {
     final provider = NetworkImage(
       widget.url,
-      headers: mediaHttpHeadersFor(widget.url),
+      headers: mediaHttpHeadersFor(widget.url, pageUrl: widget.pageUrl),
     );
     _stream = provider.resolve(const ImageConfiguration());
     _listener = ImageStreamListener(
@@ -1089,7 +1100,7 @@ class _ReadingInlineImageState extends State<_ReadingInlineImage> {
           height: height,
           fit: BoxFit.fitWidth,
           alignment: Alignment.center,
-          headers: mediaHttpHeadersFor(widget.url),
+          headers: mediaHttpHeadersFor(widget.url, pageUrl: widget.pageUrl),
           filterQuality: FilterQuality.medium,
           gaplessPlayback: true,
           errorBuilder: (_, __, ___) => const SizedBox(

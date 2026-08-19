@@ -224,6 +224,7 @@ class _SystemFilterListPageState extends State<SystemFilterListPage> {
                                   CoverImage(
                                     key: ValueKey('cover-${item.id}'),
                                     url: item.coverImageUrl,
+                                    pageUrl: item.sourcePageUrl,
                                     width: 64,
                                     height: 64,
                                     borderRadius: 8,

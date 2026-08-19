@@ -14,12 +14,15 @@ class ItemVideoPlayer extends StatefulWidget {
     super.key,
     required this.url,
     this.coverUrl,
+    this.pageUrl,
     this.height = 220,
     this.onRefreshUrl,
   });
 
   final String url;
   final String? coverUrl;
+  /// 条目源站链接，用作 CDN Referer。
+  final String? pageUrl;
   final double height;
 
   /// 直链失效时回调，返回新 URL；阅读页可对接 refresh-video
@@ -148,6 +151,7 @@ class _ItemVideoPlayerState extends State<ItemVideoPlayer> {
     final resolved = await QqVideoResolver.resolveIfNeeded(
       _playUrl,
       posterUrl: widget.coverUrl,
+      pageUrl: widget.pageUrl,
     );
     if (!mounted) return;
     if (resolved != null && resolved.trim().isNotEmpty) {
@@ -217,7 +221,8 @@ class _ItemVideoPlayerState extends State<ItemVideoPlayer> {
     try {
       await controller.loadHtmlString(
         _bilibiliPlayerHtml(_playUrl),
-        baseUrl: 'https://www.bilibili.com/',
+        baseUrl: mediaRefererOrigin(widget.pageUrl) ??
+            'https://www.bilibili.com/',
       );
       // 兜底：部分机型 onPageFinished 不可靠
       await Future<void>.delayed(const Duration(milliseconds: 800));
@@ -239,7 +244,7 @@ class _ItemVideoPlayerState extends State<ItemVideoPlayer> {
     _webController = null;
     final controller = VideoPlayerController.networkUrl(
       uri,
-      httpHeaders: mediaHttpHeadersFor(_playUrl),
+      httpHeaders: mediaHttpHeadersFor(_playUrl, pageUrl: widget.pageUrl),
     );
     _controller = controller;
     controller.addListener(_onTick);
@@ -267,6 +272,7 @@ class _ItemVideoPlayerState extends State<ItemVideoPlayer> {
         final qq = await QqVideoResolver.resolveIfNeeded(
           widget.url,
           posterUrl: widget.coverUrl,
+          pageUrl: widget.pageUrl,
           force: true,
         );
         if (qq != null && qq.trim().isNotEmpty && qq.trim() != _playUrl) {
@@ -311,6 +317,7 @@ class _ItemVideoPlayerState extends State<ItemVideoPlayer> {
       final qq = await QqVideoResolver.resolveIfNeeded(
         widget.url,
         posterUrl: widget.coverUrl,
+        pageUrl: widget.pageUrl,
         force: true,
       );
       if (qq != null && qq.trim().isNotEmpty) {
@@ -395,6 +402,7 @@ class _ItemVideoPlayerState extends State<ItemVideoPlayer> {
       MaterialPageRoute<void>(
         builder: (_) => _FullscreenWebVideoPage(
           playUrl: _playUrl,
+          pageUrl: widget.pageUrl,
           userAgent: _desktopUa,
         ),
       ),
@@ -522,7 +530,10 @@ class _ItemVideoPlayerState extends State<ItemVideoPlayer> {
                   child: Image.network(
                     widget.coverUrl!.trim(),
                     fit: BoxFit.cover,
-                    headers: mediaHttpHeadersFor(widget.coverUrl!.trim()),
+                    headers: mediaHttpHeadersFor(
+                      widget.coverUrl!.trim(),
+                      pageUrl: widget.pageUrl,
+                    ),
                     errorBuilder: (_, __, ___) => const SizedBox.shrink(),
                   ),
                 ),
@@ -567,10 +578,12 @@ class _ItemVideoPlayerState extends State<ItemVideoPlayer> {
 class _FullscreenWebVideoPage extends StatefulWidget {
   const _FullscreenWebVideoPage({
     required this.playUrl,
+    this.pageUrl,
     required this.userAgent,
   });
 
   final String playUrl;
+  final String? pageUrl;
   final String userAgent;
 
   @override
@@ -596,7 +609,8 @@ class _FullscreenWebVideoPageState extends State<_FullscreenWebVideoPage> {
       ..setBackgroundColor(Colors.black)
       ..loadHtmlString(
         _bilibiliPlayerHtml(widget.playUrl),
-        baseUrl: 'https://www.bilibili.com/',
+        baseUrl: mediaRefererOrigin(widget.pageUrl) ??
+            'https://www.bilibili.com/',
       );
   }
 

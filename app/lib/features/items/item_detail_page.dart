@@ -315,6 +315,7 @@ class _ItemDetailPageState extends State<ItemDetailPage> {
                             _SuccessCard(
                               imageUrls: _previewImages(item),
                               content: _previewText(item),
+                              pageUrl: item.sourcePageUrl,
                             ),
                         ],
                       ),
@@ -603,10 +604,15 @@ class _FailedCard extends StatelessWidget {
 }
 
 class _SuccessCard extends StatelessWidget {
-  const _SuccessCard({this.imageUrls = const [], required this.content});
+  const _SuccessCard({
+    this.imageUrls = const [],
+    required this.content,
+    this.pageUrl,
+  });
 
   final List<String> imageUrls;
   final String content;
+  final String? pageUrl;
 
   static const _muted = Color(0xFF737A85);
 
@@ -628,6 +634,7 @@ class _SuccessCard extends StatelessWidget {
           if (images.isNotEmpty) ...[
             ItemImageGallery(
               urls: images.take(12).toList(),
+              pageUrl: pageUrl,
               height: images.length == 1 ? 200 : 220,
             ),
             const SizedBox(height: 12),

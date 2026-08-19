@@ -43,6 +43,7 @@ HomeItemPreview previewForUnread(CollectionItem item) {
     title: title,
     subtitle: subtitle,
     coverImageUrl: item.coverImageUrl,
+    pageUrl: item.sourcePageUrl,
   );
 }
 
@@ -54,6 +55,7 @@ HomeItemPreview previewForAnnotated(CollectionItem item) {
     title: title,
     subtitle: '$count 处标注',
     coverImageUrl: item.coverImageUrl,
+    pageUrl: item.sourcePageUrl,
   );
 }
 
@@ -64,5 +66,6 @@ HomeItemPreview previewForRecent(CollectionItem item) {
     title: title,
     subtitle: formatRelativeTime(item.lastReadAt ?? item.updatedAt),
     coverImageUrl: item.coverImageUrl,
+    pageUrl: item.sourcePageUrl,
   );
 }

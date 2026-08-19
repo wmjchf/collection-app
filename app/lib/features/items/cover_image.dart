@@ -6,12 +6,15 @@ class CoverImage extends StatelessWidget {
   const CoverImage({
     super.key,
     this.url,
+    this.pageUrl,
     this.height = 160,
     this.width,
     this.borderRadius = 12,
   });
 
   final String? url;
+  /// 条目源站链接，用作 CDN Referer。
+  final String? pageUrl;
   final double height;
   final double? width;
   final double borderRadius;
@@ -31,7 +34,7 @@ class CoverImage extends StatelessWidget {
             ? Image.network(
                 trimmed,
                 fit: BoxFit.cover,
-                headers: mediaHttpHeadersFor(trimmed),
+                headers: mediaHttpHeadersFor(trimmed, pageUrl: pageUrl),
                 gaplessPlayback: true,
                 filterQuality: FilterQuality.low,
                 errorBuilder: (_, __, ___) => const _DefaultCover(),

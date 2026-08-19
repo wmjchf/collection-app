@@ -7,12 +7,14 @@ class ItemImageGallery extends StatefulWidget {
   const ItemImageGallery({
     super.key,
     required this.urls,
+    this.pageUrl,
     this.borderRadius = 12,
     this.height = 360,
     this.fit = BoxFit.contain,
   });
 
   final List<String> urls;
+  final String? pageUrl;
   final double borderRadius;
   final double height;
   /// 详情/阅读预览默认 contain 完整显示；需要铺满裁切时传 [BoxFit.cover]
@@ -57,6 +59,7 @@ class _ItemImageGalleryState extends State<ItemImageGallery> {
         pageBuilder: (_, __, ___) => _ImagePreviewPage(
           urls: list,
           initialIndex: i,
+          pageUrl: widget.pageUrl,
         ),
         transitionsBuilder: (_, anim, __, child) {
           return FadeTransition(opacity: anim, child: child);
@@ -75,6 +78,7 @@ class _ItemImageGalleryState extends State<ItemImageGallery> {
         onTap: () => _openPreview(0),
         child: _CarouselImage(
           url: list.first,
+          pageUrl: widget.pageUrl,
           height: widget.height,
           borderRadius: widget.borderRadius,
           fit: widget.fit,
@@ -100,6 +104,7 @@ class _ItemImageGalleryState extends State<ItemImageGallery> {
                     onTap: () => _openPreview(i),
                     child: _CarouselImage(
                       url: list[i],
+                      pageUrl: widget.pageUrl,
                       height: widget.height,
                       borderRadius: 0,
                       fit: widget.fit,
@@ -158,12 +163,14 @@ class _ItemImageGalleryState extends State<ItemImageGallery> {
 class _CarouselImage extends StatelessWidget {
   const _CarouselImage({
     required this.url,
+    this.pageUrl,
     required this.height,
     required this.borderRadius,
     this.fit = BoxFit.contain,
   });
 
   final String url;
+  final String? pageUrl;
   final double height;
   final double borderRadius;
   final BoxFit fit;
@@ -178,7 +185,7 @@ class _CarouselImage extends StatelessWidget {
         height: height,
         fit: fit,
         alignment: Alignment.center,
-        headers: mediaHttpHeadersFor(url),
+        headers: mediaHttpHeadersFor(url, pageUrl: pageUrl),
         errorBuilder: (_, __, ___) => CoverImage(
           url: null,
           height: height,
@@ -208,10 +215,12 @@ class _ImagePreviewPage extends StatefulWidget {
   const _ImagePreviewPage({
     required this.urls,
     required this.initialIndex,
+    this.pageUrl,
   });
 
   final List<String> urls;
   final int initialIndex;
+  final String? pageUrl;
 
   @override
   State<_ImagePreviewPage> createState() => _ImagePreviewPageState();
@@ -256,7 +265,7 @@ class _ImagePreviewPageState extends State<_ImagePreviewPage> {
                     child: Image.network(
                       list[i],
                       fit: BoxFit.contain,
-                      headers: mediaHttpHeadersFor(list[i]),
+                      headers: mediaHttpHeadersFor(list[i], pageUrl: widget.pageUrl),
                       errorBuilder: (_, __, ___) => const Icon(
                         Icons.broken_image_outlined,
                         color: Colors.white54,

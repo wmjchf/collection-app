@@ -50,6 +50,15 @@ class CollectionItem {
   bool get isSuccess => status == 'success';
   bool get isFailed => status == 'failed';
   bool get isInTrash => deletedAt != null;
+
+  /// 防盗链 Referer：优先规范化后的源站。
+  String? get sourcePageUrl {
+    final canonical = canonicalUrl?.trim();
+    if (canonical != null && canonical.isNotEmpty) return canonical;
+    final raw = url.trim();
+    return raw.isEmpty ? null : raw;
+  }
+
   bool get hasVideo {
     final v = videoUrl?.trim();
     if (v == null || v.isEmpty) return false;

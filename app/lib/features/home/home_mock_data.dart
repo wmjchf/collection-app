@@ -5,10 +5,12 @@ class HomeItemPreview {
     required this.title,
     required this.subtitle,
     this.coverImageUrl,
+    this.pageUrl,
   });
 
   final int id;
   final String title;
   final String subtitle;
   final String? coverImageUrl;
+  final String? pageUrl;
 }

@@ -29,32 +29,53 @@ function cleanDesc(desc) {
     .trim();
 }
 
-function pickImageUrl(img) {
-  if (!img || typeof img !== 'object') return null;
-  const candidates = [
-    img.url,
-    img.urlDefault,
-    img.original,
-    ...(Array.isArray(img.infoList)
-      ? img.infoList.map((x) => x && x.url).filter(Boolean)
-      : []),
-  ].filter(Boolean);
-  for (const raw of candidates) {
-    let u = String(raw).trim();
-    if (!u) continue;
-    if (u.startsWith('//')) u = `https:${u}`;
-    if (u.startsWith('http://')) u = `https://${u.slice(7)}`;
-    if (u.startsWith('https://')) return u;
-  }
-  return null;
-}
-
 function preferHttps(url) {
   if (!url) return null;
   let u = String(url).trim();
   if (u.startsWith('//')) u = `https:${u}`;
   if (u.startsWith('http://')) u = `https://${u.slice(7)}`;
   return u.startsWith('https://') ? u : null;
+}
+
+function isH5WatermarkUrl(url) {
+  const u = String(url || '').toLowerCase();
+  return u.includes('!h5_') || /\/h5_\w+/i.test(u);
+}
+
+/** H5 分享图带「小红书」水印；fileId 原图没有 */
+function urlFromFileId(fileId) {
+  const id = String(fileId || '').replace(/^\//, '').trim();
+  if (!id || !/^[a-z0-9_./-]+$/i.test(id)) return null;
+  return `https://ci.xiaohongshu.com/${id}?imageView2/2/w/1440/format/jpg`;
+}
+
+function pickImageUrl(img) {
+  if (!img || typeof img !== 'object') return null;
+  const fromId = urlFromFileId(img.fileId);
+  if (fromId) return fromId;
+
+  const ranked = [];
+  const push = (raw, scene) => {
+    const url = preferHttps(raw);
+    if (!url) return;
+    let score = 10;
+    const sc = String(scene || '');
+    if (isH5WatermarkUrl(url) || /^h5_/i.test(sc)) score = -80;
+    else if (/!style_/i.test(url)) score = -20;
+    else if (/wb_dft|nd_dft/i.test(sc) || /!nd_dft/i.test(url)) score = 100;
+    ranked.push({ url, score });
+  };
+  push(img.original);
+  push(img.urlDefault);
+  push(img.url);
+  if (Array.isArray(img.infoList)) {
+    for (const item of img.infoList) {
+      if (item && item.url) push(item.url, item.imageScene);
+    }
+  }
+  ranked.sort((a, b) => b.score - a.score);
+  const best = ranked.find((item) => item.score >= 0) || ranked[0];
+  return best?.url || null;
 }
 
 /** 从 note.video.media.stream 取最高可用 MP4 */
@@ -96,40 +117,41 @@ function pickVideoUrl(video) {
   return null;
 }
 
-/**
- * @returns {{
- *   noteId: string|null,
- *   title: string|null,
- *   desc: string|null,
- *   content: string|null,
- *   summary: string|null,
- *   coverImageUrl: string|null,
- *   author: string|null,
- *   imageUrls: string[],
- *   videoUrl: string|null,
- * } | null}
- */
+function noteHasPayload(note) {
+  if (!note || typeof note !== 'object') return false;
+  if ((note.title || '').trim()) return true;
+  if ((note.desc || '').trim()) return true;
+  if (Array.isArray(note.imageList) && note.imageList.length) return true;
+  if (note.video) return true;
+  return false;
+}
+
+function pickNote(state) {
+  if (!state || typeof state !== 'object') return null;
+  const map = state.note?.noteDetailMap;
+  if (map && typeof map === 'object') {
+    for (const entry of Object.values(map)) {
+      if (noteHasPayload(entry?.note)) return entry.note;
+    }
+  }
+  // xhslink.cn / discovery/item：手机分享页
+  const share = state.noteData?.data?.noteData;
+  if (noteHasPayload(share)) return share;
+  return null;
+}
+
 function extractXiaohongshuNote(html) {
   const state = parseInitialState(html);
   if (!state) return null;
 
-  const map = state.note?.noteDetailMap;
-  if (!map || typeof map !== 'object') return null;
-
-  const entries = Object.values(map);
-  let note = null;
-  for (const entry of entries) {
-    if (entry && entry.note) {
-      note = entry.note;
-      break;
-    }
-  }
+  const note = pickNote(state);
   if (!note) return null;
 
   const title = (note.title || '').trim() || null;
   const rawDesc = (note.desc || '').trim();
   const desc = cleanDesc(rawDesc) || null;
-  const author = (note.user && note.user.nickname) || null;
+  const author =
+    (note.user && (note.user.nickname || note.user.nickName)) || null;
 
   const imageUrls = [];
   for (const img of note.imageList || []) {
