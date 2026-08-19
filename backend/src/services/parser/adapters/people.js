@@ -4,7 +4,7 @@ const { htmlToRichText, absolutize } = require('../htmlText');
 /**
  * 人民日报客户端 peopleapp.com。
  * 图文稿正文在 #newsContent；短视频稿 DOM 常是空壳，字段在 #__NUXT_DATA__。
- * 播放地址写入 videoUrl，旧版阅读页顶部即可播，无需客户端改动。
+ * 视频写成正文 `!v[poster](url)`（与头条同一套客户端内嵌）。
  * @type {import('./registry').PlatformAdapter}
  */
 
@@ -66,26 +66,27 @@ function takeHtmlVideos(fragment, baseUrl) {
   const videos = [];
   $('#__root video').each((_, el) => {
     const $el = $(el);
+    const i = videos.length;
     const src =
       $el.attr('src') || $el.find('source[src]').first().attr('src') || null;
     const play = absolutize(baseUrl, src);
     const poster = absolutize(baseUrl, $el.attr('poster') || '');
     if (play) videos.push({ play, poster });
-    $el.remove();
+    $el.replaceWith(`<p>%%PEOPLEVIDEO_${i}%%</p>`);
   });
   return { html: $('#__root').html() || '', videos };
 }
 
-function mergeVideos(primary, extra) {
-  const out = [];
-  const seen = new Set();
-  for (const v of [...primary, ...extra]) {
-    const play = v?.play;
-    if (!play || seen.has(play)) continue;
-    seen.add(play);
-    out.push(v);
-  }
-  return out;
+function mdUrl(raw) {
+  return String(raw || '').replace(/[)\s]/g, (ch) => encodeURIComponent(ch));
+}
+
+function mdAttr(raw) {
+  return String(raw || '').replace(/[\]\s]/g, (ch) => encodeURIComponent(ch));
+}
+
+function videoMarkdown(playUrl, posterUrl) {
+  return `\n\n!v[${mdAttr(posterUrl || '')}](${mdUrl(playUrl)})\n\n`;
 }
 
 function readArticle(html, baseUrl) {
@@ -100,7 +101,20 @@ function readArticle(html, baseUrl) {
 
   const fromHtml = takeHtmlVideos(fragment, pageBase);
   const fromNuxt = payload && data ? takeNuxtVideos(data, payload) : [];
-  const videos = mergeVideos(fromNuxt, fromHtml.videos);
+
+  let videos = fromHtml.videos;
+  let bodyHtml = fromHtml.html;
+  if (!videos.length && fromNuxt.length) {
+    videos = fromNuxt;
+    bodyHtml = `${videos
+      .map((_, i) => `<p>%%PEOPLEVIDEO_${i}%%</p>`)
+      .join('')}${bodyHtml || ''}`;
+  } else if (videos.length && fromNuxt.length) {
+    videos = videos.map((v, i) => ({
+      play: v.play || fromNuxt[i]?.play || null,
+      poster: v.poster || fromNuxt[i]?.poster || null,
+    }));
+  }
 
   return {
     title: payload ? nuxtStr(data, payload.newsTitle) : '',
@@ -112,7 +126,7 @@ function readArticle(html, baseUrl) {
         : '') ||
       videos[0]?.poster ||
       '',
-    html: fromHtml.html,
+    html: bodyHtml,
     videos,
   };
 }
@@ -144,18 +158,39 @@ module.exports = {
   extractContent(html, { baseUrl } = {}) {
     const pageBase = baseUrl || 'https://www.peopleapp.com';
     const article = readArticle(html, pageBase);
-    const fromHtml = htmlToRichText(article.html, { baseUrl: pageBase });
-    const content = fromHtml || article.intro || null;
-    const videoUrl = article.videos[0]?.play || null;
-    const plain = (content || '')
+    let content = htmlToRichText(article.html, { baseUrl: pageBase }) || '';
+    let inlineCount = 0;
+    for (let i = 0; i < article.videos.length; i += 1) {
+      const v = article.videos[i];
+      let replacement = '';
+      if (v.play) {
+        inlineCount += 1;
+        replacement = videoMarkdown(v.play, v.poster || '');
+      } else if (v.poster) {
+        replacement = `\n\n![image](${mdUrl(v.poster)})\n\n`;
+      }
+      content = content.split(`%%PEOPLEVIDEO_${i}%%`).join(replacement);
+    }
+    content = content.replace(/\n{3,}/g, '\n\n').trim();
+    let plain = (content || '')
+      .replace(/!v\[[^\]]*\]\([^)]+\)/g, '')
       .replace(/!\[[^\]]*\]\([^)]+\)/g, '')
       .replace(/\s+/g, '');
-    if ((!plain || plain.length < 40) && !videoUrl) return null;
+    if (article.intro && plain.length < 40) {
+      content = [content, article.intro].filter(Boolean).join('\n\n').trim();
+      plain = (content || '')
+        .replace(/!v\[[^\]]*\]\([^)]+\)/g, '')
+        .replace(/!\[[^\]]*\]\([^)]+\)/g, '')
+        .replace(/\s+/g, '');
+    }
+    if ((!plain || plain.length < 40) && inlineCount === 0) return null;
     return {
-      content: content || (videoUrl ? '（人民日报视频）' : null),
+      content:
+        content ||
+        (inlineCount > 0 ? article.title || '（人民日报视频）' : null),
       summary: article.intro || null,
       imageUrls: [],
-      videoUrl,
+      videoUrl: null,
     };
   },
 };

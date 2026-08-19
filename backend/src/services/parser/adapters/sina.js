@@ -3,8 +3,8 @@ const { htmlToRichText, absolutize } = require('../htmlText');
 
 /**
  * 新浪新闻 news.sina.cn：
- * 通用解析会选到 article / .s_card，把标题、媒体头像、账号名卷进正文。
- * 真正正文在 .art_content 的 .art_p；视频走 videoUrl 顶部播。
+ * 正文在 .art_content 的 .art_p；视频在 .art_video_box。
+ * 播放地址写成正文 `!v[poster](url)`（与头条同一套客户端内嵌）。
  * @type {import('./registry').PlatformAdapter}
  */
 
@@ -68,10 +68,22 @@ function isNoiseImage(src) {
 function pickFragment(html) {
   const $ = cheerio.load(html);
   const box = $('.art_content, #artibody').first();
-  if (!box.length) return '';
+  if (!box.length) return { html: '', hasVideoSlot: false };
+  let hasVideoSlot = false;
+  box.find('.art_video_box').each((i, el) => {
+    hasVideoSlot = true;
+    $(el).replaceWith(i === 0 ? '<p>%%SINAVIDEO_0%%</p>' : '');
+  });
+  if (!hasVideoSlot) {
+    const lone = box.find('.art_video').first();
+    if (lone.length) {
+      hasVideoSlot = true;
+      lone.replaceWith('<p>%%SINAVIDEO_0%%</p>');
+    }
+  }
   box
     .find(
-      'script, style, .art_video_box, .art_video, .weibo_info, .look_sub, .j_article_wbreco, .art_tit_h1',
+      'script, style, .weibo_info, .look_sub, .j_article_wbreco, .art_tit_h1',
     )
     .remove();
   box.find('img').each((_, el) => {
@@ -80,7 +92,19 @@ function pickFragment(html) {
       $el.attr('data-src') || $el.attr('data-original') || $el.attr('src') || '';
     if (isNoiseImage(src)) $el.remove();
   });
-  return box.html() || '';
+  return { html: box.html() || '', hasVideoSlot };
+}
+
+function mdUrl(raw) {
+  return String(raw || '').replace(/[)\s]/g, (ch) => encodeURIComponent(ch));
+}
+
+function mdAttr(raw) {
+  return String(raw || '').replace(/[\]\s]/g, (ch) => encodeURIComponent(ch));
+}
+
+function videoMarkdown(playUrl, posterUrl) {
+  return `\n\n!v[${mdAttr(posterUrl || '')}](${mdUrl(playUrl)})\n\n`;
 }
 
 function pickTitle(html) {
@@ -173,7 +197,7 @@ module.exports = {
   },
   extractMeta(html, { baseUrl } = {}) {
     const pageBase = baseUrl || 'https://news.sina.cn';
-    const fragment = pickFragment(html);
+    const { html: fragment } = pickFragment(html);
     const title = pickTitle(html);
     const author = pickAuthor(html);
     const { poster } = pickVideoMeta(html);
@@ -189,19 +213,36 @@ module.exports = {
     };
   },
   async extractContent(html, { baseUrl } = {}) {
-    const fragment = pickFragment(html);
     const pageBase = baseUrl || 'https://news.sina.cn';
-    const content = htmlToRichText(fragment, { baseUrl: pageBase });
-    const { play: videoUrl } = await resolveVideoUrl(html);
+    let { html: fragment, hasVideoSlot } = pickFragment(html);
+    const { play, poster } = await resolveVideoUrl(html);
+    if (play && !hasVideoSlot) {
+      fragment = `<p>%%SINAVIDEO_0%%</p>${fragment || ''}`;
+      hasVideoSlot = true;
+    }
+    let content = htmlToRichText(fragment, { baseUrl: pageBase }) || '';
+    let inlineCount = 0;
+    if (hasVideoSlot) {
+      let replacement = '';
+      if (play) {
+        inlineCount += 1;
+        replacement = videoMarkdown(play, poster || '');
+      } else if (poster) {
+        replacement = `\n\n![image](${mdUrl(poster)})\n\n`;
+      }
+      content = content.split('%%SINAVIDEO_0%%').join(replacement);
+      content = content.replace(/\n{3,}/g, '\n\n').trim();
+    }
     const plain = (content || '')
+      .replace(/!v\[[^\]]*\]\([^)]+\)/g, '')
       .replace(/!\[[^\]]*\]\([^)]+\)/g, '')
       .replace(/\s+/g, '');
-    if ((!plain || plain.length < 40) && !videoUrl) return null;
+    if ((!plain || plain.length < 40) && inlineCount === 0) return null;
     return {
-      content: content || (videoUrl ? '（视频）' : null),
+      content: content || (inlineCount > 0 ? '（视频）' : null),
       summary: null,
       imageUrls: [],
-      videoUrl: videoUrl || null,
+      videoUrl: null,
     };
   },
 };

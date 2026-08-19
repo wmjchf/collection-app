@@ -100,11 +100,18 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
   bool get _platformNeedsVideoRefresh {
     final p = (_item.platform ?? '').toLowerCase();
     final v = (_item.videoUrl ?? '').toLowerCase();
+    final body = (_item.content ?? '').toLowerCase();
     return p == 'bilibili' ||
         p == 'toutiao' ||
+        p == 'qqnews' ||
+        p == 'sina' ||
         v.contains('bilivideo') ||
         v.contains('bilibili') ||
-        v.contains('toutiaovod');
+        v.contains('toutiaovod') ||
+        v.contains('gtimg.com') ||
+        v.contains('weibocdn') ||
+        body.contains('gtimg.com') ||
+        body.contains('weibocdn');
   }
 
   Future<String?> _refreshVideoUrl() async {
