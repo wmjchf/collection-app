@@ -342,6 +342,10 @@ async function buildContent(html, { baseUrl, pageUrl } = {}) {
     if (play) {
       inlineCount += 1;
       replacement = videoMarkdown(play, poster);
+    } else if (videos[i].vid) {
+      // 云主机 getinfo 常被拦：留下 vid，阅读页用手机网络解直链
+      inlineCount += 1;
+      replacement = videoMarkdown(`qqvid:${videos[i].vid}`, poster);
     } else if (poster) {
       replacement = `\n\n![image](${mdUrl(poster)})\n\n`;
     }

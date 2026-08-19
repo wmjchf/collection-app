@@ -47,5 +47,14 @@ Map<String, String> mediaHttpHeadersFor(String url) {
       'User-Agent': mobileUa,
     };
   }
+  if (lower.contains('gtimg.com') ||
+      lower.contains('qpic.cn') ||
+      lower.contains('video.qq.com') ||
+      lower.contains('inews.qq.com')) {
+    return {
+      'Referer': 'https://news.qq.com/',
+      'User-Agent': mobileUa,
+    };
+  }
   return {'User-Agent': mobileUa};
 }

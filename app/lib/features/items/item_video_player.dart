@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:super_collection/core/network/media_http_headers.dart';
+import 'package:super_collection/core/network/qq_video_resolve.dart';
 import 'package:video_player/video_player.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
@@ -144,8 +145,17 @@ class _ItemVideoPlayerState extends State<ItemVideoPlayer> {
       _error = null;
       _webReady = false;
     });
+    final resolved = await QqVideoResolver.resolveIfNeeded(
+      _playUrl,
+      posterUrl: widget.coverUrl,
+    );
+    if (!mounted) return;
+    if (resolved != null && resolved.trim().isNotEmpty) {
+      _playUrl = resolved.trim();
+    }
     final uri = Uri.tryParse(_playUrl);
-    if (uri == null || !uri.hasScheme) {
+    if (uri == null ||
+        (uri.scheme != 'http' && uri.scheme != 'https')) {
       setState(() {
         _initializing = false;
         _error = '视频链接无效';
@@ -250,20 +260,34 @@ class _ItemVideoPlayerState extends State<ItemVideoPlayer> {
   }
 
   Future<void> _onPlayFailed() async {
-    final refresh = widget.onRefreshUrl;
-    if (refresh != null && !_refreshing && !_didFailRefresh) {
+    if (!_refreshing && !_didFailRefresh) {
       _didFailRefresh = true;
       setState(() => _refreshing = true);
       try {
-        final next = await refresh();
-        if (next != null &&
-            next.trim().isNotEmpty &&
-            next.trim() != _playUrl) {
-          _playUrl = next.trim();
+        final qq = await QqVideoResolver.resolveIfNeeded(
+          widget.url,
+          posterUrl: widget.coverUrl,
+          force: true,
+        );
+        if (qq != null && qq.trim().isNotEmpty && qq.trim() != _playUrl) {
+          _playUrl = qq.trim();
           if (!mounted) return;
           setState(() => _refreshing = false);
           await _init();
           return;
+        }
+        final refresh = widget.onRefreshUrl;
+        if (refresh != null) {
+          final next = await refresh();
+          if (next != null &&
+              next.trim().isNotEmpty &&
+              next.trim() != _playUrl) {
+            _playUrl = next.trim();
+            if (!mounted) return;
+            setState(() => _refreshing = false);
+            await _init();
+            return;
+          }
         }
       } catch (_) {}
       if (!mounted) return;
@@ -278,22 +302,31 @@ class _ItemVideoPlayerState extends State<ItemVideoPlayer> {
 
   Future<void> _retry() async {
     _didFailRefresh = false;
-    final refresh = widget.onRefreshUrl;
-    if (refresh != null) {
-      setState(() {
-        _initializing = true;
-        _error = null;
-        _refreshing = true;
-      });
-      try {
-        final next = await refresh();
-        if (next != null && next.trim().isNotEmpty) {
-          _playUrl = next.trim();
+    setState(() {
+      _initializing = true;
+      _error = null;
+      _refreshing = true;
+    });
+    try {
+      final qq = await QqVideoResolver.resolveIfNeeded(
+        widget.url,
+        posterUrl: widget.coverUrl,
+        force: true,
+      );
+      if (qq != null && qq.trim().isNotEmpty) {
+        _playUrl = qq.trim();
+      } else {
+        final refresh = widget.onRefreshUrl;
+        if (refresh != null) {
+          final next = await refresh();
+          if (next != null && next.trim().isNotEmpty) {
+            _playUrl = next.trim();
+          }
         }
-      } catch (_) {}
-      if (!mounted) return;
-      setState(() => _refreshing = false);
-    }
+      }
+    } catch (_) {}
+    if (!mounted) return;
+    setState(() => _refreshing = false);
     _disposePlayers();
     await _init();
   }

@@ -1,3 +1,5 @@
+import 'package:super_collection/core/network/qq_video_resolve.dart';
+
 /// 正文块：纯文字、标题或内嵌图（由轻量 Markdown 拆出）。
 sealed class ArticleBlock {
   const ArticleBlock();
@@ -55,6 +57,16 @@ class ArticleContentBlocks {
     final url = (m.group(2) ?? '').trim();
     final size = _sizeFromAlt(m.group(1));
     return ArticleImageBlock(url, width: size.$1, height: size.$2);
+  }
+
+  /// 生产解不出直链时曾把视频封面写成普通图；阅读页按封面 CDN 还原成播放器。
+  static ArticleBlock _mediaFromImageMatch(RegExpMatch m) {
+    final img = _imageFromMatch(m);
+    final vid = QqVideoResolver.vidFrom(img.url);
+    if (vid != null) {
+      return ArticleVideoBlock('qqvid:$vid', posterUrl: img.url);
+    }
+    return img;
   }
 
   static (double?, double?) _sizeFromAlt(String? alt) {
@@ -136,8 +148,12 @@ class ArticleContentBlocks {
       final m = imageLine.firstMatch(trimmed);
       if (m != null) {
         flushText();
-        final img = _imageFromMatch(m);
-        if (img.url.isNotEmpty) blocks.add(img);
+        final media = _mediaFromImageMatch(m);
+        if (media is ArticleImageBlock) {
+          if (media.url.isNotEmpty) blocks.add(media);
+        } else {
+          blocks.add(media);
+        }
         continue;
       }
 
@@ -168,8 +184,12 @@ class ArticleContentBlocks {
           } else if (buffer.isNotEmpty) {
             flushText();
           }
-          final img = _imageFromMatch(im);
-          if (img.url.isNotEmpty) blocks.add(img);
+          final media = _mediaFromImageMatch(im);
+          if (media is ArticleImageBlock) {
+            if (media.url.isNotEmpty) blocks.add(media);
+          } else {
+            blocks.add(media);
+          }
           rest = rest.substring(im.end);
         }
         continue;
@@ -183,7 +203,9 @@ class ArticleContentBlocks {
   static bool hasInlineImages(String content) =>
       imageInline.hasMatch(content);
 
-  static bool hasInlineVideos(String content) => videoLine.hasMatch(content);
+  static bool hasInlineVideos(String content) =>
+      videoLine.hasMatch(content) ||
+      QqVideoResolver.vidFrom(content) != null;
 
   static List<String> inlineVideoUrls(String content) {
     return parse(content)
