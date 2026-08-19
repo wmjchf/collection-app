@@ -124,6 +124,9 @@ function detectPlatform(url) {
   if (host.includes('thepaper.cn')) {
     return 'thepaper';
   }
+  if (host.includes('infzm.com')) {
+    return 'infzm';
+  }
   if (host.includes('zhihu.com')) {
     return 'zhihu';
   }

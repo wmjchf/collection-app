@@ -111,6 +111,7 @@ function stripSiteSuffix(title) {
       .replace(/\s*[-_|]\s*新浪网\s*$/i, '')
       .replace(/\s*[-_|]\s*澎湃新闻.*$/i, '')
       .replace(/\s*[-_|]\s*The Paper\s*$/i, '')
+      .replace(/\s*[-_|]\s*南方周末\s*$/i, '')
       .trim() || title
   );
 }

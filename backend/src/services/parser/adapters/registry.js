@@ -47,6 +47,7 @@ const peopleAdapter = require('./people');
 const qqnewsAdapter = require('./qqnews');
 const sinaAdapter = require('./sina');
 const thepaperAdapter = require('./thepaper');
+const infzmAdapter = require('./infzm');
 
 /** @type {PlatformAdapter[]} */
 const ADAPTERS = [
@@ -64,6 +65,7 @@ const ADAPTERS = [
   qqnewsAdapter,
   sinaAdapter,
   thepaperAdapter,
+  infzmAdapter,
   defaultAdapter,
 ];
 
