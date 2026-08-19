@@ -1,5 +1,6 @@
 const cheerio = require('cheerio');
 const { htmlToRichText, absolutize } = require('../htmlText');
+const { infzmContentId } = require('../../../utils/url');
 
 /**
  * 南方周末 infzm.com：WAP 是 hash 路由空壳，正文走公开 JSON API。
@@ -12,22 +13,7 @@ const MOBILE_UA =
   'Mobile/15E148 Safari/604.1';
 
 function pickContentId(url) {
-  const raw = String(url || '').trim();
-  if (!raw) return null;
-  const hash = raw.match(/#\/content\/(\d+)/i);
-  if (hash) return hash[1];
-  try {
-    const uri = new URL(raw);
-    const path = uri.pathname || '';
-    const m = path.match(/\/contents?\/(\d+)/i);
-    if (m) return m[1];
-    const q = uri.searchParams.get('id') || uri.searchParams.get('content_id');
-    if (q && /^\d+$/.test(q)) return q;
-  } catch {
-    // ignore
-  }
-  const loose = raw.match(/\bcontent[/_-]?(\d{5,})\b/i);
-  return loose ? loose[1] : null;
+  return infzmContentId(url);
 }
 
 function httpsUrl(raw, baseUrl) {

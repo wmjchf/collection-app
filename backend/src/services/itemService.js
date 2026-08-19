@@ -1,5 +1,5 @@
 const { pool } = require('../db');
-const { normalizeUrl, detectPlatform, placeholderTitle } = require('../utils/url');
+const { normalizeUrl, detectPlatform, placeholderTitle, resolveParseUrl } = require('../utils/url');
 const { fetchQuickMeta, parseFullContent } = require('./parser');
 const {
   getAdapter,
@@ -205,7 +205,9 @@ async function runContentParse(itemId) {
   const adapterParsed = takeCachedParsed(itemId);
 
   try {
-    const parsed = await parseFullContent(row.canonical_url || row.url, {
+    const parsed = await parseFullContent(
+      resolveParseUrl(row.canonical_url, row.url),
+      {
       platform: row.platform,
       existingSummary: row.summary,
       html: cachedHtml,
@@ -328,7 +330,9 @@ async function parseWithClientHtml(userId, itemId, html) {
     throw Object.assign(new Error('页面内容过大'), { status: 400 });
   }
 
-  const parsed = await parseFullContent(item.canonicalUrl || item.url, {
+  const parsed = await parseFullContent(
+    resolveParseUrl(item.canonicalUrl, item.url),
+    {
     platform: item.platform,
     existingSummary: item.summary,
     html: raw,
@@ -413,7 +417,7 @@ async function refreshItemVideo(userId, itemId) {
   }
 
   const adapter = getAdapter(item.platform);
-  const target = item.canonicalUrl || item.url;
+  const target = resolveParseUrl(item.canonicalUrl, item.url);
   let parsed;
   if (typeof adapter.fetchParsed === 'function') {
     parsed = await adapter.fetchParsed(target);

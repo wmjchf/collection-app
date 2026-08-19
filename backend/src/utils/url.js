@@ -37,8 +37,30 @@ function assertHttpUrl(raw) {
   return uri;
 }
 
+function infzmContentId(raw) {
+  const text = String(raw || '').trim();
+  if (!text) return null;
+  const hash = text.match(/#\/content\/(\d+)/i);
+  if (hash) return hash[1];
+  try {
+    const uri = new URL(text);
+    const m = (uri.pathname || '').match(/\/contents?\/(\d+)/i);
+    if (m) return m[1];
+    const q = uri.searchParams.get('id') || uri.searchParams.get('content_id');
+    if (q && /^\d+$/.test(q)) return q;
+  } catch {
+    // ignore
+  }
+  const loose = text.match(/\bcontent[/_-]?(\d{5,})\b/i);
+  return loose ? loose[1] : null;
+}
+
 function normalizeUrl(raw) {
   const uri = assertHttpUrl(raw);
+  const infzmId = infzmContentId(raw);
+  if (infzmId && uri.hostname.replace(/^www\./, '').includes('infzm.com')) {
+    uri.pathname = `/wap/content/${infzmId}`;
+  }
   uri.hash = '';
   for (const key of [...uri.searchParams.keys()]) {
     if (TRACKING_PARAMS.has(key.toLowerCase()) || key.toLowerCase().startsWith('utm_')) {
@@ -179,10 +201,21 @@ function placeholderTitle(url) {
   }
 }
 
+/** 解析正文时优先用仍带 content id 的链接（infzm hash 规范化后会丢 id）。 */
+function resolveParseUrl(canonicalUrl, rawUrl) {
+  const canonical = String(canonicalUrl || '').trim();
+  const raw = String(rawUrl || '').trim();
+  if (infzmContentId(canonical)) return canonical;
+  if (infzmContentId(raw)) return raw;
+  return canonical || raw;
+}
+
 module.exports = {
   assertHttpUrl,
   normalizeUrl,
   detectPlatform,
   resolveFetchUrl,
+  resolveParseUrl,
+  infzmContentId,
   placeholderTitle,
 };
