@@ -34,14 +34,17 @@ a {
   position: sticky;
   top: 0;
   z-index: 10;
+  background: rgba(255, 255, 255, 0.88);
+  backdrop-filter: blur(12px);
+}
+
+.nav-inner {
   display: flex;
   align-items: center;
   justify-content: space-between;
   max-width: 1080px;
   margin: 0 auto;
   padding: 18px var(--inset);
-  background: rgba(255, 255, 255, 0.88);
-  backdrop-filter: blur(12px);
 }
 
 .nav-brand {
@@ -78,6 +81,7 @@ a {
   justify-content: center;
   text-align: center;
   padding: 48px var(--inset) 80px;
+  background: var(--wash);
   animation: rise 0.8s ease both;
 }
 
@@ -99,7 +103,7 @@ a {
 .hero p {
   margin: 20px 0 0;
   color: var(--muted);
-  font-size: 18px;
+  font-size: 22px;
   font-weight: 400;
   line-height: 1.6;
 }
@@ -110,6 +114,11 @@ a {
   margin-top: 32px;
   flex-wrap: wrap;
   justify-content: center;
+}
+
+.cta .btn {
+  width: 200px;
+  padding: 0 28px;
 }
 
 .btn {

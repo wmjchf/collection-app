@@ -16,8 +16,10 @@ app.use(cors());
 // 客户端上报微信等整页 HTML 可能达数 MB
 app.use(express.json({ limit: '8mb' }));
 
+app.use(express.static(publicDir));
+
 app.get('/', (_req, res) => {
-  res.json({ name: 'collection-backend', version: '1.0.0' });
+  res.sendFile(path.join(publicDir, 'index.html'));
 });
 
 /** App Store / 外链用的隐私政策页 */
