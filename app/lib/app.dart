@@ -83,6 +83,9 @@ class _AuthGateState extends State<_AuthGate> {
   void initState() {
     super.initState();
     _future = _resolveHome();
+    _future.whenComplete(() {
+      WidgetsBinding.instance.allowFirstFrame();
+    });
   }
 
   Future<Widget> _resolveHome() async {
@@ -117,9 +120,7 @@ class _AuthGateState extends State<_AuthGate> {
       future: _future,
       builder: (context, snapshot) {
         if (snapshot.connectionState != ConnectionState.done) {
-          return const Scaffold(
-            body: Center(child: CircularProgressIndicator()),
-          );
+          return const ColoredBox(color: Colors.white);
         }
         return snapshot.data ?? const LoginPage();
       },
