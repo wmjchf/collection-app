@@ -90,20 +90,58 @@ function scrubNoiseComments(fragment) {
   return String(fragment || '')
     .replace(/<!--\s*NO_AD[^>]*-->/gi, '')
     .replace(/<!--\s*EOP_\d+\s*-->/gi, '')
-    .replace(/<!--\s*PARAGRAPH_\d+\s*-->/gi, '');
+    .replace(/<!--\s*PARAGRAPH_\d+\s*-->/gi, '')
+    .replace(/<!--\s*AIPOS_\d+\s*-->/gi, '')
+    .replace(/<!--\s*SECURE_LINK_(?:BEGIN|END)_\d+\s*-->/gi, '')
+    .replace(/<!--\s*VERTICAL_CARD_(?:BEGIN|END)_\d+\s*-->/gi, '');
 }
 
-function prepareFragment(rawFragment, videos) {
+function escapeHtmlAttr(raw) {
+  return String(raw || '')
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;');
+}
+
+function pickImageMap(data) {
+  const attr = data?.originAttribute || data?.attribute;
+  const map = new Map();
+  if (!attr || typeof attr !== 'object') return map;
+  for (const [key, value] of Object.entries(attr)) {
+    const m = /^IMG_(\d+)$/i.exec(key);
+    if (!m || !value || typeof value !== 'object') continue;
+    const url = httpsUrl(
+      value.origUrl || value.bigOrigUrl || value.compressUrl || value.url,
+    );
+    if (url) map.set(Number(m[1]), url);
+  }
+  return map;
+}
+
+function looksLikeShortVideo(id, data) {
+  if (id && /20\d{6}V/i.test(String(id))) return true;
+  const atype = Number(data?.atype ?? data?.article_type ?? 0);
+  return atype === 56;
+}
+
+function prepareFragment(
+  rawFragment,
+  videos,
+  imageMap = new Map(),
+  { prependVideos = false } = {},
+) {
   const used = new Set();
-  let html = scrubNoiseComments(rawFragment).replace(
-    /<!--\s*VIDEO_(\d+)\s*-->/gi,
-    (_, n) => {
+  let html = scrubNoiseComments(rawFragment)
+    .replace(/<!--\s*IMG_(\d+)\s*-->/gi, (_, n) => {
+      const url = imageMap.get(Number(n));
+      return url ? `<p><img src="${escapeHtmlAttr(url)}"></p>` : '';
+    })
+    .replace(/<!--\s*VIDEO_(\d+)\s*-->/gi, (_, n) => {
       const idx = Number(n);
       used.add(idx);
       return `<p>%%QQVIDEO_${idx}%%</p>`;
-    },
-  );
-  if (videos.length && used.size === 0) {
+    });
+  if (videos.length && used.size === 0 && prependVideos) {
     html = `${videos
       .map((_, i) => `<p>%%QQVIDEO_${i}%%</p>`)
       .join('')}${html}`;
@@ -302,30 +340,43 @@ async function buildContent(html, { baseUrl, pageUrl } = {}) {
   let title = String(data.title || '').trim();
   let summary = String(data.desc || data.abstract || '').trim();
   const id = pickArticleId(pageUrl, data) || pickArticleId(pageBase, data);
+  const hasDomImgs = /<img[\s>]/i.test(rawFragment);
+  const hasPlaceholders = /<!--\s*(IMG|VIDEO)_\d+/i.test(rawFragment);
 
-  // 短视频稿桌面是空壳：只要没有 VIDEO_* 就按文章 id 打接口
-  if (videos.length === 0 && id) {
+  if (
+    id &&
+    (videos.length === 0 || hasPlaceholders || !hasDomImgs || !rawFragment.trim())
+  ) {
     const api = await fetchSimpleNews(id);
     if (api) {
-      data = { ...data, ...api, attribute: api.attribute || data.attribute };
+      data = {
+        ...data,
+        ...api,
+        attribute: { ...(data.attribute || {}), ...(api.attribute || {}) },
+      };
       videos = pickVideoItems(data);
       const apiText =
         typeof api.content === 'object' ? api.content?.text : api.content;
       if (typeof apiText === 'string' && apiText.trim()) {
-        rawFragment = apiText;
+        if (!hasDomImgs || /<!--\s*(IMG|VIDEO)_\d+/i.test(apiText)) {
+          rawFragment = apiText;
+        }
       }
       title = String(api.title || title).trim();
       summary = String(api.abstract || api.intro || summary).trim();
       if (api.shareImg) data.shareImg = api.shareImg;
       if (api.source) data.media = api.source;
     }
-    if (videos.length === 0) {
+    if (videos.length === 0 && looksLikeShortVideo(id, data)) {
       const scraped = await scrapeVidFromSharePage(id);
       if (scraped?.vid) videos = [scraped];
     }
   }
 
-  const prepared = prepareFragment(rawFragment, videos);
+  const imageMap = pickImageMap(data);
+  const prepared = prepareFragment(rawFragment, videos, imageMap, {
+    prependVideos: looksLikeShortVideo(id, data),
+  });
   let content = htmlToRichText(prepared, { baseUrl: pageBase }) || '';
 
   const playUrls = await Promise.all(
@@ -365,7 +416,7 @@ async function buildContent(html, { baseUrl, pageUrl } = {}) {
     summary: summary || null,
     coverImageUrl: coverFrom(videos, data, prepared, pageBase),
     content: content || (inlineCount > 0 ? title || '（视频）' : null),
-    imageUrls: [],
+    imageUrls: [...imageMap.values()],
     videoUrl: null,
     inlineCount,
   };
@@ -388,7 +439,11 @@ module.exports = {
   extractMeta(html, { baseUrl } = {}) {
     const data = pickWindowData(html);
     const pageBase = baseUrl || 'https://view.inews.qq.com';
-    const fragment = prepareFragment(pickRawFragment(html, data), []);
+    const fragment = prepareFragment(
+      pickRawFragment(html, data),
+      [],
+      pickImageMap(data),
+    );
     const title = String(data?.title || '').trim() || null;
     const summary =
       String(data?.desc || data?.abstract || '').trim() || null;
