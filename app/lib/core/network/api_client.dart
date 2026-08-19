@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:http/http.dart' as http;
@@ -21,6 +22,13 @@ class ApiClient {
 
   final http.Client _client;
   final String _baseUrl;
+
+  /// 启动时打一次，让 iOS 立刻弹出联网许可，而不是等到用户点「获取验证码」。
+  static Future<void> warmup() async {
+    try {
+      await ApiClient().get('/api/health').timeout(const Duration(seconds: 4));
+    } catch (_) {}
+  }
 
   Future<Map<String, dynamic>> post(
     String path, {

@@ -10,6 +10,7 @@ void main() {
   });
 
   testWidgets('app boots to login page', (tester) async {
+    tester.binding.deferFirstFrame();
     await tester.pumpWidget(const SuperCollectionApp());
     await tester.pumpAndSettle();
     expect(find.text('Conflux'), findsOneWidget);

@@ -248,6 +248,7 @@ class _ItemDetailPageState extends State<ItemDetailPage> {
             onBack: () => Navigator.of(context).maybePop(),
             enabled: item != null,
             onCopyLink: _copyLink,
+            onReparse: _reparse,
             onDelete: _confirmDelete,
           ),
           Expanded(
@@ -330,12 +331,14 @@ class _TopBar extends StatelessWidget {
   const _TopBar({
     required this.onBack,
     required this.onCopyLink,
+    required this.onReparse,
     required this.onDelete,
     this.enabled = true,
   });
 
   final VoidCallback onBack;
   final VoidCallback onCopyLink;
+  final VoidCallback onReparse;
   final VoidCallback onDelete;
   final bool enabled;
 
@@ -381,6 +384,7 @@ class _TopBar extends StatelessWidget {
                   constraints: const BoxConstraints(minWidth: 148, maxWidth: 168),
                   onSelected: (value) {
                     if (value == 'copy') onCopyLink();
+                    if (value == 'reparse') onReparse();
                     if (value == 'delete') onDelete();
                   },
                   itemBuilder: (context) => [
@@ -389,6 +393,18 @@ class _TopBar extends StatelessWidget {
                       height: 44,
                       child: Text(
                         '复制链接',
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w500,
+                          color: _text,
+                        ),
+                      ),
+                    ),
+                    const PopupMenuItem<String>(
+                      value: 'reparse',
+                      height: 44,
+                      child: Text(
+                        '重新解析',
                         style: TextStyle(
                           fontSize: 15,
                           fontWeight: FontWeight.w500,
