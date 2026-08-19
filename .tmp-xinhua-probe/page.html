@@ -1,0 +1,92 @@
+<!DOCTYPE html><html><head><meta charset=utf-8><meta name=viewport content="width=device-width,user-scalable=no,initial-scale=1,maximum-scale=1,minimum-scale=1"><meta content="telephone=no" name=format-detection><meta http-equiv=Access-Control-Allow-Origin content=*><meta content=always name=referrer><link rel=icon href=./static/favicon.ico type=image/x-icon><link rel="shortcut icon" href=./static/favicon.ico type=image/x-icon><title>新华社分享页</title><link rel=dns-prefetch href=//bt.zhongguowangshi.com><script>(function () {
+        if (
+          typeof WeixinJSBridge == "object" &&
+          typeof WeixinJSBridge.invoke == "function"
+        ) {
+          handleFontSize();
+        } else {
+          if (document.addEventListener) {
+            document.addEventListener(
+              "WeixinJSBridgeReady",
+              handleFontSize,
+              false
+            );
+          } else if (document.attachEvent) {
+            document.attachEvent("WeixinJSBridgeReady", handleFontSize);
+            document.attachEvent("onWeixinJSBridgeReady", handleFontSize);
+          }
+        }
+        function handleFontSize() {
+          // 设置网页字体为默认大小
+          WeixinJSBridge.invoke("setFontSizeCallback", { fontSize: 0 });
+          // 重写设置网页字体大小的事件
+          WeixinJSBridge.on("menu:setfont", function () {
+            WeixinJSBridge.invoke("setFontSizeCallback", { fontSize: 0 });
+          });
+        }
+      })();</script><script>let ua = navigator.userAgent.toLocaleLowerCase();
+      let isIOS = /iphone|ipad|ipod/.test(ua);
+      let url = isIOS ? "xhsfont://SourceHanSerifCN-SemiBold.otf" : "font.ttf";
+      // url = "https://img-xhpfm-test.xinhuaxmt.com/FZYouSJJW_505L.TTF"
+      let newStyle = document.createElement("style");
+      newStyle.appendChild(
+        document.createTextNode(
+          "\
+        @font-face {\
+        font-family: 'MyFont';\
+        src: url('" +
+            url +
+            "')\
+        }\
+        html,body {font-family: MyFont !important}\
+      "
+        )
+      );
+      document.head.appendChild(newStyle);
+      console.log("加载字体了", url);</script><script>var _hmt = _hmt || [];
+      (function () {
+        var hm = document.createElement("script");
+        hm.src = "https://hm.baidu.com/hm.js?12aae9df6cc49c807cea2ed5c9ec8e7e";
+        var s = document.getElementsByTagName("script")[0];
+        s.parentNode.insertBefore(hm, s);
+      })();</script><script>(function (w, d, s, q) {
+        w[q] = w[q] || [];
+        var f = d.getElementsByTagName(s)[0];
+        var j = d.createElement(s);
+        j.async = true;
+        j.id = "beacon-aplus";
+        j.src = "https://o.alicdn.com/QTSDK/quicktracking-sdk/qt_web.umd.js";
+        f.parentNode.insertBefore(j, f);
+      })(window, document, "script", "aplus_queue");
+
+      aplus_queue.push({
+        action: "aplus.setMetaInfo",
+        arguments: ["appKey", "lkmsqoga2xvgju7rrr498ezq"],
+      });
+
+      aplus_queue.push({
+        action: "aplus.setMetaInfo",
+        arguments: ["trackDomain", ""], //https://mediadata.xuexi.cn:8443/
+      });</script><script type=text/javascript charset=utf-8 src=https://vod-xhpfm.xinhuaxmt.com/static/js/aliplayer-min.js></script><script src=https://res2.wx.qq.com/open/js/jweixin-1.4.0.js></script><script async src=https://vod-xhpfm.xinhuaxmt.com/static/js/aliyun-oss-sdk-6.8.0.min.js></script><link rel="shortcut icon" href=/vh512/favicon.ico><link href=/vh512/static1784736778726/css/app.11e06239d6b71411904d702cab95d70c.css rel=stylesheet></head><body style="margin: 0; padding: 0"><div id=app></div><script type=text/javascript src=/vh512/static1784736778726/js/manifest.f3c72636890f85369aeb.js></script><script type=text/javascript src=/vh512/static1784736778726/js/vendor.6129b75790fe192518ee.js></script><script type=text/javascript src=/vh512/static1784736778726/js/app.2b9cd6641b6fb45879ac.js></script></body></html><style>.div > * {
+    -webkit-transform: translateZ(0px);
+  }
+  * {
+    -webkit-overflow-scrolling: touch;
+  }
+  body {
+    /* IOS禁止微信调整字体大小 */
+    /* -webkit-text-size-adjust: 100% !important;
+    text-size-adjust: 100% !important;
+    -moz-text-size-adjust: 100% !important; */
+  }
+
+  /* @font-face {
+    font-family: 'MyCustomFont';
+    src: url('http://127.0.0.1/font.ttf');
+  }
+
+  html,body{
+    font-family:"MyCustomFont";
+    width: 100%;
+    height: 100%;
+  } */</style>

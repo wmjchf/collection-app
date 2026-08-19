@@ -786,6 +786,8 @@ const PLATFORM_ALIASES = {
   thepaper: 'thepaper',
   南方周末: 'infzm',
   infzm: 'infzm',
+  新华社: 'xinhuaxmt',
+  xinhuaxmt: 'xinhuaxmt',
   网页: 'web',
   zaker: 'zaker',
   扎克: 'zaker',

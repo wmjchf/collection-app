@@ -48,6 +48,7 @@ const qqnewsAdapter = require('./qqnews');
 const sinaAdapter = require('./sina');
 const thepaperAdapter = require('./thepaper');
 const infzmAdapter = require('./infzm');
+const xinhuaxmtAdapter = require('./xinhuaxmt');
 
 /** @type {PlatformAdapter[]} */
 const ADAPTERS = [
@@ -66,6 +67,7 @@ const ADAPTERS = [
   sinaAdapter,
   thepaperAdapter,
   infzmAdapter,
+  xinhuaxmtAdapter,
   defaultAdapter,
 ];
 

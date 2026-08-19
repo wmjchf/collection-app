@@ -37,6 +37,22 @@ function assertHttpUrl(raw) {
   return uri;
 }
 
+function xinhuaxmtDocId(raw) {
+  const text = String(raw || '').trim();
+  if (!text) return null;
+  try {
+    const uri = new URL(text);
+    const q = uri.searchParams.get('docid');
+    if (q && /^\d+$/.test(q)) return q;
+    const m = (uri.pathname || '').match(/\/share\/(\d+)/i);
+    if (m) return m[1];
+  } catch {
+    // ignore
+  }
+  const loose = text.match(/[?&]docid=(\d+)/i);
+  return loose ? loose[1] : null;
+}
+
 function infzmContentId(raw) {
   const text = String(raw || '').trim();
   if (!text) return null;
@@ -60,6 +76,12 @@ function normalizeUrl(raw) {
   const infzmId = infzmContentId(raw);
   if (infzmId && uri.hostname.replace(/^www\./, '').includes('infzm.com')) {
     uri.pathname = `/wap/content/${infzmId}`;
+  }
+  const xhsId = xinhuaxmtDocId(raw);
+  if (xhsId && uri.hostname.replace(/^www\./, '').includes('xinhuaxmt.com')) {
+    const prefix = uri.pathname.match(/^(\/vh\d+)/i)?.[1] || '/vh512';
+    uri.pathname = `${prefix}/share/${xhsId}`;
+    if (!uri.searchParams.get('docid')) uri.searchParams.set('docid', xhsId);
   }
   uri.hash = '';
   for (const key of [...uri.searchParams.keys()]) {
@@ -149,6 +171,9 @@ function detectPlatform(url) {
   if (host.includes('infzm.com')) {
     return 'infzm';
   }
+  if (host.includes('xinhuaxmt.com')) {
+    return 'xinhuaxmt';
+  }
   if (host.includes('zhihu.com')) {
     return 'zhihu';
   }
@@ -207,6 +232,8 @@ function resolveParseUrl(canonicalUrl, rawUrl) {
   const raw = String(rawUrl || '').trim();
   if (infzmContentId(canonical)) return canonical;
   if (infzmContentId(raw)) return raw;
+  if (xinhuaxmtDocId(canonical)) return canonical;
+  if (xinhuaxmtDocId(raw)) return raw;
   return canonical || raw;
 }
 
@@ -217,5 +244,6 @@ module.exports = {
   resolveFetchUrl,
   resolveParseUrl,
   infzmContentId,
+  xinhuaxmtDocId,
   placeholderTitle,
 };
