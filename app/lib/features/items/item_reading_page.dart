@@ -37,17 +37,40 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
   static const _blue = Color(0xFF2F6FED);
   static const _highlight = Color(0xFFFFF2C7);
 
+  static const _chromeAnim = Duration(milliseconds: 240);
+  static const _topBarHeight = 52.0;
+  static const _bottomBarHeight = 56.0;
+
   final _repo = ItemsRepository();
   late CollectionItem _item;
   List<ItemAnnotation> _annotations = const [];
   bool _starring = false;
   bool _loadingAnns = true;
+  bool _chromeVisible = true;
+  bool _bodyHasSelection = false;
+  DateTime? _lastChromeToggleAt;
 
   @override
   void initState() {
     super.initState();
     _item = widget.item;
     _loadAnnotations();
+  }
+
+  void _toggleReadingChrome() {
+    if (_bodyHasSelection) return;
+    final now = DateTime.now();
+    if (_lastChromeToggleAt != null &&
+        now.difference(_lastChromeToggleAt!) <
+            const Duration(milliseconds: 80)) {
+      return;
+    }
+    _lastChromeToggleAt = now;
+    setState(() => _chromeVisible = !_chromeVisible);
+  }
+
+  void _onBodySelectionChanged(TextSelection selection) {
+    _bodyHasSelection = selection.isValid && !selection.isCollapsed;
   }
 
   String get _rawBody => (_item.content ?? _item.summary ?? '').trim();
@@ -522,133 +545,184 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
         _item.title?.isNotEmpty == true ? _item.title! : _item.url;
     final body = _bodyText;
 
+    final mq = MediaQuery.of(context);
+    final topChrome = mq.padding.top + _topBarHeight;
+    final bottomChrome = mq.padding.bottom + _bottomBarHeight;
+
     return Scaffold(
       backgroundColor: Colors.white,
-      body: Column(
+      body: Stack(
         children: [
-          _ReadingTopBar(
-            onBack: () => Navigator.of(context).maybePop(),
-          ),
-          Expanded(
-            child: ListView(
-              padding: const EdgeInsets.fromLTRB(22, 18, 22, 28),
-              children: [
-                Text(
-                  title,
-                  style: const TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.w700,
-                    color: _text,
-                    height: 1.4,
-                    letterSpacing: 0.2,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                Text(
-                  _metaLine(),
-                  style: const TextStyle(
-                    fontSize: 12,
-                    color: _muted,
-                    height: 1.4,
-                  ),
-                ),
-                const SizedBox(height: 22),
-                if (_item.hasVideo) ...[
-                  ItemVideoPlayer(
-                    // 勿用 videoUrl 做 key：刷新直链会重建并死循环转圈
-                    key: ValueKey('item-video-${_item.id}'),
-                    url: _item.videoUrl!.trim(),
-                    coverUrl: _item.coverImageUrl ??
-                        (_item.displayImages.isNotEmpty
-                            ? _item.displayImages.first
-                            : null),
-                    onRefreshUrl: _platformNeedsVideoRefresh
-                        ? _refreshVideoUrl
-                        : null,
-                  ),
-                  const SizedBox(height: 18),
-                ] else if (_showReadingImages) ...[
-                  ItemImageGallery(urls: _readingImageUrls),
-                  const SizedBox(height: 18),
-                ],
-                if (_rawBody.isEmpty)
-                  const Text(
-                    '暂无正文',
-                    style: TextStyle(fontSize: 15, color: _muted),
-                  )
-                else if (ArticleContentBlocks.hasRichMarkup(_rawBody))
-                  _InlineArticleBody(
-                    blocks: _bodyBlocks,
-                    plainText: body,
-                    annotationRanges: _annotationRanges(body),
-                    toolbarAt: _toolbarAt,
-                    onTapAnnotation: _openAnnotation,
-                  )
-                else
-                  _AnnotatedBodyStack(
-                    text: body,
-                    spans: _bodySpans(body),
-                    annotations: _annotationRanges(body),
-                    contextMenuBuilder: _selectionToolbar,
-                    onTapAnnotation: _openAnnotation,
-                  ),
-                if (_loadingAnns) ...[
-                  const SizedBox(height: 16),
-                  const Center(
-                    child: SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2),
+          AnimatedPadding(
+            duration: _chromeAnim,
+            curve: Curves.easeOutCubic,
+            padding: EdgeInsets.only(
+              top: _chromeVisible ? topChrome : mq.padding.top,
+              bottom: _chromeVisible ? bottomChrome : mq.padding.bottom,
+            ),
+            child: GestureDetector(
+              onTap: _toggleReadingChrome,
+              behavior: HitTestBehavior.translucent,
+              child: ListView(
+                padding: const EdgeInsets.fromLTRB(22, 18, 22, 28),
+                children: [
+                  Text(
+                    title,
+                    style: const TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w700,
+                      color: _text,
+                      height: 1.4,
+                      letterSpacing: 0.2,
                     ),
                   ),
+                  const SizedBox(height: 12),
+                  Text(
+                    _metaLine(),
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: _muted,
+                      height: 1.4,
+                    ),
+                  ),
+                  const SizedBox(height: 22),
+                  if (_item.hasVideo) ...[
+                    ItemVideoPlayer(
+                      // 勿用 videoUrl 做 key：刷新直链会重建并死循环转圈
+                      key: ValueKey('item-video-${_item.id}'),
+                      url: _item.videoUrl!.trim(),
+                      coverUrl: _item.coverImageUrl ??
+                          (_item.displayImages.isNotEmpty
+                              ? _item.displayImages.first
+                              : null),
+                      onRefreshUrl: _platformNeedsVideoRefresh
+                          ? _refreshVideoUrl
+                          : null,
+                    ),
+                    const SizedBox(height: 18),
+                  ] else if (_showReadingImages) ...[
+                    ItemImageGallery(urls: _readingImageUrls),
+                    const SizedBox(height: 18),
+                  ],
+                  if (_rawBody.isEmpty)
+                    const Text(
+                      '暂无正文',
+                      style: TextStyle(fontSize: 15, color: _muted),
+                    )
+                  else if (ArticleContentBlocks.hasRichMarkup(_rawBody))
+                    _InlineArticleBody(
+                      blocks: _bodyBlocks,
+                      plainText: body,
+                      annotationRanges: _annotationRanges(body),
+                      toolbarAt: _toolbarAt,
+                      onTapAnnotation: _openAnnotation,
+                      onBodyTap: _toggleReadingChrome,
+                      onSelectionChanged: _onBodySelectionChanged,
+                    )
+                  else
+                    _AnnotatedBodyStack(
+                      text: body,
+                      spans: _bodySpans(body),
+                      annotations: _annotationRanges(body),
+                      contextMenuBuilder: _selectionToolbar,
+                      onTapAnnotation: _openAnnotation,
+                      onBodyTap: _toggleReadingChrome,
+                      onSelectionChanged: _onBodySelectionChanged,
+                    ),
+                  if (_loadingAnns) ...[
+                    const SizedBox(height: 16),
+                    const Center(
+                      child: SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
+                    ),
+                  ],
                 ],
-              ],
+              ),
             ),
           ),
-          Material(
-            color: Colors.white,
-            child: Container(
-              decoration: const BoxDecoration(
-                border: Border(top: BorderSide(color: _border)),
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            child: IgnorePointer(
+              ignoring: !_chromeVisible,
+              child: ClipRect(
+                child: AnimatedSlide(
+                  duration: _chromeAnim,
+                  curve: Curves.easeOutCubic,
+                  offset:
+                      _chromeVisible ? Offset.zero : const Offset(0, -1),
+                  child: _ReadingTopBar(
+                    onBack: () => Navigator.of(context).maybePop(),
+                  ),
+                ),
               ),
-              child: SafeArea(
-                top: false,
-                child: SizedBox(
-                  height: 56,
-                  child: Row(
-                    children: [
-                      _ActionItem(
-                        icon: _item.isStarred
-                            ? Icons.star_rounded
-                            : Icons.star_outline_rounded,
-                        label: '星标',
-                        iconColor:
-                            _item.isStarred ? _starActive : _text,
-                        onTap: _toggleStar,
+            ),
+          ),
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 0,
+            child: IgnorePointer(
+              ignoring: !_chromeVisible,
+              child: ClipRect(
+                child: AnimatedSlide(
+                  duration: _chromeAnim,
+                  curve: Curves.easeOutCubic,
+                  offset:
+                      _chromeVisible ? Offset.zero : const Offset(0, 1),
+                  child: Material(
+                    color: Colors.white,
+                    child: Container(
+                      decoration: const BoxDecoration(
+                        border: Border(top: BorderSide(color: _border)),
                       ),
-                      _ActionItem(
-                        icon: Icons.tag_outlined,
-                        label: '标签',
-                        onTap: () => showReadingTagsSheet(
-                          context,
-                          itemId: _item.id,
+                      child: SafeArea(
+                        top: false,
+                        child: SizedBox(
+                          height: _bottomBarHeight,
+                          child: Row(
+                            children: [
+                              _ActionItem(
+                                icon: _item.isStarred
+                                    ? Icons.star_rounded
+                                    : Icons.star_outline_rounded,
+                                label: '星标',
+                                iconColor: _item.isStarred
+                                    ? _starActive
+                                    : _text,
+                                onTap: _toggleStar,
+                              ),
+                              _ActionItem(
+                                icon: Icons.tag_outlined,
+                                label: '标签',
+                                onTap: () => showReadingTagsSheet(
+                                  context,
+                                  itemId: _item.id,
+                                ),
+                              ),
+                              _ActionItem(
+                                icon: Icons.edit_note_outlined,
+                                label: '备注',
+                                iconColor: (_item.note != null &&
+                                        _item.note!.trim().isNotEmpty)
+                                    ? _blue
+                                    : _text,
+                                onTap: _onNote,
+                              ),
+                              _ActionItem(
+                                icon: Icons.more_vert,
+                                label: '更多',
+                                onTap: _onMore,
+                              ),
+                            ],
+                          ),
                         ),
                       ),
-                      _ActionItem(
-                        icon: Icons.edit_note_outlined,
-                        label: '备注',
-                        iconColor: (_item.note != null &&
-                                _item.note!.trim().isNotEmpty)
-                            ? _blue
-                            : _text,
-                        onTap: _onNote,
-                      ),
-                      _ActionItem(
-                        icon: Icons.more_vert,
-                        label: '更多',
-                        onTap: _onMore,
-                      ),
-                    ],
+                    ),
                   ),
                 ),
               ),
@@ -668,6 +742,8 @@ class _InlineArticleBody extends StatelessWidget {
     required this.annotationRanges,
     required this.toolbarAt,
     required this.onTapAnnotation,
+    this.onBodyTap,
+    this.onSelectionChanged,
   });
 
   final List<ArticleBlock> blocks;
@@ -675,6 +751,8 @@ class _InlineArticleBody extends StatelessWidget {
   final List<({int start, int end, ItemAnnotation ann})> annotationRanges;
   final EditableTextContextMenuBuilder Function(int baseOffset) toolbarAt;
   final ValueChanged<ItemAnnotation> onTapAnnotation;
+  final VoidCallback? onBodyTap;
+  final ValueChanged<TextSelection>? onSelectionChanged;
 
   static const _text = Color(0xFF1F242E);
   static const _highlight = Color(0xFFFFF2C7);
@@ -789,6 +867,8 @@ class _InlineArticleBody extends StatelessWidget {
             annotations: localAnns,
             contextMenuBuilder: toolbarAt(pos.start),
             onTapAnnotation: onTapAnnotation,
+            onBodyTap: onBodyTap,
+            onSelectionChanged: onSelectionChanged,
             textStyle: style,
           ),
         );
@@ -841,6 +921,8 @@ class _InlineArticleBody extends StatelessWidget {
             annotations: localAnns,
             contextMenuBuilder: toolbarAt(pos.start),
             onTapAnnotation: onTapAnnotation,
+            onBodyTap: onBodyTap,
+            onSelectionChanged: onSelectionChanged,
           ),
         );
       }
@@ -995,6 +1077,8 @@ class _AnnotatedBodyStack extends StatefulWidget {
     required this.annotations,
     required this.contextMenuBuilder,
     required this.onTapAnnotation,
+    this.onBodyTap,
+    this.onSelectionChanged,
     this.textStyle,
   });
 
@@ -1003,6 +1087,8 @@ class _AnnotatedBodyStack extends StatefulWidget {
   final List<({int start, int end, ItemAnnotation ann})> annotations;
   final EditableTextContextMenuBuilder contextMenuBuilder;
   final ValueChanged<ItemAnnotation> onTapAnnotation;
+  final VoidCallback? onBodyTap;
+  final ValueChanged<TextSelection>? onSelectionChanged;
   final TextStyle? textStyle;
 
   static const _text = Color(0xFF1F242E);
@@ -1169,6 +1255,11 @@ class _AnnotatedBodyStackState extends State<_AnnotatedBodyStack> {
                 key: _textKey,
                 textAlign: TextAlign.justify,
                 contextMenuBuilder: widget.contextMenuBuilder,
+                onTap: widget.onBodyTap,
+                onSelectionChanged: widget.onSelectionChanged == null
+                    ? null
+                    : (selection, _) =>
+                        widget.onSelectionChanged!(selection),
               ),
             ),
             // 透明热区盖住高亮，稳定响应点击（不与选区手势打架）
