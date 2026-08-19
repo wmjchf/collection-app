@@ -62,16 +62,18 @@ function pickArticleId(url, data) {
   if (fromData && /^[A-Za-z0-9]{10,}$/.test(String(fromData))) {
     return String(fromData);
   }
+  const raw = String(url || '');
   try {
-    const uri = new URL(url || '', 'https://view.inews.qq.com');
+    const uri = new URL(raw, 'https://view.inews.qq.com');
     const q = uri.searchParams.get('id');
     if (q && /^[A-Za-z0-9]{10,}$/.test(q)) return q;
-    const m = uri.pathname.match(/\/(?:a|w|rain\/a)\/([A-Za-z0-9]+)/i);
+    const m = uri.pathname.match(/\/(?:rain\/)?a\/([A-Za-z0-9]{10,})/i);
     if (m) return m[1];
   } catch {
     // ignore
   }
-  return null;
+  const loose = raw.match(/\b(20\d{6}[A-Za-z][A-Za-z0-9]{5,})\b/);
+  return loose ? loose[1] : null;
 }
 
 function pickRawFragment(html, data) {
@@ -204,33 +206,37 @@ function pickCdnHost(ui) {
 
 async function resolvePlayUrl(vid) {
   if (!vid) return null;
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 8000);
-  try {
-    const api = `https://vv.video.qq.com/getinfo?vids=${encodeURIComponent(
-      vid,
-    )}&platform=101001&charge=0&otype=json`;
-    const res = await fetch(api, {
-      signal: controller.signal,
-      headers: {
-        'User-Agent': MOBILE_UA,
-        Referer: 'https://news.qq.com/',
-        Accept: '*/*',
-      },
-    });
-    if (!res.ok) return null;
-    const json = parseQzOutput(await res.text());
-    const vi = json?.vl?.vi && json.vl.vi[0];
-    if (!vi?.fn || !vi?.fvkey) return null;
-    const host = pickCdnHost(vi.ul && vi.ul.ui);
-    if (!host) return null;
-    const base = host.endsWith('/') ? host : `${host}/`;
-    return `${base}${vi.fn}?vkey=${vi.fvkey}`;
-  } catch {
-    return null;
-  } finally {
-    clearTimeout(timer);
+  const platforms = ['101001', '11'];
+  for (const platform of platforms) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 8000);
+    try {
+      const api = `https://vv.video.qq.com/getinfo?vids=${encodeURIComponent(
+        vid,
+      )}&platform=${platform}&charge=0&otype=json`;
+      const res = await fetch(api, {
+        signal: controller.signal,
+        headers: {
+          'User-Agent': MOBILE_UA,
+          Referer: 'https://news.qq.com/',
+          Accept: '*/*',
+        },
+      });
+      if (!res.ok) continue;
+      const json = parseQzOutput(await res.text());
+      const vi = json?.vl?.vi && json.vl.vi[0];
+      if (!vi?.fn || !vi?.fvkey) continue;
+      const host = pickCdnHost(vi.ul && vi.ul.ui);
+      if (!host) continue;
+      const base = host.endsWith('/') ? host : `${host}/`;
+      return `${base}${vi.fn}?vkey=${vi.fvkey}`;
+    } catch {
+      // try next platform
+    } finally {
+      clearTimeout(timer);
+    }
   }
+  return null;
 }
 
 async function fetchSimpleNews(id) {
@@ -261,6 +267,24 @@ async function fetchSimpleNews(id) {
   }
 }
 
+async function scrapeVidFromSharePage(articleId) {
+  if (!articleId) return null;
+  try {
+    const { html, ok } = await fetchHtml(
+      `https://view.inews.qq.com/a/${encodeURIComponent(articleId)}`,
+      { timeoutMs: 10000, userAgent: MOBILE_UA },
+    );
+    if (!ok || !html) return null;
+    const cover = html.match(/vpic_cover\/([a-z0-9]{6,})\//i);
+    if (cover) return { vid: cover[1], img: null };
+    const quoted = html.match(/"vid"\s*:\s*"([a-z0-9]{6,})"/i);
+    if (quoted) return { vid: quoted[1], img: null };
+  } catch {
+    // ignore
+  }
+  return null;
+}
+
 function coverFrom(videos, data, fragment, pageBase) {
   const poster = videos[0]?.img || videos[0]?.image;
   return (
@@ -277,13 +301,10 @@ async function buildContent(html, { baseUrl, pageUrl } = {}) {
   let videos = pickVideoItems(data);
   let title = String(data.title || '').trim();
   let summary = String(data.desc || data.abstract || '').trim();
+  const id = pickArticleId(pageUrl, data) || pickArticleId(pageBase, data);
 
-  const probe = htmlToRichText(prepareFragment(rawFragment, []), {
-    baseUrl: pageBase,
-  });
-  const needApi = videos.length === 0 && plainLen(probe) < 40;
-  if (needApi) {
-    const id = pickArticleId(pageUrl || pageBase, data);
+  // 短视频稿桌面是空壳：只要没有 VIDEO_* 就按文章 id 打接口
+  if (videos.length === 0 && id) {
     const api = await fetchSimpleNews(id);
     if (api) {
       data = { ...data, ...api, attribute: api.attribute || data.attribute };
@@ -296,6 +317,11 @@ async function buildContent(html, { baseUrl, pageUrl } = {}) {
       title = String(api.title || title).trim();
       summary = String(api.abstract || api.intro || summary).trim();
       if (api.shareImg) data.shareImg = api.shareImg;
+      if (api.source) data.media = api.source;
+    }
+    if (videos.length === 0) {
+      const scraped = await scrapeVidFromSharePage(id);
+      if (scraped?.vid) videos = [scraped];
     }
   }
 
@@ -308,7 +334,10 @@ async function buildContent(html, { baseUrl, pageUrl } = {}) {
   let inlineCount = 0;
   for (let i = 0; i < videos.length; i += 1) {
     const play = playUrls[i];
-    const poster = httpsUrl(videos[i].img || videos[i].image) || '';
+    const poster =
+      httpsUrl(videos[i].img || videos[i].image) ||
+      httpsUrl(data.shareImg) ||
+      '';
     let replacement = '';
     if (play) {
       inlineCount += 1;
@@ -321,7 +350,7 @@ async function buildContent(html, { baseUrl, pageUrl } = {}) {
   content = content.replace(/\n{3,}/g, '\n\n').trim();
 
   let plain = plainLen(content);
-  if (inlineCount > 0 && title && plain < 40) {
+  if (title && plain < 40) {
     content = [content, title].filter(Boolean).join('\n\n').trim();
     plain = plainLen(content);
   }
@@ -378,52 +407,6 @@ module.exports = {
       summary: built.summary,
       imageUrls: built.imageUrls,
       videoUrl: built.videoUrl,
-    };
-  },
-  async fetchParsed(url) {
-    const { html, finalUrl, ok } = await fetchHtml(url, {
-      timeoutMs: 15000,
-    });
-    if (!ok || !html) {
-      return {
-        ok: false,
-        title: null,
-        summary: null,
-        coverImageUrl: null,
-        imageUrls: [],
-        videoUrl: null,
-        content: null,
-        errorMessage: '抓取失败',
-      };
-    }
-    const pageUrl = finalUrl || url;
-    const meta = module.exports.extractMeta(html, { baseUrl: pageUrl }) || {};
-    const built = await buildContent(html, {
-      baseUrl: pageUrl,
-      pageUrl: url,
-    });
-    if (!built) {
-      return {
-        ok: false,
-        title: meta.title || null,
-        summary: meta.summary || null,
-        coverImageUrl: meta.coverImageUrl || null,
-        imageUrls: [],
-        videoUrl: null,
-        content: null,
-        errorMessage: '未能提取到可读正文',
-      };
-    }
-    return {
-      ok: true,
-      title: meta.title || built.title || null,
-      summary: built.summary || meta.summary || null,
-      coverImageUrl: built.coverImageUrl || meta.coverImageUrl || null,
-      author: meta.author || null,
-      imageUrls: [],
-      videoUrl: null,
-      content: built.content,
-      errorMessage: null,
     };
   },
 };

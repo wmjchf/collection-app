@@ -413,13 +413,13 @@ async function refreshItemVideo(userId, itemId) {
   }
 
   const adapter = getAdapter(item.platform);
-  if (typeof adapter.fetchParsed !== 'function') {
-    throw Object.assign(new Error('该平台不支持刷新视频链接'), {
-      status: 400,
-    });
+  const target = item.canonicalUrl || item.url;
+  let parsed;
+  if (typeof adapter.fetchParsed === 'function') {
+    parsed = await adapter.fetchParsed(target);
+  } else {
+    parsed = await parseFullContent(target, { platform: item.platform });
   }
-
-  const parsed = await adapter.fetchParsed(item.canonicalUrl || item.url);
   const hasInlineVideo =
     typeof parsed.content === 'string' && /(?:^|\n)\s*!v\[/m.test(parsed.content);
   if (!parsed?.ok || (!parsed.videoUrl && !hasInlineVideo)) {
