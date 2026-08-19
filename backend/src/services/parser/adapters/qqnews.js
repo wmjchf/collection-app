@@ -416,7 +416,7 @@ async function buildContent(html, { baseUrl, pageUrl } = {}) {
     summary: summary || null,
     coverImageUrl: coverFrom(videos, data, prepared, pageBase),
     content: content || (inlineCount > 0 ? title || '（视频）' : null),
-    imageUrls: [...imageMap.values()],
+    imageUrls: [],
     videoUrl: null,
     inlineCount,
   };

@@ -332,15 +332,10 @@ function displayImages(item) {
 function isImageGallery(item) {
   const images = imageList(item);
   if (!images.length) return false;
-  const p = (item.platform || '').toLowerCase();
-  if (['kr36', 'web', 'zhihu', 'zaker', 'bilibili'].includes(p)) return false;
-  if (p === 'weixin' || p === 'wechat') return true;
-  if (isDouyinNoteOrSlides(item)) return true;
-  if (p === 'douyin') return !hasVideo(item);
-  if (p === 'xiaohongshu' || p === 'jike' || p === 'weibo') {
-    return !(item.videoUrl || '').trim();
-  }
-  return images.length >= 2;
+  if (hasVideo(item)) return false;
+  const body = item.content || '';
+  if (/!v?\[[^\]]*\]\([^)\s]+\)/.test(body)) return false;
+  return true;
 }
 
 function previewImages(item) {
