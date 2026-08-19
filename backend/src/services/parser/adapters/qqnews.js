@@ -305,6 +305,17 @@ async function fetchSimpleNews(id) {
   }
 }
 
+function scrapeVidFromHtml(html) {
+  if (!html || typeof html !== 'string') return null;
+  const cover = html.match(/vpic_cover\/([a-z0-9]{6,})\//i);
+  if (cover) return { vid: cover[1], img: null };
+  const quoted = html.match(/"vid"\s*:\s*"([a-z0-9]{6,})"/i);
+  if (quoted) return { vid: quoted[1], img: null };
+  const web = html.match(/webVideo\?vid=([a-z0-9]{6,})/i);
+  if (web) return { vid: web[1], img: null };
+  return null;
+}
+
 async function scrapeVidFromSharePage(articleId) {
   if (!articleId) return null;
   try {
@@ -313,10 +324,7 @@ async function scrapeVidFromSharePage(articleId) {
       { timeoutMs: 10000, userAgent: MOBILE_UA },
     );
     if (!ok || !html) return null;
-    const cover = html.match(/vpic_cover\/([a-z0-9]{6,})\//i);
-    if (cover) return { vid: cover[1], img: null };
-    const quoted = html.match(/"vid"\s*:\s*"([a-z0-9]{6,})"/i);
-    if (quoted) return { vid: quoted[1], img: null };
+    return scrapeVidFromHtml(html);
   } catch {
     // ignore
   }
@@ -367,34 +375,29 @@ async function buildContent(html, { baseUrl, pageUrl } = {}) {
       if (api.shareImg) data.shareImg = api.shareImg;
       if (api.source) data.media = api.source;
     }
-    if (videos.length === 0 && looksLikeShortVideo(id, data)) {
-      const scraped = await scrapeVidFromSharePage(id);
+    if (videos.length === 0) {
+      const scraped = scrapeVidFromHtml(html) || (await scrapeVidFromSharePage(id));
       if (scraped?.vid) videos = [scraped];
     }
   }
 
   const imageMap = pickImageMap(data);
+  const hasVideoSlots =
+    /<!--\s*VIDEO_\d+/i.test(rawFragment) || /%%QQVIDEO_\d+%%/.test(rawFragment);
   const prepared = prepareFragment(rawFragment, videos, imageMap, {
-    prependVideos: looksLikeShortVideo(id, data),
+    prependVideos: videos.length > 0 && !hasVideoSlots,
   });
   let content = htmlToRichText(prepared, { baseUrl: pageBase }) || '';
 
-  const playUrls = await Promise.all(
-    videos.map((item) => resolvePlayUrl(item.vid)),
-  );
   let inlineCount = 0;
   for (let i = 0; i < videos.length; i += 1) {
-    const play = playUrls[i];
     const poster =
       httpsUrl(videos[i].img || videos[i].image) ||
       httpsUrl(data.shareImg) ||
       '';
     let replacement = '';
-    if (play) {
-      inlineCount += 1;
-      replacement = videoMarkdown(play, poster);
-    } else if (videos[i].vid) {
-      // 云主机 getinfo 常被拦：留下 vid，阅读页用手机网络解直链
+    if (videos[i].vid) {
+      // 直链 vkey 会过期；统一留 vid，阅读页由手机出口解最新播放地址
       inlineCount += 1;
       replacement = videoMarkdown(`qqvid:${videos[i].vid}`, poster);
     } else if (poster) {
