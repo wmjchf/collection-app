@@ -16,6 +16,9 @@ module.exports = {
     /** 开发阶段写死验证码；正式环境关掉后走阿里云 */
     smsDevMode: process.env.SMS_DEV_MODE !== 'false',
     smsDevCode: process.env.SMS_DEV_CODE || '123456',
+    /** App Store 审核白名单：该手机号不发真实短信，用固定验证码登录（生产环境 SMS_DEV_MODE=false 时仍生效） */
+    smsReviewPhone: process.env.SMS_REVIEW_PHONE || '15868843247',
+    smsReviewCode: process.env.SMS_REVIEW_CODE || '888888',
   },
   aliyun: {
     accessKeyId: process.env.ALIYUN_ACCESS_KEY_ID || '',

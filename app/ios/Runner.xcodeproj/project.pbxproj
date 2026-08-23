@@ -3,7 +3,7 @@
 	archiveVersion = 1;
 	classes = {
 	};
-	objectVersion = 54;
+	objectVersion = 60;
 	objects = {
 
 /* Begin PBXBuildFile section */
@@ -254,7 +254,6 @@
 					};
 					E26D3C8D38934E9CA284D60C = {
 						CreatedOnToolsVersion = 15.0;
-						DevelopmentTeam = 87LMSCC47U;
 					};
 				};
 			};

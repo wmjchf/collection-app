@@ -5,6 +5,12 @@ const config = require('../config');
 const { normalizePhone } = require('../utils/phone');
 const aliyunSms = require('./aliyunSms');
 
+function isReviewWhitelistPhone(phone) {
+  const reviewPhone = config.auth.smsReviewPhone;
+  if (!reviewPhone) return false;
+  return normalizePhone(phone) === normalizePhone(reviewPhone);
+}
+
 function hashToken(token) {
   return crypto.createHash('sha256').update(token).digest('hex');
 }
@@ -35,6 +41,14 @@ async function logSmsSend(phone, scene = 'login', providerRequestId = null) {
  */
 async function sendLoginCode(phone) {
   const normalized = normalizePhone(phone);
+
+  if (isReviewWhitelistPhone(normalized)) {
+    await logSmsSend(normalized, 'login', 'app-review-whitelist');
+    return {
+      ok: true,
+      message: '验证码已发送',
+    };
+  }
 
   if (config.auth.smsDevMode) {
     await logSmsSend(normalized, 'login', 'dev-mode');
@@ -112,6 +126,15 @@ async function createSession(userId) {
 async function verifyLoginCode(phone, code) {
   const normalized = normalizePhone(phone);
   const normalizedCode = String(code || '').trim();
+
+  if (isReviewWhitelistPhone(normalized)) {
+    if (normalizedCode !== config.auth.smsReviewCode) {
+      const err = new Error('验证码错误');
+      err.status = 400;
+      throw err;
+    }
+    return true;
+  }
 
   if (config.auth.smsDevMode) {
     if (normalizedCode !== config.auth.smsDevCode) {
