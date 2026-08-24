@@ -1,9 +1,14 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:super_collection/core/network/media_http_headers.dart';
 import 'package:super_collection/core/network/qq_video_resolve.dart';
+import 'package:super_collection/features/items/reading_media_controller.dart';
 import 'package:video_player/video_player.dart';
+import 'package:visibility_detector/visibility_detector.dart';
 import 'package:webview_flutter/webview_flutter.dart';
+import 'package:webview_flutter_android/webview_flutter_android.dart';
 
 /// 阅读页内嵌视频：固定高度 + 全屏播放
 ///
@@ -15,6 +20,8 @@ class ItemVideoPlayer extends StatefulWidget {
     required this.url,
     this.coverUrl,
     this.pageUrl,
+    this.platform,
+    this.pageAudio,
     this.height = 220,
     this.onRefreshUrl,
   });
@@ -23,6 +30,10 @@ class ItemVideoPlayer extends StatefulWidget {
   final String? coverUrl;
   /// 条目源站链接，用作 CDN Referer。
   final String? pageUrl;
+  /// 平台 id，小宇宙等播客走 pageAudio 引擎。
+  final String? platform;
+  /// 阅读页级音频控制器（滚出视口 / 息屏仍可播）。
+  final ReadingMediaController? pageAudio;
   final double height;
 
   /// 直链失效时回调，返回新 URL；阅读页可对接 refresh-video
@@ -97,6 +108,9 @@ class _ItemVideoPlayerState extends State<ItemVideoPlayer> {
   late String _playUrl;
   bool _didAutoRefresh = false;
   bool _didFailRefresh = false;
+  bool _resumeWhenVisible = false;
+  bool _usePageAudio = false;
+  VoidCallback? _audioListener;
 
   @override
   void initState() {
@@ -171,7 +185,42 @@ class _ItemVideoPlayerState extends State<ItemVideoPlayer> {
       await _initWeb();
       return;
     }
+    if (widget.pageAudio != null &&
+        isAudioOnlyMediaUrl(_playUrl, platform: widget.platform)) {
+      await _initPageAudio();
+      return;
+    }
     await _initNative(uri);
+  }
+
+  Future<void> _initPageAudio() async {
+    _usePageAudio = true;
+    _useWeb = false;
+    _disposeNative();
+    _webController = null;
+    final session = widget.pageAudio!;
+    _audioListener ??= () {
+      if (!mounted) return;
+      setState(() {
+        _initializing = session.initializing;
+        _error = session.error;
+      });
+    };
+    session.removeListener(_audioListener!);
+    session.addListener(_audioListener!);
+    setState(() {
+      _initializing = true;
+      _error = null;
+    });
+    await session.loadUrl(
+      _playUrl,
+      headers: mediaHttpHeadersFor(_playUrl, pageUrl: widget.pageUrl),
+    );
+    if (!mounted) return;
+    setState(() {
+      _initializing = session.initializing;
+      _error = session.error;
+    });
   }
 
   Future<void> _initWeb() async {
@@ -218,6 +267,10 @@ class _ItemVideoPlayerState extends State<ItemVideoPlayer> {
       );
 
     _webController = controller;
+    final platform = controller.platform;
+    if (platform is AndroidWebViewController) {
+      platform.setMediaPlaybackRequiresUserGesture(false);
+    }
     try {
       await controller.loadHtmlString(
         _bilibiliPlayerHtml(_playUrl),
@@ -245,6 +298,10 @@ class _ItemVideoPlayerState extends State<ItemVideoPlayer> {
     final controller = VideoPlayerController.networkUrl(
       uri,
       httpHeaders: mediaHttpHeadersFor(_playUrl, pageUrl: widget.pageUrl),
+      videoPlayerOptions: VideoPlayerOptions(
+        mixWithOthers: true,
+        allowBackgroundPlayback: true,
+      ),
     );
     _controller = controller;
     controller.addListener(_onTick);
@@ -343,6 +400,60 @@ class _ItemVideoPlayerState extends State<ItemVideoPlayer> {
     setState(() {});
   }
 
+  void _onVisibilityChanged(VisibilityInfo info) {
+    if (!mounted || _inFullscreen) return;
+    final mostlyHidden = info.visibleFraction <= 0.05;
+    if (mostlyHidden) {
+      if (_useWeb) {
+        if (_webReady) {
+          final c = _webController;
+          if (c != null) {
+            unawaited(
+              c.runJavaScript(
+                'try{var v=document.getElementById("v");'
+                'if(v&&!v.paused){window.__wasPlaying=1;v.play()}'
+                '}catch(e){}',
+              ),
+            );
+            _resumeWhenVisible = true;
+          }
+        }
+      } else {
+        final c = _controller;
+        if (c != null && c.value.isInitialized && c.value.isPlaying) {
+          _resumeWhenVisible = true;
+          // 滚出视口时系统常会暂停 Platform View；对音频尽量续播
+          unawaited(c.play());
+        }
+      }
+      return;
+    }
+    if (!_resumeWhenVisible) return;
+    _resumeWhenVisible = false;
+    unawaited(_resumePlayback());
+  }
+
+  Future<void> _resumePlayback() async {
+    if (_useWeb) {
+      await _webController?.runJavaScript(
+        'try{var v=document.getElementById("v");if(v&&v.paused)v.play()}catch(e){}',
+      );
+      return;
+    }
+    final c = _controller;
+    if (c != null && c.value.isInitialized && !c.value.isPlaying) {
+      await c.play();
+    }
+  }
+
+  Widget _wrapWithVisibility(Widget child) {
+    return VisibilityDetector(
+      key: ValueKey('video-vis-${widget.url}-${identityHashCode(this)}'),
+      onVisibilityChanged: _onVisibilityChanged,
+      child: child,
+    );
+  }
+
   void _disposeNative() {
     final c = _controller;
     _controller = null;
@@ -359,11 +470,19 @@ class _ItemVideoPlayerState extends State<ItemVideoPlayer> {
 
   @override
   void dispose() {
-    _disposePlayers();
+    if (_usePageAudio && _audioListener != null) {
+      widget.pageAudio?.removeListener(_audioListener!);
+    } else {
+      _disposePlayers();
+    }
     super.dispose();
   }
 
   Future<void> _togglePlay() async {
+    if (_usePageAudio) {
+      await widget.pageAudio?.togglePlay();
+      return;
+    }
     final c = _controller;
     if (c == null || !c.value.isInitialized) return;
     if (c.value.isPlaying) {
@@ -416,38 +535,110 @@ class _ItemVideoPlayerState extends State<ItemVideoPlayer> {
   @override
   Widget build(BuildContext context) {
     if (_error != null) {
-      return Container(
-        width: double.infinity,
-        height: widget.height,
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 18),
-        decoration: BoxDecoration(
-          color: const Color(0xFFF5F7FA),
-          borderRadius: BorderRadius.circular(12),
-        ),
-        alignment: Alignment.center,
-        child: Row(
-          children: [
-            const Icon(Icons.error_outline_rounded, color: _muted, size: 22),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Text(
-                _error!,
-                style: const TextStyle(fontSize: 14, color: _muted),
+      return _wrapWithVisibility(
+        Container(
+          width: double.infinity,
+          height: widget.height,
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 18),
+          decoration: BoxDecoration(
+            color: const Color(0xFFF5F7FA),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          alignment: Alignment.center,
+          child: Row(
+            children: [
+              const Icon(Icons.error_outline_rounded, color: _muted, size: 22),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  _error!,
+                  style: const TextStyle(fontSize: 14, color: _muted),
+                ),
               ),
-            ),
-            TextButton(
-              onPressed: _retry,
-              child: const Text('重试'),
-            ),
-          ],
+              TextButton(
+                onPressed: _retry,
+                child: const Text('重试'),
+              ),
+            ],
+          ),
         ),
       );
     }
 
     if (_useWeb) {
-      return _buildWebShell();
+      return _wrapWithVisibility(_buildWebShell());
     }
-    return _buildNativeShell();
+    if (_usePageAudio) {
+      return _buildAudioShell();
+    }
+    return _wrapWithVisibility(_buildNativeShell());
+  }
+
+  Widget _buildAudioShell() {
+    final session = widget.pageAudio;
+    if (session == null) {
+      return const SizedBox.shrink();
+    }
+    final cover = widget.coverUrl?.trim() ?? '';
+
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(12),
+      child: ColoredBox(
+        color: Colors.black,
+        child: SizedBox(
+          width: double.infinity,
+          height: widget.height,
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+              if (cover.isNotEmpty)
+                Positioned.fill(
+                  child: Image.network(
+                    cover,
+                    fit: BoxFit.cover,
+                    headers: mediaHttpHeadersFor(cover, pageUrl: widget.pageUrl),
+                    errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+                  ),
+                ),
+              if (cover.isNotEmpty)
+                Positioned.fill(
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.35),
+                    ),
+                  ),
+                ),
+              if (_initializing)
+                const CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: Colors.white,
+                )
+              else if (_error == null) ...[
+                GestureDetector(
+                  onTap: () => setState(() => _showControls = !_showControls),
+                  child: const SizedBox.expand(),
+                ),
+                if (_showControls || !session.isPlaying)
+                  GestureDetector(
+                    onTap: _togglePlay,
+                    child: _RoundPlayButton(playing: session.isPlaying),
+                  ),
+                if (_showControls)
+                  Positioned(
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    child: _AudioBottomBar(
+                      session: session,
+                      accent: _blue,
+                    ),
+                  ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   Widget _buildWebShell() {
@@ -864,6 +1055,75 @@ class _VideoBottomBar extends StatelessWidget {
                   color: Colors.white,
                   size: 22,
                 ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _AudioBottomBar extends StatelessWidget {
+  const _AudioBottomBar({
+    required this.session,
+    required this.accent,
+  });
+
+  final ReadingMediaController session;
+  final Color accent;
+
+  String _fmt(Duration d) {
+    final m = d.inMinutes.remainder(60).toString().padLeft(2, '0');
+    final s = d.inSeconds.remainder(60).toString().padLeft(2, '0');
+    final h = d.inHours;
+    if (h > 0) return '$h:$m:$s';
+    return '$m:$s';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final total = session.duration ?? Duration.zero;
+    final pos = session.position;
+    final maxMs = total.inMilliseconds > 0 ? total.inMilliseconds.toDouble() : 1.0;
+    final value = pos.inMilliseconds.clamp(0, maxMs.toInt()).toDouble();
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(10, 20, 10, 8),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            Colors.transparent,
+            Colors.black.withValues(alpha: 0.65),
+          ],
+        ),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          SliderTheme(
+            data: SliderTheme.of(context).copyWith(
+              trackHeight: 2,
+              thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 5),
+              overlayShape: SliderComponentShape.noOverlay,
+            ),
+            child: Slider(
+              value: value,
+              max: maxMs,
+              activeColor: accent,
+              inactiveColor: const Color(0x33FFFFFF),
+              onChanged: total.inMilliseconds <= 0
+                  ? null
+                  : (v) => session.seek(Duration(milliseconds: v.round())),
+            ),
+          ),
+          Row(
+            children: [
+              Text(
+                '${_fmt(pos)} / ${_fmt(total)}',
+                style: const TextStyle(fontSize: 11, color: Colors.white70),
               ),
             ],
           ),
