@@ -1,18 +1,23 @@
 import 'package:flutter/material.dart';
 
-enum ReadingMoreAction { moveFolder, delete }
+enum ReadingMoreAction { moveFolder, transcript, delete }
 
-Future<ReadingMoreAction?> showReadingMoreSheet(BuildContext context) {
+Future<ReadingMoreAction?> showReadingMoreSheet(
+  BuildContext context, {
+  bool showTranscript = false,
+}) {
   return showModalBottomSheet<ReadingMoreAction>(
     context: context,
     backgroundColor: Colors.transparent,
     barrierColor: const Color(0x66000000),
-    builder: (context) => const _ReadingMoreSheet(),
+    builder: (context) => _ReadingMoreSheet(showTranscript: showTranscript),
   );
 }
 
 class _ReadingMoreSheet extends StatelessWidget {
-  const _ReadingMoreSheet();
+  const _ReadingMoreSheet({required this.showTranscript});
+
+  final bool showTranscript;
 
   static const _text = Color(0xFF1F242E);
   static const _muted = Color(0xFF737A85);
@@ -70,6 +75,13 @@ class _ReadingMoreSheet extends StatelessWidget {
                     onTap: () =>
                         Navigator.pop(context, ReadingMoreAction.moveFolder),
                   ),
+                  if (showTranscript)
+                    _GridItem(
+                      icon: Icons.subtitles_outlined,
+                      label: '转写文稿',
+                      onTap: () =>
+                          Navigator.pop(context, ReadingMoreAction.transcript),
+                    ),
                   _GridItem(
                     icon: Icons.delete_outline,
                     label: '删除',

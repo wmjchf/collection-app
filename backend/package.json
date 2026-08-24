@@ -11,13 +11,16 @@
     "dev": "nodemon src/index.js",
     "start": "node src/index.js",
     "db:init": "node scripts/init-db.js",
-    "db:migrate": "node scripts/migrate.js"
+    "db:migrate": "node scripts/migrate-incremental.js",
+    "db:migrate:007": "node scripts/migrate-incremental.js 007",
+    "db:migrate:full": "node scripts/migrate-full.js"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "dependencies": {
     "@alicloud/dypnsapi20170525": "^2.0.0",
+    "@alicloud/nls-filetrans-2018-08-17": "^1.0.0",
     "@alicloud/openapi-client": "^0.4.15",
     "@alicloud/openapi-core": "^1.0.8",
     "cheerio": "^1.2.0",

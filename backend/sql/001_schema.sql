@@ -78,6 +78,7 @@ CREATE TABLE `items` (
   `cover_image_url` VARCHAR(2048) DEFAULT NULL,
   `image_urls` JSON DEFAULT NULL COMMENT '附加图片 URL 列表',
   `video_url` VARCHAR(2048) DEFAULT NULL COMMENT '视频直链（可选）',
+  `transcript_segments` JSON DEFAULT NULL COMMENT '分段转写 {segmentKey:{status,text,...}}',
   `platform` VARCHAR(32) NOT NULL DEFAULT 'web',
   `status` ENUM('pending', 'success', 'failed') NOT NULL DEFAULT 'pending',
   `error_message` VARCHAR(512) DEFAULT NULL,

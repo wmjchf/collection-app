@@ -29,5 +29,10 @@ module.exports = {
     templateParam:
       process.env.ALIYUN_SMS_TEMPLATE_PARAM ||
       JSON.stringify({ code: '##code##', min: '5' }),
+    /** 智能语音交互 · 录音文件识别 AppKey（NLS 控制台项目） */
+    nlsAppKey: process.env.ALIYUN_NLS_APP_KEY || '',
+    nlsEndpoint:
+      process.env.ALIYUN_NLS_ENDPOINT ||
+      'http://filetrans.cn-shanghai.aliyuncs.com',
   },
 };
