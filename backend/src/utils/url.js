@@ -174,6 +174,9 @@ function detectPlatform(url) {
   if (host.includes('xinhuaxmt.com')) {
     return 'xinhuaxmt';
   }
+  if (host.includes('xiaoyuzhoufm.com')) {
+    return 'xiaoyuzhou';
+  }
   if (host.includes('zhihu.com')) {
     return 'zhihu';
   }

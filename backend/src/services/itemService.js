@@ -788,6 +788,8 @@ const PLATFORM_ALIASES = {
   infzm: 'infzm',
   新华社: 'xinhuaxmt',
   xinhuaxmt: 'xinhuaxmt',
+  小宇宙: 'xiaoyuzhou',
+  xiaoyuzhou: 'xiaoyuzhou',
   网页: 'web',
   zaker: 'zaker',
   扎克: 'zaker',

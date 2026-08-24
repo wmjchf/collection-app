@@ -49,6 +49,7 @@ const sinaAdapter = require('./sina');
 const thepaperAdapter = require('./thepaper');
 const infzmAdapter = require('./infzm');
 const xinhuaxmtAdapter = require('./xinhuaxmt');
+const xiaoyuzhouAdapter = require('./xiaoyuzhou');
 
 /** @type {PlatformAdapter[]} */
 const ADAPTERS = [
@@ -68,6 +69,7 @@ const ADAPTERS = [
   thepaperAdapter,
   infzmAdapter,
   xinhuaxmtAdapter,
+  xiaoyuzhouAdapter,
   defaultAdapter,
 ];
 
