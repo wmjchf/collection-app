@@ -518,12 +518,30 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
   }
 
   Future<void> _pollTranscript() async {
+    String? lastPhaseFingerprint;
     for (var i = 0; i < 90; i++) {
       await Future<void>.delayed(const Duration(seconds: 4));
       if (!mounted) return;
       try {
         final st = await _repo.getTranscriptStatus(_item.id);
-        if (st.hasPending) continue;
+        if (st.hasPending) {
+          // pending 期间合并 segments，让 phaseLabel 刷新到面板
+          final merged = Map<String, TranscriptSegment>.from(
+            _item.transcriptSegments,
+          );
+          st.segments.forEach((key, seg) {
+            merged[key] = seg;
+          });
+          final fp = st.segments.entries
+              .map((e) => '${e.key}:${e.value.phase}:${e.value.phaseLabel}')
+              .join('|');
+          if (fp != lastPhaseFingerprint) {
+            lastPhaseFingerprint = fp;
+            if (!mounted) return;
+            setState(() => _item = _item.withTranscriptSegments(merged));
+          }
+          continue;
+        }
         final item = await _repo.getItem(_item.id);
         if (!mounted) return;
         setState(() => _item = item);

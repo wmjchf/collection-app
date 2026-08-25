@@ -68,6 +68,35 @@ class CollectionItem {
         hasTopVideo: hasVideo,
       ).isNotEmpty;
 
+  CollectionItem withTranscriptSegments(
+    Map<String, TranscriptSegment> segments,
+  ) {
+    return CollectionItem(
+      id: id,
+      url: url,
+      canonicalUrl: canonicalUrl,
+      title: title,
+      content: content,
+      summary: summary,
+      coverImageUrl: coverImageUrl,
+      imageUrls: imageUrls,
+      videoUrl: videoUrl,
+      transcriptSegments: segments,
+      platform: platform,
+      status: status,
+      errorMessage: errorMessage,
+      note: note,
+      folderId: folderId,
+      isUnread: isUnread,
+      isStarred: isStarred,
+      createdAt: createdAt,
+      updatedAt: updatedAt,
+      lastReadAt: lastReadAt,
+      deletedAt: deletedAt,
+      annotationCount: annotationCount,
+    );
+  }
+
   /// 防盗链 Referer：优先规范化后的源站。
   String? get sourcePageUrl {
     final canonical = canonicalUrl?.trim();

@@ -52,6 +52,8 @@ class TranscriptSegment {
     this.cues = const [],
     this.error,
     this.transcribedAt,
+    this.phase,
+    this.phaseLabel,
   });
 
   final String status;
@@ -59,6 +61,10 @@ class TranscriptSegment {
   final List<TranscriptCue> cues;
   final String? error;
   final DateTime? transcribedAt;
+  /// pending 分阶段：queued / downloading / checking / uploading / submitting / queueing / recognizing
+  final String? phase;
+  /// 展示文案，如「下载媒体中」
+  final String? phaseLabel;
 
   bool get isPending => status == 'pending';
   bool get isSuccess => status == 'success';
@@ -67,12 +73,16 @@ class TranscriptSegment {
   bool get hasCues => cues.isNotEmpty;
 
   factory TranscriptSegment.fromJson(Map<String, dynamic> json) {
+    final phase = (json['phase'] as String?)?.trim();
+    final phaseLabel = (json['phaseLabel'] as String?)?.trim();
     return TranscriptSegment(
       status: json['status'] as String? ?? 'none',
       text: json['text'] as String?,
       cues: _parseCues(json['cues']),
       error: json['error'] as String?,
       transcribedAt: _parseTime(json['transcribedAt']),
+      phase: (phase == null || phase.isEmpty) ? null : phase,
+      phaseLabel: (phaseLabel == null || phaseLabel.isEmpty) ? null : phaseLabel,
     );
   }
 
