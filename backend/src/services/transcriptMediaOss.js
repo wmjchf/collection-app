@@ -156,6 +156,7 @@ async function downloadMediaToTempFile({ mediaUrl, pageUrl, itemId, segmentKey }
 
   const guard = createMaxBytesGuard();
   const source = Readable.fromWeb(res.body);
+  const t0 = Date.now();
   console.log(
     `[transcriptMediaOss] downloading item=${itemId} segment=${segmentKey} → ${tmpPath}`,
   );
@@ -170,14 +171,17 @@ async function downloadMediaToTempFile({ mediaUrl, pageUrl, itemId, segmentKey }
     throw err;
   }
 
+  const bytes = guard.bytesRead();
+  const ms = Date.now() - t0;
   console.log(
-    `[transcriptMediaOss] downloaded ${guard.bytesRead()} bytes item=${itemId} segment=${segmentKey}`,
+    `[transcriptMediaOss] downloaded item=${itemId} segment=${segmentKey} bytes=${bytes} ms=${ms}`,
   );
-  return { tmpPath, bytes: guard.bytesRead(), contentType, ext };
+  return { tmpPath, bytes, contentType, ext, downloadMs: ms };
 }
 
 async function uploadTempFileToOss({ tmpPath, key, contentType, itemId, segmentKey }) {
   const client = getOssClient();
+  const t0 = Date.now();
   console.log(
     `[transcriptMediaOss] uploading item=${itemId} segment=${segmentKey} key=${key}`,
   );
@@ -193,10 +197,11 @@ async function uploadTempFileToOss({ tmpPath, key, contentType, itemId, segmentK
     expires: SIGNED_URL_EXPIRES_SEC,
   });
 
+  const ms = Date.now() - t0;
   console.log(
-    `[transcriptMediaOss] uploaded item=${itemId} segment=${segmentKey} key=${key}`,
+    `[transcriptMediaOss] uploaded item=${itemId} segment=${segmentKey} key=${key} ms=${ms}`,
   );
-  return fileLink;
+  return { fileLink, uploadMs: ms };
 }
 
 async function uploadMediaToOss({ mediaUrl, pageUrl, itemId, segmentKey }) {
@@ -220,7 +225,7 @@ async function uploadMediaToOss({ mediaUrl, pageUrl, itemId, segmentKey }) {
     tmpPath = downloaded.tmpPath;
     const key = objectKey(itemId, segmentKey, mediaUrl, downloaded.ext);
 
-    const fileLink = await uploadTempFileToOss({
+    const uploaded = await uploadTempFileToOss({
       tmpPath,
       key,
       contentType: downloaded.contentType,
@@ -228,7 +233,18 @@ async function uploadMediaToOss({ mediaUrl, pageUrl, itemId, segmentKey }) {
       segmentKey,
     });
 
-    return { fileLink, ossKey: key };
+    console.log(
+      `[transcriptMediaOss] proxy done item=${itemId} segment=${segmentKey} ` +
+        `bytes=${downloaded.bytes} downloadMs=${downloaded.downloadMs} uploadMs=${uploaded.uploadMs}`,
+    );
+    return {
+      fileLink: uploaded.fileLink,
+      ossKey: key,
+      viaOss: true,
+      bytes: downloaded.bytes,
+      downloadMs: downloaded.downloadMs,
+      uploadMs: uploaded.uploadMs,
+    };
   } finally {
     if (tmpPath) {
       await fsp.unlink(tmpPath).catch((err) => {
@@ -254,7 +270,7 @@ async function resolveAsrFileLink({ mediaUrl, pageUrl, itemId, segmentKey }) {
     throw Object.assign(new Error('没有可转写的音视频直链'), { status: 400 });
   }
   if (!needsOssProxy(url)) {
-    return { fileLink: url, ossKey: null };
+    return { fileLink: url, ossKey: null, viaOss: false };
   }
   return uploadMediaToOss({ mediaUrl: url, pageUrl, itemId, segmentKey });
 }
