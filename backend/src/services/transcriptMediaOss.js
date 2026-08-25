@@ -218,11 +218,23 @@ async function deleteOssObject(ossKey) {
  * 所有转写媒体：先下载 → music-metadata 测时长 → 超限拒绝。
  * 防盗链 CDN 再上传 OSS 签名 URL；开放 CDN 校验通过后仍用原直链。
  */
-async function resolveAsrFileLink({ mediaUrl, pageUrl, itemId, segmentKey }) {
+async function resolveAsrFileLink({
+  mediaUrl,
+  pageUrl,
+  itemId,
+  segmentKey,
+  onPhase,
+}) {
   const url = String(mediaUrl || '').trim();
   if (!url) {
     throw Object.assign(new Error('没有可转写的音视频直链'), { status: 400 });
   }
+
+  const notify = async (phase, phaseLabel) => {
+    if (typeof onPhase === 'function') {
+      await onPhase(phase, phaseLabel);
+    }
+  };
 
   const viaOss = needsOssProxy(url);
   if (viaOss && !isOssConfigured()) {
@@ -236,6 +248,7 @@ async function resolveAsrFileLink({ mediaUrl, pageUrl, itemId, segmentKey }) {
 
   let tmpPath = null;
   try {
+    await notify('downloading', '下载媒体中');
     const downloaded = await downloadMediaToTempFile({
       mediaUrl: url,
       pageUrl,
@@ -244,6 +257,7 @@ async function resolveAsrFileLink({ mediaUrl, pageUrl, itemId, segmentKey }) {
     });
     tmpPath = downloaded.tmpPath;
 
+    await notify('checking', '校验时长中');
     const durationSec = await probeMediaDurationSec(downloaded.tmpPath);
     console.log(
       `[transcriptMediaOss] duration item=${itemId} segment=${segmentKey} ` +
@@ -268,6 +282,7 @@ async function resolveAsrFileLink({ mediaUrl, pageUrl, itemId, segmentKey }) {
       };
     }
 
+    await notify('uploading', '上传中');
     const key = objectKey(itemId, segmentKey, url, downloaded.ext);
     const uploaded = await uploadTempFileToOss({
       tmpPath,

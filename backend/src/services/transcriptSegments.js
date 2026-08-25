@@ -75,8 +75,15 @@ function normalizeSegment(seg) {
       taskId: null,
       mediaUrl: null,
       transcribedAt: null,
+      phase: null,
+      phaseLabel: null,
     };
   }
+  const phase = seg.phase == null || seg.phase === '' ? null : String(seg.phase);
+  const phaseLabel =
+    seg.phaseLabel == null || seg.phaseLabel === ''
+      ? null
+      : String(seg.phaseLabel);
   return {
     status: seg.status || 'none',
     text: seg.text ?? null,
@@ -85,6 +92,8 @@ function normalizeSegment(seg) {
     taskId: seg.taskId ?? null,
     mediaUrl: seg.mediaUrl ?? null,
     transcribedAt: seg.transcribedAt ?? null,
+    phase,
+    phaseLabel,
   };
 }
 
@@ -177,6 +186,8 @@ function mapSegmentsForApi(segments) {
       cues: n.cues,
       error: n.error,
       transcribedAt: n.transcribedAt,
+      phase: n.phase,
+      phaseLabel: n.phaseLabel,
       hasText: !!(n.text && String(n.text).trim()),
     };
   }

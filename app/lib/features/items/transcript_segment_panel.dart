@@ -35,6 +35,8 @@ class TranscriptSegmentPanel extends StatelessWidget {
     if (seg == null || seg.status == 'none') return const SizedBox.shrink();
 
     if (seg.isPending) {
+      final label = (seg.phaseLabel ?? '').trim();
+      final title = label.isEmpty ? '文稿转写中…' : label;
       return Padding(
         padding: const EdgeInsets.only(top: 12),
         child: Column(
@@ -51,12 +53,14 @@ class TranscriptSegmentPanel extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: 10),
-                const Text(
-                  '文稿转写中…',
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    color: _muted,
+                Expanded(
+                  child: Text(
+                    title,
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: _muted,
+                    ),
                   ),
                 ),
               ],

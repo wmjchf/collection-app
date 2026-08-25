@@ -881,6 +881,8 @@ async function requestTranscript(
     taskId: null,
     mediaUrl,
     transcribedAt: null,
+    phase: 'queued',
+    phaseLabel: '排队等待中',
   });
 
   await pool.execute(
@@ -930,6 +932,7 @@ async function saveTranscriptSegments(itemId, segments) {
 /**
  * 队列执行：对 pending 段提交 FileTrans → 轮询 → 写回该段。
  * 日志含分阶段耗时：download / upload / submit / poll / total。
+ * pending 期间写入 phase / phaseLabel 供 App 轮询展示。
  */
 async function runTranscriptJob(itemId) {
   const aliyunAsr = require('./aliyunAsr');
@@ -952,6 +955,8 @@ async function runTranscriptJob(itemId) {
     segments = transcriptSegments.setSegment(segments, segmentKey, {
       status: 'failed',
       error: '没有可转写的音视频直链',
+      phase: null,
+      phaseLabel: null,
     });
     await saveTranscriptSegments(itemId, segments);
     return;
@@ -966,6 +971,14 @@ async function runTranscriptJob(itemId) {
   let pollMs = 0;
   let pollAttempts = 0;
   let lastStatus = '';
+
+  const persistPhase = async (phase, phaseLabel) => {
+    segments = transcriptSegments.setSegment(segments, segmentKey, {
+      phase,
+      phaseLabel,
+    });
+    await saveTranscriptSegments(itemId, segments);
+  };
 
   console.log(
     `[runTranscriptJob] start item=${itemId} segment=${segmentKey} ` +
@@ -982,6 +995,7 @@ async function runTranscriptJob(itemId) {
         pageUrl,
         itemId,
         segmentKey,
+        onPhase: persistPhase,
       });
       viaOss = !!resolved.viaOss;
       downloadMs = resolved.downloadMs || 0;
@@ -994,6 +1008,7 @@ async function runTranscriptJob(itemId) {
           `durationSec=${resolved.durationSec == null ? 'unknown' : Number(resolved.durationSec).toFixed(1)}`,
       );
 
+      await persistPhase('submitting', '提交识别中');
       const submitT0 = Date.now();
       const submitted = await aliyunAsr.submitFileTrans(resolved.fileLink);
       submitMs = Date.now() - submitT0;
@@ -1001,18 +1016,33 @@ async function runTranscriptJob(itemId) {
       console.log(
         `[runTranscriptJob] submitted item=${itemId} taskId=${taskId} submitMs=${submitMs}`,
       );
-      segments = transcriptSegments.setSegment(segments, segmentKey, { taskId });
+      segments = transcriptSegments.setSegment(segments, segmentKey, {
+        taskId,
+        phase: 'queueing',
+        phaseLabel: '识别排队中',
+      });
       await saveTranscriptSegments(itemId, segments);
+    } else {
+      await persistPhase('recognizing', '识别中');
     }
 
     const maxAttempts = 180;
     const intervalMs = 10000;
     const pollT0 = Date.now();
+    let lastPhase = '';
     for (let i = 0; i < maxAttempts; i += 1) {
       pollAttempts = i + 1;
       const result = await aliyunAsr.getFileTransResult(taskId);
       lastStatus = result.statusText || '';
       if (!result.done) {
+        const phase =
+          lastStatus === 'QUEUEING' ? 'queueing' : 'recognizing';
+        const phaseLabel =
+          lastStatus === 'QUEUEING' ? '识别排队中' : '识别中';
+        if (phase !== lastPhase) {
+          lastPhase = phase;
+          await persistPhase(phase, phaseLabel);
+        }
         if (i === 0 || i % 6 === 5) {
           console.log(
             `[runTranscriptJob] polling item=${itemId} attempt=${pollAttempts} ` +
@@ -1033,6 +1063,8 @@ async function runTranscriptJob(itemId) {
           error: String(result.errorMessage || '转写失败').slice(0, 500),
           taskId: null,
           mediaUrl: null,
+          phase: null,
+          phaseLabel: null,
         });
         await saveTranscriptSegments(itemId, segments);
         return;
@@ -1052,6 +1084,8 @@ async function runTranscriptJob(itemId) {
         taskId: null,
         mediaUrl: null,
         transcribedAt: new Date().toISOString(),
+        phase: null,
+        phaseLabel: null,
       });
       await saveTranscriptSegments(itemId, segments);
       return;
@@ -1067,6 +1101,8 @@ async function runTranscriptJob(itemId) {
       error: '转写超时，请稍后重试',
       taskId: null,
       mediaUrl: null,
+      phase: null,
+      phaseLabel: null,
     });
     await saveTranscriptSegments(itemId, segments);
   } catch (err) {
@@ -1080,6 +1116,8 @@ async function runTranscriptJob(itemId) {
       error: String(err.message || '转写异常').slice(0, 500),
       taskId: null,
       mediaUrl: null,
+      phase: null,
+      phaseLabel: null,
     });
     await saveTranscriptSegments(itemId, segments);
   } finally {
