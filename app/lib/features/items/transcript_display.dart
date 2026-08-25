@@ -146,7 +146,7 @@ class _SpeakerBlock extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('说话人 $speaker', style: labelStyle),
+        Text('说话人 $speaker：', style: labelStyle),
         const SizedBox(height: 6),
         selectable
             ? SelectableText(body, style: bodyStyle, maxLines: maxLines)

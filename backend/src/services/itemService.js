@@ -894,6 +894,7 @@ async function saveTranscriptSegments(itemId, segments) {
  */
 async function runTranscriptJob(itemId) {
   const aliyunAsr = require('./aliyunAsr');
+  const transcriptMediaOss = require('./transcriptMediaOss');
   const [rows] = await pool.execute(
     `SELECT * FROM items WHERE id = :itemId AND deleted_at IS NULL LIMIT 1`,
     { itemId },
@@ -917,9 +918,18 @@ async function runTranscriptJob(itemId) {
   }
 
   let taskId = seg.taskId;
+  let ossKeyToDelete = null;
   try {
     if (!taskId) {
-      const submitted = await aliyunAsr.submitFileTrans(mediaUrl);
+      const pageUrl = row.canonical_url || row.url;
+      const resolved = await transcriptMediaOss.resolveAsrFileLink({
+        mediaUrl,
+        pageUrl,
+        itemId,
+        segmentKey,
+      });
+      ossKeyToDelete = resolved.ossKey;
+      const submitted = await aliyunAsr.submitFileTrans(resolved.fileLink);
       taskId = submitted.taskId;
       segments = transcriptSegments.setSegment(segments, segmentKey, { taskId });
       await saveTranscriptSegments(itemId, segments);
@@ -971,6 +981,12 @@ async function runTranscriptJob(itemId) {
       mediaUrl: null,
     });
     await saveTranscriptSegments(itemId, segments);
+  } finally {
+    if (ossKeyToDelete) {
+      transcriptMediaOss.deleteOssObject(ossKeyToDelete).catch((err) => {
+        console.warn(`[runTranscriptJob] OSS cleanup ${ossKeyToDelete}`, err.message);
+      });
+    }
   }
 }
 

@@ -3,6 +3,14 @@ const config = require('../config');
 
 let cachedClient = null;
 
+function speakerGapMs() {
+  return config.aliyun.asrSpeakerGapMs;
+}
+
+function speakerOrphanMaxChars() {
+  return config.aliyun.asrSpeakerOrphanMaxChars;
+}
+
 function isConfigured() {
   const a = config.aliyun;
   return !!(a.accessKeyId && a.accessKeySecret && a.nlsAppKey);
@@ -121,6 +129,63 @@ function sentenceSpeakerId(sentence) {
   return `s:${id}`;
 }
 
+function sentenceTiming(sentence) {
+  const begin = sentence?.BeginTime ?? sentence?.begin_time;
+  const end = sentence?.EndTime ?? sentence?.end_time;
+  const silence = sentence?.SilenceDuration ?? sentence?.silence_duration;
+  return {
+    beginTime: begin == null ? null : Number(begin),
+    endTime: end == null ? null : Number(end),
+    silenceDuration: silence == null ? null : Number(silence),
+  };
+}
+
+/** NLS 文档写秒，实测部分结果更像毫秒；≤30 按秒，否则按毫秒 */
+function silenceDurationToMs(silence) {
+  if (silence == null || !Number.isFinite(silence)) return null;
+  if (silence <= 30) return Math.max(0, silence * 1000);
+  return Math.max(0, silence);
+}
+
+function gapBeforeSentence(prev, curr) {
+  if (
+    prev.endTime != null &&
+    curr.beginTime != null &&
+    Number.isFinite(prev.endTime) &&
+    Number.isFinite(curr.beginTime)
+  ) {
+    return Math.max(0, curr.beginTime - prev.endTime);
+  }
+  const silenceMs = silenceDurationToMs(curr.silenceDuration);
+  if (silenceMs != null) return silenceMs;
+  return null;
+}
+
+/** 句间几乎无停顿却被标成新说话人 → 并回上一轨（仅极短句；长句靠 peelMisattributedPrefix） */
+function smoothSpeakersByTiming(items) {
+  if (items.length <= 1) return items;
+  const gapMs = speakerGapMs();
+  const maxChars = speakerOrphanMaxChars();
+  const out = [{ ...items[0] }];
+  for (let i = 1; i < items.length; i += 1) {
+    const prev = out[out.length - 1];
+    const curr = { ...items[i] };
+    const gap = gapBeforeSentence(prev, curr);
+    if (
+      gap != null &&
+      gap <= gapMs &&
+      curr.speakerId != null &&
+      prev.speakerId != null &&
+      curr.speakerId !== prev.speakerId &&
+      curr.text.length <= maxChars
+    ) {
+      curr.speakerId = prev.speakerId;
+    }
+    out.push(curr);
+  }
+  return out;
+}
+
 function flattenResult(result) {
   if (!result) return '';
   let parsed = result;
@@ -141,13 +206,19 @@ function flattenResult(result) {
 
 /** 合并同说话人连续句；多人时段首「说话人 N：」，单人或无分轨信息时纯连写 */
 function formatSentencesWithSpeakers(sentences) {
-  const items = sentences
-    .map((s) => ({
-      text: String(s?.Text || '').trim(),
-      speakerId: sentenceSpeakerId(s),
-    }))
+  let items = sentences
+    .map((s) => {
+      const timing = sentenceTiming(s);
+      return {
+        text: String(s?.Text || '').trim(),
+        speakerId: sentenceSpeakerId(s),
+        ...timing,
+      };
+    })
     .filter((s) => s.text);
   if (!items.length) return '';
+
+  items = smoothSpeakersByTiming(items);
 
   const speakerIds = new Set(
     items.map((s) => s.speakerId).filter((id) => id != null),
@@ -167,6 +238,8 @@ function formatSentencesWithSpeakers(sentences) {
   }
 
   groups = dedupeAdjacentSpeakerGroups(groups);
+  groups = peelMisattributedPrefix(groups);
+  groups = collapseFleetingSpeakerGroups(groups);
   groups = mergeConsecutiveSpeakerGroups(groups);
   groups = assignSpeakerLabels(groups);
 
@@ -193,6 +266,56 @@ function dedupeAdjacentSpeakerGroups(groups) {
     ) {
       const suffix = text.slice(prev.text.trim().length).trim();
       if (suffix) out.push({ speakerId: g.speakerId, text: suffix });
+      continue;
+    }
+    out.push({ speakerId: g.speakerId, text });
+  }
+  return out;
+}
+
+/**
+ * NLS 常把误切短句与后续正文合在同一段（如「释放消费潜力。增强消费保障…」整段标成新说话人）。
+ * 若新段以 ≤N 字的完整短句开头，将该短句剥回上一说话人。
+ */
+function peelMisattributedPrefix(groups) {
+  const maxChars = speakerOrphanMaxChars();
+  const out = [];
+  for (const g of groups) {
+    let text = g.text.trim();
+    if (!text) continue;
+    const prev = out[out.length - 1];
+    if (prev && prev.speakerId !== g.speakerId) {
+      const m = text.match(/^(.{1,80}?。)([\s\S]+)$/);
+      if (m) {
+        const prefix = m[1].trim();
+        const rest = m[2].trim();
+        if (prefix.length <= maxChars && rest) {
+          prev.text += prefix;
+          text = rest;
+        }
+      }
+    }
+    if (text) out.push({ speakerId: g.speakerId, text });
+  }
+  return out;
+}
+
+/**
+ * 极短误切片段（整段仅一句）：如单独「释放消费潜力。」被标成新说话人。
+ */
+function collapseFleetingSpeakerGroups(groups) {
+  const maxChars = speakerOrphanMaxChars();
+  const out = [];
+  for (const g of groups) {
+    const text = g.text.trim();
+    if (!text) continue;
+    const prev = out[out.length - 1];
+    if (
+      prev &&
+      prev.speakerId !== g.speakerId &&
+      text.length <= maxChars
+    ) {
+      prev.text += text;
       continue;
     }
     out.push({ speakerId: g.speakerId, text });
@@ -227,4 +350,10 @@ module.exports = {
   isConfigured,
   submitFileTrans,
   getFileTransResult,
+  formatSentencesWithSpeakers,
+  smoothSpeakersByTiming,
+  peelMisattributedPrefix,
+  collapseFleetingSpeakerGroups,
+  gapBeforeSentence,
+  silenceDurationToMs,
 };

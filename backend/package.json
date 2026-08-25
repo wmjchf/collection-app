@@ -23,6 +23,7 @@
     "@alicloud/nls-filetrans-2018-08-17": "^1.0.0",
     "@alicloud/openapi-client": "^0.4.15",
     "@alicloud/openapi-core": "^1.0.8",
+    "ali-oss": "^6.23.0",
     "cheerio": "^1.2.0",
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
