@@ -1,5 +1,5 @@
 const { pool } = require('../db');
-const { normalizeUrl, detectPlatform, placeholderTitle, resolveParseUrl } = require('../utils/url');
+const { normalizeUrl, detectPlatform, placeholderTitle, resolveParseUrl, normalizeBilibiliCanonical } = require('../utils/url');
 const { fetchQuickMeta, parseFullContent } = require('./parser');
 const {
   getAdapter,
@@ -31,7 +31,11 @@ function mapItem(row) {
     id: row.id,
     userId: row.user_id,
     url: row.url,
-    canonicalUrl: row.canonical_url,
+    canonicalUrl: row.platform === 'bilibili'
+        ? normalizeBilibiliCanonical(row.canonical_url) ||
+          normalizeBilibiliCanonical(row.url) ||
+          row.canonical_url
+        : row.canonical_url,
     title: row.title,
     content: row.content,
     summary: row.summary,
@@ -104,27 +108,49 @@ async function getByIdForUser(userId, itemId, opts = {}) {
  */
 async function createItem(userId, rawUrl) {
   const url = String(rawUrl || '').trim();
-  const canonicalUrl = normalizeUrl(url);
+  let canonicalUrl = normalizeUrl(url);
+  let meta = null;
+
+  if (detectPlatform(canonicalUrl) === 'bilibili') {
+    try {
+      meta = await fetchQuickMeta(canonicalUrl);
+      const fixed = normalizeBilibiliCanonical(meta.finalUrl);
+      if (fixed) canonicalUrl = fixed;
+    } catch (err) {
+      meta = {
+        platform: 'bilibili',
+        finalUrl: canonicalUrl,
+        title: placeholderTitle(canonicalUrl),
+        summary: null,
+        coverImageUrl: null,
+        blocked: false,
+        html: null,
+        fetchError: err.message,
+      };
+    }
+  }
+
   const existing = await findByCanonical(userId, canonicalUrl);
   if (existing) {
     return { item: mapItem(existing), existed: true };
   }
 
-  let meta;
-  try {
-    meta = await fetchQuickMeta(canonicalUrl);
-  } catch (err) {
-    // 快速阶段失败仍入库，标题用域名占位，交给异步重试正文
-    meta = {
-      platform: detectPlatform(canonicalUrl),
-      finalUrl: canonicalUrl,
-      title: placeholderTitle(canonicalUrl),
-      summary: null,
-      coverImageUrl: null,
-      blocked: false,
-      html: null,
-      fetchError: err.message,
-    };
+  if (!meta) {
+    try {
+      meta = await fetchQuickMeta(canonicalUrl);
+    } catch (err) {
+      // 快速阶段失败仍入库，标题用域名占位，交给异步重试正文
+      meta = {
+        platform: detectPlatform(canonicalUrl),
+        finalUrl: canonicalUrl,
+        title: placeholderTitle(canonicalUrl),
+        summary: null,
+        coverImageUrl: null,
+        blocked: false,
+        html: null,
+        fetchError: err.message,
+      };
+    }
   }
 
   const folderId = await getUncategorizedFolderId();
@@ -222,6 +248,10 @@ async function runContentParse(itemId) {
       const imageUrls = Array.isArray(parsed.imageUrls)
         ? parsed.imageUrls.filter(Boolean).slice(0, 30)
         : [];
+      const bilibiliCanonical =
+        row.platform === 'bilibili'
+          ? normalizeBilibiliCanonical(parsed.pageUrl)
+          : null;
       await pool.execute(
         `UPDATE items SET
            title = COALESCE(:title, title),
@@ -230,6 +260,7 @@ async function runContentParse(itemId) {
            image_urls = CAST(:imageUrls AS JSON),
            video_url = :videoUrl,
            content = :content,
+           canonical_url = COALESCE(:canonicalUrl, canonical_url),
            status = 'success',
            error_message = NULL
          WHERE id = :itemId`,
@@ -241,6 +272,7 @@ async function runContentParse(itemId) {
           imageUrls: JSON.stringify(imageUrls),
           videoUrl: parsed.videoUrl || null,
           content: parsed.content,
+          canonicalUrl: bilibiliCanonical,
         },
       );
       return;
@@ -442,6 +474,7 @@ async function refreshItemVideo(userId, itemId) {
      SET video_url = :videoUrl,
          content = COALESCE(:content, content),
          cover_image_url = COALESCE(:coverImageUrl, cover_image_url),
+         canonical_url = COALESCE(:canonicalUrl, canonical_url),
          updated_at = CURRENT_TIMESTAMP
      WHERE id = :itemId AND user_id = :userId`,
     {
@@ -450,6 +483,10 @@ async function refreshItemVideo(userId, itemId) {
       videoUrl: parsed.videoUrl || null,
       content: parsed.content || null,
       coverImageUrl: parsed.coverImageUrl || null,
+      canonicalUrl:
+        item.platform === 'bilibili'
+          ? normalizeBilibiliCanonical(parsed.pageUrl)
+          : null,
     },
   );
 

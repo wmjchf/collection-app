@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
@@ -12,6 +14,7 @@ import 'package:super_collection/features/items/item_image_gallery.dart';
 import 'package:super_collection/features/items/item_models.dart';
 import 'package:super_collection/features/items/item_video_player.dart';
 import 'package:super_collection/features/items/items_repository.dart';
+import 'package:super_collection/features/items/reading_media_controller.dart';
 import 'package:super_collection/features/items/reading_annotation_sheet.dart';
 import 'package:super_collection/features/items/reading_delete_confirm_dialog.dart';
 import 'package:super_collection/features/items/reading_folder_sheet.dart';
@@ -52,15 +55,23 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
   bool _chromeVisible = true;
   bool _bodyHasSelection = false;
   DateTime? _lastChromeToggleAt;
+  late final ReadingMediaController _pageAudio = ReadingMediaController();
 
   @override
   void initState() {
     super.initState();
     _item = widget.item;
     _loadAnnotations();
+    unawaited(ReadingMediaController.ensureAudioSession());
     if (_item.hasAnyTranscriptPending) {
       _pollTranscript();
     }
+  }
+
+  @override
+  void dispose() {
+    _pageAudio.dispose();
+    super.dispose();
   }
 
   void _toggleReadingChrome() {
@@ -714,6 +725,8 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
               onTap: _toggleReadingChrome,
               behavior: HitTestBehavior.translucent,
               child: ListView(
+                // 避免播放器滚出视口后被 Platform View 回收/暂停（尤其播客音频）
+                cacheExtent: mq.size.height * 2,
                 padding: const EdgeInsets.fromLTRB(22, 18, 22, 28),
                 children: [
                   Text(
@@ -745,6 +758,8 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
                               ? _item.displayImages.first
                               : null),
                       pageUrl: _item.sourcePageUrl,
+                      platform: _item.platform,
+                      pageAudio: _pageAudio,
                       onRefreshUrl: _platformNeedsVideoRefresh
                           ? _refreshVideoUrl
                           : null,
@@ -779,6 +794,8 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
                       itemId: _item.id,
                       pageUrl: _item.sourcePageUrl,
                       transcriptSegments: _item.transcriptSegments,
+                      platform: _item.platform,
+                      pageAudio: _pageAudio,
                       onRefreshInlineVideo: _platformNeedsVideoRefresh
                           ? _refreshInlineVideo
                           : null,
@@ -911,6 +928,8 @@ class _InlineArticleBody extends StatelessWidget {
     this.itemId,
     this.pageUrl,
     this.transcriptSegments = const {},
+    this.platform,
+    this.pageAudio,
     this.onRefreshInlineVideo,
   });
 
@@ -924,6 +943,8 @@ class _InlineArticleBody extends StatelessWidget {
   final int? itemId;
   final String? pageUrl;
   final Map<String, TranscriptSegment> transcriptSegments;
+  final String? platform;
+  final ReadingMediaController? pageAudio;
   final Future<String?> Function(int index)? onRefreshInlineVideo;
 
   static const _text = Color(0xFF1F242E);
@@ -999,6 +1020,8 @@ class _InlineArticleBody extends StatelessWidget {
                     url: block.url,
                     coverUrl: block.posterUrl,
                     pageUrl: pageUrl,
+                    platform: platform,
+                    pageAudio: pageAudio,
                     height: h,
                     onRefreshUrl: onRefreshInlineVideo == null
                         ? null
