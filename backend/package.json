@@ -11,7 +11,8 @@
     "dev": "nodemon src/index.js",
     "start": "node src/index.js",
     "db:init": "node scripts/init-db.js",
-    "db:migrate": "node scripts/migrate.js"
+    "db:migrate": "node scripts/migrate.js",
+    "fix:bilibili-canonical": "node scripts/fix-bilibili-canonical.js"
   },
   "keywords": [],
   "author": "",

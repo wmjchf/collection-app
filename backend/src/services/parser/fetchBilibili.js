@@ -242,6 +242,7 @@ async function fetchBilibili(rawUrl) {
       author,
       imageUrls: cover ? [cover] : [],
       videoUrl,
+      pageUrl: referer,
       errorMessage: null,
     };
   } catch (err) {

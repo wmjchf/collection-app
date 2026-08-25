@@ -23,6 +23,7 @@ function mapAdapterParsed(parsed, existingSummary) {
       imageUrls: parsed?.imageUrls || [],
       videoUrl: parsed?.videoUrl || null,
       content: null,
+      pageUrl: parsed?.pageUrl || null,
       errorMessage: parsed?.errorMessage || '专项抓取失败',
     };
   }
@@ -35,6 +36,7 @@ function mapAdapterParsed(parsed, existingSummary) {
     imageUrls: parsed.imageUrls || [],
     videoUrl: parsed.videoUrl || null,
     content: parsed.content,
+    pageUrl: parsed.pageUrl || null,
     errorMessage: null,
   };
 }
@@ -53,7 +55,7 @@ async function fetchQuickMeta(url) {
       parsed.title || placeholderTitle(url);
     return {
       platform: adapter.id || platform,
-      finalUrl: url,
+      finalUrl: parsed.pageUrl || url,
       httpStatus: parsed.ok ? 200 : 502,
       fetchOk: !!parsed.ok,
       title,
