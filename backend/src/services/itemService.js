@@ -961,6 +961,8 @@ async function runTranscriptJob(itemId) {
   let viaOss = false;
   let downloadMs = 0;
   let uploadMs = 0;
+  let extractMs = 0;
+  let extracted = false;
   let submitMs = 0;
   let pollMs = 0;
   let pollAttempts = 0;
@@ -985,10 +987,13 @@ async function runTranscriptJob(itemId) {
       viaOss = !!resolved.viaOss;
       downloadMs = resolved.downloadMs || 0;
       uploadMs = resolved.uploadMs || 0;
+      extractMs = resolved.extractMs || 0;
+      extracted = !!resolved.extracted;
       ossKeyToDelete = resolved.ossKey;
       console.log(
         `[runTranscriptJob] file_link ready item=${itemId} viaOss=${viaOss} ` +
-          `resolveMs=${Date.now() - resolveT0} downloadMs=${downloadMs} uploadMs=${uploadMs}`,
+          `extracted=${extracted} resolveMs=${Date.now() - resolveT0} ` +
+          `downloadMs=${downloadMs} extractMs=${extractMs} uploadMs=${uploadMs}`,
       );
 
       const submitT0 = Date.now();
@@ -1036,7 +1041,8 @@ async function runTranscriptJob(itemId) {
       }
       console.log(
         `[runTranscriptJob] ok item=${itemId} segment=${segmentKey} viaOss=${viaOss} ` +
-          `downloadMs=${downloadMs} uploadMs=${uploadMs} submitMs=${submitMs} ` +
+          `extracted=${extracted} downloadMs=${downloadMs} extractMs=${extractMs} ` +
+          `uploadMs=${uploadMs} submitMs=${submitMs} ` +
           `pollMs=${pollMs} attempts=${pollAttempts} lastStatus=${lastStatus} ` +
           `totalMs=${Date.now() - jobT0} textLen=${(result.text || '').length}`,
       );
