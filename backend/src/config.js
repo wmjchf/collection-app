@@ -48,5 +48,7 @@ module.exports = {
     asrSpeakerGapMs: Number(process.env.ALIYUN_ASR_SPEAKER_GAP_MS) || 600,
     asrSpeakerOrphanMaxChars:
       Number(process.env.ALIYUN_ASR_SPEAKER_ORPHAN_MAX_CHARS) || 15,
+    /** 转写时长上限（秒），默认 20 分钟 */
+    asrMaxDurationSec: Number(process.env.ALIYUN_ASR_MAX_DURATION_SEC) || 1200,
   },
 };

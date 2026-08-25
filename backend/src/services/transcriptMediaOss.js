@@ -11,6 +11,8 @@ const { fetchHeadersForMedia } = require('../utils/mediaReferer');
 const {
   looksLikeVideoContainer,
   extractAudioForAsr,
+  probeMediaDurationSec,
+  assertDurationWithinLimit,
 } = require('./transcriptExtractAudio');
 
 const MAX_BYTES = Number(process.env.ALIYUN_OSS_TRANSCRIPT_MAX_MB || 512) * 1024 * 1024;
@@ -232,6 +234,13 @@ async function uploadMediaToOss({ mediaUrl, pageUrl, itemId, segmentKey }) {
     });
     tempPaths.push(downloaded.tmpPath);
 
+    const durationSec = await probeMediaDurationSec(downloaded.tmpPath);
+    console.log(
+      `[transcriptMediaOss] duration item=${itemId} segment=${segmentKey} ` +
+        `sec=${durationSec == null ? 'unknown' : durationSec.toFixed(1)}`,
+    );
+    assertDurationWithinLimit(durationSec);
+
     let uploadPath = downloaded.tmpPath;
     let uploadExt = downloaded.ext;
     let uploadContentType = downloaded.contentType;
@@ -280,6 +289,7 @@ async function uploadMediaToOss({ mediaUrl, pageUrl, itemId, segmentKey }) {
     console.log(
       `[transcriptMediaOss] proxy done item=${itemId} segment=${segmentKey} ` +
         `downloadedBytes=${downloaded.bytes} uploadBytes=${uploadBytes} ` +
+        `durationSec=${durationSec == null ? 'unknown' : durationSec.toFixed(1)} ` +
         `extracted=${extracted} downloadMs=${downloaded.downloadMs} ` +
         `extractMs=${extractMs} uploadMs=${uploaded.uploadMs}`,
     );
@@ -292,6 +302,7 @@ async function uploadMediaToOss({ mediaUrl, pageUrl, itemId, segmentKey }) {
       uploadMs: uploaded.uploadMs,
       extractMs,
       extracted,
+      durationSec,
     };
   } finally {
     for (const p of tempPaths) {
@@ -318,7 +329,14 @@ async function resolveAsrFileLink({ mediaUrl, pageUrl, itemId, segmentKey }) {
     throw Object.assign(new Error('没有可转写的音视频直链'), { status: 400 });
   }
   if (!needsOssProxy(url)) {
-    return { fileLink: url, ossKey: null, viaOss: false };
+    // 开放 CDN：尽量探测远程时长；失败则放行（交给 NLS）
+    const durationSec = await probeMediaDurationSec(url, { timeoutMs: 45000 });
+    console.log(
+      `[transcriptMediaOss] direct duration item=${itemId} segment=${segmentKey} ` +
+        `sec=${durationSec == null ? 'unknown' : durationSec.toFixed(1)}`,
+    );
+    assertDurationWithinLimit(durationSec);
+    return { fileLink: url, ossKey: null, viaOss: false, durationSec };
   }
   return uploadMediaToOss({ mediaUrl: url, pageUrl, itemId, segmentKey });
 }

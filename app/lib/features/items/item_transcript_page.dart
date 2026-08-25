@@ -1,15 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:super_collection/core/ui/app_subpage_app_bar.dart';
 import 'package:super_collection/features/items/transcript_display.dart';
+import 'package:super_collection/features/items/transcript_models.dart';
 
 /// 单段转写文稿全屏阅读（仅文稿正文，样式与阅读页正文一致）
 class ItemTranscriptPage extends StatelessWidget {
   const ItemTranscriptPage({
     super.key,
     required this.text,
+    this.cues = const [],
   });
 
   final String text;
+  final List<TranscriptCue> cues;
 
   static const _muted = Color(0xFF737A85);
 
@@ -31,6 +34,7 @@ class ItemTranscriptPage extends StatelessWidget {
               children: [
                 TranscriptDisplay(
                   text: body,
+                  cues: cues,
                   bodyStyle: TranscriptDisplay.defaultBodyStyle,
                 ),
               ],

@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:super_collection/features/items/transcript_models.dart';
 
-/// 解析并渲染带「说话人 N：」前缀的转写文稿
+/// 解析并渲染带「说话人 N：」前缀的转写文稿；优先使用结构化 cues（含时间点）
 class TranscriptDisplay extends StatelessWidget {
   const TranscriptDisplay({
     super.key,
     required this.text,
+    this.cues = const [],
     this.bodyStyle,
     this.selectable = true,
     this.maxLines,
@@ -12,6 +14,7 @@ class TranscriptDisplay extends StatelessWidget {
   });
 
   final String text;
+  final List<TranscriptCue> cues;
   final TextStyle? bodyStyle;
   final bool selectable;
   final int? maxLines;
@@ -53,14 +56,28 @@ class TranscriptDisplay extends StatelessWidget {
     return blocks;
   }
 
+  static List<_TranscriptBlock> blocksFromCues(List<TranscriptCue> cues) {
+    return [
+      for (final cue in cues)
+        if (cue.text.trim().isNotEmpty)
+          _TranscriptBlock(
+            speaker: cue.speaker,
+            body: cue.text.trim(),
+            startMs: cue.startMs,
+          ),
+    ];
+  }
+
   @override
   Widget build(BuildContext context) {
     final style = bodyStyle ?? defaultBodyStyle;
-    final blocks = parse(text);
+    final blocks = cues.isNotEmpty ? blocksFromCues(cues) : parse(text);
     if (blocks.isEmpty) return const SizedBox.shrink();
 
     final hasSpeakers = blocks.any((b) => b.speaker != null);
-    if (!hasSpeakers) {
+    final hasTimes = blocks.any((b) => b.startMs != null);
+
+    if (!hasSpeakers && !hasTimes) {
       return _textWidget(text.trim(), style);
     }
 
@@ -75,6 +92,7 @@ class TranscriptDisplay extends StatelessWidget {
             selectable: selectable,
             maxLines: maxLines,
             overflow: overflow,
+            showSpeaker: hasSpeakers,
           ),
         ],
       ],
@@ -104,10 +122,15 @@ class TranscriptDisplay extends StatelessWidget {
 }
 
 class _TranscriptBlock {
-  const _TranscriptBlock({this.speaker, required this.body});
+  const _TranscriptBlock({
+    this.speaker,
+    required this.body,
+    this.startMs,
+  });
 
   final int? speaker;
   final String body;
+  final int? startMs;
 }
 
 class _SpeakerBlock extends StatelessWidget {
@@ -115,6 +138,7 @@ class _SpeakerBlock extends StatelessWidget {
     required this.block,
     required this.bodyStyle,
     required this.selectable,
+    required this.showSpeaker,
     this.maxLines,
     this.overflow,
   });
@@ -122,6 +146,7 @@ class _SpeakerBlock extends StatelessWidget {
   final _TranscriptBlock block;
   final TextStyle bodyStyle;
   final bool selectable;
+  final bool showSpeaker;
   final int? maxLines;
   final TextOverflow? overflow;
 
@@ -129,11 +154,7 @@ class _SpeakerBlock extends StatelessWidget {
   Widget build(BuildContext context) {
     final speaker = block.speaker;
     final body = block.body;
-    if (speaker == null) {
-      return selectable
-          ? SelectableText(body, style: bodyStyle, maxLines: maxLines)
-          : Text(body, style: bodyStyle, maxLines: maxLines, overflow: overflow);
-    }
+    final timeLabel = TranscriptCue.formatTime(block.startMs);
 
     final labelStyle = bodyStyle.copyWith(
       fontSize: 13,
@@ -142,11 +163,38 @@ class _SpeakerBlock extends StatelessWidget {
       color: TranscriptDisplay._muted,
       letterSpacing: 0.1,
     );
+    final timeStyle = bodyStyle.copyWith(
+      fontSize: 12,
+      height: 1.3,
+      fontWeight: FontWeight.w500,
+      color: TranscriptDisplay._muted.withValues(alpha: 0.9),
+      letterSpacing: 0.2,
+      fontFeatures: const [FontFeature.tabularFigures()],
+    );
+
+    final headerParts = <Widget>[];
+    if (timeLabel.isNotEmpty) {
+      headerParts.add(Text(timeLabel, style: timeStyle));
+    }
+    if (showSpeaker && speaker != null) {
+      if (headerParts.isNotEmpty) headerParts.add(const SizedBox(width: 8));
+      headerParts.add(Text('说话人 $speaker：', style: labelStyle));
+    }
+
+    if (headerParts.isEmpty) {
+      return selectable
+          ? SelectableText(body, style: bodyStyle, maxLines: maxLines)
+          : Text(body, style: bodyStyle, maxLines: maxLines, overflow: overflow);
+    }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('说话人 $speaker：', style: labelStyle),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.baseline,
+          textBaseline: TextBaseline.alphabetic,
+          children: headerParts,
+        ),
         const SizedBox(height: 6),
         selectable
             ? SelectableText(body, style: bodyStyle, maxLines: maxLines)

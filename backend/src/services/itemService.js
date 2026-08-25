@@ -876,6 +876,7 @@ async function requestTranscript(
   segments = transcriptSegments.setSegment(segments, key, {
     status: 'pending',
     text: null,
+    cues: [],
     error: null,
     taskId: null,
     mediaUrl,
@@ -1044,11 +1045,13 @@ async function runTranscriptJob(itemId) {
           `extracted=${extracted} downloadMs=${downloadMs} extractMs=${extractMs} ` +
           `uploadMs=${uploadMs} submitMs=${submitMs} ` +
           `pollMs=${pollMs} attempts=${pollAttempts} lastStatus=${lastStatus} ` +
-          `totalMs=${Date.now() - jobT0} textLen=${(result.text || '').length}`,
+          `totalMs=${Date.now() - jobT0} textLen=${(result.text || '').length} ` +
+          `cues=${Array.isArray(result.cues) ? result.cues.length : 0}`,
       );
       segments = transcriptSegments.setSegment(segments, segmentKey, {
         status: 'success',
         text: result.text || '',
+        cues: Array.isArray(result.cues) ? result.cues : [],
         error: null,
         taskId: null,
         mediaUrl: null,

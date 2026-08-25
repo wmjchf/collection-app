@@ -145,7 +145,7 @@
 
 | 字段 | 说明 |
 | --- | --- |
-| `transcript_segments` | JSON：`{segmentKey:{status,text,error,taskId,mediaUrl,transcribedAt}}` |
+| `transcript_segments` | JSON：`{segmentKey:{status,text,cues,error,taskId,mediaUrl,transcribedAt}}`；`cues` 为 `[{startMs,endMs,speaker,text}]` |
 
 segmentKey：`video_url`（顶栏，仅无内嵌 `!v` 时）或 `inline:N`。  
 API：`GET …/transcript-targets`、`POST …/transcript`（body.segmentKey）、`GET …/transcript-status`。  

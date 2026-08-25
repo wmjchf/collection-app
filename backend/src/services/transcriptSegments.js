@@ -35,13 +35,52 @@ function isHttpsMedia(url) {
   return /^https?:\/\//i.test(u) && !/^qqvid:/i.test(u);
 }
 
+function normalizeCues(raw) {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((c) => {
+      if (!c || typeof c !== 'object') return null;
+      const text = String(c.text || '').trim();
+      if (!text) return null;
+      const startMs =
+        c.startMs == null || !Number.isFinite(Number(c.startMs))
+          ? null
+          : Math.max(0, Math.round(Number(c.startMs)));
+      const endMs =
+        c.endMs == null || !Number.isFinite(Number(c.endMs))
+          ? null
+          : Math.max(0, Math.round(Number(c.endMs)));
+      const speakerRaw = c.speaker;
+      const speaker =
+        speakerRaw == null || speakerRaw === ''
+          ? null
+          : Number(speakerRaw);
+      return {
+        startMs,
+        endMs,
+        speaker: Number.isFinite(speaker) ? speaker : null,
+        text,
+      };
+    })
+    .filter(Boolean);
+}
+
 function normalizeSegment(seg) {
   if (!seg || typeof seg !== 'object') {
-    return { status: 'none', text: null, error: null, taskId: null, mediaUrl: null, transcribedAt: null };
+    return {
+      status: 'none',
+      text: null,
+      cues: [],
+      error: null,
+      taskId: null,
+      mediaUrl: null,
+      transcribedAt: null,
+    };
   }
   return {
     status: seg.status || 'none',
     text: seg.text ?? null,
+    cues: normalizeCues(seg.cues),
     error: seg.error ?? null,
     taskId: seg.taskId ?? null,
     mediaUrl: seg.mediaUrl ?? null,
@@ -67,6 +106,7 @@ function listTranscriptTargets(row) {
         needsClientResolve: !isHttpsMedia(url),
         status: seg.status,
         text: seg.text,
+        cues: seg.cues,
         error: seg.error,
         transcribedAt: seg.transcribedAt,
       });
@@ -85,6 +125,7 @@ function listTranscriptTargets(row) {
     needsClientResolve: !isHttpsMedia(video),
     status: seg.status,
     text: seg.text,
+    cues: seg.cues,
     error: seg.error,
     transcribedAt: seg.transcribedAt,
   });
@@ -133,6 +174,7 @@ function mapSegmentsForApi(segments) {
     out[key] = {
       status: n.status,
       text: n.text,
+      cues: n.cues,
       error: n.error,
       transcribedAt: n.transcribedAt,
       hasText: !!(n.text && String(n.text).trim()),
@@ -155,4 +197,5 @@ module.exports = {
   mapSegmentsForApi,
   isHttpsMedia,
   normalizeSegment,
+  normalizeCues,
 };
