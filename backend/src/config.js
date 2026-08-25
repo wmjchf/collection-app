@@ -29,5 +29,24 @@ module.exports = {
     templateParam:
       process.env.ALIYUN_SMS_TEMPLATE_PARAM ||
       JSON.stringify({ code: '##code##', min: '5' }),
+    /** 智能语音交互 · 录音文件识别 AppKey（NLS 控制台项目） */
+    nlsAppKey: process.env.ALIYUN_NLS_APP_KEY || '',
+    nlsEndpoint:
+      process.env.ALIYUN_NLS_ENDPOINT ||
+      'http://filetrans.cn-shanghai.aliyuncs.com',
+    /** 转写前托管防盗链 CDN（B 站等） */
+    oss: {
+      region: process.env.ALIYUN_OSS_REGION || '',
+      bucket: process.env.ALIYUN_OSS_BUCKET || '',
+      prefix: process.env.ALIYUN_OSS_PREFIX || 'transcript-cache/',
+      endpoint: process.env.ALIYUN_OSS_ENDPOINT || '',
+      transcriptTimeoutMs: Number(process.env.ALIYUN_OSS_TRANSCRIPT_TIMEOUT_MS) || 900000,
+      transcriptDownloadTimeoutMs:
+        Number(process.env.ALIYUN_OSS_TRANSCRIPT_DOWNLOAD_TIMEOUT_MS) || 900000,
+    },
+    /** 转写说话人后处理（毫秒 / 字） */
+    asrSpeakerGapMs: Number(process.env.ALIYUN_ASR_SPEAKER_GAP_MS) || 600,
+    asrSpeakerOrphanMaxChars:
+      Number(process.env.ALIYUN_ASR_SPEAKER_ORPHAN_MAX_CHARS) || 15,
   },
 };

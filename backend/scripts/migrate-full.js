@@ -1,3 +1,7 @@
+/**
+ * 全量建表（会 DROP 并重建）。仅用于空库或本地重置。
+ * 用法：pnpm db:migrate:full
+ */
 require('dotenv').config();
 const fs = require('fs');
 const path = require('path');
@@ -30,25 +34,42 @@ async function main() {
   await conn.query(`USE \`${dbName}\``);
   await conn.query(sql);
 
+  await conn.query(`
+    CREATE TABLE IF NOT EXISTS schema_migrations (
+      name VARCHAR(128) NOT NULL PRIMARY KEY,
+      applied_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  `);
+  const incremental = [
+    '002_last_read_at.sql',
+    '003_trash_rename.sql',
+    '004_item_image_urls.sql',
+    '005_item_video_url.sql',
+    '007_transcript_segments.sql',
+  ];
+  for (const name of incremental) {
+    await conn.query(
+      'INSERT IGNORE INTO schema_migrations (name) VALUES (?)',
+      [name],
+    );
+  }
+
   const [tables] = await conn.query('SHOW TABLES');
   const [categories] = await conn.query(
     'SELECT section, code, name FROM categories ORDER BY section, sort_order',
   );
 
-  console.log(`[db:migrate] applied ${path.basename(sqlPath)}`);
+  console.log(`[db:migrate:full] applied ${path.basename(sqlPath)}`);
   console.log(
-    '[db:migrate] tables:',
+    '[db:migrate:full] tables:',
     tables.map((row) => Object.values(row)[0]).join(', '),
   );
-  console.log(`[db:migrate] seeded categories: ${categories.length}`);
-  for (const row of categories) {
-    console.log(`  - [${row.section}] ${row.code} → ${row.name}`);
-  }
+  console.log(`[db:migrate:full] seeded categories: ${categories.length}`);
 
   await conn.end();
 }
 
 main().catch((err) => {
-  console.error('[db:migrate] failed:', err.message);
+  console.error('[db:migrate:full] failed:', err.message);
   process.exit(1);
 });

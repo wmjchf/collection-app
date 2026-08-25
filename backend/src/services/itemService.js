@@ -6,6 +6,7 @@ const {
   prefersClientFetch,
   listClientFetchPlatformIds,
 } = require('./parser/adapters/registry');
+const transcriptSegments = require('./transcriptSegments');
 
 /** 服务端抓取被拦时，等待客户端上报 HTML */
 const NEED_CLIENT_FETCH = 'NEED_CLIENT_FETCH';
@@ -37,6 +38,9 @@ function mapItem(row) {
     coverImageUrl: row.cover_image_url,
     imageUrls,
     videoUrl: row.video_url || null,
+    transcriptSegments: transcriptSegments.mapSegmentsForApi(
+      transcriptSegments.parseSegments(row.transcript_segments),
+    ),
     platform: row.platform,
     status: row.status,
     errorMessage: row.error_message,
@@ -748,11 +752,250 @@ async function setItemTags(userId, itemId, tagIds) {
   return listItemTags(userId, itemId);
 }
 
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function listTranscriptTargetsForUser(userId, itemId) {
+  const [rows] = await pool.execute(
+    `SELECT * FROM items
+     WHERE id = :itemId AND user_id = :userId AND deleted_at IS NULL
+     LIMIT 1`,
+    { itemId, userId },
+  );
+  const row = rows[0];
+  if (!row) {
+    throw Object.assign(new Error('条目不存在'), { status: 404 });
+  }
+  return {
+    id: row.id,
+    targets: transcriptSegments.listTranscriptTargets(row),
+  };
+}
+
+/**
+ * 用户触发：按 segmentKey 提交阿里云录音文件识别。
+ * 已有任一段 pending 时拒绝（409）。
+ */
+async function requestTranscript(
+  userId,
+  itemId,
+  { segmentKey, force = false, mediaUrl: clientMediaUrl } = {},
+) {
+  const aliyunAsr = require('./aliyunAsr');
+  const { enqueueTranscript } = require('./transcriptQueue');
+
+  if (!aliyunAsr.isConfigured()) {
+    throw Object.assign(
+      new Error('语音转写未配置：请设置 ALIYUN_NLS_APP_KEY'),
+      { status: 503 },
+    );
+  }
+
+  const key = String(segmentKey || '').trim();
+  if (!key) {
+    throw Object.assign(new Error('缺少 segmentKey'), { status: 400 });
+  }
+
+  const [rows] = await pool.execute(
+    `SELECT * FROM items
+     WHERE id = :itemId AND user_id = :userId AND deleted_at IS NULL
+     LIMIT 1`,
+    { itemId, userId },
+  );
+  const row = rows[0];
+  if (!row) {
+    throw Object.assign(new Error('条目不存在'), { status: 404 });
+  }
+
+  const targets = transcriptSegments.listTranscriptTargets(row);
+  const target = targets.find((t) => t.segmentKey === key);
+  if (!target) {
+    throw Object.assign(new Error('无效的转写对象'), { status: 400 });
+  }
+
+  let segments = transcriptSegments.parseSegments(row.transcript_segments);
+  if (transcriptSegments.hasPendingSegment(segments)) {
+    throw Object.assign(new Error('请等当前转写完成'), { status: 409 });
+  }
+
+  const cur = transcriptSegments.normalizeSegment(segments[key]);
+  if (cur.status === 'success' && cur.text && !force) {
+    return mapItem(row);
+  }
+
+  const mediaUrl = transcriptSegments.resolveMediaUrlForSegment(
+    row,
+    key,
+    clientMediaUrl,
+  );
+  if (!mediaUrl) {
+    throw Object.assign(
+      new Error('该段没有可转写的音视频直链，请先刷新视频'),
+      { status: 400 },
+    );
+  }
+
+  segments = transcriptSegments.setSegment(segments, key, {
+    status: 'pending',
+    text: null,
+    error: null,
+    taskId: null,
+    mediaUrl,
+    transcribedAt: null,
+  });
+
+  await pool.execute(
+    `UPDATE items
+     SET transcript_segments = :segments,
+         updated_at = CURRENT_TIMESTAMP(3)
+     WHERE id = :itemId AND user_id = :userId`,
+    { itemId, userId, segments: JSON.stringify(segments) },
+  );
+
+  enqueueTranscript(itemId);
+  return getByIdForUser(userId, itemId);
+}
+
+async function getTranscriptStatus(userId, itemId) {
+  const [rows] = await pool.execute(
+    `SELECT id, transcript_segments, updated_at
+     FROM items
+     WHERE id = :itemId AND user_id = :userId AND deleted_at IS NULL
+     LIMIT 1`,
+    { itemId, userId },
+  );
+  const row = rows[0];
+  if (!row) {
+    throw Object.assign(new Error('条目不存在'), { status: 404 });
+  }
+  const segments = transcriptSegments.parseSegments(row.transcript_segments);
+  const pendingSegmentKey = transcriptSegments.findPendingSegmentKey(segments);
+  return {
+    id: row.id,
+    segments: transcriptSegments.mapSegmentsForApi(segments),
+    pendingSegmentKey,
+    hasPending: pendingSegmentKey != null,
+    updatedAt: row.updated_at,
+  };
+}
+
+async function saveTranscriptSegments(itemId, segments) {
+  await pool.execute(
+    `UPDATE items
+     SET transcript_segments = :segments, updated_at = CURRENT_TIMESTAMP(3)
+     WHERE id = :itemId`,
+    { itemId, segments: JSON.stringify(segments) },
+  );
+}
+
+/**
+ * 队列执行：对 pending 段提交 FileTrans → 轮询 → 写回该段。
+ */
+async function runTranscriptJob(itemId) {
+  const aliyunAsr = require('./aliyunAsr');
+  const transcriptMediaOss = require('./transcriptMediaOss');
+  const [rows] = await pool.execute(
+    `SELECT * FROM items WHERE id = :itemId AND deleted_at IS NULL LIMIT 1`,
+    { itemId },
+  );
+  const row = rows[0];
+  if (!row) return;
+
+  let segments = transcriptSegments.parseSegments(row.transcript_segments);
+  const segmentKey = transcriptSegments.findPendingSegmentKey(segments);
+  if (!segmentKey) return;
+
+  const seg = transcriptSegments.normalizeSegment(segments[segmentKey]);
+  const mediaUrl = seg.mediaUrl;
+  if (!mediaUrl) {
+    segments = transcriptSegments.setSegment(segments, segmentKey, {
+      status: 'failed',
+      error: '没有可转写的音视频直链',
+    });
+    await saveTranscriptSegments(itemId, segments);
+    return;
+  }
+
+  let taskId = seg.taskId;
+  let ossKeyToDelete = null;
+  try {
+    if (!taskId) {
+      const pageUrl = row.canonical_url || row.url;
+      const resolved = await transcriptMediaOss.resolveAsrFileLink({
+        mediaUrl,
+        pageUrl,
+        itemId,
+        segmentKey,
+      });
+      ossKeyToDelete = resolved.ossKey;
+      const submitted = await aliyunAsr.submitFileTrans(resolved.fileLink);
+      taskId = submitted.taskId;
+      segments = transcriptSegments.setSegment(segments, segmentKey, { taskId });
+      await saveTranscriptSegments(itemId, segments);
+    }
+
+    const maxAttempts = 180;
+    const intervalMs = 10000;
+    for (let i = 0; i < maxAttempts; i += 1) {
+      const result = await aliyunAsr.getFileTransResult(taskId);
+      if (!result.done) {
+        await sleep(intervalMs);
+        continue;
+      }
+      if (!result.ok) {
+        segments = transcriptSegments.setSegment(segments, segmentKey, {
+          status: 'failed',
+          error: String(result.errorMessage || '转写失败').slice(0, 500),
+          taskId: null,
+          mediaUrl: null,
+        });
+        await saveTranscriptSegments(itemId, segments);
+        return;
+      }
+      segments = transcriptSegments.setSegment(segments, segmentKey, {
+        status: 'success',
+        text: result.text || '',
+        error: null,
+        taskId: null,
+        mediaUrl: null,
+        transcribedAt: new Date().toISOString(),
+      });
+      await saveTranscriptSegments(itemId, segments);
+      return;
+    }
+
+    segments = transcriptSegments.setSegment(segments, segmentKey, {
+      status: 'failed',
+      error: '转写超时，请稍后重试',
+      taskId: null,
+      mediaUrl: null,
+    });
+    await saveTranscriptSegments(itemId, segments);
+  } catch (err) {
+    console.error(`[runTranscriptJob] item=${itemId} segment=${segmentKey}`, err);
+    segments = transcriptSegments.setSegment(segments, segmentKey, {
+      status: 'failed',
+      error: String(err.message || '转写异常').slice(0, 500),
+      taskId: null,
+      mediaUrl: null,
+    });
+    await saveTranscriptSegments(itemId, segments);
+  } finally {
+    if (ossKeyToDelete) {
+      transcriptMediaOss.deleteOssObject(ossKeyToDelete).catch((err) => {
+        console.warn(`[runTranscriptJob] OSS cleanup ${ossKeyToDelete}`, err.message);
+      });
+    }
+  }
+}
+
 const HIT_LABELS = {
   title: '标题',
   content: '正文',
   summary: '摘要',
   note: '备注',
+  transcript: '文稿',
   url: '链接',
   platform: '来源',
   tag: '标签',
@@ -809,6 +1052,10 @@ function buildMatchedFields(row, query, platformAlias) {
   if (includes(row.content)) hits.push('content');
   if (includes(row.summary)) hits.push('summary');
   if (includes(row.note)) hits.push('note');
+  const transcriptBlob = transcriptSegments.allTranscriptText(
+    transcriptSegments.parseSegments(row.transcript_segments),
+  );
+  if (includes(transcriptBlob)) hits.push('transcript');
   if (includes(row.url) || includes(row.canonical_url)) hits.push('url');
   if (
     includes(row.platform) ||
@@ -824,7 +1071,7 @@ function buildMatchedFields(row, query, platformAlias) {
 
 /**
  * 全局搜索（未删除条目）
- * 匹配：标题 / 正文 / 摘要 / 备注 / 链接 / 来源 / 标签名 / 标注原文与短注
+ * 匹配：标题 / 正文 / 摘要 / 备注 / 文稿 / 链接 / 来源 / 标签名 / 标注原文与短注
  */
 async function searchItems(userId, rawQuery, { limit = 50, offset = 0 } = {}) {
   const query = String(rawQuery || '').trim();
@@ -853,6 +1100,7 @@ async function searchItems(userId, rawQuery, { limit = 50, offset = 0 } = {}) {
       OR i.summary LIKE :like
       OR i.content LIKE :like
       OR i.note LIKE :like
+      OR CAST(i.transcript_segments AS CHAR) LIKE :like
       OR i.url LIKE :like
       OR i.canonical_url LIKE :like
       OR i.platform LIKE :like
@@ -945,4 +1193,8 @@ module.exports = {
   listItemTags,
   setItemTags,
   searchItems,
+  listTranscriptTargetsForUser,
+  requestTranscript,
+  getTranscriptStatus,
+  runTranscriptJob,
 };

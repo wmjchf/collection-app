@@ -52,7 +52,7 @@
 | `user_sessions` | 登录会话 / refresh |
 | `sms_send_logs` | 发码流水（限流/审计；验证码本身不存） |
 | `categories` | 第二层分类 |
-| `items` | 收藏条目 |
+| `items` | 收藏条目（含 `transcript_segments` 分段转写） |
 | `item_tags` | 条目 ↔ 标签 |
 | `annotations` | 阅读标注 |
 
@@ -140,6 +140,16 @@
 
 去重：同一用户下按 `canonical_url`（或 url）判重，索引建议 `(user_id, canonical_url(255))`。  
 首页「最近阅读」索引：`(user_id, last_read_at)`。
+
+**音视频转写（分段，独立于 `content`）**
+
+| 字段 | 说明 |
+| --- | --- |
+| `transcript_segments` | JSON：`{segmentKey:{status,text,error,taskId,mediaUrl,transcribedAt}}` |
+
+segmentKey：`video_url`（顶栏，仅无内嵌 `!v` 时）或 `inline:N`。  
+API：`GET …/transcript-targets`、`POST …/transcript`（body.segmentKey）、`GET …/transcript-status`。  
+迁移：`backend/sql/007_transcript_segments.sql`；执行：`cd backend && pnpm db:migrate:007`（或 `pnpm db:migrate` 跑全部未执行增量）。
 
 **阅读时写入**：进入阅读页 → `last_read_at = NOW()`，且 `is_unread = 0`。
 
