@@ -72,16 +72,6 @@
 	<dict>
 		<key>NSAllowsLocalNetworking</key>
 		<true/>
-		<key>NSExceptionDomains</key>
-		<dict>
-			<key>47.97.67.47</key>
-			<dict>
-				<key>NSExceptionAllowsInsecureHTTPLoads</key>
-				<true/>
-				<key>NSIncludesSubdomains</key>
-				<false/>
-			</dict>
-		</dict>
 	</dict>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
