@@ -208,8 +208,24 @@ async function uploadTempFileToOss({ tmpPath, key, contentType, itemId, segmentK
   return { fileLink, uploadMs: ms };
 }
 
-async function uploadMediaToOss({ mediaUrl, pageUrl, itemId, segmentKey }) {
-  if (!isOssConfigured()) {
+async function deleteOssObject(ossKey) {
+  if (!ossKey || !isOssConfigured()) return;
+  const client = getOssClient();
+  await client.delete(ossKey);
+}
+
+/**
+ * 所有转写媒体：先下载 → music-metadata 测时长 → 超限拒绝。
+ * 防盗链 CDN 再上传 OSS 签名 URL；开放 CDN 校验通过后仍用原直链。
+ */
+async function resolveAsrFileLink({ mediaUrl, pageUrl, itemId, segmentKey }) {
+  const url = String(mediaUrl || '').trim();
+  if (!url) {
+    throw Object.assign(new Error('没有可转写的音视频直链'), { status: 400 });
+  }
+
+  const viaOss = needsOssProxy(url);
+  if (viaOss && !isOssConfigured()) {
     throw Object.assign(
       new Error(
         'B 站等防盗链 CDN 需配置 OSS（ALIYUN_OSS_REGION、ALIYUN_OSS_BUCKET）后再转写',
@@ -221,7 +237,7 @@ async function uploadMediaToOss({ mediaUrl, pageUrl, itemId, segmentKey }) {
   let tmpPath = null;
   try {
     const downloaded = await downloadMediaToTempFile({
-      mediaUrl,
+      mediaUrl: url,
       pageUrl,
       itemId,
       segmentKey,
@@ -231,11 +247,28 @@ async function uploadMediaToOss({ mediaUrl, pageUrl, itemId, segmentKey }) {
     const durationSec = await probeMediaDurationSec(downloaded.tmpPath);
     console.log(
       `[transcriptMediaOss] duration item=${itemId} segment=${segmentKey} ` +
-        `sec=${durationSec == null ? 'unknown' : durationSec.toFixed(1)}`,
+        `viaOss=${viaOss} sec=${durationSec == null ? 'unknown' : durationSec.toFixed(1)}`,
     );
     assertDurationWithinLimit(durationSec);
 
-    const key = objectKey(itemId, segmentKey, mediaUrl, downloaded.ext);
+    if (!viaOss) {
+      console.log(
+        `[transcriptMediaOss] direct ok item=${itemId} segment=${segmentKey} ` +
+          `bytes=${downloaded.bytes} downloadMs=${downloaded.downloadMs} ` +
+          `durationSec=${durationSec == null ? 'unknown' : durationSec.toFixed(1)}`,
+      );
+      return {
+        fileLink: url,
+        ossKey: null,
+        viaOss: false,
+        bytes: downloaded.bytes,
+        downloadMs: downloaded.downloadMs,
+        uploadMs: 0,
+        durationSec,
+      };
+    }
+
+    const key = objectKey(itemId, segmentKey, url, downloaded.ext);
     const uploaded = await uploadTempFileToOss({
       tmpPath,
       key,
@@ -266,28 +299,6 @@ async function uploadMediaToOss({ mediaUrl, pageUrl, itemId, segmentKey }) {
       });
     }
   }
-}
-
-async function deleteOssObject(ossKey) {
-  if (!ossKey || !isOssConfigured()) return;
-  const client = getOssClient();
-  await client.delete(ossKey);
-}
-
-/**
- * 返回可供阿里云 FileTrans 拉取的 file_link。
- * 防盗链 CDN 会先下载并上传到 OSS，再返回签名 URL；提交前校验时长上限。
- */
-async function resolveAsrFileLink({ mediaUrl, pageUrl, itemId, segmentKey }) {
-  const url = String(mediaUrl || '').trim();
-  if (!url) {
-    throw Object.assign(new Error('没有可转写的音视频直链'), { status: 400 });
-  }
-  if (!needsOssProxy(url)) {
-    // 开放 CDN 直传；时长在本地文件路径校验（防盗链下载后），此处不预拉整文件
-    return { fileLink: url, ossKey: null, viaOss: false, durationSec: null };
-  }
-  return uploadMediaToOss({ mediaUrl: url, pageUrl, itemId, segmentKey });
 }
 
 module.exports = {
