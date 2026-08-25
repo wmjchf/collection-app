@@ -73,6 +73,7 @@ async function submitFileTrans(fileLink) {
  *   done: boolean,
  *   ok: boolean,
  *   text: string|null,
+ *   cues: Array<{startMs:number|null,endMs:number|null,speaker:number|null,text:string}>|null,
  *   errorMessage: string|null,
  * }>}
  */
@@ -87,16 +88,19 @@ async function getFileTransResult(taskId) {
       done: false,
       ok: false,
       text: null,
+      cues: null,
       errorMessage: null,
     };
   }
 
   if (statusText === 'SUCCESS') {
+    const built = buildTranscriptFromResult(response?.Result);
     return {
       statusText,
       done: true,
       ok: true,
-      text: flattenResult(response?.Result),
+      text: built.text,
+      cues: built.cues,
       errorMessage: null,
     };
   }
@@ -107,6 +111,7 @@ async function getFileTransResult(taskId) {
       done: true,
       ok: true,
       text: '',
+      cues: [],
       errorMessage: null,
     };
   }
@@ -116,6 +121,7 @@ async function getFileTransResult(taskId) {
     done: true,
     ok: false,
     text: null,
+    cues: null,
     errorMessage: statusText || '转写失败',
   };
 }
@@ -186,25 +192,63 @@ function smoothSpeakersByTiming(items) {
   return out;
 }
 
-function flattenResult(result) {
-  if (!result) return '';
+function buildTranscriptFromResult(result) {
+  if (!result) return { text: '', cues: [] };
   let parsed = result;
   if (typeof result === 'string') {
     try {
       parsed = JSON.parse(result);
     } catch {
-      return result.trim();
+      const text = result.trim();
+      return { text, cues: text ? [{ startMs: null, endMs: null, speaker: null, text }] : [] };
     }
   }
   const sentences = parsed?.Sentences;
   if (Array.isArray(sentences) && sentences.length) {
     return formatSentencesWithSpeakers(sentences);
   }
-  if (typeof parsed?.Text === 'string') return parsed.Text.trim();
-  return '';
+  if (typeof parsed?.Text === 'string') {
+    const text = parsed.Text.trim();
+    return {
+      text,
+      cues: text ? [{ startMs: null, endMs: null, speaker: null, text }] : [],
+    };
+  }
+  return { text: '', cues: [] };
 }
 
-/** 合并同说话人连续句；多人时段首「说话人 N：」，单人或无分轨信息时纯连写 */
+/** @deprecated 兼容旧调用；请用 buildTranscriptFromResult */
+function flattenResult(result) {
+  return buildTranscriptFromResult(result).text;
+}
+
+function msOrNull(v) {
+  if (v == null || !Number.isFinite(v)) return null;
+  return Math.max(0, Math.round(v));
+}
+
+function mergeGroupTiming(target, piece) {
+  if (target.startMs == null) target.startMs = piece.startMs ?? null;
+  else if (piece.startMs != null) target.startMs = Math.min(target.startMs, piece.startMs);
+  if (piece.endMs != null) {
+    target.endMs =
+      target.endMs == null ? piece.endMs : Math.max(target.endMs, piece.endMs);
+  }
+}
+
+function toCue(g) {
+  return {
+    startMs: msOrNull(g.startMs),
+    endMs: msOrNull(g.endMs),
+    speaker: g.label == null ? null : Number(g.label),
+    text: String(g.text || '').trim(),
+  };
+}
+
+/**
+ * 合并同说话人连续句；多人时段首「说话人 N：」，单人或无分轨信息时纯连写。
+ * @returns {{ text: string, cues: Array<{startMs:number|null,endMs:number|null,speaker:number|null,text:string}> }}
+ */
 function formatSentencesWithSpeakers(sentences) {
   let items = sentences
     .map((s) => {
@@ -212,19 +256,33 @@ function formatSentencesWithSpeakers(sentences) {
       return {
         text: String(s?.Text || '').trim(),
         speakerId: sentenceSpeakerId(s),
-        ...timing,
+        startMs: msOrNull(timing.beginTime),
+        endMs: msOrNull(timing.endTime),
+        silenceDuration: timing.silenceDuration,
+        // gapBeforeSentence 仍读 beginTime/endTime
+        beginTime: timing.beginTime,
+        endTime: timing.endTime,
       };
     })
     .filter((s) => s.text);
-  if (!items.length) return '';
+  if (!items.length) return { text: '', cues: [] };
 
   items = smoothSpeakersByTiming(items);
 
   const speakerIds = new Set(
     items.map((s) => s.speakerId).filter((id) => id != null),
   );
+
+  // 单人 / 无分轨：文稿连写；cues 按句保留时间点，避免整段只有 0:00
   if (speakerIds.size <= 1) {
-    return items.map((s) => s.text).join('');
+    const text = items.map((s) => s.text).join('');
+    const cues = items.map((s) => ({
+      startMs: s.startMs,
+      endMs: s.endMs,
+      speaker: null,
+      text: s.text,
+    }));
+    return { text, cues };
   }
 
   let groups = [];
@@ -232,8 +290,14 @@ function formatSentencesWithSpeakers(sentences) {
     const last = groups[groups.length - 1];
     if (last && last.speakerId === item.speakerId) {
       last.text += item.text;
+      mergeGroupTiming(last, item);
     } else {
-      groups.push({ speakerId: item.speakerId, text: item.text });
+      groups.push({
+        speakerId: item.speakerId,
+        text: item.text,
+        startMs: item.startMs,
+        endMs: item.endMs,
+      });
     }
   }
 
@@ -243,9 +307,9 @@ function formatSentencesWithSpeakers(sentences) {
   groups = mergeConsecutiveSpeakerGroups(groups);
   groups = assignSpeakerLabels(groups);
 
-  return groups
-    .map((g) => `说话人 ${g.label}：${g.text}`)
-    .join('\n\n');
+  const cues = groups.map(toCue).filter((c) => c.text);
+  const text = groups.map((g) => `说话人 ${g.label}：${g.text}`).join('\n\n');
+  return { text, cues };
 }
 
 /** 去掉分轨误判导致的相邻重复 / 前缀重叠（同句被标成两个说话人） */
@@ -256,7 +320,7 @@ function dedupeAdjacentSpeakerGroups(groups) {
     if (!text) continue;
     const prev = out[out.length - 1];
     if (!prev) {
-      out.push({ speakerId: g.speakerId, text });
+      out.push({ ...g, text });
       continue;
     }
     if (text === prev.text.trim()) continue;
@@ -265,10 +329,17 @@ function dedupeAdjacentSpeakerGroups(groups) {
       text.startsWith(prev.text.trim())
     ) {
       const suffix = text.slice(prev.text.trim().length).trim();
-      if (suffix) out.push({ speakerId: g.speakerId, text: suffix });
+      if (suffix) {
+        out.push({
+          speakerId: g.speakerId,
+          text: suffix,
+          startMs: g.startMs,
+          endMs: g.endMs,
+        });
+      }
       continue;
     }
-    out.push({ speakerId: g.speakerId, text });
+    out.push({ ...g, text });
   }
   return out;
 }
@@ -284,6 +355,8 @@ function peelMisattributedPrefix(groups) {
     let text = g.text.trim();
     if (!text) continue;
     const prev = out[out.length - 1];
+    let startMs = g.startMs;
+    let endMs = g.endMs;
     if (prev && prev.speakerId !== g.speakerId) {
       const m = text.match(/^(.{1,80}?。)([\s\S]+)$/);
       if (m) {
@@ -291,11 +364,13 @@ function peelMisattributedPrefix(groups) {
         const rest = m[2].trim();
         if (prefix.length <= maxChars && rest) {
           prev.text += prefix;
+          mergeGroupTiming(prev, { startMs, endMs });
           text = rest;
+          // 剥走前缀后本段起点未知，保留原 startMs 作为近似
         }
       }
     }
-    if (text) out.push({ speakerId: g.speakerId, text });
+    if (text) out.push({ speakerId: g.speakerId, text, startMs, endMs });
   }
   return out;
 }
@@ -316,9 +391,10 @@ function collapseFleetingSpeakerGroups(groups) {
       text.length <= maxChars
     ) {
       prev.text += text;
+      mergeGroupTiming(prev, g);
       continue;
     }
-    out.push({ speakerId: g.speakerId, text });
+    out.push({ ...g, text });
   }
   return out;
 }
@@ -329,8 +405,14 @@ function mergeConsecutiveSpeakerGroups(groups) {
     const last = out[out.length - 1];
     if (last && last.speakerId === g.speakerId) {
       last.text += g.text;
+      mergeGroupTiming(last, g);
     } else {
-      out.push({ speakerId: g.speakerId, text: g.text });
+      out.push({
+        speakerId: g.speakerId,
+        text: g.text,
+        startMs: g.startMs,
+        endMs: g.endMs,
+      });
     }
   }
   return out;
@@ -350,6 +432,8 @@ module.exports = {
   isConfigured,
   submitFileTrans,
   getFileTransResult,
+  buildTranscriptFromResult,
+  flattenResult,
   formatSentencesWithSpeakers,
   smoothSpeakersByTiming,
   peelMisattributedPrefix,

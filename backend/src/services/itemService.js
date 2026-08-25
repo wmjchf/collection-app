@@ -876,6 +876,7 @@ async function requestTranscript(
   segments = transcriptSegments.setSegment(segments, key, {
     status: 'pending',
     text: null,
+    cues: [],
     error: null,
     taskId: null,
     mediaUrl,
@@ -928,10 +929,12 @@ async function saveTranscriptSegments(itemId, segments) {
 
 /**
  * 队列执行：对 pending 段提交 FileTrans → 轮询 → 写回该段。
+ * 日志含分阶段耗时：download / upload / submit / poll / total。
  */
 async function runTranscriptJob(itemId) {
   const aliyunAsr = require('./aliyunAsr');
   const transcriptMediaOss = require('./transcriptMediaOss');
+  const jobT0 = Date.now();
   const [rows] = await pool.execute(
     `SELECT * FROM items WHERE id = :itemId AND deleted_at IS NULL LIMIT 1`,
     { itemId },
@@ -956,31 +959,78 @@ async function runTranscriptJob(itemId) {
 
   let taskId = seg.taskId;
   let ossKeyToDelete = null;
+  let viaOss = false;
+  let downloadMs = 0;
+  let uploadMs = 0;
+  let extractMs = 0;
+  let extracted = false;
+  let submitMs = 0;
+  let pollMs = 0;
+  let pollAttempts = 0;
+  let lastStatus = '';
+
+  console.log(
+    `[runTranscriptJob] start item=${itemId} segment=${segmentKey} ` +
+      `platform=${row.platform} viaOssHint=${transcriptMediaOss.needsOssProxy(mediaUrl)} ` +
+      `mediaHost=${safeMediaHost(mediaUrl)}`,
+  );
+
   try {
     if (!taskId) {
       const pageUrl = row.canonical_url || row.url;
+      const resolveT0 = Date.now();
       const resolved = await transcriptMediaOss.resolveAsrFileLink({
         mediaUrl,
         pageUrl,
         itemId,
         segmentKey,
       });
+      viaOss = !!resolved.viaOss;
+      downloadMs = resolved.downloadMs || 0;
+      uploadMs = resolved.uploadMs || 0;
+      extractMs = resolved.extractMs || 0;
+      extracted = !!resolved.extracted;
       ossKeyToDelete = resolved.ossKey;
+      console.log(
+        `[runTranscriptJob] file_link ready item=${itemId} viaOss=${viaOss} ` +
+          `extracted=${extracted} resolveMs=${Date.now() - resolveT0} ` +
+          `downloadMs=${downloadMs} extractMs=${extractMs} uploadMs=${uploadMs}`,
+      );
+
+      const submitT0 = Date.now();
       const submitted = await aliyunAsr.submitFileTrans(resolved.fileLink);
+      submitMs = Date.now() - submitT0;
       taskId = submitted.taskId;
+      console.log(
+        `[runTranscriptJob] submitted item=${itemId} taskId=${taskId} submitMs=${submitMs}`,
+      );
       segments = transcriptSegments.setSegment(segments, segmentKey, { taskId });
       await saveTranscriptSegments(itemId, segments);
     }
 
     const maxAttempts = 180;
     const intervalMs = 10000;
+    const pollT0 = Date.now();
     for (let i = 0; i < maxAttempts; i += 1) {
+      pollAttempts = i + 1;
       const result = await aliyunAsr.getFileTransResult(taskId);
+      lastStatus = result.statusText || '';
       if (!result.done) {
+        if (i === 0 || i % 6 === 5) {
+          console.log(
+            `[runTranscriptJob] polling item=${itemId} attempt=${pollAttempts} ` +
+              `status=${lastStatus} elapsedMs=${Date.now() - pollT0}`,
+          );
+        }
         await sleep(intervalMs);
         continue;
       }
+      pollMs = Date.now() - pollT0;
       if (!result.ok) {
+        console.warn(
+          `[runTranscriptJob] failed item=${itemId} status=${lastStatus} ` +
+            `pollMs=${pollMs} attempts=${pollAttempts} totalMs=${Date.now() - jobT0}`,
+        );
         segments = transcriptSegments.setSegment(segments, segmentKey, {
           status: 'failed',
           error: String(result.errorMessage || '转写失败').slice(0, 500),
@@ -990,9 +1040,18 @@ async function runTranscriptJob(itemId) {
         await saveTranscriptSegments(itemId, segments);
         return;
       }
+      console.log(
+        `[runTranscriptJob] ok item=${itemId} segment=${segmentKey} viaOss=${viaOss} ` +
+          `extracted=${extracted} downloadMs=${downloadMs} extractMs=${extractMs} ` +
+          `uploadMs=${uploadMs} submitMs=${submitMs} ` +
+          `pollMs=${pollMs} attempts=${pollAttempts} lastStatus=${lastStatus} ` +
+          `totalMs=${Date.now() - jobT0} textLen=${(result.text || '').length} ` +
+          `cues=${Array.isArray(result.cues) ? result.cues.length : 0}`,
+      );
       segments = transcriptSegments.setSegment(segments, segmentKey, {
         status: 'success',
         text: result.text || '',
+        cues: Array.isArray(result.cues) ? result.cues : [],
         error: null,
         taskId: null,
         mediaUrl: null,
@@ -1002,6 +1061,11 @@ async function runTranscriptJob(itemId) {
       return;
     }
 
+    pollMs = Date.now() - pollT0;
+    console.warn(
+      `[runTranscriptJob] timeout item=${itemId} pollMs=${pollMs} attempts=${pollAttempts} ` +
+        `lastStatus=${lastStatus} totalMs=${Date.now() - jobT0}`,
+    );
     segments = transcriptSegments.setSegment(segments, segmentKey, {
       status: 'failed',
       error: '转写超时，请稍后重试',
@@ -1010,7 +1074,11 @@ async function runTranscriptJob(itemId) {
     });
     await saveTranscriptSegments(itemId, segments);
   } catch (err) {
-    console.error(`[runTranscriptJob] item=${itemId} segment=${segmentKey}`, err);
+    console.error(
+      `[runTranscriptJob] error item=${itemId} segment=${segmentKey} ` +
+        `totalMs=${Date.now() - jobT0}`,
+      err,
+    );
     segments = transcriptSegments.setSegment(segments, segmentKey, {
       status: 'failed',
       error: String(err.message || '转写异常').slice(0, 500),
@@ -1024,6 +1092,14 @@ async function runTranscriptJob(itemId) {
         console.warn(`[runTranscriptJob] OSS cleanup ${ossKeyToDelete}`, err.message);
       });
     }
+  }
+}
+
+function safeMediaHost(mediaUrl) {
+  try {
+    return new URL(String(mediaUrl)).host;
+  } catch {
+    return 'invalid';
   }
 }
 

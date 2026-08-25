@@ -793,9 +793,9 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
                       onSelectionChanged: _onBodySelectionChanged,
                       itemId: _item.id,
                       pageUrl: _item.sourcePageUrl,
+                      transcriptSegments: _item.transcriptSegments,
                       platform: _item.platform,
                       pageAudio: _pageAudio,
-                      transcriptSegments: _item.transcriptSegments,
                       onRefreshInlineVideo: _platformNeedsVideoRefresh
                           ? _refreshInlineVideo
                           : null,
@@ -927,9 +927,9 @@ class _InlineArticleBody extends StatelessWidget {
     this.onSelectionChanged,
     this.itemId,
     this.pageUrl,
+    this.transcriptSegments = const {},
     this.platform,
     this.pageAudio,
-    this.transcriptSegments = const {},
     this.onRefreshInlineVideo,
   });
 
@@ -942,9 +942,9 @@ class _InlineArticleBody extends StatelessWidget {
   final ValueChanged<TextSelection>? onSelectionChanged;
   final int? itemId;
   final String? pageUrl;
+  final Map<String, TranscriptSegment> transcriptSegments;
   final String? platform;
   final ReadingMediaController? pageAudio;
-  final Map<String, TranscriptSegment> transcriptSegments;
   final Future<String?> Function(int index)? onRefreshInlineVideo;
 
   static const _text = Color(0xFF1F242E);

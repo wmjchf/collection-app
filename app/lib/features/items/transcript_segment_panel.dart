@@ -17,10 +17,14 @@ class TranscriptSegmentPanel extends StatelessWidget {
   static const _transcriptText = Color(0xFF3A404C);
   static const _surface = Color(0xFFF3F6FA);
 
-  void _openTranscriptPage(BuildContext context, String text) {
+  void _openTranscriptPage(BuildContext context, TranscriptSegment seg) {
+    final text = (seg.text ?? '').trim();
     Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder: (_) => ItemTranscriptPage(text: text),
+        builder: (_) => ItemTranscriptPage(
+          text: text,
+          cues: seg.cues,
+        ),
       ),
     );
   }
@@ -121,7 +125,7 @@ class TranscriptSegmentPanel extends StatelessWidget {
             borderRadius: BorderRadius.circular(8),
             clipBehavior: Clip.antiAlias,
             child: InkWell(
-              onTap: () => _openTranscriptPage(context, text),
+              onTap: () => _openTranscriptPage(context, seg),
               child: IntrinsicHeight(
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.stretch,

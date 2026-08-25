@@ -8,6 +8,12 @@ const { pipeline } = require('stream/promises');
 const OSS = require('ali-oss');
 const config = require('../config');
 const { fetchHeadersForMedia } = require('../utils/mediaReferer');
+const {
+  looksLikeVideoContainer,
+  extractAudioForAsr,
+  probeMediaDurationSec,
+  assertDurationWithinLimit,
+} = require('./transcriptExtractAudio');
 
 const MAX_BYTES = Number(process.env.ALIYUN_OSS_TRANSCRIPT_MAX_MB || 512) * 1024 * 1024;
 const SIGNED_URL_EXPIRES_SEC = Number(process.env.ALIYUN_OSS_TRANSCRIPT_URL_EXPIRES || 86400);
@@ -16,6 +22,10 @@ const DOWNLOAD_TIMEOUT_MS = Number(
   process.env.ALIYUN_OSS_TRANSCRIPT_DOWNLOAD_TIMEOUT_MS || 900000,
 );
 const MULTIPART_PART_SIZE = 5 * 1024 * 1024;
+/** 设为 false 可关闭抽音频（调试用） */
+const EXTRACT_AUDIO =
+  String(process.env.ALIYUN_OSS_TRANSCRIPT_EXTRACT_AUDIO || 'true').toLowerCase() !==
+  'false';
 
 let ossClient = null;
 
@@ -156,6 +166,7 @@ async function downloadMediaToTempFile({ mediaUrl, pageUrl, itemId, segmentKey }
 
   const guard = createMaxBytesGuard();
   const source = Readable.fromWeb(res.body);
+  const t0 = Date.now();
   console.log(
     `[transcriptMediaOss] downloading item=${itemId} segment=${segmentKey} → ${tmpPath}`,
   );
@@ -170,14 +181,17 @@ async function downloadMediaToTempFile({ mediaUrl, pageUrl, itemId, segmentKey }
     throw err;
   }
 
+  const bytes = guard.bytesRead();
+  const ms = Date.now() - t0;
   console.log(
-    `[transcriptMediaOss] downloaded ${guard.bytesRead()} bytes item=${itemId} segment=${segmentKey}`,
+    `[transcriptMediaOss] downloaded item=${itemId} segment=${segmentKey} bytes=${bytes} ms=${ms}`,
   );
-  return { tmpPath, bytes: guard.bytesRead(), contentType, ext };
+  return { tmpPath, bytes, contentType, ext, downloadMs: ms };
 }
 
 async function uploadTempFileToOss({ tmpPath, key, contentType, itemId, segmentKey }) {
   const client = getOssClient();
+  const t0 = Date.now();
   console.log(
     `[transcriptMediaOss] uploading item=${itemId} segment=${segmentKey} key=${key}`,
   );
@@ -193,10 +207,11 @@ async function uploadTempFileToOss({ tmpPath, key, contentType, itemId, segmentK
     expires: SIGNED_URL_EXPIRES_SEC,
   });
 
+  const ms = Date.now() - t0;
   console.log(
-    `[transcriptMediaOss] uploaded item=${itemId} segment=${segmentKey} key=${key}`,
+    `[transcriptMediaOss] uploaded item=${itemId} segment=${segmentKey} key=${key} ms=${ms}`,
   );
-  return fileLink;
+  return { fileLink, uploadMs: ms };
 }
 
 async function uploadMediaToOss({ mediaUrl, pageUrl, itemId, segmentKey }) {
@@ -209,7 +224,7 @@ async function uploadMediaToOss({ mediaUrl, pageUrl, itemId, segmentKey }) {
     );
   }
 
-  let tmpPath = null;
+  const tempPaths = [];
   try {
     const downloaded = await downloadMediaToTempFile({
       mediaUrl,
@@ -217,22 +232,82 @@ async function uploadMediaToOss({ mediaUrl, pageUrl, itemId, segmentKey }) {
       itemId,
       segmentKey,
     });
-    tmpPath = downloaded.tmpPath;
-    const key = objectKey(itemId, segmentKey, mediaUrl, downloaded.ext);
+    tempPaths.push(downloaded.tmpPath);
 
-    const fileLink = await uploadTempFileToOss({
-      tmpPath,
+    const durationSec = await probeMediaDurationSec(downloaded.tmpPath);
+    console.log(
+      `[transcriptMediaOss] duration item=${itemId} segment=${segmentKey} ` +
+        `sec=${durationSec == null ? 'unknown' : durationSec.toFixed(1)}`,
+    );
+    assertDurationWithinLimit(durationSec);
+
+    let uploadPath = downloaded.tmpPath;
+    let uploadExt = downloaded.ext;
+    let uploadContentType = downloaded.contentType;
+    let uploadBytes = downloaded.bytes;
+    let extractMs = 0;
+    let extracted = false;
+
+    if (
+      EXTRACT_AUDIO &&
+      looksLikeVideoContainer(downloaded.ext, downloaded.contentType)
+    ) {
+      try {
+        const audio = await extractAudioForAsr(downloaded.tmpPath, {
+          itemId,
+          segmentKey,
+        });
+        tempPaths.push(audio.outPath);
+        uploadPath = audio.outPath;
+        uploadExt = audio.ext;
+        uploadContentType = audio.contentType;
+        uploadBytes = audio.bytes;
+        extractMs = audio.extractMs;
+        extracted = true;
+      } catch (err) {
+        console.warn(
+          `[transcriptMediaOss] extract audio failed, upload original ` +
+            `item=${itemId} segment=${segmentKey}: ${err.message}`,
+        );
+      }
+    }
+
+    // 抽音频后 key 加 -asr，避免与历史上传的整段 mp4 对象混淆
+    const keyBase = objectKey(itemId, segmentKey, mediaUrl, uploadExt);
+    const key = extracted
+      ? keyBase.replace(new RegExp(`\\.${uploadExt}$`), `-asr.${uploadExt}`)
+      : keyBase;
+
+    const uploaded = await uploadTempFileToOss({
+      tmpPath: uploadPath,
       key,
-      contentType: downloaded.contentType,
+      contentType: uploadContentType,
       itemId,
       segmentKey,
     });
 
-    return { fileLink, ossKey: key };
+    console.log(
+      `[transcriptMediaOss] proxy done item=${itemId} segment=${segmentKey} ` +
+        `downloadedBytes=${downloaded.bytes} uploadBytes=${uploadBytes} ` +
+        `durationSec=${durationSec == null ? 'unknown' : durationSec.toFixed(1)} ` +
+        `extracted=${extracted} downloadMs=${downloaded.downloadMs} ` +
+        `extractMs=${extractMs} uploadMs=${uploaded.uploadMs}`,
+    );
+    return {
+      fileLink: uploaded.fileLink,
+      ossKey: key,
+      viaOss: true,
+      bytes: uploadBytes,
+      downloadMs: downloaded.downloadMs,
+      uploadMs: uploaded.uploadMs,
+      extractMs,
+      extracted,
+      durationSec,
+    };
   } finally {
-    if (tmpPath) {
-      await fsp.unlink(tmpPath).catch((err) => {
-        console.warn(`[transcriptMediaOss] temp cleanup ${tmpPath}`, err.message);
+    for (const p of tempPaths) {
+      await fsp.unlink(p).catch((err) => {
+        console.warn(`[transcriptMediaOss] temp cleanup ${p}`, err.message);
       });
     }
   }
@@ -246,7 +321,7 @@ async function deleteOssObject(ossKey) {
 
 /**
  * 返回可供阿里云 FileTrans 拉取的 file_link。
- * 防盗链 CDN 会先下载并上传到 OSS，再返回签名 URL。
+ * 防盗链 CDN 会先下载；视频容器再抽轨为 16kHz 单声道 mp3 后上传 OSS，再返回签名 URL。
  */
 async function resolveAsrFileLink({ mediaUrl, pageUrl, itemId, segmentKey }) {
   const url = String(mediaUrl || '').trim();
@@ -254,7 +329,14 @@ async function resolveAsrFileLink({ mediaUrl, pageUrl, itemId, segmentKey }) {
     throw Object.assign(new Error('没有可转写的音视频直链'), { status: 400 });
   }
   if (!needsOssProxy(url)) {
-    return { fileLink: url, ossKey: null };
+    // 开放 CDN：尽量探测远程时长；失败则放行（交给 NLS）
+    const durationSec = await probeMediaDurationSec(url, { timeoutMs: 45000 });
+    console.log(
+      `[transcriptMediaOss] direct duration item=${itemId} segment=${segmentKey} ` +
+        `sec=${durationSec == null ? 'unknown' : durationSec.toFixed(1)}`,
+    );
+    assertDurationWithinLimit(durationSec);
+    return { fileLink: url, ossKey: null, viaOss: false, durationSec };
   }
   return uploadMediaToOss({ mediaUrl: url, pageUrl, itemId, segmentKey });
 }
