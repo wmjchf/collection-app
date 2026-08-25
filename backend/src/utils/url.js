@@ -240,6 +240,17 @@ function resolveParseUrl(canonicalUrl, rawUrl) {
   return canonical || raw;
 }
 
+/** B站 canonical 统一为 www.bilibili.com/video/BV…（短链 b23.tv 无法作 CDN Referer） */
+function extractBvid(raw) {
+  const m = String(raw || '').match(/\b(BV[\w]+)\b/i);
+  return m ? m[1] : null;
+}
+
+function normalizeBilibiliCanonical(raw) {
+  const bvid = extractBvid(raw);
+  return bvid ? `https://www.bilibili.com/video/${bvid}` : null;
+}
+
 module.exports = {
   assertHttpUrl,
   normalizeUrl,
@@ -249,4 +260,6 @@ module.exports = {
   infzmContentId,
   xinhuaxmtDocId,
   placeholderTitle,
+  extractBvid,
+  normalizeBilibiliCanonical,
 };
