@@ -1,6 +1,6 @@
 /**
  * 转写媒体时长探测（默认 20 分钟上限）。
- * 纯 JS：`music-metadata` 读容器元数据，不依赖 ffmpeg。
+ * 纯 JS：`music-metadata` 读本地文件容器元数据，不依赖 ffmpeg。
  */
 const { parseFile } = require('music-metadata');
 const config = require('../config');
@@ -26,17 +26,9 @@ async function probeLocalMediaDurationSec(filePath) {
   }
 }
 
-/**
- * @param {string} input 本地路径（http URL 不探测，返回 null）
- * @returns {Promise<number|null>}
- */
-async function probeMediaDurationSec(input) {
-  const s = String(input || '');
-  if (/^https?:\/\//i.test(s)) {
-    // 直链不整段下载测时长；防盗链路径会先落盘再调本函数
-    return null;
-  }
-  return probeLocalMediaDurationSec(s);
+/** @param {string} filePath 本地路径 */
+async function probeMediaDurationSec(filePath) {
+  return probeLocalMediaDurationSec(filePath);
 }
 
 /**
