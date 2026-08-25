@@ -6,6 +6,7 @@ build/
 .flutter-plugins-dependencies
 .pub-cache/
 .pub/
+.pnpm-store/
 
 # Backend
 backend/node_modules/
