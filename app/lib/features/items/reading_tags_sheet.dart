@@ -6,23 +6,56 @@ import 'package:super_collection/features/collection/tags_repository.dart';
 import 'package:super_collection/features/items/items_repository.dart';
 import 'package:super_collection/core/ui/app_toast.dart';
 
-Future<void> showReadingTagsSheet(
+enum ReadingTagsSheetResult { aiSuggest, createTag }
+
+class _TagsSheetSession {
+  final Set<int> selectedIds = {};
+}
+
+Future<ReadingTagsSheetResult?> showReadingTagsSheet(
   BuildContext context, {
   required int itemId,
-}) {
-  return showModalBottomSheet<void>(
-    context: context,
-    isScrollControlled: true,
-    backgroundColor: Colors.transparent,
-    barrierColor: const Color(0x59000000),
-    builder: (context) => _ReadingTagsSheet(itemId: itemId),
-  );
+  bool aiSuggestEnabled = true,
+  bool aiSuggestPending = false,
+}) async {
+  final session = _TagsSheetSession();
+
+  while (true) {
+    final result = await showModalBottomSheet<ReadingTagsSheetResult>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      barrierColor: const Color(0x59000000),
+      builder: (context) => _ReadingTagsSheet(
+        itemId: itemId,
+        session: session,
+        aiSuggestEnabled: aiSuggestEnabled,
+        aiSuggestPending: aiSuggestPending,
+      ),
+    );
+    if (result != ReadingTagsSheetResult.createTag) {
+      return result;
+    }
+    if (!context.mounted) return null;
+    final created = await showCreateTagSheet(context);
+    if (created != null) {
+      session.selectedIds.add(created.id);
+    }
+  }
 }
 
 class _ReadingTagsSheet extends StatefulWidget {
-  const _ReadingTagsSheet({required this.itemId});
+  const _ReadingTagsSheet({
+    required this.itemId,
+    required this.session,
+    required this.aiSuggestEnabled,
+    required this.aiSuggestPending,
+  });
 
   final int itemId;
+  final _TagsSheetSession session;
+  final bool aiSuggestEnabled;
+  final bool aiSuggestPending;
 
   @override
   State<_ReadingTagsSheet> createState() => _ReadingTagsSheetState();
@@ -63,9 +96,14 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
         _all = all.where((t) => !t.isSystem).toList();
         _selected
           ..clear()
-          ..addAll(current.map((t) => t.id));
+          ..addAll(
+            widget.session.selectedIds.isNotEmpty
+                ? widget.session.selectedIds
+                : current.map((t) => t.id),
+          );
         _loading = false;
       });
+      _syncSession();
     } on ApiException catch (e) {
       if (!mounted) return;
       setState(() {
@@ -81,13 +119,15 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
     }
   }
 
-  Future<void> _createTag() async {
-    final created = await showCreateTagSheet(context);
-    if (created == null || !mounted) return;
-    setState(() {
-      _all = [..._all, created];
-      _selected.add(created.id);
-    });
+  void _syncSession() {
+    widget.session.selectedIds
+      ..clear()
+      ..addAll(_selected);
+  }
+
+  void _createTag() {
+    _syncSession();
+    Navigator.pop(context, ReadingTagsSheetResult.createTag);
   }
 
   Future<void> _save() async {
@@ -106,6 +146,19 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
       setState(() => _saving = false);
       AppToast.show(context, '保存失败');
     }
+  }
+
+  void _onAiSuggest() {
+    if (widget.aiSuggestEnabled) {
+      Navigator.pop(context, ReadingTagsSheetResult.aiSuggest);
+      return;
+    }
+    AppToast.show(
+      context,
+      widget.aiSuggestPending
+          ? '标签建议生成中，请稍候'
+          : '内容不足，无法生成标签建议',
+    );
   }
 
   @override
@@ -139,6 +192,7 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
                 ),
                 const SizedBox(height: 12),
                 Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
                     const Text(
                       '选择标签',
@@ -147,6 +201,27 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
                         fontWeight: FontWeight.w700,
                         color: _text,
                       ),
+                    ),
+                    const SizedBox(width: 8),
+                    _HeaderActionButton(
+                      icon: Icons.auto_awesome_outlined,
+                      label: widget.aiSuggestPending
+                          ? 'AI 生成中…'
+                          : 'AI 建议标签',
+                      onTap: _onAiSuggest,
+                      foreground:
+                          widget.aiSuggestEnabled ? _blue : _muted,
+                      borderColor: widget.aiSuggestEnabled
+                          ? const Color(0xFFB8CCFA)
+                          : const Color(0xFFE8ECF0),
+                    ),
+                    const SizedBox(width: 6),
+                    _HeaderActionButton(
+                      icon: Icons.add,
+                      label: '新建',
+                      onTap: _createTag,
+                      foreground: _text,
+                      borderColor: const Color(0xFFE8ECF0),
                     ),
                     const Spacer(),
                     GestureDetector(
@@ -171,6 +246,18 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
                     padding: const EdgeInsets.symmetric(vertical: 16),
                     child: Text(_error!, style: const TextStyle(color: _muted)),
                   )
+                else if (_all.isEmpty)
+                  const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 12),
+                    child: Text(
+                      '还没有标签，可点「新建」或使用 AI 建议',
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: _muted,
+                        height: 1.4,
+                      ),
+                    ),
+                  )
                 else
                   Wrap(
                     spacing: 10,
@@ -186,6 +273,7 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
                               } else {
                                 _selected.add(tag.id);
                               }
+                              _syncSession();
                             });
                           },
                           child: Container(
@@ -211,27 +299,6 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
                             ),
                           ),
                         ),
-                      GestureDetector(
-                        onTap: _createTag,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 14,
-                            vertical: 8,
-                          ),
-                          decoration: BoxDecoration(
-                            color: _chipBg,
-                            borderRadius: BorderRadius.circular(16),
-                          ),
-                          child: const Text(
-                            '+ 新建',
-                            style: TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w500,
-                              color: _text,
-                            ),
-                          ),
-                        ),
-                      ),
                     ],
                   ),
                 const SizedBox(height: 16),
@@ -252,6 +319,53 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
               ],
             ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+class _HeaderActionButton extends StatelessWidget {
+  const _HeaderActionButton({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+    required this.foreground,
+    required this.borderColor,
+  });
+
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+  final Color foreground;
+  final Color borderColor;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: borderColor, width: 1),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 12, color: foreground),
+            const SizedBox(width: 3),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+                color: foreground,
+              ),
+            ),
+          ],
         ),
       ),
     );

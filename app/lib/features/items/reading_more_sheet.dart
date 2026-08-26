@@ -10,12 +10,16 @@ Future<ReadingMoreAction?> showReadingMoreSheet(
     context: context,
     backgroundColor: Colors.transparent,
     barrierColor: const Color(0x66000000),
-    builder: (context) => _ReadingMoreSheet(showTranscript: showTranscript),
+    builder: (context) => _ReadingMoreSheet(
+      showTranscript: showTranscript,
+    ),
   );
 }
 
 class _ReadingMoreSheet extends StatelessWidget {
-  const _ReadingMoreSheet({required this.showTranscript});
+  const _ReadingMoreSheet({
+    required this.showTranscript,
+  });
 
   final bool showTranscript;
 
@@ -67,8 +71,11 @@ class _ReadingMoreSheet extends StatelessWidget {
                 ],
               ),
               const SizedBox(height: 16),
-              Row(
-                children: [
+              Align(
+                alignment: Alignment.centerLeft,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
                   _GridItem(
                     icon: Icons.folder_outlined,
                     label: '移动收藏夹',
@@ -89,7 +96,8 @@ class _ReadingMoreSheet extends StatelessWidget {
                     onTap: () =>
                         Navigator.pop(context, ReadingMoreAction.delete),
                   ),
-                ],
+                  ],
+                ),
               ),
               const SizedBox(height: 8),
             ],
@@ -106,19 +114,23 @@ class _GridItem extends StatelessWidget {
     required this.label,
     required this.onTap,
     this.color = _ReadingMoreSheet._text,
+    this.enabled = true,
   });
 
   final IconData icon;
   final String label;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
   final Color color;
+  final bool enabled;
 
   @override
   Widget build(BuildContext context) {
+    final effectiveColor =
+        enabled ? color : color.withValues(alpha: 0.35);
     return SizedBox(
       width: 80,
       child: InkWell(
-        onTap: onTap,
+        onTap: enabled ? onTap : null,
         borderRadius: BorderRadius.circular(14),
         child: Column(
           children: [
@@ -129,13 +141,13 @@ class _GridItem extends StatelessWidget {
                 color: _ReadingMoreSheet._iconBg,
                 borderRadius: BorderRadius.circular(14),
               ),
-              child: Icon(icon, size: 24, color: color),
+              child: Icon(icon, size: 24, color: effectiveColor),
             ),
             const SizedBox(height: 8),
             Text(
               label,
               textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 12, color: color),
+              style: TextStyle(fontSize: 12, color: effectiveColor),
             ),
           ],
         ),

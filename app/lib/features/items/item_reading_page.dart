@@ -6,7 +6,10 @@ import 'package:flutter/services.dart';
 import 'package:super_collection/core/network/api_client.dart';
 import 'package:super_collection/core/network/media_http_headers.dart';
 import 'package:super_collection/core/ui/app_toast.dart';
+import 'package:super_collection/features/collection/tag_models.dart';
 import 'package:super_collection/features/home/home_format.dart';
+import 'package:super_collection/features/items/ai_meta_models.dart';
+import 'package:super_collection/features/items/ai_tag_suggest_panel.dart';
 import 'package:super_collection/features/items/article_body_text.dart';
 import 'package:super_collection/features/items/article_content_blocks.dart';
 import 'package:super_collection/features/items/article_markdown.dart';
@@ -48,7 +51,9 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
   static const _bottomBarHeight = 56.0;
 
   final _repo = ItemsRepository();
+  final _scrollController = ScrollController();
   late CollectionItem _item;
+  List<Tag> _itemTags = const [];
   List<ItemAnnotation> _annotations = const [];
   bool _starring = false;
   bool _loadingAnns = true;
@@ -62,16 +67,51 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
     super.initState();
     _item = widget.item;
     _loadAnnotations();
+    unawaited(_loadItemTags());
     unawaited(ReadingMediaController.ensureAudioSession());
     if (_item.hasAnyTranscriptPending) {
       _pollTranscript();
+    }
+    if (_item.hasAiTagsPending) {
+      _pollAiSuggest();
     }
   }
 
   @override
   void dispose() {
+    _scrollController.dispose();
     _pageAudio.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadItemTags() async {
+    try {
+      final tags = await _repo.listItemTags(_item.id);
+      if (!mounted) return;
+      setState(() {
+        _itemTags = tags.where((t) => !t.isSystem).toList(growable: false);
+      });
+    } catch (_) {
+      // ignore
+    }
+  }
+
+  void _scrollToArticleEnd() {
+    void jump() {
+      if (!mounted || !_scrollController.hasClients) return;
+      final max = _scrollController.position.maxScrollExtent;
+      if (max.isFinite) {
+        _scrollController.jumpTo(max);
+      }
+    }
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      jump();
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        jump();
+        WidgetsBinding.instance.addPostFrameCallback((_) => jump());
+      });
+    });
   }
 
   void _toggleReadingChrome() {
@@ -433,6 +473,111 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
     }
   }
 
+  Future<void> _onAiSuggest({bool force = false}) async {
+    if (!_item.canRequestAiSuggest) {
+      AppToast.show(context, '内容不足，无法生成标签建议');
+      return;
+    }
+    if (_item.hasAiTagsPending) {
+      AppToast.show(context, '标签建议生成中，请稍候');
+      return;
+    }
+
+    if (!force &&
+        _item.aiMeta.tags.isSuccess &&
+        _item.aiMeta.tags.hasSuggestions) {
+      final retry = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('重新生成'),
+          content: const Text('将覆盖当前标签建议，是否继续？'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('取消'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('重新生成'),
+            ),
+          ],
+        ),
+      );
+      if (retry != true || !mounted) return;
+      force = true;
+    }
+
+    try {
+      final updated = await _repo.requestAiSuggest(_item.id, force: force);
+      if (!mounted) return;
+      setState(() => _item = updated);
+      _scrollToArticleEnd();
+      _pollAiSuggest();
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      AppToast.show(context, e.message);
+    }
+  }
+
+  Future<void> _pollAiSuggest() async {
+    for (var i = 0; i < 45; i++) {
+      await Future<void>.delayed(const Duration(seconds: 2));
+      if (!mounted) return;
+      try {
+        final st = await _repo.getAiSuggestStatus(_item.id);
+        if (st.tags.isPending) {
+          if (_item.aiMeta.tags.status != 'pending') {
+            setState(
+              () => _item = _item.withAiMeta(
+                AiMeta(tags: st.tags, model: st.model),
+              ),
+            );
+            _scrollToArticleEnd();
+          }
+          continue;
+        }
+        final item = await _repo.getItem(_item.id);
+        if (!mounted) return;
+        setState(() => _item = item);
+        _scrollToArticleEnd();
+        if (st.tags.isSuccess) {
+          AppToast.show(context, '标签建议已生成');
+        } else if (st.tags.isEmpty) {
+          AppToast.show(context, '暂无新的标签建议');
+        } else if (st.tags.isFailed) {
+          AppToast.show(context, st.tags.error ?? '标签建议生成失败');
+        }
+        return;
+      } catch (_) {
+        // ignore poll errors
+      }
+    }
+  }
+
+  Future<void> _applyAiSuggest(List<String> names) async {
+    try {
+      final updated = await _repo.applyAiSuggest(_item.id, names);
+      if (!mounted) return;
+      setState(() => _item = updated);
+      await _loadItemTags();
+      AppToast.show(context, '已采纳标签');
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      AppToast.show(context, e.message);
+    }
+  }
+
+  Future<void> _dismissAiSuggest() async {
+    try {
+      final updated = await _repo.dismissAiSuggest(_item.id);
+      if (!mounted) return;
+      setState(() => _item = updated);
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      AppToast.show(context, e.message);
+    }
+  }
+
   Future<void> _onTranscript() async {
     if (_item.hasAnyTranscriptPending) {
       AppToast.show(context, '请等当前转写完成');
@@ -743,6 +888,8 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
               onTap: _toggleReadingChrome,
               behavior: HitTestBehavior.translucent,
               child: ListView(
+                controller: _scrollController,
+                physics: const ClampingScrollPhysics(),
                 // 避免播放器滚出视口后被 Platform View 回收/暂停（尤其播客音频）
                 cacheExtent: mq.size.height * 2,
                 padding: const EdgeInsets.fromLTRB(22, 18, 22, 28),
@@ -838,6 +985,14 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
                       ),
                     ),
                   ],
+                  if (_itemTags.isNotEmpty)
+                    _ArticleTagHashtags(tags: _itemTags),
+                  AiTagSuggestPanel(
+                    tagsMeta: _item.aiMeta.tags,
+                    onApply: _applyAiSuggest,
+                    onDismiss: _dismissAiSuggest,
+                    onRetry: () => _onAiSuggest(force: true),
+                  ),
                 ],
               ),
             ),
@@ -898,10 +1053,22 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
                               _ActionItem(
                                 icon: Icons.tag_outlined,
                                 label: '标签',
-                                onTap: () => showReadingTagsSheet(
-                                  context,
-                                  itemId: _item.id,
-                                ),
+                                onTap: () async {
+                                  final result = await showReadingTagsSheet(
+                                    context,
+                                    itemId: _item.id,
+                                    aiSuggestEnabled:
+                                        _item.canRequestAiSuggest &&
+                                        !_item.hasAiTagsPending,
+                                    aiSuggestPending: _item.hasAiTagsPending,
+                                  );
+                                  if (!mounted) return;
+                                  await _loadItemTags();
+                                  if (result ==
+                                      ReadingTagsSheetResult.aiSuggest) {
+                                    await _onAiSuggest();
+                                  }
+                                },
                               ),
                               _ActionItem(
                                 icon: Icons.edit_note_outlined,
@@ -927,6 +1094,51 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
               ),
             ),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ArticleTagHashtags extends StatelessWidget {
+  const _ArticleTagHashtags({required this.tags});
+
+  final List<Tag> tags;
+
+  static const _muted = Color(0xFF737A85);
+  static const _brand = Color(0xFF2F6FED);
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 20),
+      child: Wrap(
+        spacing: 10,
+        runSpacing: 8,
+        children: [
+          for (final tag in tags)
+            Text.rich(
+              TextSpan(
+                children: [
+                  const TextSpan(
+                    text: '#',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                      color: _brand,
+                    ),
+                  ),
+                  TextSpan(
+                    text: tag.name,
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                      color: _muted,
+                    ),
+                  ),
+                ],
+              ),
+            ),
         ],
       ),
     );

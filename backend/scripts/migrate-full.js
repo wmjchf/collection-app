@@ -46,6 +46,7 @@ async function main() {
     '004_item_image_urls.sql',
     '005_item_video_url.sql',
     '007_transcript_segments.sql',
+    '008_item_ai_meta.sql',
   ];
   for (const name of incremental) {
     await conn.query(

@@ -15,6 +15,7 @@ const MIGRATION_FILES = [
   '004_item_image_urls.sql',
   '005_item_video_url.sql',
   '007_transcript_segments.sql',
+  '008_item_ai_meta.sql',
 ];
 
 async function getConnection() {

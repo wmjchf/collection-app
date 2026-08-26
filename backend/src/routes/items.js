@@ -167,6 +167,61 @@ router.post('/:id/transcript', async (req, res, next) => {
   }
 });
 
+/** GET /api/items/:id/ai-suggest-status — AI 标签建议轮询 */
+router.get('/:id/ai-suggest-status', async (req, res, next) => {
+  try {
+    const status = await itemService.getAiSuggestStatus(
+      req.auth.userId,
+      Number(req.params.id),
+    );
+    return res.json(status);
+  } catch (err) {
+    return next(err);
+  }
+});
+
+/** POST /api/items/:id/ai-suggest — 手动触发 AI 标签建议 */
+router.post('/:id/ai-suggest', async (req, res, next) => {
+  try {
+    const item = await itemService.requestAiSuggest(
+      req.auth.userId,
+      Number(req.params.id),
+      { force: !!req.body?.force },
+    );
+    return res.json({ item, message: '正在生成标签建议…' });
+  } catch (err) {
+    return next(err);
+  }
+});
+
+/** POST /api/items/:id/ai-suggest/apply — 采纳所选标签（合并已有） */
+router.post('/:id/ai-suggest/apply', async (req, res, next) => {
+  try {
+    const names = req.body?.names || req.body?.selected || [];
+    const item = await itemService.applyAiSuggest(
+      req.auth.userId,
+      Number(req.params.id),
+      { names: Array.isArray(names) ? names : [] },
+    );
+    return res.json({ item, message: '已采纳标签' });
+  } catch (err) {
+    return next(err);
+  }
+});
+
+/** POST /api/items/:id/ai-suggest/dismiss — 忽略建议 */
+router.post('/:id/ai-suggest/dismiss', async (req, res, next) => {
+  try {
+    const item = await itemService.dismissAiSuggest(
+      req.auth.userId,
+      Number(req.params.id),
+    );
+    return res.json({ item, message: '已忽略' });
+  } catch (err) {
+    return next(err);
+  }
+});
+
 /** GET /api/items/:id/transcript-status — 转写状态轮询 */
 router.get('/:id/transcript-status', async (req, res, next) => {
   try {
