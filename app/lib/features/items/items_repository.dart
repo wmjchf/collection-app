@@ -2,6 +2,7 @@ import 'package:super_collection/core/network/api_client.dart';
 import 'package:super_collection/features/auth/auth_repository.dart';
 import 'package:super_collection/features/collection/tag_models.dart';
 import 'package:super_collection/features/items/item_models.dart';
+import 'package:super_collection/features/items/transcript_models.dart';
 
 class ItemsRepository {
   ItemsRepository({
@@ -83,6 +84,75 @@ class ItemsRepository {
     );
     final itemJson = json['item'] as Map<String, dynamic>? ?? {};
     return CollectionItem.fromJson(itemJson);
+  }
+
+  /// 可转写媒体列表
+  Future<List<TranscriptTarget>> getTranscriptTargets(int id) async {
+    final token = await _token();
+    final json = await _api.get(
+      '/api/items/$id/transcript-targets',
+      accessToken: token,
+    );
+    final raw = json['targets'];
+    if (raw is! List) return const [];
+    return raw
+        .whereType<Map>()
+        .map((e) => TranscriptTarget.fromJson(
+              e.map((k, v) => MapEntry(k.toString(), v)),
+            ))
+        .toList(growable: false);
+  }
+
+  /// 按 segmentKey 提交转写
+  Future<CollectionItem> requestTranscript(
+    int id, {
+    required String segmentKey,
+    bool force = false,
+    String? mediaUrl,
+  }) async {
+    final token = await _token();
+    final body = <String, dynamic>{
+      'segmentKey': segmentKey,
+      'force': force,
+    };
+    if (mediaUrl != null && mediaUrl.trim().isNotEmpty) {
+      body['mediaUrl'] = mediaUrl.trim();
+    }
+    final json = await _api.post(
+      '/api/items/$id/transcript',
+      body: body,
+      accessToken: token,
+    );
+    final itemJson = json['item'] as Map<String, dynamic>? ?? {};
+    return CollectionItem.fromJson(itemJson);
+  }
+
+  Future<({
+    Map<String, TranscriptSegment> segments,
+    bool hasPending,
+    String? pendingSegmentKey,
+  })> getTranscriptStatus(int id) async {
+    final token = await _token();
+    final json = await _api.get(
+      '/api/items/$id/transcript-status',
+      accessToken: token,
+    );
+    final raw = json['segments'];
+    final segments = <String, TranscriptSegment>{};
+    if (raw is Map) {
+      raw.forEach((key, value) {
+        if (value is Map) {
+          segments[key.toString()] = TranscriptSegment.fromJson(
+            value.map((k, v) => MapEntry(k.toString(), v)),
+          );
+        }
+      });
+    }
+    return (
+      segments: segments,
+      hasPending: json['hasPending'] as bool? ?? false,
+      pendingSegmentKey: json['pendingSegmentKey'] as String?,
+    );
   }
 
   Future<({String status, String? title, String? errorMessage})> getParseStatus(

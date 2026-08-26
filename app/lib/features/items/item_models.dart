@@ -1,3 +1,5 @@
+import 'package:super_collection/features/items/transcript_models.dart';
+
 class CollectionItem {
   const CollectionItem({
     required this.id,
@@ -10,6 +12,7 @@ class CollectionItem {
     this.coverImageUrl,
     this.imageUrls = const [],
     this.videoUrl,
+    this.transcriptSegments = const {},
     this.platform,
     this.errorMessage,
     this.note,
@@ -33,6 +36,8 @@ class CollectionItem {
   final List<String> imageUrls;
   /// 视频直链（如小红书）；CDN 签名可能过期
   final String? videoUrl;
+  /// 分段转写：segmentKey → 状态与文稿
+  final Map<String, TranscriptSegment> transcriptSegments;
   final String? platform;
   final String status; // pending | success | failed
   final String? errorMessage;
@@ -50,6 +55,47 @@ class CollectionItem {
   bool get isSuccess => status == 'success';
   bool get isFailed => status == 'failed';
   bool get isInTrash => deletedAt != null;
+  bool get hasAnyTranscriptPending =>
+      transcriptSegments.values.any((s) => s.isPending);
+  bool get hasAnyTranscript =>
+      transcriptSegments.values.any((s) => s.hasText);
+  TranscriptSegment? segmentTranscript(String key) =>
+      transcriptSegments[key];
+  bool get canRequestTranscript =>
+      TranscriptTargets.listFor(
+        content: content,
+        videoUrl: videoUrl,
+        hasTopVideo: hasVideo,
+      ).isNotEmpty;
+
+  CollectionItem withTranscriptSegments(
+    Map<String, TranscriptSegment> segments,
+  ) {
+    return CollectionItem(
+      id: id,
+      url: url,
+      canonicalUrl: canonicalUrl,
+      title: title,
+      content: content,
+      summary: summary,
+      coverImageUrl: coverImageUrl,
+      imageUrls: imageUrls,
+      videoUrl: videoUrl,
+      transcriptSegments: segments,
+      platform: platform,
+      status: status,
+      errorMessage: errorMessage,
+      note: note,
+      folderId: folderId,
+      isUnread: isUnread,
+      isStarred: isStarred,
+      createdAt: createdAt,
+      updatedAt: updatedAt,
+      lastReadAt: lastReadAt,
+      deletedAt: deletedAt,
+      annotationCount: annotationCount,
+    );
+  }
 
   /// 防盗链 Referer：优先规范化后的源站。
   String? get sourcePageUrl {
@@ -142,6 +188,7 @@ class CollectionItem {
       coverImageUrl: json['coverImageUrl'] as String?,
       imageUrls: images,
       videoUrl: json['videoUrl'] as String?,
+      transcriptSegments: _parseTranscriptSegments(json['transcriptSegments']),
       platform: json['platform'] as String?,
       status: json['status'] as String? ?? 'pending',
       errorMessage: json['errorMessage'] as String?,
@@ -155,6 +202,21 @@ class CollectionItem {
       deletedAt: _parseTime(json['deletedAt']),
       annotationCount: (json['annotationCount'] as num?)?.toInt(),
     );
+  }
+
+  static Map<String, TranscriptSegment> _parseTranscriptSegments(Object? raw) {
+    if (raw is! Map) return const {};
+    final out = <String, TranscriptSegment>{};
+    raw.forEach((key, value) {
+      if (value is Map<String, dynamic>) {
+        out[key.toString()] = TranscriptSegment.fromJson(value);
+      } else if (value is Map) {
+        out[key.toString()] = TranscriptSegment.fromJson(
+          value.map((k, v) => MapEntry(k.toString(), v)),
+        );
+      }
+    });
+    return out;
   }
 
   static DateTime? _parseTime(Object? value) {

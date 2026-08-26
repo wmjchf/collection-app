@@ -21,6 +21,9 @@ import 'package:super_collection/features/items/reading_folder_sheet.dart';
 import 'package:super_collection/features/items/reading_more_sheet.dart';
 import 'package:super_collection/features/items/reading_note_sheet.dart';
 import 'package:super_collection/features/items/reading_tags_sheet.dart';
+import 'package:super_collection/features/items/transcript_models.dart';
+import 'package:super_collection/features/items/transcript_picker_sheet.dart';
+import 'package:super_collection/features/items/transcript_segment_panel.dart';
 
 /// 本地阅读页：标题 + 可读正文（含标注高亮）；底栏 星标 / 标签 / 备注 / 更多。
 class ItemReadingPage extends StatefulWidget {
@@ -60,6 +63,9 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
     _item = widget.item;
     _loadAnnotations();
     unawaited(ReadingMediaController.ensureAudioSession());
+    if (_item.hasAnyTranscriptPending) {
+      _pollTranscript();
+    }
   }
 
   @override
@@ -404,7 +410,13 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
   }
 
   Future<void> _onMore() async {
-    final action = await showReadingMoreSheet(context);
+    final action = await showReadingMoreSheet(
+      context,
+      showTranscript:
+          _item.canRequestTranscript ||
+          _item.hasAnyTranscriptPending ||
+          _item.hasAnyTranscript,
+    );
     if (!mounted || action == null) return;
     switch (action) {
       case ReadingMoreAction.moveFolder:
@@ -414,8 +426,143 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
           currentFolderId: _item.folderId,
         );
         if (updated != null && mounted) setState(() => _item = updated);
+      case ReadingMoreAction.transcript:
+        await _onTranscript();
       case ReadingMoreAction.delete:
         await _confirmDelete();
+    }
+  }
+
+  Future<void> _onTranscript() async {
+    if (_item.hasAnyTranscriptPending) {
+      AppToast.show(context, '请等当前转写完成');
+      return;
+    }
+
+    List<TranscriptTarget> targets;
+    try {
+      targets = await _repo.getTranscriptTargets(_item.id);
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      AppToast.show(context, e.message);
+      return;
+    }
+
+    if (targets.isEmpty) {
+      if (!mounted) return;
+      AppToast.show(context, '该条目没有可转写的音视频');
+      return;
+    }
+
+    TranscriptTarget? chosen;
+    if (targets.length == 1) {
+      chosen = targets.first;
+    } else {
+      if (!mounted) return;
+      chosen = await showTranscriptPickerSheet(context, targets: targets);
+    }
+    if (chosen == null || !mounted) return;
+
+    final existing = _item.segmentTranscript(chosen.segmentKey);
+    if (existing?.hasText == true) {
+      final retry = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('重新转写'),
+          content: const Text('该段已有文稿，是否重新转写并覆盖？'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('取消'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('重新转写'),
+            ),
+          ],
+        ),
+      );
+      if (retry != true || !mounted) return;
+    }
+
+    try {
+      String? mediaUrl;
+      if (chosen.needsClientResolve) {
+        if (chosen.segmentKey.startsWith('inline:')) {
+          final idx = int.tryParse(chosen.segmentKey.split(':').last);
+          if (idx != null) mediaUrl = await _refreshInlineVideo(idx);
+        } else {
+          mediaUrl = await _refreshVideoUrl();
+        }
+        if (mediaUrl == null || mediaUrl.trim().isEmpty) {
+          if (!mounted) return;
+          AppToast.show(context, '无法获取音视频直链，请先播放或刷新视频');
+          return;
+        }
+      }
+
+      final updated = await _repo.requestTranscript(
+        _item.id,
+        segmentKey: chosen.segmentKey,
+        force: existing?.hasText == true,
+        mediaUrl: mediaUrl,
+      );
+      if (!mounted) return;
+      setState(() => _item = updated);
+      AppToast.show(context, '已开始转写，请稍候');
+      _pollTranscript();
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      AppToast.show(context, e.message);
+    }
+  }
+
+  Future<void> _pollTranscript() async {
+    String? lastPhaseFingerprint;
+    for (var i = 0; i < 90; i++) {
+      await Future<void>.delayed(const Duration(seconds: 4));
+      if (!mounted) return;
+      try {
+        final st = await _repo.getTranscriptStatus(_item.id);
+        if (st.hasPending) {
+          // pending 期间合并 segments，让 phaseLabel 刷新到面板
+          final merged = Map<String, TranscriptSegment>.from(
+            _item.transcriptSegments,
+          );
+          st.segments.forEach((key, seg) {
+            merged[key] = seg;
+          });
+          final fp = st.segments.entries
+              .map((e) => '${e.key}:${e.value.phase}:${e.value.phaseLabel}')
+              .join('|');
+          if (fp != lastPhaseFingerprint) {
+            lastPhaseFingerprint = fp;
+            if (!mounted) return;
+            setState(() => _item = _item.withTranscriptSegments(merged));
+          }
+          continue;
+        }
+        final item = await _repo.getItem(_item.id);
+        if (!mounted) return;
+        setState(() => _item = item);
+        final anySuccess = st.segments.values.any((s) => s.isSuccess);
+        if (anySuccess) {
+          AppToast.show(context, '文稿已生成');
+        } else {
+          String? errMsg;
+          for (final s in st.segments.values) {
+            final e = s.error?.trim();
+            if (e != null && e.isNotEmpty) {
+              errMsg = e;
+              break;
+            }
+          }
+          if (errMsg != null) AppToast.show(context, errMsg);
+        }
+        return;
+      } catch (_) {
+        // ignore poll errors
+      }
     }
   }
 
@@ -622,7 +769,6 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
                   const SizedBox(height: 22),
                   if (_item.hasVideo && !_hasInlineVideos) ...[
                     ItemVideoPlayer(
-                      // 勿用 videoUrl 做 key：刷新直链会重建并死循环转圈
                       key: ValueKey('item-video-${_item.id}'),
                       url: _item.videoUrl!.trim(),
                       coverUrl: _item.coverImageUrl ??
@@ -635,6 +781,11 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
                       onRefreshUrl: _platformNeedsVideoRefresh
                           ? _refreshVideoUrl
                           : null,
+                    ),
+                    TranscriptSegmentPanel(
+                      segment: _item.segmentTranscript(
+                        TranscriptTargets.segmentVideoUrl,
+                      ),
                     ),
                     const SizedBox(height: 18),
                   ] else if (_showReadingImages) ...[
@@ -660,6 +811,7 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
                       onSelectionChanged: _onBodySelectionChanged,
                       itemId: _item.id,
                       pageUrl: _item.sourcePageUrl,
+                      transcriptSegments: _item.transcriptSegments,
                       platform: _item.platform,
                       pageAudio: _pageAudio,
                       onRefreshInlineVideo: _platformNeedsVideoRefresh
@@ -793,6 +945,7 @@ class _InlineArticleBody extends StatelessWidget {
     this.onSelectionChanged,
     this.itemId,
     this.pageUrl,
+    this.transcriptSegments = const {},
     this.platform,
     this.pageAudio,
     this.onRefreshInlineVideo,
@@ -807,6 +960,7 @@ class _InlineArticleBody extends StatelessWidget {
   final ValueChanged<TextSelection>? onSelectionChanged;
   final int? itemId;
   final String? pageUrl;
+  final Map<String, TranscriptSegment> transcriptSegments;
   final String? platform;
   final ReadingMediaController? pageAudio;
   final Future<String?> Function(int index)? onRefreshInlineVideo;
@@ -870,24 +1024,33 @@ class _InlineArticleBody extends StatelessWidget {
       if (block is ArticleVideoBlock) {
         if (children.isNotEmpty) children.add(const SizedBox(height: 18));
         final index = videoIndex++;
+        final segmentKey = 'inline:$index';
         children.add(
-          LayoutBuilder(
-            builder: (context, constraints) {
-              final w = constraints.maxWidth;
-              final h = (w * 9 / 16).clamp(180.0, 280.0);
-              return ItemVideoPlayer(
-                key: ValueKey('body-video-${itemId ?? 0}-$index'),
-                url: block.url,
-                coverUrl: block.posterUrl,
-                pageUrl: pageUrl,
-                platform: platform,
-                pageAudio: pageAudio,
-                height: h,
-                onRefreshUrl: onRefreshInlineVideo == null
-                    ? null
-                    : () => onRefreshInlineVideo!(index),
-              );
-            },
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  final w = constraints.maxWidth;
+                  final h = (w * 9 / 16).clamp(180.0, 280.0);
+                  return ItemVideoPlayer(
+                    key: ValueKey('body-video-${itemId ?? 0}-$index'),
+                    url: block.url,
+                    coverUrl: block.posterUrl,
+                    pageUrl: pageUrl,
+                    platform: platform,
+                    pageAudio: pageAudio,
+                    height: h,
+                    onRefreshUrl: onRefreshInlineVideo == null
+                        ? null
+                        : () => onRefreshInlineVideo!(index),
+                  );
+                },
+              ),
+              TranscriptSegmentPanel(
+                segment: transcriptSegments[segmentKey],
+              ),
+            ],
           ),
         );
         continue;

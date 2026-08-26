@@ -133,6 +133,53 @@ router.post('/:id/refresh-video', async (req, res, next) => {
   }
 });
 
+/** GET /api/items/:id/transcript-targets — 可转写媒体列表及各段状态 */
+router.get('/:id/transcript-targets', async (req, res, next) => {
+  try {
+    const data = await itemService.listTranscriptTargetsForUser(
+      req.auth.userId,
+      Number(req.params.id),
+    );
+    return res.json(data);
+  } catch (err) {
+    return next(err);
+  }
+});
+
+/** POST /api/items/:id/transcript — 按 segmentKey 提交阿里云录音识别 */
+router.post('/:id/transcript', async (req, res, next) => {
+  try {
+    const item = await itemService.requestTranscript(
+      req.auth.userId,
+      Number(req.params.id),
+      {
+        segmentKey: req.body?.segmentKey,
+        force: !!req.body?.force,
+        mediaUrl: req.body?.mediaUrl,
+      },
+    );
+    return res.json({
+      item,
+      message: '已开始转写，请稍后查看',
+    });
+  } catch (err) {
+    return next(err);
+  }
+});
+
+/** GET /api/items/:id/transcript-status — 转写状态轮询 */
+router.get('/:id/transcript-status', async (req, res, next) => {
+  try {
+    const status = await itemService.getTranscriptStatus(
+      req.auth.userId,
+      Number(req.params.id),
+    );
+    return res.json(status);
+  } catch (err) {
+    return next(err);
+  }
+});
+
 /** POST /api/items/:id/parse-with-html — 客户端抓取 HTML 后交由服务端抽取 */
 router.post('/:id/parse-with-html', async (req, res, next) => {
   try {
