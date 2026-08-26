@@ -1,3 +1,4 @@
+import 'package:super_collection/features/items/ai_meta_models.dart';
 import 'package:super_collection/features/items/transcript_models.dart';
 
 class CollectionItem {
@@ -13,6 +14,7 @@ class CollectionItem {
     this.imageUrls = const [],
     this.videoUrl,
     this.transcriptSegments = const {},
+    this.aiMeta = const AiMeta(),
     this.platform,
     this.errorMessage,
     this.note,
@@ -38,6 +40,7 @@ class CollectionItem {
   final String? videoUrl;
   /// 分段转写：segmentKey → 状态与文稿
   final Map<String, TranscriptSegment> transcriptSegments;
+  final AiMeta aiMeta;
   final String? platform;
   final String status; // pending | success | failed
   final String? errorMessage;
@@ -68,6 +71,44 @@ class CollectionItem {
         hasTopVideo: hasVideo,
       ).isNotEmpty;
 
+  bool get canRequestAiSuggest {
+    final t = (title ?? '').trim();
+    final body = (content ?? '').trim();
+    final sum = (summary ?? '').trim();
+    final hasTranscript = transcriptSegments.values.any((s) => s.hasText);
+    return t.isNotEmpty || body.isNotEmpty || sum.isNotEmpty || hasTranscript;
+  }
+
+  bool get hasAiTagsPending => aiMeta.tags.isPending;
+
+  CollectionItem withAiMeta(AiMeta meta) {
+    return CollectionItem(
+      id: id,
+      url: url,
+      canonicalUrl: canonicalUrl,
+      title: title,
+      content: content,
+      summary: summary,
+      coverImageUrl: coverImageUrl,
+      imageUrls: imageUrls,
+      videoUrl: videoUrl,
+      transcriptSegments: transcriptSegments,
+      aiMeta: meta,
+      platform: platform,
+      status: status,
+      errorMessage: errorMessage,
+      note: note,
+      folderId: folderId,
+      isUnread: isUnread,
+      isStarred: isStarred,
+      createdAt: createdAt,
+      updatedAt: updatedAt,
+      lastReadAt: lastReadAt,
+      deletedAt: deletedAt,
+      annotationCount: annotationCount,
+    );
+  }
+
   CollectionItem withTranscriptSegments(
     Map<String, TranscriptSegment> segments,
   ) {
@@ -82,6 +123,7 @@ class CollectionItem {
       imageUrls: imageUrls,
       videoUrl: videoUrl,
       transcriptSegments: segments,
+      aiMeta: aiMeta,
       platform: platform,
       status: status,
       errorMessage: errorMessage,
@@ -189,6 +231,15 @@ class CollectionItem {
       imageUrls: images,
       videoUrl: json['videoUrl'] as String?,
       transcriptSegments: _parseTranscriptSegments(json['transcriptSegments']),
+      aiMeta: AiMeta.fromJson(
+        json['aiMeta'] is Map<String, dynamic>
+            ? json['aiMeta'] as Map<String, dynamic>
+            : json['aiMeta'] is Map
+                ? (json['aiMeta'] as Map).map(
+                    (k, v) => MapEntry(k.toString(), v),
+                  )
+                : null,
+      ),
       platform: json['platform'] as String?,
       status: json['status'] as String? ?? 'pending',
       errorMessage: json['errorMessage'] as String?,

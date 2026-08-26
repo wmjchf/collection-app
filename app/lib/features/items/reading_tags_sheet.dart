@@ -6,23 +6,37 @@ import 'package:super_collection/features/collection/tags_repository.dart';
 import 'package:super_collection/features/items/items_repository.dart';
 import 'package:super_collection/core/ui/app_toast.dart';
 
-Future<void> showReadingTagsSheet(
+enum ReadingTagsSheetResult { aiSuggest }
+
+Future<ReadingTagsSheetResult?> showReadingTagsSheet(
   BuildContext context, {
   required int itemId,
+  bool aiSuggestEnabled = true,
+  bool aiSuggestPending = false,
 }) {
-  return showModalBottomSheet<void>(
+  return showModalBottomSheet<ReadingTagsSheetResult>(
     context: context,
     isScrollControlled: true,
     backgroundColor: Colors.transparent,
     barrierColor: const Color(0x59000000),
-    builder: (context) => _ReadingTagsSheet(itemId: itemId),
+    builder: (context) => _ReadingTagsSheet(
+      itemId: itemId,
+      aiSuggestEnabled: aiSuggestEnabled,
+      aiSuggestPending: aiSuggestPending,
+    ),
   );
 }
 
 class _ReadingTagsSheet extends StatefulWidget {
-  const _ReadingTagsSheet({required this.itemId});
+  const _ReadingTagsSheet({
+    required this.itemId,
+    required this.aiSuggestEnabled,
+    required this.aiSuggestPending,
+  });
 
   final int itemId;
+  final bool aiSuggestEnabled;
+  final bool aiSuggestPending;
 
   @override
   State<_ReadingTagsSheet> createState() => _ReadingTagsSheetState();
@@ -234,6 +248,47 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
                       ),
                     ],
                   ),
+                const SizedBox(height: 12),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: GestureDetector(
+                    onTap: widget.aiSuggestEnabled
+                        ? () => Navigator.pop(
+                              context,
+                              ReadingTagsSheetResult.aiSuggest,
+                            )
+                        : () {
+                            AppToast.show(
+                              context,
+                              widget.aiSuggestPending
+                                  ? '标签建议生成中，请稍候'
+                                  : '内容不足，无法生成标签建议',
+                            );
+                          },
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.auto_awesome_outlined,
+                          size: 16,
+                          color: widget.aiSuggestEnabled ? _blue : _muted,
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          widget.aiSuggestPending
+                              ? 'AI 标签建议生成中…'
+                              : 'AI 建议标签',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                            color:
+                                widget.aiSuggestEnabled ? _blue : _muted,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
                 const SizedBox(height: 16),
                 SizedBox(
                   width: double.infinity,

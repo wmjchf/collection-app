@@ -50,5 +50,11 @@ module.exports = {
       Number(process.env.ALIYUN_ASR_SPEAKER_ORPHAN_MAX_CHARS) || 15,
     /** 转写时长上限（秒），默认 20 分钟 */
     asrMaxDurationSec: Number(process.env.ALIYUN_ASR_MAX_DURATION_SEC) || 1200,
+    /** 百炼 DashScope（AI 标签/导图） */
+    dashScopeApiKey: process.env.DASHSCOPE_API_KEY || '',
+    dashScopeBaseUrl:
+      process.env.DASHSCOPE_BASE_URL ||
+      'https://dashscope.aliyuncs.com/compatible-mode/v1',
+    aiModel: process.env.ALIYUN_AI_MODEL || 'qwen3.8-max',
   },
 };

@@ -1,6 +1,7 @@
 import 'package:super_collection/core/network/api_client.dart';
 import 'package:super_collection/features/auth/auth_repository.dart';
 import 'package:super_collection/features/collection/tag_models.dart';
+import 'package:super_collection/features/items/ai_meta_models.dart';
 import 'package:super_collection/features/items/item_models.dart';
 import 'package:super_collection/features/items/transcript_models.dart';
 
@@ -323,6 +324,62 @@ class ItemsRepository {
         .whereType<Map<String, dynamic>>()
         .map(Tag.fromJson)
         .toList();
+  }
+
+  Future<({
+    AiTagsMeta tags,
+    String? model,
+  })> getAiSuggestStatus(int id) async {
+    final token = await _token();
+    final json = await _api.get(
+      '/api/items/$id/ai-suggest-status',
+      accessToken: token,
+    );
+    final rawTags = json['tags'];
+    AiTagsMeta tags = const AiTagsMeta();
+    if (rawTags is Map<String, dynamic>) {
+      tags = AiTagsMeta.fromJson(rawTags);
+    } else if (rawTags is Map) {
+      tags = AiTagsMeta.fromJson(
+        rawTags.map((k, v) => MapEntry(k.toString(), v)),
+      );
+    }
+    return (tags: tags, model: json['model'] as String?);
+  }
+
+  Future<CollectionItem> requestAiSuggest(int id, {bool force = false}) async {
+    final token = await _token();
+    final json = await _api.post(
+      '/api/items/$id/ai-suggest',
+      body: {'force': force},
+      accessToken: token,
+    );
+    final itemJson = json['item'] as Map<String, dynamic>? ?? {};
+    return CollectionItem.fromJson(itemJson);
+  }
+
+  Future<CollectionItem> applyAiSuggest(
+    int id,
+    List<String> names,
+  ) async {
+    final token = await _token();
+    final json = await _api.post(
+      '/api/items/$id/ai-suggest/apply',
+      body: {'names': names},
+      accessToken: token,
+    );
+    final itemJson = json['item'] as Map<String, dynamic>? ?? {};
+    return CollectionItem.fromJson(itemJson);
+  }
+
+  Future<CollectionItem> dismissAiSuggest(int id) async {
+    final token = await _token();
+    final json = await _api.post(
+      '/api/items/$id/ai-suggest/dismiss',
+      accessToken: token,
+    );
+    final itemJson = json['item'] as Map<String, dynamic>? ?? {};
+    return CollectionItem.fromJson(itemJson);
   }
 
   Future<List<ItemAnnotation>> listAnnotations(int id) async {

@@ -7,6 +7,7 @@ const {
   listClientFetchPlatformIds,
 } = require('./parser/adapters/registry');
 const transcriptSegments = require('./transcriptSegments');
+const aiMeta = require('./aiMeta');
 
 /** 服务端抓取被拦时，等待客户端上报 HTML */
 const NEED_CLIENT_FETCH = 'NEED_CLIENT_FETCH';
@@ -59,6 +60,7 @@ function mapItem(row) {
     updatedAt: row.updated_at,
     annotationCount:
       row.annotation_count != null ? Number(row.annotation_count) : undefined,
+    aiMeta: aiMeta.mapAiMetaForApi(row.ai_meta),
   };
 }
 
@@ -1344,4 +1346,9 @@ module.exports = {
   requestTranscript,
   getTranscriptStatus,
   runTranscriptJob,
+  requestAiSuggest: require('./aiSuggestService').requestAiSuggest,
+  getAiSuggestStatus: require('./aiSuggestService').getAiSuggestStatus,
+  applyAiSuggest: require('./aiSuggestService').applyAiSuggest,
+  dismissAiSuggest: require('./aiSuggestService').dismissAiSuggest,
+  runAiSuggestJob: require('./aiSuggestService').runAiSuggestJob,
 };
