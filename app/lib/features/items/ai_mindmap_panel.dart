@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:super_collection/features/items/ai_meta_models.dart';
 
 /// 阅读页正文下方：思维导图 loading / 脑图 / 失败
@@ -255,11 +256,20 @@ class MindmapFullscreenPage extends StatefulWidget {
 
 class _MindmapFullscreenPageState extends State<MindmapFullscreenPage> {
   late final Set<String> _collapsed;
+  bool _landscape = false;
 
   @override
   void initState() {
     super.initState();
     _collapsed = Set<String>.from(widget.initialCollapsed ?? {});
+  }
+
+  @override
+  void dispose() {
+    SystemChrome.setPreferredOrientations(const [
+      DeviceOrientation.portraitUp,
+    ]);
+    super.dispose();
   }
 
   void _toggleCollapsed(String path) {
@@ -270,6 +280,20 @@ class _MindmapFullscreenPageState extends State<MindmapFullscreenPage> {
         _collapsed.add(path);
       }
     });
+  }
+
+  void _toggleScreenRotation() {
+    setState(() {
+      _landscape = !_landscape;
+    });
+    SystemChrome.setPreferredOrientations(
+      _landscape
+          ? const [
+              DeviceOrientation.landscapeLeft,
+              DeviceOrientation.landscapeRight,
+            ]
+          : const [DeviceOrientation.portraitUp],
+    );
   }
 
   @override
@@ -294,6 +318,18 @@ class _MindmapFullscreenPageState extends State<MindmapFullscreenPage> {
           ),
         ),
         centerTitle: true,
+        actions: [
+          IconButton(
+            tooltip: _landscape ? '竖屏' : '横屏',
+            icon: Icon(
+              _landscape
+                  ? Icons.screen_lock_portrait_rounded
+                  : Icons.screen_rotation_alt_rounded,
+              color: MindmapFullscreenPage._muted,
+            ),
+            onPressed: _toggleScreenRotation,
+          ),
+        ],
       ),
       body: Column(
         children: [
