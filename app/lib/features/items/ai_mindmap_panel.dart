@@ -475,11 +475,10 @@ class _MindmapLayout {
   static const _padH = 10.0;
   static const _padV = 8.0;
   static const _canvasPad = 32.0;
-  static const _maxTextWidth = 200.0;
   static const _nodeTextStyle = TextStyle(
     fontSize: 13,
     fontWeight: FontWeight.w500,
-    height: 1.35,
+    height: 1.2,
   );
 
   static double _subtreeBottom(
@@ -523,10 +522,10 @@ class _MindmapLayout {
       final tp = TextPainter(
         text: TextSpan(text: node.title, style: _nodeTextStyle),
         textDirection: TextDirection.ltr,
-        maxLines: 3,
-      )..layout(maxWidth: _maxTextWidth);
+        maxLines: 1,
+      )..layout();
 
-      final textWidth = _textBlockWidth(tp);
+      final textWidth = tp.width;
       final w = textWidth + _padH * 2;
       final h = math.max(tp.height + _padV * 2, 28.0);
       final isRoot = path == 'r';
@@ -636,12 +635,6 @@ class _MindmapLayout {
       height: maxY + _canvasPad,
     );
   }
-
-  static double _textBlockWidth(TextPainter tp) {
-    final metrics = tp.computeLineMetrics();
-    if (metrics.isEmpty) return tp.width;
-    return metrics.map((m) => m.width).fold(0.0, math.max);
-  }
 }
 
 class _MindmapNodeLayout {
@@ -714,13 +707,13 @@ class _MindmapPainter extends CustomPainter {
           style: TextStyle(
             fontSize: 13,
             fontWeight: FontWeight.w500,
-            height: 1.35,
+            height: 1.2,
             color: node.isRoot ? Colors.white : const Color(0xFF1F242E),
           ),
         ),
         textDirection: TextDirection.ltr,
-        maxLines: 3,
-      )..layout(maxWidth: node.textWidth);
+        maxLines: 1,
+      )..layout();
 
       tp.paint(
         canvas,
