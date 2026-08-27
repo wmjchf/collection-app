@@ -88,9 +88,10 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
   void initState() {
     super.initState();
     _load();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _searchFocus.requestFocus();
-    });
+  }
+
+  void _unfocusSearch() {
+    _searchFocus.unfocus();
   }
 
   @override
@@ -283,6 +284,8 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
       controller: _searchController,
       focusNode: _searchFocus,
       onChanged: _onSearchChanged,
+      onTapOutside: (_) => _unfocusSearch(),
+      onSubmitted: (_) => _unfocusSearch(),
       textInputAction: TextInputAction.search,
       decoration: InputDecoration(
         hintText: '搜索标签',
@@ -520,10 +523,13 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
             constraints: BoxConstraints(maxHeight: maxSheetHeight),
             child: Padding(
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
+              child: GestureDetector(
+                onTap: _unfocusSearch,
+                behavior: HitTestBehavior.translucent,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
                   Center(
                     child: Container(
                       width: 40,
@@ -596,6 +602,7 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
                     ),
                   ),
                 ],
+                ),
               ),
             ),
           ),

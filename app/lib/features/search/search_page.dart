@@ -44,9 +44,10 @@ class _SearchPageState extends State<SearchPage> {
   void initState() {
     super.initState();
     _scroll.addListener(_onScroll);
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _focus.requestFocus();
-    });
+  }
+
+  void _unfocusSearch() {
+    _focus.unfocus();
   }
 
   @override
@@ -202,10 +203,12 @@ class _SearchPageState extends State<SearchPage> {
                               focusNode: _focus,
                               textInputAction: TextInputAction.search,
                               onChanged: _onQueryChanged,
+                              onTapOutside: (_) => _unfocusSearch(),
                               onSubmitted: (v) {
                                 _debounce?.cancel();
                                 final q = v.trim();
                                 if (q.isNotEmpty) _search(q, reset: true);
+                                _unfocusSearch();
                               },
                               style: const TextStyle(
                                 fontSize: 15,
@@ -227,7 +230,6 @@ class _SearchPageState extends State<SearchPage> {
                               onTap: () {
                                 _controller.clear();
                                 _onQueryChanged('');
-                                _focus.requestFocus();
                               },
                               child: const Icon(
                                 Icons.close,
@@ -253,7 +255,13 @@ class _SearchPageState extends State<SearchPage> {
                 ],
               ),
             ),
-            Expanded(child: _buildBody()),
+            Expanded(
+              child: GestureDetector(
+                onTap: _unfocusSearch,
+                behavior: HitTestBehavior.translucent,
+                child: _buildBody(),
+              ),
+            ),
           ],
         ),
       ),
