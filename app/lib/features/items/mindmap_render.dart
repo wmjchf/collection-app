@@ -56,6 +56,27 @@ class MindmapLayout {
     return right;
   }
 
+  static int _hiddenDescendantCount(AiMindmapNode node) {
+    var count = 0;
+    for (final child in node.children) {
+      count += 1 + _hiddenDescendantCount(child);
+    }
+    return count;
+  }
+
+  static double _collapsedBadgeWidth(int count) {
+    const badgeStyle = TextStyle(
+      fontSize: 11,
+      fontWeight: FontWeight.w600,
+      height: 1,
+    );
+    final tp = TextPainter(
+      text: TextSpan(text: '$count', style: badgeStyle),
+      textDirection: TextDirection.ltr,
+    )..layout();
+    return tp.width + 12;
+  }
+
   static MindmapLayout compute(AiMindmapNode root, Set<String> collapsed) {
     final nodes = <String, MindmapNodeLayout>{};
     final edges = <(MindmapNodeLayout, MindmapNodeLayout)>[];
@@ -82,12 +103,20 @@ class MindmapLayout {
           isCollapsed ? <AiMindmapNode>[] : node.children;
 
       if (visibleChildren.isEmpty) {
+        final hiddenCount = isCollapsed && node.children.isNotEmpty
+            ? _hiddenDescendantCount(node)
+            : null;
+        var w = textWidth + _padH * 2;
+        if (hiddenCount != null) {
+          w += 6 + _collapsedBadgeWidth(hiddenCount);
+        }
         final layout = MindmapNodeLayout(
           path: path,
           title: node.title,
           rect: Rect.fromLTWH(x, y, w, h),
           isRoot: isRoot,
           textWidth: textWidth,
+          collapsedHiddenCount: hiddenCount,
         );
         nodes[path] = layout;
         return Size(w, h);
@@ -122,6 +151,7 @@ class MindmapLayout {
         rect: Rect.fromLTWH(x, parentY, w, h),
         isRoot: isRoot,
         textWidth: textWidth,
+        collapsedHiddenCount: null,
       );
       nodes[path] = layout;
 
@@ -162,6 +192,7 @@ class MindmapLayout {
           rect: n.rect.shift(Offset(shiftX, shiftY)),
           isRoot: n.isRoot,
           textWidth: n.textWidth,
+          collapsedHiddenCount: n.collapsedHiddenCount,
         );
       }
       maxX += shiftX;
@@ -191,6 +222,7 @@ class MindmapNodeLayout {
     required this.rect,
     required this.isRoot,
     required this.textWidth,
+    this.collapsedHiddenCount,
   });
 
   final String path;
@@ -198,6 +230,8 @@ class MindmapNodeLayout {
   final Rect rect;
   final bool isRoot;
   final double textWidth;
+  /// 折叠时隐藏的子树节点总数（含各层后代）；未折叠时为 null。
+  final int? collapsedHiddenCount;
 
   Offset get anchorRight => Offset(rect.right, rect.center.dy);
   Offset get anchorLeft => Offset(rect.left, rect.center.dy);
@@ -262,13 +296,57 @@ class MindmapPainter extends CustomPainter {
         maxLines: 1,
       )..layout();
 
+      final hidden = node.collapsedHiddenCount;
+
       tp.paint(
         canvas,
         Offset(
-          node.rect.left + (node.rect.width - tp.width) / 2,
+          hidden != null
+              ? node.rect.left + MindmapLayout._padH
+              : node.rect.left + (node.rect.width - tp.width) / 2,
           node.rect.top + (node.rect.height - tp.height) / 2,
         ),
       );
+
+      if (hidden != null) {
+        const badgeStyle = TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.w600,
+          height: 1,
+          color: Color(0xFF2F6FED),
+        );
+        final badgeTp = TextPainter(
+          text: TextSpan(
+            text: '$hidden',
+            style: node.isRoot
+                ? badgeStyle.copyWith(color: Colors.white)
+                : badgeStyle,
+          ),
+          textDirection: TextDirection.ltr,
+        )..layout();
+        final badgeW = badgeTp.width + 12;
+        final badgeH = 18.0;
+        final badgeLeft = node.rect.right - MindmapLayout._padH - badgeW;
+        final badgeTop = node.rect.top + (node.rect.height - badgeH) / 2;
+        final badgeR = RRect.fromRectAndRadius(
+          Rect.fromLTWH(badgeLeft, badgeTop, badgeW, badgeH),
+          const Radius.circular(9),
+        );
+        canvas.drawRRect(
+          badgeR,
+          Paint()
+            ..color = node.isRoot
+                ? Colors.white.withValues(alpha: 0.22)
+                : const Color(0xFFE8F0FF),
+        );
+        badgeTp.paint(
+          canvas,
+          Offset(
+            badgeLeft + (badgeW - badgeTp.width) / 2,
+            badgeTop + (badgeH - badgeTp.height) / 2,
+          ),
+        );
+      }
     }
   }
 
