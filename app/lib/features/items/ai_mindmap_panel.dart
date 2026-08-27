@@ -26,6 +26,16 @@ class AiMindmapPanel extends StatefulWidget {
 class _AiMindmapPanelState extends State<AiMindmapPanel> {
   final _collapsed = <String>{};
 
+  void _toggleCollapsed(String path) {
+    setState(() {
+      if (_collapsed.contains(path)) {
+        _collapsed.remove(path);
+      } else {
+        _collapsed.add(path);
+      }
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final meta = widget.mindmapMeta;
@@ -106,18 +116,37 @@ class _AiMindmapPanelState extends State<AiMindmapPanel> {
                   ),
                 ),
                 const Spacer(),
-                if (widget.onRetry != null)
+                GestureDetector(
+                  onTap: () => showMindmapFullscreen(
+                    context,
+                    root: meta.tree!,
+                    initialCollapsed: Set<String>.from(_collapsed),
+                  ),
+                  behavior: HitTestBehavior.opaque,
+                  child: const Padding(
+                    padding: EdgeInsets.all(4),
+                    child: Icon(
+                      Icons.fullscreen_rounded,
+                      size: 18,
+                      color: AiMindmapPanel._muted,
+                    ),
+                  ),
+                ),
+                if (widget.onRetry != null) ...[
+                  const SizedBox(width: 4),
                   GestureDetector(
                     onTap: widget.onRetry,
-                    child: const Text(
-                      '重新生成',
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                        color: AiMindmapPanel._brand,
+                    behavior: HitTestBehavior.opaque,
+                    child: const Padding(
+                      padding: EdgeInsets.all(4),
+                      child: Icon(
+                        Icons.refresh_rounded,
+                        size: 18,
+                        color: AiMindmapPanel._muted,
                       ),
                     ),
                   ),
+                ],
               ],
             ),
             const SizedBox(height: 10),
@@ -125,26 +154,11 @@ class _AiMindmapPanelState extends State<AiMindmapPanel> {
               borderRadius: BorderRadius.circular(8),
               child: ColoredBox(
                 color: Colors.white,
-                child: SizedBox(
-                  height: 280,
-                  child: InteractiveViewer(
-                    minScale: 0.5,
-                    maxScale: 2.5,
-                    boundaryMargin: const EdgeInsets.all(48),
-                    child: _MindmapCanvas(
-                      root: meta.tree!,
-                      collapsed: _collapsed,
-                      onToggle: (path) {
-                        setState(() {
-                          if (_collapsed.contains(path)) {
-                            _collapsed.remove(path);
-                          } else {
-                            _collapsed.add(path);
-                          }
-                        });
-                      },
-                    ),
-                  ),
+                child: MindmapInteractiveView(
+                  root: meta.tree!,
+                  collapsed: _collapsed,
+                  onToggle: _toggleCollapsed,
+                  viewHeight: 280,
                 ),
               ),
             ),
@@ -159,6 +173,155 @@ class _AiMindmapPanelState extends State<AiMindmapPanel> {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// 可缩放平移的思维导图视图（内嵌预览与全屏页共用）
+class MindmapInteractiveView extends StatelessWidget {
+  const MindmapInteractiveView({
+    super.key,
+    required this.root,
+    required this.collapsed,
+    required this.onToggle,
+    this.viewHeight,
+    this.minScale = 0.4,
+    this.maxScale = 2.5,
+  });
+
+  final AiMindmapNode root;
+  final Set<String> collapsed;
+  final ValueChanged<String> onToggle;
+  final double? viewHeight;
+  final double minScale;
+  final double maxScale;
+
+  @override
+  Widget build(BuildContext context) {
+    final viewer = InteractiveViewer(
+      constrained: false,
+      minScale: minScale,
+      maxScale: maxScale,
+      boundaryMargin: const EdgeInsets.all(80),
+      clipBehavior: Clip.none,
+      child: _MindmapCanvas(
+        root: root,
+        collapsed: collapsed,
+        onToggle: onToggle,
+      ),
+    );
+
+    if (viewHeight != null) {
+      return SizedBox(height: viewHeight, child: viewer);
+    }
+    return viewer;
+  }
+}
+
+/// 全屏预览思维导图
+void showMindmapFullscreen(
+  BuildContext context, {
+  required AiMindmapNode root,
+  Set<String>? initialCollapsed,
+}) {
+  Navigator.of(context).push<void>(
+    MaterialPageRoute<void>(
+      fullscreenDialog: true,
+      builder: (ctx) => MindmapFullscreenPage(
+        root: root,
+        initialCollapsed: initialCollapsed,
+      ),
+    ),
+  );
+}
+
+class MindmapFullscreenPage extends StatefulWidget {
+  const MindmapFullscreenPage({
+    super.key,
+    required this.root,
+    this.initialCollapsed,
+  });
+
+  final AiMindmapNode root;
+  final Set<String>? initialCollapsed;
+
+  static const _text = Color(0xFF1F242E);
+  static const _muted = Color(0xFF737A85);
+
+  @override
+  State<MindmapFullscreenPage> createState() => _MindmapFullscreenPageState();
+}
+
+class _MindmapFullscreenPageState extends State<MindmapFullscreenPage> {
+  late final Set<String> _collapsed;
+
+  @override
+  void initState() {
+    super.initState();
+    _collapsed = Set<String>.from(widget.initialCollapsed ?? {});
+  }
+
+  void _toggleCollapsed(String path) {
+    setState(() {
+      if (_collapsed.contains(path)) {
+        _collapsed.remove(path);
+      } else {
+        _collapsed.add(path);
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.white,
+      appBar: AppBar(
+        backgroundColor: Colors.white,
+        surfaceTintColor: Colors.white,
+        elevation: 0,
+        scrolledUnderElevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.close_rounded, color: MindmapFullscreenPage._text),
+          onPressed: () => Navigator.of(context).pop(),
+        ),
+        title: const Text(
+          '思维导图',
+          style: TextStyle(
+            fontSize: 17,
+            fontWeight: FontWeight.w600,
+            color: MindmapFullscreenPage._text,
+          ),
+        ),
+        centerTitle: true,
+      ),
+      body: Column(
+        children: [
+          Expanded(
+            child: ColoredBox(
+              color: Colors.white,
+              child: MindmapInteractiveView(
+                root: widget.root,
+                collapsed: _collapsed,
+                onToggle: _toggleCollapsed,
+                minScale: 0.3,
+                maxScale: 3.5,
+              ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(22, 8, 22, 16),
+            child: Text(
+              '点击节点可折叠/展开分支；双指缩放查看',
+              style: TextStyle(
+                fontSize: 12,
+                color: MindmapFullscreenPage._muted,
+                height: 1.4,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -190,9 +353,13 @@ class _MindmapCanvas extends StatelessWidget {
           }
         }
       },
-      child: CustomPaint(
-        size: Size(layout.width, layout.height),
-        painter: _MindmapPainter(layout: layout),
+      child: SizedBox(
+        width: layout.width,
+        height: layout.height,
+        child: CustomPaint(
+          size: Size(layout.width, layout.height),
+          painter: _MindmapPainter(layout: layout),
+        ),
       ),
     );
   }
@@ -215,6 +382,7 @@ class _MindmapLayout {
   static const _gapY = 44.0;
   static const _padH = 10.0;
   static const _padV = 6.0;
+  static const _canvasPad = 32.0;
 
   static _MindmapLayout compute(AiMindmapNode root, Set<String> collapsed) {
     final nodes = <String, _MindmapNodeLayout>{};
@@ -257,7 +425,6 @@ class _MindmapLayout {
 
       final childY = y + h + _gapY;
       double cursorX = x;
-      final childLayouts = <_MindmapNodeLayout>[];
 
       for (var i = 0; i < visibleChildren.length; i++) {
         final childPath = '$path-$i';
@@ -284,24 +451,55 @@ class _MindmapLayout {
         final childPath = '$path-$i';
         final child = nodes[childPath];
         if (child != null) {
-          childLayouts.add(child);
           edges.add((layout, child));
         }
       }
 
-      return math.max(totalChildWidth, w);
+      final right = math.max(centerX + w, x + totalChildWidth);
+      return right - x;
     }
 
-    final usedWidth = layoutSubtree(root, 'r', 24, 24);
+    layoutSubtree(root, 'r', 0, 0);
+
+    double minX = double.infinity;
+    double minY = double.infinity;
+    double maxX = 0;
     double maxY = 0;
     for (final n in nodes.values) {
+      minX = math.min(minX, n.rect.left);
+      minY = math.min(minY, n.rect.top);
+      maxX = math.max(maxX, n.rect.right);
       maxY = math.max(maxY, n.rect.bottom);
     }
+
+    final shiftX = _canvasPad - minX;
+    final shiftY = _canvasPad - minY;
+    if (shiftX != 0 || shiftY != 0) {
+      for (final key in nodes.keys.toList()) {
+        final n = nodes[key]!;
+        nodes[key] = _MindmapNodeLayout(
+          path: n.path,
+          title: n.title,
+          rect: n.rect.shift(Offset(shiftX, shiftY)),
+          isRoot: n.isRoot,
+        );
+      }
+      maxX += shiftX;
+      maxY += shiftY;
+      final rebuilt = <(_MindmapNodeLayout, _MindmapNodeLayout)>[];
+      for (final (from, to) in edges) {
+        rebuilt.add((nodes[from.path]!, nodes[to.path]!));
+      }
+      edges
+        ..clear()
+        ..addAll(rebuilt);
+    }
+
     return _MindmapLayout(
       nodes: nodes,
       edges: edges,
-      width: math.max(usedWidth + 48, 320),
-      height: math.max(maxY + 32, 200),
+      width: maxX + _canvasPad,
+      height: maxY + _canvasPad,
     );
   }
 }

@@ -460,8 +460,7 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
           _item.canRequestTranscript ||
           _item.hasAnyTranscriptPending ||
           _item.hasAnyTranscript,
-      mindmapEnabled: _item.canTriggerMindmap,
-      mindmapPending: _item.hasMindmapPending,
+      hasNote: _item.note != null && _item.note!.trim().isNotEmpty,
     );
     if (!mounted || action == null) return;
     switch (action) {
@@ -474,8 +473,8 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
         if (updated != null && mounted) setState(() => _item = updated);
       case ReadingMoreAction.transcript:
         await _onTranscript();
-      case ReadingMoreAction.mindmap:
-        await _onMindmap();
+      case ReadingMoreAction.note:
+        await _onNote();
       case ReadingMoreAction.delete:
         await _confirmDelete();
     }
@@ -1205,13 +1204,16 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
                                 },
                               ),
                               _ActionItem(
-                                icon: Icons.edit_note_outlined,
-                                label: '备注',
-                                iconColor: (_item.note != null &&
-                                        _item.note!.trim().isNotEmpty)
-                                    ? _blue
-                                    : _text,
-                                onTap: _onNote,
+                                icon: Icons.account_tree_outlined,
+                                iconSize: 18,
+                                label: _item.hasMindmapPending
+                                    ? '生成中…'
+                                    : '思维导图',
+                                iconColor: _item.canTriggerMindmap &&
+                                        !_item.hasMindmapPending
+                                    ? _text
+                                    : _muted,
+                                onTap: _onMindmap,
                               ),
                               _ActionItem(
                                 icon: Icons.more_vert,
@@ -1996,12 +1998,14 @@ class _ActionItem extends StatelessWidget {
     required this.label,
     required this.onTap,
     this.iconColor,
+    this.iconSize = 22,
   });
 
   final IconData icon;
   final String label;
   final VoidCallback onTap;
   final Color? iconColor;
+  final double iconSize;
 
   static const _text = Color(0xFF1F242E);
   static const _muted = Color(0xFF737A85);
@@ -2014,7 +2018,17 @@ class _ActionItem extends StatelessWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(icon, size: 22, color: iconColor ?? _text),
+            SizedBox(
+              width: 22,
+              height: 22,
+              child: Center(
+                child: Icon(
+                  icon,
+                  size: iconSize,
+                  color: iconColor ?? _text,
+                ),
+              ),
+            ),
             const SizedBox(height: 4),
             Text(
               label,
