@@ -65,6 +65,61 @@ async function getItemRow(itemId, userId) {
   return rows[0] || null;
 }
 
+async function failAiSuggestJob(itemId, message) {
+  const [rows] = await pool.execute(
+    `SELECT ai_meta FROM items WHERE id = :itemId AND deleted_at IS NULL LIMIT 1`,
+    { itemId },
+  );
+  if (!rows[0]) return;
+  let meta = aiMeta.parseAiMeta(rows[0].ai_meta);
+  meta = aiMeta.withTagsState(meta, {
+    status: 'failed',
+    awaitTranscript: false,
+    items: [],
+    error: String(message || '生成失败').slice(0, 500),
+    generatedAt: new Date().toISOString(),
+  });
+  await saveAiMeta(itemId, meta);
+}
+
+async function onTranscriptSettledForAiSuggest(itemId) {
+  const [rows] = await pool.execute(
+    `SELECT * FROM items WHERE id = :itemId AND deleted_at IS NULL LIMIT 1`,
+    { itemId },
+  );
+  const row = rows[0];
+  if (!row) return;
+
+  let meta = aiMeta.parseAiMeta(row.ai_meta);
+  if (meta.tags.status !== 'pending' || !meta.tags.awaitTranscript) {
+    return;
+  }
+
+  const segments = transcriptSegments.parseSegments(row.transcript_segments);
+  if (transcriptSegments.hasPendingSegment(segments)) return;
+
+  if (transcriptSegments.shouldAutoTranscribeBeforeMindmap(row)) {
+    const target = transcriptSegments.topBarTranscriptTarget(row);
+    const err =
+      target && target.status === 'failed'
+        ? target.error || '转写失败，无法生成标签建议'
+        : '转写未完成，无法生成标签建议';
+    await failAiSuggestJob(itemId, err);
+    return;
+  }
+
+  if (!hasAiInput(row)) {
+    await failAiSuggestJob(itemId, '转写结果为空，无法生成标签建议');
+    return;
+  }
+
+  meta = aiMeta.withTagsState(meta, { awaitTranscript: false });
+  await saveAiMeta(itemId, meta);
+
+  const { enqueueAiSuggest } = require('./aiSuggestQueue');
+  enqueueAiSuggest(itemId);
+}
+
 async function requestAiSuggest(userId, itemId, { force = false } = {}) {
   if (!aliyunDashScope.isConfigured()) {
     throw Object.assign(
@@ -77,6 +132,11 @@ async function requestAiSuggest(userId, itemId, { force = false } = {}) {
   if (!row) {
     throw Object.assign(new Error('条目不存在'), { status: 404 });
   }
+  let meta = aiMeta.parseAiMeta(row.ai_meta);
+  if (meta.tags.status === 'pending') {
+    throw Object.assign(new Error('标签建议生成中，请稍候'), { status: 409 });
+  }
+
   const segments = transcriptSegments.parseSegments(row.transcript_segments);
   if (transcriptSegments.hasPendingSegment(segments)) {
     throw Object.assign(
@@ -84,14 +144,7 @@ async function requestAiSuggest(userId, itemId, { force = false } = {}) {
       { status: 409 },
     );
   }
-  if (!hasAiInput(row)) {
-    throw Object.assign(new Error('内容不足，无法生成标签建议'), { status: 400 });
-  }
 
-  let meta = aiMeta.parseAiMeta(row.ai_meta);
-  if (meta.tags.status === 'pending') {
-    throw Object.assign(new Error('标签建议生成中，请稍候'), { status: 409 });
-  }
   if (
     meta.tags.status === 'success' &&
     meta.tags.items.length &&
@@ -101,8 +154,53 @@ async function requestAiSuggest(userId, itemId, { force = false } = {}) {
     return itemService.getByIdForUser(userId, itemId);
   }
 
+  if (transcriptSegments.shouldAutoTranscribeBeforeMindmap(row)) {
+    const aliyunAsr = require('./aliyunAsr');
+    if (!aliyunAsr.isConfigured()) {
+      throw Object.assign(
+        new Error('该内容为音视频，请先配置转写后再生成标签建议'),
+        { status: 503 },
+      );
+    }
+    const target = transcriptSegments.topBarTranscriptTarget(row);
+    if (!target?.mediaUrl) {
+      throw Object.assign(
+        new Error('请先刷新视频后再生成标签建议'),
+        { status: 400 },
+      );
+    }
+
+    meta = aiMeta.withTagsState(meta, {
+      status: 'pending',
+      awaitTranscript: true,
+      items: [],
+      error: null,
+      generatedAt: null,
+    });
+    meta.model = require('../config').aliyun.aiModel || 'qwen3.8-max';
+    await saveAiMeta(itemId, meta);
+
+    const itemService = require('./itemService');
+    try {
+      await itemService.beginTranscriptSegment(
+        userId,
+        itemId,
+        transcriptSegments.SEGMENT_VIDEO_URL,
+      );
+    } catch (err) {
+      await failAiSuggestJob(itemId, err.message || '无法开始转写');
+      throw err;
+    }
+    return itemService.getByIdForUser(userId, itemId);
+  }
+
+  if (!hasAiInput(row)) {
+    throw Object.assign(new Error('内容不足，无法生成标签建议'), { status: 400 });
+  }
+
   meta = aiMeta.withTagsState(meta, {
     status: 'pending',
+    awaitTranscript: false,
     items: [],
     error: null,
     generatedAt: null,
@@ -141,7 +239,7 @@ async function runAiSuggestJob(itemId) {
   if (!row) return;
 
   let meta = aiMeta.parseAiMeta(row.ai_meta);
-  if (meta.tags.status !== 'pending') return;
+  if (meta.tags.status !== 'pending' || meta.tags.awaitTranscript) return;
 
   try {
     const inputText = buildInputText(row);
@@ -179,6 +277,7 @@ async function runAiSuggestJob(itemId) {
     if (!items.length) {
       meta = aiMeta.withTagsState(meta, {
         status: 'empty',
+        awaitTranscript: false,
         items: [],
         error: null,
         generatedAt: new Date().toISOString(),
@@ -192,6 +291,7 @@ async function runAiSuggestJob(itemId) {
 
     meta = aiMeta.withTagsState(meta, {
       status: 'success',
+      awaitTranscript: false,
       items,
       error: null,
       generatedAt: new Date().toISOString(),
@@ -203,6 +303,7 @@ async function runAiSuggestJob(itemId) {
   } catch (err) {
     meta = aiMeta.withTagsState(meta, {
       status: 'failed',
+      awaitTranscript: false,
       items: [],
       error: (err.message || '生成失败').slice(0, 500),
       generatedAt: new Date().toISOString(),
@@ -296,4 +397,6 @@ module.exports = {
   runAiSuggestJob,
   dismissAiSuggest,
   applyAiSuggest,
+  failAiSuggestJob,
+  onTranscriptSettledForAiSuggest,
 };

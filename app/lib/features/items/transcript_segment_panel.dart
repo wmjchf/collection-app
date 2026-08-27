@@ -7,9 +7,12 @@ class TranscriptSegmentPanel extends StatelessWidget {
   const TranscriptSegmentPanel({
     super.key,
     required this.segment,
+    this.hidePendingLoading = false,
   });
 
   final TranscriptSegment? segment;
+  /// 思维导图触发的自动转写时，进度已在脑图卡片展示，不重复显示 pending UI
+  final bool hidePendingLoading;
 
   static const _text = Color(0xFF1F242E);
   static const _muted = Color(0xFF737A85);
@@ -35,6 +38,7 @@ class TranscriptSegmentPanel extends StatelessWidget {
     if (seg == null || seg.status == 'none') return const SizedBox.shrink();
 
     if (seg.isPending) {
+      if (hidePendingLoading) return const SizedBox.shrink();
       final label = (seg.phaseLabel ?? '').trim();
       final title = label.isEmpty ? '文稿转写中…' : label;
       return Padding(

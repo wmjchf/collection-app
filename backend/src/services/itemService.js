@@ -816,10 +816,11 @@ async function listTranscriptTargetsForUser(userId, itemId) {
  * 用户触发：按 segmentKey 提交阿里云录音文件识别。
  * 已有任一段 pending 时拒绝（409）。
  */
-async function requestTranscript(
+async function beginTranscriptSegment(
   userId,
   itemId,
-  { segmentKey, force = false, mediaUrl: clientMediaUrl } = {},
+  segmentKey,
+  { force = false, mediaUrl: clientMediaUrl } = {},
 ) {
   const aliyunAsr = require('./aliyunAsr');
   const { enqueueTranscript } = require('./transcriptQueue');
@@ -897,6 +898,17 @@ async function requestTranscript(
 
   enqueueTranscript(itemId);
   return getByIdForUser(userId, itemId);
+}
+
+async function requestTranscript(
+  userId,
+  itemId,
+  { segmentKey, force = false, mediaUrl: clientMediaUrl } = {},
+) {
+  return beginTranscriptSegment(userId, itemId, segmentKey, {
+    force,
+    mediaUrl: clientMediaUrl,
+  });
 }
 
 async function getTranscriptStatus(userId, itemId) {
@@ -1128,6 +1140,24 @@ async function runTranscriptJob(itemId) {
         console.warn(`[runTranscriptJob] OSS cleanup ${ossKeyToDelete}`, err.message);
       });
     }
+    try {
+      const aiMindmapService = require('./aiMindmapService');
+      await aiMindmapService.onTranscriptSettledForMindmap(itemId);
+    } catch (err) {
+      console.error(
+        `[runTranscriptJob] mindmap resume failed item=${itemId}`,
+        err.message,
+      );
+    }
+    try {
+      const aiSuggestService = require('./aiSuggestService');
+      await aiSuggestService.onTranscriptSettledForAiSuggest(itemId);
+    } catch (err) {
+      console.error(
+        `[runTranscriptJob] ai-suggest resume failed item=${itemId}`,
+        err.message,
+      );
+    }
   }
 }
 
@@ -1342,6 +1372,7 @@ module.exports = {
   setItemTags,
   searchItems,
   listTranscriptTargetsForUser,
+  beginTranscriptSegment,
   requestTranscript,
   getTranscriptStatus,
   runTranscriptJob,

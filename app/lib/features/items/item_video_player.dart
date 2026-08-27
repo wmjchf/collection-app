@@ -112,6 +112,34 @@ class _ItemVideoPlayerState extends State<ItemVideoPlayer> {
   bool _usePageAudio = false;
   VoidCallback? _audioListener;
 
+  static const _jsPauseIfPlaying = '''
+try{
+  var v=document.getElementById("v");
+  if(!v) 0;
+  else if(!v.paused){window.__wasPlaying=1;v.pause();1;}
+  else {window.__wasPlaying=0;0;}
+}catch(e){0}
+''';
+
+  static const _jsResumeIfWasPlaying = '''
+try{
+  var v=document.getElementById("v");
+  if(v&&window.__wasPlaying===1&&v.paused){v.play();}
+  window.__wasPlaying=0;
+}catch(e){}
+''';
+
+  Future<bool> _pauseWebIfPlaying() async {
+    final c = _webController;
+    if (c == null) return false;
+    try {
+      final r = await c.runJavaScriptReturningResult(_jsPauseIfPlaying);
+      return r == true || r == 1 || r == '1';
+    } catch (_) {
+      return false;
+    }
+  }
+
   @override
   void initState() {
     super.initState();
@@ -406,17 +434,12 @@ class _ItemVideoPlayerState extends State<ItemVideoPlayer> {
     if (mostlyHidden) {
       if (_useWeb) {
         if (_webReady) {
-          final c = _webController;
-          if (c != null) {
-            unawaited(
-              c.runJavaScript(
-                'try{var v=document.getElementById("v");'
-                'if(v&&!v.paused){window.__wasPlaying=1;v.play()}'
-                '}catch(e){}',
-              ),
-            );
-            _resumeWhenVisible = true;
-          }
+          unawaited(() async {
+            final wasPlaying = await _pauseWebIfPlaying();
+            if (mounted && wasPlaying) {
+              _resumeWhenVisible = true;
+            }
+          }());
         }
       } else {
         final c = _controller;
@@ -435,9 +458,7 @@ class _ItemVideoPlayerState extends State<ItemVideoPlayer> {
 
   Future<void> _resumePlayback() async {
     if (_useWeb) {
-      await _webController?.runJavaScript(
-        'try{var v=document.getElementById("v");if(v&&v.paused)v.play()}catch(e){}',
-      );
+      await _webController?.runJavaScript(_jsResumeIfWasPlaying);
       return;
     }
     final c = _controller;
@@ -466,6 +487,17 @@ class _ItemVideoPlayerState extends State<ItemVideoPlayer> {
     _webController = null;
     _webReady = false;
     _useWeb = false;
+  }
+
+  @override
+  void deactivate() {
+    if (_useWeb && _webReady && !_inFullscreen) {
+      unawaited(() async {
+        final wasPlaying = await _pauseWebIfPlaying();
+        if (wasPlaying) _resumeWhenVisible = true;
+      }());
+    }
+    super.deactivate();
   }
 
   @override

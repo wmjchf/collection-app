@@ -163,7 +163,7 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
     _loadAnnotations();
     unawaited(_loadItemTags());
     unawaited(ReadingMediaController.ensureAudioSession());
-    if (item.hasAnyTranscriptPending) {
+    if (item.hasAnyTranscriptPending && !item.isAiAwaitingTranscript) {
       _pollTranscript();
     }
     if (item.hasAiTagsPending) {
@@ -643,11 +643,11 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
   }
 
   Future<void> _onAiSuggest({bool force = false}) async {
-    if (_item.hasAnyTranscriptPending) {
+    if (_item.hasAnyTranscriptPending && !_item.aiMeta.tags.awaitTranscript) {
       AppToast.show(context, '转写进行中，请稍候再生成标签建议');
       return;
     }
-    if (!_item.canRequestAiSuggest) {
+    if (!_item.canRequestAiSuggest && !_item.shouldAutoTranscribeBeforeMindmap) {
       AppToast.show(context, '内容不足，无法生成标签建议');
       return;
     }
@@ -680,16 +680,56 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
   }
 
   Future<void> _pollAiSuggest() async {
-    for (var i = 0; i < 45; i++) {
-      await Future<void>.delayed(const Duration(seconds: 2));
+    final awaitingTranscript = _item.aiMeta.tags.awaitTranscript;
+    final maxAttempts = awaitingTranscript ? 90 : 45;
+    final interval = awaitingTranscript
+        ? const Duration(seconds: 4)
+        : const Duration(seconds: 2);
+    String? lastPhaseFingerprint;
+    for (var i = 0; i < maxAttempts; i++) {
+      await Future<void>.delayed(interval);
       if (!mounted) return;
       try {
         final st = await _repo.getAiSuggestStatus(_item.id);
         if (st.tags.isPending) {
-          if (_item.aiMeta.tags.status != 'pending') {
+          if (st.tags.awaitTranscript) {
+            final ts = await _repo.getTranscriptStatus(_item.id);
+            final merged = Map<String, TranscriptSegment>.from(
+              _item.transcriptSegments,
+            );
+            ts.segments.forEach((key, seg) {
+              merged[key] = seg;
+            });
+            final fp = ts.segments.entries
+                .map((e) => '${e.key}:${e.value.phase}:${e.value.phaseLabel}')
+                .join('|');
+            if (!mounted) return;
+            if (fp != lastPhaseFingerprint ||
+                _item.aiMeta.tags.status != 'pending') {
+              lastPhaseFingerprint = fp;
+              final item = await _repo.getItem(_item.id);
+              if (!mounted) return;
+              setState(
+                () => _item = item
+                    .withAiMeta(
+                      AiMeta(
+                        tags: st.tags,
+                        mindmap: item.aiMeta.mindmap,
+                        model: st.model ?? item.aiMeta.model,
+                      ),
+                    )
+                    .withTranscriptSegments(merged),
+              );
+              _scrollToArticleEnd();
+            }
+          } else if (_item.aiMeta.tags.status != 'pending') {
             setState(
               () => _item = _item.withAiMeta(
-                AiMeta(tags: st.tags, model: st.model),
+                AiMeta(
+                  tags: st.tags,
+                  mindmap: _item.aiMeta.mindmap,
+                  model: st.model ?? _item.aiMeta.model,
+                ),
               ),
             );
             _scrollToArticleEnd();
@@ -715,11 +755,11 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
   }
 
   Future<void> _onMindmap({bool force = false}) async {
-    if (_item.hasAnyTranscriptPending) {
+    if (_item.hasAnyTranscriptPending && !_item.aiMeta.mindmap.awaitTranscript) {
       AppToast.show(context, '转写进行中，请稍候再生成思维导图');
       return;
     }
-    if (!_item.canRequestAiSuggest) {
+    if (!_item.canRequestAiSuggest && !_item.shouldAutoTranscribeBeforeMindmap) {
       AppToast.show(context, '内容不足，无法生成思维导图');
       return;
     }
@@ -752,13 +792,47 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
   }
 
   Future<void> _pollMindmap() async {
-    for (var i = 0; i < 45; i++) {
-      await Future<void>.delayed(const Duration(seconds: 2));
+    final awaitingTranscript = _item.aiMeta.mindmap.awaitTranscript;
+    final maxAttempts = awaitingTranscript ? 90 : 45;
+    final interval = awaitingTranscript
+        ? const Duration(seconds: 4)
+        : const Duration(seconds: 2);
+    String? lastPhaseFingerprint;
+    for (var i = 0; i < maxAttempts; i++) {
+      await Future<void>.delayed(interval);
       if (!mounted) return;
       try {
         final st = await _repo.getMindmapStatus(_item.id);
         if (st.mindmap.isPending) {
-          if (_item.aiMeta.mindmap.status != 'pending') {
+          if (st.mindmap.awaitTranscript) {
+            final ts = await _repo.getTranscriptStatus(_item.id);
+            final merged = Map<String, TranscriptSegment>.from(
+              _item.transcriptSegments,
+            );
+            ts.segments.forEach((key, seg) {
+              merged[key] = seg;
+            });
+            final fp = ts.segments.entries
+                .map((e) => '${e.key}:${e.value.phase}:${e.value.phaseLabel}')
+                .join('|');
+            if (!mounted) return;
+            if (fp != lastPhaseFingerprint ||
+                _item.aiMeta.mindmap.status != 'pending') {
+              lastPhaseFingerprint = fp;
+              final item = await _repo.getItem(_item.id);
+              if (!mounted) return;
+              setState(
+                () => _item = item.withAiMeta(
+                  AiMeta(
+                    tags: item.aiMeta.tags,
+                    mindmap: st.mindmap,
+                    model: st.model ?? item.aiMeta.model,
+                  ),
+                ).withTranscriptSegments(merged),
+              );
+              _scrollToArticleEnd();
+            }
+          } else if (_item.aiMeta.mindmap.status != 'pending') {
             setState(
               () => _item = _item.withAiMeta(
                 AiMeta(
@@ -1243,6 +1317,7 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
                       segment: _item.segmentTranscript(
                         TranscriptTargets.segmentVideoUrl,
                       ),
+                      hidePendingLoading: _item.isAiAwaitingTranscript,
                     ),
                     const SizedBox(height: 18),
                   ] else if (_showReadingImages) ...[
@@ -1382,7 +1457,8 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
                                         _item.canTriggerAiSuggest,
                                     aiSuggestPending: _item.hasAiTagsPending,
                                     transcriptPending:
-                                        _item.hasAnyTranscriptPending,
+                                        _item.hasAnyTranscriptPending &&
+                                        !_item.aiMeta.tags.awaitTranscript,
                                   );
                                   if (!mounted) return;
                                   await _loadItemTags();

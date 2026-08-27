@@ -3,6 +3,7 @@ const DEFAULT_TAGS = {
   items: [],
   error: null,
   generatedAt: null,
+  awaitTranscript: false,
 };
 
 const DEFAULT_MINDMAP = {
@@ -11,6 +12,7 @@ const DEFAULT_MINDMAP = {
   contentHash: null,
   error: null,
   generatedAt: null,
+  awaitTranscript: false,
 };
 
 function normalizeMindmapTree(raw) {
@@ -62,6 +64,7 @@ function parseAiMeta(raw) {
         .filter((it) => it.name),
       error: tags.error != null ? String(tags.error) : null,
       generatedAt: tags.generatedAt || null,
+      awaitTranscript: tags.awaitTranscript === true,
     },
     mindmap: {
       status: mindmap.status || 'none',
@@ -69,6 +72,7 @@ function parseAiMeta(raw) {
       contentHash: mindmap.contentHash != null ? String(mindmap.contentHash) : null,
       error: mindmap.error != null ? String(mindmap.error) : null,
       generatedAt: mindmap.generatedAt || null,
+      awaitTranscript: mindmap.awaitTranscript === true,
     },
     model: obj.model != null ? String(obj.model) : null,
   };
@@ -85,6 +89,7 @@ function mapAiMetaForApi(meta) {
       })),
       error: m.tags.error,
       generatedAt: m.tags.generatedAt,
+      awaitTranscript: m.tags.awaitTranscript,
     },
     mindmap: {
       status: m.mindmap.status,
@@ -92,6 +97,7 @@ function mapAiMetaForApi(meta) {
       contentHash: m.mindmap.contentHash,
       error: m.mindmap.error,
       generatedAt: m.mindmap.generatedAt,
+      awaitTranscript: m.mindmap.awaitTranscript,
     },
     model: m.model,
   };

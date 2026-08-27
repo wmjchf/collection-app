@@ -81,7 +81,14 @@ class CollectionItem {
 
   /// 可点击触发 AI 标签建议（转写进行中、AI 生成中不可用）
   bool get canTriggerAiSuggest =>
-      canRequestAiSuggest && !hasAiTagsPending && !hasAnyTranscriptPending;
+      (canRequestAiSuggest || shouldAutoTranscribeBeforeMindmap) &&
+      !hasAiTagsPending &&
+      !(hasAnyTranscriptPending && !aiMeta.tags.awaitTranscript);
+
+  /// AI 功能触发的自动转写进行中（标签或思维导图）
+  bool get isAiAwaitingTranscript =>
+      (aiMeta.tags.awaitTranscript && aiMeta.tags.isPending) ||
+      (aiMeta.mindmap.awaitTranscript && aiMeta.mindmap.isPending);
 
   /// 转写成功后是否适合弹出「生成标签建议」提示
   bool get shouldPromptAiSuggestAfterTranscript {
@@ -96,8 +103,18 @@ class CollectionItem {
 
   bool get hasMindmapPending => aiMeta.mindmap.isPending;
 
+  bool get shouldAutoTranscribeBeforeMindmap =>
+      TranscriptTargets.shouldAutoTranscribeBeforeMindmap(
+        content: content,
+        videoUrl: videoUrl,
+        hasTopVideo: hasVideo,
+        segments: transcriptSegments,
+      );
+
   bool get canTriggerMindmap =>
-      canRequestAiSuggest && !hasMindmapPending && !hasAnyTranscriptPending;
+      (canRequestAiSuggest || shouldAutoTranscribeBeforeMindmap) &&
+      !hasMindmapPending &&
+      !(hasAnyTranscriptPending && !aiMeta.mindmap.awaitTranscript);
 
   CollectionItem withAiMeta(AiMeta meta) {
     return CollectionItem(

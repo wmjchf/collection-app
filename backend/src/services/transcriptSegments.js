@@ -141,6 +141,29 @@ function listTranscriptTargets(row) {
   return targets;
 }
 
+/** 顶栏 media（video_url，含小宇宙音频）：无内嵌 !v 时的转写对象 */
+function topBarTranscriptTarget(row) {
+  if (hasInlineVideos(String(row.content || ''))) return null;
+  const video = String(row.video_url || '').trim();
+  if (!video) return null;
+  const targets = listTranscriptTargets(row);
+  return targets.find((t) => t.segmentKey === SEGMENT_VIDEO_URL) || null;
+}
+
+/**
+ * 思维导图前是否需先转写顶栏音视频（抖音/B 站/小宇宙等）。
+ * 已有成功文稿则不再转写。
+ */
+function shouldAutoTranscribeBeforeMindmap(row) {
+  const target = topBarTranscriptTarget(row);
+  if (!target) return false;
+  if (target.needsClientResolve || !target.mediaUrl) return false;
+  if (target.status === 'success' && String(target.text || '').trim()) {
+    return false;
+  }
+  return true;
+}
+
 function hasPendingSegment(segments) {
   return Object.values(segments).some((s) => s && s.status === 'pending');
 }
@@ -200,6 +223,8 @@ module.exports = {
   hasInlineVideos,
   listInlineVideoUrls,
   listTranscriptTargets,
+  topBarTranscriptTarget,
+  shouldAutoTranscribeBeforeMindmap,
   hasPendingSegment,
   findPendingSegmentKey,
   resolveMediaUrlForSegment,

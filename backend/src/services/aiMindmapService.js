@@ -74,6 +74,65 @@ async function getItemRow(itemId, userId) {
   return rows[0] || null;
 }
 
+async function failMindmapJob(itemId, message) {
+  const [rows] = await pool.execute(
+    `SELECT ai_meta FROM items WHERE id = :itemId AND deleted_at IS NULL LIMIT 1`,
+    { itemId },
+  );
+  if (!rows[0]) return;
+  let meta = aiMeta.parseAiMeta(rows[0].ai_meta);
+  meta = aiMeta.withMindmapState(meta, {
+    status: 'failed',
+    awaitTranscript: false,
+    tree: null,
+    error: String(message || '生成失败').slice(0, 500),
+    generatedAt: new Date().toISOString(),
+  });
+  await saveAiMeta(itemId, meta);
+}
+
+async function onTranscriptSettledForMindmap(itemId) {
+  const [rows] = await pool.execute(
+    `SELECT * FROM items WHERE id = :itemId AND deleted_at IS NULL LIMIT 1`,
+    { itemId },
+  );
+  const row = rows[0];
+  if (!row) return;
+
+  let meta = aiMeta.parseAiMeta(row.ai_meta);
+  if (meta.mindmap.status !== 'pending' || !meta.mindmap.awaitTranscript) {
+    return;
+  }
+
+  const segments = transcriptSegments.parseSegments(row.transcript_segments);
+  if (transcriptSegments.hasPendingSegment(segments)) return;
+
+  if (transcriptSegments.shouldAutoTranscribeBeforeMindmap(row)) {
+    const target = transcriptSegments.topBarTranscriptTarget(row);
+    const err =
+      target && target.status === 'failed'
+        ? target.error || '转写失败，无法生成思维导图'
+        : '转写未完成，无法生成思维导图';
+    await failMindmapJob(itemId, err);
+    return;
+  }
+
+  if (!hasAiInput(row)) {
+    await failMindmapJob(itemId, '转写结果为空，无法生成思维导图');
+    return;
+  }
+
+  const contentHash = computeContentHash(row);
+  meta = aiMeta.withMindmapState(meta, {
+    awaitTranscript: false,
+    contentHash,
+  });
+  await saveAiMeta(itemId, meta);
+
+  const { enqueueMindmap } = require('./aiMindmapQueue');
+  enqueueMindmap(itemId);
+}
+
 async function requestMindmap(userId, itemId, { force = false } = {}) {
   if (!aliyunDashScope.isConfigured()) {
     throw Object.assign(
@@ -86,6 +145,11 @@ async function requestMindmap(userId, itemId, { force = false } = {}) {
   if (!row) {
     throw Object.assign(new Error('条目不存在'), { status: 404 });
   }
+  let meta = aiMeta.parseAiMeta(row.ai_meta);
+  if (meta.mindmap.status === 'pending') {
+    throw Object.assign(new Error('思维导图生成中，请稍候'), { status: 409 });
+  }
+
   const segments = transcriptSegments.parseSegments(row.transcript_segments);
   if (transcriptSegments.hasPendingSegment(segments)) {
     throw Object.assign(
@@ -93,15 +157,8 @@ async function requestMindmap(userId, itemId, { force = false } = {}) {
       { status: 409 },
     );
   }
-  if (!hasAiInput(row)) {
-    throw Object.assign(new Error('内容不足，无法生成思维导图'), { status: 400 });
-  }
 
   const contentHash = computeContentHash(row);
-  let meta = aiMeta.parseAiMeta(row.ai_meta);
-  if (meta.mindmap.status === 'pending') {
-    throw Object.assign(new Error('思维导图生成中，请稍候'), { status: 409 });
-  }
   if (
     !force &&
     meta.mindmap.status === 'success' &&
@@ -112,8 +169,54 @@ async function requestMindmap(userId, itemId, { force = false } = {}) {
     return itemService.getByIdForUser(userId, itemId);
   }
 
+  if (transcriptSegments.shouldAutoTranscribeBeforeMindmap(row)) {
+    const aliyunAsr = require('./aliyunAsr');
+    if (!aliyunAsr.isConfigured()) {
+      throw Object.assign(
+        new Error('该内容为音视频，请先配置转写后再生成思维导图'),
+        { status: 503 },
+      );
+    }
+    const target = transcriptSegments.topBarTranscriptTarget(row);
+    if (!target?.mediaUrl) {
+      throw Object.assign(
+        new Error('请先刷新视频后再生成思维导图'),
+        { status: 400 },
+      );
+    }
+
+    meta = aiMeta.withMindmapState(meta, {
+      status: 'pending',
+      awaitTranscript: true,
+      tree: null,
+      contentHash: null,
+      error: null,
+      generatedAt: null,
+    });
+    meta.model = require('../config').aliyun.aiModel || 'qwen3.8-max';
+    await saveAiMeta(itemId, meta);
+
+    const itemService = require('./itemService');
+    try {
+      await itemService.beginTranscriptSegment(
+        userId,
+        itemId,
+        transcriptSegments.SEGMENT_VIDEO_URL,
+      );
+    } catch (err) {
+      await failMindmapJob(itemId, err.message || '无法开始转写');
+      throw err;
+    }
+    return itemService.getByIdForUser(userId, itemId);
+  }
+
+  if (!hasAiInput(row)) {
+    throw Object.assign(new Error('内容不足，无法生成思维导图'), { status: 400 });
+  }
+
   meta = aiMeta.withMindmapState(meta, {
     status: 'pending',
+    awaitTranscript: false,
     tree: null,
     contentHash,
     error: null,
@@ -153,7 +256,7 @@ async function runMindmapJob(itemId) {
   if (!row) return;
 
   let meta = aiMeta.parseAiMeta(row.ai_meta);
-  if (meta.mindmap.status !== 'pending') return;
+  if (meta.mindmap.status !== 'pending' || meta.mindmap.awaitTranscript) return;
 
   try {
     const inputText = buildInputText(row);
@@ -184,6 +287,7 @@ async function runMindmapJob(itemId) {
     const contentHash = computeContentHash(row);
     meta = aiMeta.withMindmapState(meta, {
       status: 'success',
+      awaitTranscript: false,
       tree,
       contentHash,
       error: null,
@@ -196,6 +300,7 @@ async function runMindmapJob(itemId) {
   } catch (err) {
     meta = aiMeta.withMindmapState(meta, {
       status: 'failed',
+      awaitTranscript: false,
       tree: null,
       error: (err.message || '生成失败').slice(0, 500),
       generatedAt: new Date().toISOString(),
@@ -212,4 +317,6 @@ module.exports = {
   requestMindmap,
   getMindmapStatus,
   runMindmapJob,
+  failMindmapJob,
+  onTranscriptSettledForMindmap,
 };
