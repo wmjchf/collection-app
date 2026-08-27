@@ -16,6 +16,7 @@ const MIGRATION_FILES = [
   '005_item_video_url.sql',
   '007_transcript_segments.sql',
   '008_item_ai_meta.sql',
+  '009_trash_system_section.sql',
 ];
 
 async function getConnection() {
@@ -91,6 +92,62 @@ async function dropIndexIfExists(conn, dbName, table, indexName) {
   await conn.query(`ALTER TABLE \`${table}\` DROP INDEX \`${indexName}\``);
 }
 
+async function apply002(conn, dbName) {
+  if (!(await columnExists(conn, dbName, 'items', 'last_read_at'))) {
+    await conn.query(
+      'ALTER TABLE `items` ADD COLUMN `last_read_at` DATETIME(3) DEFAULT NULL COMMENT \'最近一次打开阅读页\' AFTER `is_archived`',
+    );
+    console.log('[db:migrate] 002: 已添加 last_read_at');
+  } else {
+    console.log('[db:migrate] 002: last_read_at 已存在，跳过加列');
+  }
+
+  if (!(await indexExists(conn, dbName, 'items', 'idx_items_user_last_read'))) {
+    await conn.query(
+      'ALTER TABLE `items` ADD KEY `idx_items_user_last_read` (`user_id`, `last_read_at`)',
+    );
+    console.log('[db:migrate] 002: 已添加 idx_items_user_last_read');
+  }
+
+  await conn.query(
+    "INSERT INTO `categories` (`user_id`, `section`, `code`, `name`, `is_system`, `sort_order`)"
+      + " SELECT 0, 'system', 'recent_read', '最近阅读', 1, 70"
+      + " WHERE NOT EXISTS ("
+      + " SELECT 1 FROM `categories` WHERE `user_id` = 0 AND `section` = 'system' AND `code` = 'recent_read'"
+      + " )",
+  );
+}
+
+async function apply004(conn, dbName) {
+  if (await columnExists(conn, dbName, 'items', 'image_urls')) {
+    console.log('[db:migrate] 004: image_urls 已存在，跳过');
+    return;
+  }
+  await conn.query(
+    "ALTER TABLE `items` ADD COLUMN `image_urls` JSON DEFAULT NULL COMMENT '附加图片 URL 列表' AFTER `cover_image_url`",
+  );
+}
+
+async function apply005(conn, dbName) {
+  if (await columnExists(conn, dbName, 'items', 'video_url')) {
+    console.log('[db:migrate] 005: video_url 已存在，跳过');
+    return;
+  }
+  await conn.query(
+    "ALTER TABLE `items` ADD COLUMN `video_url` VARCHAR(2048) DEFAULT NULL COMMENT '视频直链（可选）' AFTER `image_urls`",
+  );
+}
+
+async function apply008(conn, dbName) {
+  if (await columnExists(conn, dbName, 'items', 'ai_meta')) {
+    console.log('[db:migrate] 008: ai_meta 已存在，跳过');
+    return;
+  }
+  await conn.query(
+    "ALTER TABLE `items` ADD COLUMN `ai_meta` JSON DEFAULT NULL COMMENT 'AI 建议/导图状态 {tags,mindmap,model}' AFTER `transcript_segments`",
+  );
+}
+
 async function apply007(conn, dbName) {
   const hasSegments = await columnExists(conn, dbName, 'items', 'transcript_segments');
   const hasTranscript = await columnExists(conn, dbName, 'items', 'transcript');
@@ -132,8 +189,24 @@ async function runSqlFile(conn, file) {
 }
 
 async function applyMigration(conn, dbName, file) {
+  if (file === '002_last_read_at.sql') {
+    await apply002(conn, dbName);
+    return;
+  }
+  if (file === '004_item_image_urls.sql') {
+    await apply004(conn, dbName);
+    return;
+  }
+  if (file === '005_item_video_url.sql') {
+    await apply005(conn, dbName);
+    return;
+  }
   if (file === '007_transcript_segments.sql') {
     await apply007(conn, dbName);
+    return;
+  }
+  if (file === '008_item_ai_meta.sql') {
+    await apply008(conn, dbName);
     return;
   }
   await runSqlFile(conn, file);

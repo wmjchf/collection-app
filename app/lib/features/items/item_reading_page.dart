@@ -21,7 +21,6 @@ import 'package:super_collection/features/items/items_repository.dart';
 import 'package:super_collection/features/items/reading_media_controller.dart';
 import 'package:super_collection/features/items/reading_annotation_sheet.dart';
 import 'package:super_collection/features/items/reading_delete_confirm_dialog.dart';
-import 'package:super_collection/features/items/reading_folder_sheet.dart';
 import 'package:super_collection/features/items/reading_more_sheet.dart';
 import 'package:super_collection/features/items/reading_note_sheet.dart';
 import 'package:super_collection/features/items/reading_tags_sheet.dart';
@@ -464,13 +463,6 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
     );
     if (!mounted || action == null) return;
     switch (action) {
-      case ReadingMoreAction.moveFolder:
-        final updated = await showReadingFolderSheet(
-          context,
-          itemId: _item.id,
-          currentFolderId: _item.folderId,
-        );
-        if (updated != null && mounted) setState(() => _item = updated);
       case ReadingMoreAction.transcript:
         await _onTranscript();
       case ReadingMoreAction.note:

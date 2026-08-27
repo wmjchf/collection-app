@@ -8,10 +8,11 @@ const SYSTEM_CODES = [
   'parsed',
   'annotated',
   'recent_read',
+  'trash',
 ];
 
-/** 「其他」分区：已归档 / 回收站 */
-const OTHER_CODES = ['archived', 'trash'];
+/** 「其他」分区（一期已不在导航展示；保留 archived 等 DB 行供 API） */
+const OTHER_CODES = [];
 
 const ALL_FILTER_CODES = [...SYSTEM_CODES, ...OTHER_CODES];
 

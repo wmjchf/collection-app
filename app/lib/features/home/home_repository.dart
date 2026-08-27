@@ -26,24 +26,24 @@ class HomeSectionData {
 class HomeData {
   const HomeData({
     required this.unread,
-    required this.annotated,
     required this.recentRead,
+    required this.randomPick,
   });
 
   final HomeSectionData unread;
-  final HomeSectionData annotated;
   final HomeSectionData recentRead;
+  final HomeSectionData randomPick;
 
   factory HomeData.fromJson(Map<String, dynamic> json) {
     return HomeData(
       unread: HomeSectionData.fromJson(
         json['unread'] as Map<String, dynamic>? ?? const {},
       ),
-      annotated: HomeSectionData.fromJson(
-        json['annotated'] as Map<String, dynamic>? ?? const {},
-      ),
       recentRead: HomeSectionData.fromJson(
         json['recentRead'] as Map<String, dynamic>? ?? const {},
+      ),
+      randomPick: HomeSectionData.fromJson(
+        json['randomPick'] as Map<String, dynamic>? ?? const {},
       ),
     );
   }

@@ -47,13 +47,14 @@ HomeItemPreview previewForUnread(CollectionItem item) {
   );
 }
 
-HomeItemPreview previewForAnnotated(CollectionItem item) {
+HomeItemPreview previewForRandom(CollectionItem item) {
   final title = item.title?.isNotEmpty == true ? item.title! : item.url;
-  final count = item.annotationCount ?? 0;
+  final subtitle =
+      '${platformLabel(item.platform)} · ${formatRelativeDay(item.createdAt)}';
   return HomeItemPreview(
     id: item.id,
     title: title,
-    subtitle: '$count 处标注',
+    subtitle: subtitle,
     coverImageUrl: item.coverImageUrl,
     pageUrl: item.sourcePageUrl,
   );

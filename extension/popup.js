@@ -1,17 +1,13 @@
 import {
   canSaveUrl,
   clearSession,
-  createFolder,
   createTag,
-  deleteFolder,
   deleteTag,
   emptyTrash,
   fetchHome,
   fetchItem,
   fetchSystemFilters,
   getSession,
-  listFolderItems,
-  listFolders,
   listItems,
   listTagItems,
   listTags,
@@ -141,14 +137,11 @@ function emptySearch() {
 
 function emptyCollection() {
   return {
-    folders: [],
     tags: [],
     filters: [],
     others: [],
     systemExpanded: true,
-    foldersExpanded: true,
     tagsExpanded: true,
-    othersExpanded: true,
     loading: false,
     error: null,
   };
@@ -464,7 +457,7 @@ function emptyCard(text) {
   return el;
 }
 
-function sectionEl({ title, emptyText, items, kind, filter, moreTitleText }) {
+function sectionEl({ title, emptyText, items, kind, filter, moreTitleText, onMore }) {
   const wrap = document.createElement('section');
   const head = document.createElement('div');
   head.className = 'section-head';
@@ -473,15 +466,19 @@ function sectionEl({ title, emptyText, items, kind, filter, moreTitleText }) {
   const moreBtn = document.createElement('button');
   moreBtn.type = 'button';
   moreBtn.className = 'more';
-  moreBtn.textContent = '查看更多 ›';
-  moreBtn.addEventListener('click', () =>
+  moreBtn.textContent = onMore ? '换一批 ›' : '查看更多 ›';
+  moreBtn.addEventListener('click', () => {
+    if (onMore) {
+      onMore();
+      return;
+    }
     openMore({
       source: 'filter',
       key: filter,
       title: moreTitleText,
       kind,
-    }),
-  );
+    });
+  });
   head.append(h2, moreBtn);
   wrap.append(head);
   const cards = document.createElement('div');
@@ -514,20 +511,19 @@ function renderHome(data) {
       moreTitleText: '未读',
     }),
     sectionEl({
-      title: '标注',
-      emptyText: '暂无标注',
-      items: data.annotated?.items || [],
-      kind: 'annotated',
-      filter: 'annotated',
-      moreTitleText: '标注',
-    }),
-    sectionEl({
       title: '最近阅读',
       emptyText: '暂无最近阅读',
       items: data.recentRead?.items || [],
       kind: 'recent',
       filter: 'recent_read',
       moreTitleText: '最近阅读',
+    }),
+    sectionEl({
+      title: '漫游',
+      emptyText: '暂无内容',
+      items: data.randomPick?.items || [],
+      kind: 'random',
+      onMore: loadHome,
     }),
   );
 }
@@ -605,9 +601,6 @@ async function openMore({ source, key, title, kind }) {
 
 async function fetchMorePage(offset) {
   const { source, key } = more;
-  if (source === 'folder') {
-    return listFolderItems(key, { limit: PAGE, offset });
-  }
   if (source === 'tag') {
     return listTagItems(key, { limit: PAGE, offset });
   }
@@ -792,23 +785,6 @@ function renderCollection() {
   }
 
   collectionBody.append(
-    sectionLabel('收藏夹', {
-      expandable: true,
-      expanded: s.foldersExpanded,
-      onToggle: () => {
-        collectionState.foldersExpanded = !s.foldersExpanded;
-        renderCollection();
-      },
-      onAdd: () => openCreateFolder(),
-    }),
-  );
-  if (s.foldersExpanded) {
-    collectionBody.append(
-      entityGroup(s.folders.map((f) => folderRow(f))),
-    );
-  }
-
-  collectionBody.append(
     sectionLabel('标签', {
       expandable: true,
       expanded: s.tagsExpanded,
@@ -824,20 +800,6 @@ function renderCollection() {
       entityGroup(s.tags.map((t) => tagRow(t))),
     );
   }
-
-  collectionBody.append(
-    sectionLabel('其他', {
-      expandable: true,
-      expanded: s.othersExpanded,
-      onToggle: () => {
-        collectionState.othersExpanded = !s.othersExpanded;
-        renderCollection();
-      },
-    }),
-  );
-  if (s.othersExpanded) {
-    collectionBody.append(entityGroup(s.others.map((f) => filterRow(f))));
-  }
 }
 
 function filterRow(filter) {
@@ -852,24 +814,6 @@ function filterRow(filter) {
         title: filter.name,
         kind: kindForFilter(filter.code),
       }),
-  });
-}
-
-function folderRow(folder) {
-  return navRow({
-    title: folder.name,
-    count: folder.itemCount ?? 0,
-    icon: ICON.folder,
-    onClick: () =>
-      openMore({
-        source: 'folder',
-        key: folder.id,
-        title: folder.name,
-        kind: 'unread',
-      }),
-    onDelete: folder.isSystem
-      ? null
-      : () => confirmDeleteFolder(folder),
   });
 }
 
@@ -891,24 +835,19 @@ function tagRow(tag) {
 
 async function loadCollection({ quiet = false } = {}) {
   const empty =
-    !collectionState.filters.length &&
-    !collectionState.folders.length &&
-    !collectionState.tags.length;
+    !collectionState.filters.length && !collectionState.tags.length;
   if (!quiet || empty) {
     collectionState.loading = true;
     collectionState.error = null;
     renderCollection();
   }
   try {
-    const [foldersRes, tagsRes, filtersRes] = await Promise.all([
-      listFolders(),
+    const [tagsRes, filtersRes] = await Promise.all([
       listTags(),
       fetchSystemFilters(),
     ]);
-    collectionState.folders = foldersRes.folders || [];
     collectionState.tags = tagsRes.tags || [];
     collectionState.filters = filtersRes.filters || [];
-    collectionState.others = filtersRes.others || [];
     collectionState.loading = false;
     collectionState.error = null;
     renderCollection();
@@ -1075,21 +1014,6 @@ async function submitNameSheet() {
   }
 }
 
-function openCreateFolder() {
-  openNameSheet({
-    title: '新建收藏夹',
-    label: '名称',
-    placeholder: '请输入收藏夹名称',
-    onSubmit: async (name) => {
-      if (!name) throw new Error('请输入收藏夹名称');
-      if (name.length > 64) throw new Error('名称最多 64 个字');
-      const res = await createFolder(name);
-      await loadCollection();
-      toast(`已创建「${res.folder?.name || name}」`);
-    },
-  });
-}
-
 function openCreateTag({ afterCreate } = {}) {
   openNameSheet({
     title: '新建标签',
@@ -1107,24 +1031,6 @@ function openCreateTag({ afterCreate } = {}) {
     },
     afterClose: afterCreate,
   });
-}
-
-async function confirmDeleteFolder(folder) {
-  const ok = await confirmDialog({
-    title: '删除收藏夹',
-    message: `确定删除「${folder.name}」？夹内条目将移回「未分类」，不会删除条目。`,
-    confirmLabel: '删除',
-    danger: true,
-  });
-  if (!ok) return;
-  try {
-    await deleteFolder(folder.id);
-    await loadCollection();
-    toast(`已删除「${folder.name}」`);
-  } catch (err) {
-    if (await handleAuthError(err)) return;
-    toast(err.message || '删除失败');
-  }
 }
 
 async function confirmDeleteTag(tag) {
@@ -1435,63 +1341,7 @@ function renderPickList(rows) {
   for (const row of rows) list.append(row);
 }
 
-async function openFolderPicker() {
-  hideDetailMenu();
-  const item = detailState.item;
-  if (!item) return;
-  $('pick-title').textContent = '移动到收藏夹';
-  $('pick-save').hidden = true;
-  pickSave = null;
-  openOverlay('pick');
-  renderPickList([]);
-  try {
-    const res = await listFolders();
-    const folders = res.folders || [];
-    renderPickList(
-      folders.map((folder) => {
-        const btn = document.createElement('button');
-        btn.type = 'button';
-        btn.className = 'pick-row';
-        btn.innerHTML = '<span class="name"></span><span class="check"></span>';
-        btn.querySelector('.name').textContent = folder.name;
-        if (folder.id === item.folderId) {
-          btn.querySelector('.check').textContent = '✓';
-        }
-        btn.addEventListener('click', async () => {
-          if (folder.id === item.folderId) {
-            closeOverlay({ cancel: false });
-            return;
-          }
-          try {
-            overlayBusy = true;
-            const patched = await patchItem(item.id, { folderId: folder.id });
-            detailState.item = patched.item || { ...item, folderId: folder.id };
-            overlayBusy = false;
-            closeOverlay({ cancel: false });
-            toast(`已移入「${folder.name}」`);
-          } catch (err) {
-            overlayBusy = false;
-            if (await handleAuthError(err)) {
-              closeOverlay({ cancel: false });
-              return;
-            }
-            toast(err.message || '移动失败');
-          }
-        });
-        return btn;
-      }),
-    );
-  } catch (err) {
-    if (await handleAuthError(err)) {
-      closeOverlay({ cancel: false });
-      return;
-    }
-    toast(err.message || '加载收藏夹失败');
-    closeOverlay({ cancel: false });
-  }
-}
-
-async function openTagPicker() {
+function renderPickList(rows) {
   hideDetailMenu();
   const item = detailState.item;
   if (!item) return;
@@ -1741,7 +1591,6 @@ $('detail-more').addEventListener('click', (e) => {
   toggleDetailMenu();
 });
 $('detail-copy').addEventListener('click', copyDetailLink);
-$('detail-folder').addEventListener('click', openFolderPicker);
 $('detail-tags').addEventListener('click', openTagPicker);
 $('detail-delete').addEventListener('click', deleteCurrentItem);
 $('detail-menu').addEventListener('click', (e) => e.stopPropagation());

@@ -6,7 +6,7 @@ Future<bool?> showReadingDeleteConfirmDialog(BuildContext context) {
   return showAppConfirmDialog(
     context,
     title: '移入最近删除？',
-    message: '可在「我的收藏 → 其他 → 回收站」中恢复。',
+    message: '可在「我的收藏 → 回收站」中恢复。',
     confirmLabel: '删除',
   );
 }

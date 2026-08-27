@@ -2,26 +2,9 @@ const { pool } = require('../db');
 const systemFilterService = require('./systemFilterService');
 const { mapItem } = require('./itemService');
 
-async function annotationCountsForItems(itemIds) {
-  if (!itemIds.length) return new Map();
-  // named placeholders + IN list
-  const placeholders = itemIds.map((_, i) => `:id${i}`).join(', ');
-  const params = {};
-  itemIds.forEach((id, i) => {
-    params[`id${i}`] = id;
-  });
-  const [rows] = await pool.execute(
-    `SELECT item_id, COUNT(*) AS cnt
-     FROM annotations
-     WHERE item_id IN (${placeholders})
-     GROUP BY item_id`,
-    params,
-  );
-  const map = new Map();
-  for (const row of rows) {
-    map.set(Number(row.item_id), Number(row.cnt || 0));
-  }
-  return map;
+/** 活跃、已解析成功的条目（随机重读候选池） */
+function randomPoolWhere() {
+  return `i.user_id = :userId AND i.deleted_at IS NULL AND i.is_archived = 0 AND i.status = 'success'`;
 }
 
 async function section(userId, code, tzOffsetMinutes) {
@@ -30,15 +13,7 @@ async function section(userId, code, tzOffsetMinutes) {
     limit: 3,
     offset: 0,
   });
-  let items = result.items.map(mapItem);
-
-  if (code === 'annotated' && items.length) {
-    const counts = await annotationCountsForItems(items.map((i) => i.id));
-    items = items.map((item) => ({
-      ...item,
-      annotationCount: counts.get(item.id) || 0,
-    }));
-  }
+  const items = result.items.map(mapItem);
 
   return {
     total: result.total,
@@ -47,16 +22,46 @@ async function section(userId, code, tzOffsetMinutes) {
 }
 
 /**
- * 首页三板块：未读 / 标注 / 最近阅读（各最多 3 条）
+ * 随机推荐：从已解析条目池 ORDER BY RAND() 取最多 3 条（规则后续可调整）
+ */
+async function randomSection(userId, limit = 3) {
+  const safeLimit = Math.min(Math.max(Number(limit) || 3, 1), 10);
+
+  const [countRows] = await pool.execute(
+    `SELECT COUNT(*) AS cnt FROM items i WHERE ${randomPoolWhere()}`,
+    { userId },
+  );
+  const total = Number(countRows[0]?.cnt || 0);
+  if (total === 0) {
+    return { total: 0, items: [] };
+  }
+
+  const [rows] = await pool.execute(
+    `SELECT i.*
+     FROM items i
+     WHERE ${randomPoolWhere()}
+     ORDER BY RAND()
+     LIMIT ${safeLimit}`,
+    { userId },
+  );
+
+  return {
+    total,
+    items: rows.map(mapItem),
+  };
+}
+
+/**
+ * 首页三板块：未读 / 最近阅读 / 漫游（各最多 3 条；漫游为随机推荐，规则可调整）
  */
 async function getHome(userId, tzOffsetMinutes = 480) {
-  const [unread, annotated, recentRead] = await Promise.all([
+  const [unread, recentRead, randomPick] = await Promise.all([
     section(userId, 'unread', tzOffsetMinutes),
-    section(userId, 'annotated', tzOffsetMinutes),
     section(userId, 'recent_read', tzOffsetMinutes),
+    randomSection(userId, 3),
   ]);
 
-  return { unread, annotated, recentRead };
+  return { unread, recentRead, randomPick };
 }
 
 module.exports = { getHome };

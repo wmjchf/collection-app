@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-enum ReadingMoreAction { moveFolder, transcript, note, delete }
+enum ReadingMoreAction { transcript, note, delete }
 
 Future<ReadingMoreAction?> showReadingMoreSheet(
   BuildContext context, {
@@ -81,12 +81,6 @@ class _ReadingMoreSheet extends StatelessWidget {
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                  _GridItem(
-                    icon: Icons.folder_outlined,
-                    label: '移动收藏夹',
-                    onTap: () =>
-                        Navigator.pop(context, ReadingMoreAction.moveFolder),
-                  ),
                   if (showTranscript)
                     _GridItem(
                       icon: Icons.subtitles_outlined,

@@ -1334,7 +1334,6 @@ module.exports = {
   markAsRead,
   setStarred,
   updateNote,
-  moveToFolder,
   softDelete,
   restoreFromTrash,
   purgeFromTrash,

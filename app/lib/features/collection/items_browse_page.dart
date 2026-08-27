@@ -10,7 +10,7 @@ import 'package:super_collection/features/items/item_models.dart';
 typedef ItemsBrowseLoader = Future<({List<CollectionItem> items, int total})>
     Function({required int limit, required int offset});
 
-/// 通用条目列表（收藏夹 / 标签）
+/// 通用条目列表（标签等）
 class ItemsBrowsePage extends StatefulWidget {
   const ItemsBrowsePage({
     super.key,
