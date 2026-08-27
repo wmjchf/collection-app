@@ -21,6 +21,7 @@ import 'package:super_collection/features/items/items_repository.dart';
 import 'package:super_collection/features/items/reading_media_controller.dart';
 import 'package:super_collection/features/items/reading_annotation_sheet.dart';
 import 'package:super_collection/features/items/reading_delete_confirm_dialog.dart';
+import 'package:super_collection/features/items/reading_regenerate_confirm_dialog.dart';
 import 'package:super_collection/features/items/reading_more_sheet.dart';
 import 'package:super_collection/features/items/reading_note_sheet.dart';
 import 'package:super_collection/features/items/reading_tags_sheet.dart';
@@ -489,22 +490,9 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
     if (!force &&
         _item.aiMeta.tags.isSuccess &&
         _item.aiMeta.tags.hasSuggestions) {
-      final retry = await showDialog<bool>(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          title: const Text('重新生成'),
-          content: const Text('将覆盖当前标签建议，是否继续？'),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('取消'),
-            ),
-            TextButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('重新生成'),
-            ),
-          ],
-        ),
+      final retry = await showReadingRegenerateConfirmDialog(
+        context,
+        ReadingRegenerateKind.tags,
       );
       if (retry != true || !mounted) return;
       force = true;
@@ -574,22 +562,9 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
     if (!force &&
         _item.aiMeta.mindmap.isSuccess &&
         _item.aiMeta.mindmap.hasTree) {
-      final retry = await showDialog<bool>(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          title: const Text('重新生成'),
-          content: const Text('将覆盖当前思维导图，是否继续？'),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('取消'),
-            ),
-            TextButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('重新生成'),
-            ),
-          ],
-        ),
+      final retry = await showReadingRegenerateConfirmDialog(
+        context,
+        ReadingRegenerateKind.mindmap,
       );
       if (retry != true || !mounted) return;
       force = true;
@@ -700,22 +675,9 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
 
     final existing = _item.segmentTranscript(chosen.segmentKey);
     if (existing?.hasText == true) {
-      final retry = await showDialog<bool>(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          title: const Text('重新转写'),
-          content: const Text('该段已有文稿，是否重新转写并覆盖？'),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('取消'),
-            ),
-            TextButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('重新转写'),
-            ),
-          ],
-        ),
+      final retry = await showReadingRegenerateConfirmDialog(
+        context,
+        ReadingRegenerateKind.transcript,
       );
       if (retry != true || !mounted) return;
     }
