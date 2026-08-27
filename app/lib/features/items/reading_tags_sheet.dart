@@ -17,6 +17,7 @@ Future<ReadingTagsSheetResult?> showReadingTagsSheet(
   required int itemId,
   bool aiSuggestEnabled = true,
   bool aiSuggestPending = false,
+  bool transcriptPending = false,
 }) async {
   final session = _TagsSheetSession();
 
@@ -31,6 +32,7 @@ Future<ReadingTagsSheetResult?> showReadingTagsSheet(
         session: session,
         aiSuggestEnabled: aiSuggestEnabled,
         aiSuggestPending: aiSuggestPending,
+        transcriptPending: transcriptPending,
       ),
     );
     if (result != ReadingTagsSheetResult.createTag) {
@@ -50,12 +52,14 @@ class _ReadingTagsSheet extends StatefulWidget {
     required this.session,
     required this.aiSuggestEnabled,
     required this.aiSuggestPending,
+    required this.transcriptPending,
   });
 
   final int itemId;
   final _TagsSheetSession session;
   final bool aiSuggestEnabled;
   final bool aiSuggestPending;
+  final bool transcriptPending;
 
   @override
   State<_ReadingTagsSheet> createState() => _ReadingTagsSheetState();
@@ -155,10 +159,18 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
     }
     AppToast.show(
       context,
-      widget.aiSuggestPending
-          ? '标签建议生成中，请稍候'
-          : '内容不足，无法生成标签建议',
+      widget.transcriptPending
+          ? '转写进行中，请稍候再生成标签建议'
+          : widget.aiSuggestPending
+              ? '标签建议生成中，请稍候'
+              : '内容不足，无法生成标签建议',
     );
+  }
+
+  String get _aiSuggestButtonLabel {
+    if (widget.transcriptPending) return '转写中…';
+    if (widget.aiSuggestPending) return 'AI 生成中…';
+    return 'AI 建议标签';
   }
 
   @override
@@ -205,9 +217,7 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
                     const SizedBox(width: 8),
                     _HeaderActionButton(
                       icon: Icons.auto_awesome_outlined,
-                      label: widget.aiSuggestPending
-                          ? 'AI 生成中…'
-                          : 'AI 建议标签',
+                      label: _aiSuggestButtonLabel,
                       onTap: _onAiSuggest,
                       foreground:
                           widget.aiSuggestEnabled ? _blue : _muted,

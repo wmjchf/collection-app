@@ -79,6 +79,19 @@ class CollectionItem {
     return t.isNotEmpty || body.isNotEmpty || sum.isNotEmpty || hasTranscript;
   }
 
+  /// 可点击触发 AI 标签建议（转写进行中、AI 生成中不可用）
+  bool get canTriggerAiSuggest =>
+      canRequestAiSuggest && !hasAiTagsPending && !hasAnyTranscriptPending;
+
+  /// 转写成功后是否适合弹出「生成标签建议」提示
+  bool get shouldPromptAiSuggestAfterTranscript {
+    if (!canTriggerAiSuggest) return false;
+    final tags = aiMeta.tags;
+    if (tags.isPending) return false;
+    if (tags.isSuccess && tags.hasSuggestions) return false;
+    return true;
+  }
+
   bool get hasAiTagsPending => aiMeta.tags.isPending;
 
   CollectionItem withAiMeta(AiMeta meta) {

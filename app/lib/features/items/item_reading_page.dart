@@ -474,6 +474,10 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
   }
 
   Future<void> _onAiSuggest({bool force = false}) async {
+    if (_item.hasAnyTranscriptPending) {
+      AppToast.show(context, '转写进行中，请稍候再生成标签建议');
+      return;
+    }
     if (!_item.canRequestAiSuggest) {
       AppToast.show(context, '内容不足，无法生成标签建议');
       return;
@@ -692,7 +696,11 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
         setState(() => _item = item);
         final anySuccess = st.segments.values.any((s) => s.isSuccess);
         if (anySuccess) {
-          AppToast.show(context, '文稿已生成');
+          if (_item.shouldPromptAiSuggestAfterTranscript) {
+            await _promptAiSuggestAfterTranscript();
+          } else {
+            AppToast.show(context, '文稿已生成');
+          }
         } else {
           String? errMsg;
           for (final s in st.segments.values) {
@@ -708,6 +716,32 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
       } catch (_) {
         // ignore poll errors
       }
+    }
+  }
+
+  Future<void> _promptAiSuggestAfterTranscript() async {
+    if (!mounted || !_item.shouldPromptAiSuggestAfterTranscript) return;
+    final go = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('文稿已生成'),
+        content: const Text(
+          '是否根据正文与文稿生成 AI 标签建议？',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('稍后'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('生成'),
+          ),
+        ],
+      ),
+    );
+    if (go == true && mounted) {
+      await _onAiSuggest();
     }
   }
 
@@ -1058,9 +1092,10 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
                                     context,
                                     itemId: _item.id,
                                     aiSuggestEnabled:
-                                        _item.canRequestAiSuggest &&
-                                        !_item.hasAiTagsPending,
+                                        _item.canTriggerAiSuggest,
                                     aiSuggestPending: _item.hasAiTagsPending,
+                                    transcriptPending:
+                                        _item.hasAnyTranscriptPending,
                                   );
                                   if (!mounted) return;
                                   await _loadItemTags();
