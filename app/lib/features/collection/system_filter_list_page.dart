@@ -5,7 +5,7 @@ import 'package:super_collection/core/ui/paged_list.dart';
 import 'package:super_collection/features/collection/system_filters_repository.dart';
 import 'package:super_collection/features/home/home_format.dart';
 import 'package:super_collection/features/items/cover_image.dart';
-import 'package:super_collection/features/items/item_detail_page.dart';
+import 'package:super_collection/features/items/item_reading_page.dart';
 import 'package:super_collection/features/items/item_models.dart';
 
 /// 系统筛选条目列表（未读 / 所有 / 今天 …）
@@ -200,7 +200,7 @@ class _SystemFilterListPageState extends State<SystemFilterListPage> {
                             onTap: () async {
                               final deleted = await Navigator.of(context).push<bool>(
                                 MaterialPageRoute(
-                                  builder: (_) => ItemDetailPage(
+                                  builder: (_) => ItemReadingPage(
                                     itemId: item.id,
                                     initialItem: item,
                                   ),

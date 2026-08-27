@@ -5,7 +5,7 @@ import 'package:super_collection/core/network/api_client.dart';
 import 'package:super_collection/core/ui/paged_list.dart';
 import 'package:super_collection/features/home/home_format.dart';
 import 'package:super_collection/features/items/cover_image.dart';
-import 'package:super_collection/features/items/item_detail_page.dart';
+import 'package:super_collection/features/items/item_reading_page.dart';
 import 'package:super_collection/features/items/item_models.dart';
 import 'package:super_collection/features/items/items_repository.dart';
 
@@ -155,7 +155,7 @@ class _SearchPageState extends State<SearchPage> {
   void _openHit(SearchHit hit) async {
     final deleted = await Navigator.of(context).push<bool>(
       MaterialPageRoute(
-        builder: (_) => ItemDetailPage(
+        builder: (_) => ItemReadingPage(
           itemId: hit.item.id,
           initialItem: hit.item,
         ),

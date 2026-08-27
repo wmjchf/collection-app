@@ -5,7 +5,9 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:super_collection/core/network/api_client.dart';
 import 'package:super_collection/core/network/media_http_headers.dart';
+import 'package:super_collection/core/ui/app_confirm_dialog.dart';
 import 'package:super_collection/core/ui/app_toast.dart';
+import 'package:super_collection/core/ui/parse_progress_tracker.dart';
 import 'package:super_collection/features/collection/tag_models.dart';
 import 'package:super_collection/features/home/home_format.dart';
 import 'package:super_collection/features/items/ai_meta_models.dart';
@@ -29,11 +31,16 @@ import 'package:super_collection/features/items/transcript_models.dart';
 import 'package:super_collection/features/items/transcript_picker_sheet.dart';
 import 'package:super_collection/features/items/transcript_segment_panel.dart';
 
-/// 本地阅读页：标题 + 可读正文（含标注高亮）；底栏 星标 / 标签 / 备注 / 更多。
+/// 本地阅读页：标题 + 可读正文（含标注高亮）；顶栏更多；底栏 星标 / 标签 / 思维导图 / 更多。
 class ItemReadingPage extends StatefulWidget {
-  const ItemReadingPage({super.key, required this.item});
+  const ItemReadingPage({
+    super.key,
+    required this.itemId,
+    this.initialItem,
+  });
 
-  final CollectionItem item;
+  final int itemId;
+  final CollectionItem? initialItem;
 
   @override
   State<ItemReadingPage> createState() => _ItemReadingPageState();
@@ -62,30 +69,192 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
   bool _bodyHasSelection = false;
   DateTime? _lastChromeToggleAt;
   late final ReadingMediaController _pageAudio = ReadingMediaController();
+  Timer? _itemPollTimer;
+  bool _pageLoading = false;
+  String? _pageError;
+  bool _markedRead = false;
 
   @override
   void initState() {
     super.initState();
-    _item = widget.item;
-    _loadAnnotations();
-    unawaited(_loadItemTags());
-    unawaited(ReadingMediaController.ensureAudioSession());
-    if (_item.hasAnyTranscriptPending) {
-      _pollTranscript();
+    final initial = widget.initialItem;
+    _item = initial ??
+        CollectionItem(
+          id: widget.itemId,
+          url: '',
+          status: 'pending',
+        );
+    _pageLoading = initial == null;
+    if (initial != null) {
+      _syncItemPolling(initial);
+      if (initial.isSuccess) {
+        unawaited(_markReadIfNeeded());
+        _onItemReadyForReading(initial);
+      }
     }
-    if (_item.hasAiTagsPending) {
-      _pollAiSuggest();
-    }
-    if (_item.hasMindmapPending) {
-      _pollMindmap();
-    }
+    unawaited(_bootstrapItem());
   }
 
   @override
   void dispose() {
+    _itemPollTimer?.cancel();
     _scrollController.dispose();
     _pageAudio.dispose();
     super.dispose();
+  }
+
+  Future<void> _bootstrapItem() async {
+    try {
+      final item = await _repo.getItem(widget.itemId);
+      if (!mounted) return;
+      final wasSuccess = _item.isSuccess;
+      setState(() {
+        _item = item;
+        _pageLoading = false;
+        _pageError = null;
+      });
+      _syncItemPolling(item);
+      if (item.isSuccess && !wasSuccess) {
+        unawaited(_markReadIfNeeded());
+        _onItemReadyForReading(item);
+      }
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _pageLoading = false;
+        _pageError = e.message;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _pageLoading = false;
+        _pageError = '加载失败';
+      });
+    }
+  }
+
+  void _syncItemPolling(CollectionItem item) {
+    _itemPollTimer?.cancel();
+    if (!item.isPending) return;
+    _itemPollTimer = Timer.periodic(const Duration(milliseconds: 1600), (_) {
+      _pollItemOnce();
+    });
+  }
+
+  Future<void> _pollItemOnce() async {
+    try {
+      final item = await _repo.getItem(widget.itemId);
+      if (!mounted) return;
+      final wasSuccess = _item.isSuccess;
+      setState(() => _item = item);
+      if (!item.isPending) {
+        _itemPollTimer?.cancel();
+      }
+      if (item.isSuccess && !wasSuccess) {
+        unawaited(_markReadIfNeeded());
+        _onItemReadyForReading(item);
+      }
+    } catch (_) {
+      // 轮询失败不打断页面
+    }
+  }
+
+  void _onItemReadyForReading(CollectionItem item) {
+    _loadAnnotations();
+    unawaited(_loadItemTags());
+    unawaited(ReadingMediaController.ensureAudioSession());
+    if (item.hasAnyTranscriptPending) {
+      _pollTranscript();
+    }
+    if (item.hasAiTagsPending) {
+      _pollAiSuggest();
+    }
+    if (item.hasMindmapPending) {
+      _pollMindmap();
+    }
+  }
+
+  Future<void> _markReadIfNeeded() async {
+    if (_markedRead || !_item.isSuccess) return;
+    _markedRead = true;
+    try {
+      final item = await _repo.markAsRead(widget.itemId);
+      if (!mounted) return;
+      setState(() => _item = item);
+    } catch (_) {
+      _markedRead = false;
+    }
+  }
+
+  Future<void> _reparseItem() async {
+    try {
+      ParseProgressTracker.begin();
+      final item = await _repo.reparse(widget.itemId);
+      if (!mounted) return;
+      setState(() => _item = item);
+      _syncItemPolling(item);
+      // ignore: unawaited_futures
+      ParseProgressTracker.watchItem(
+        item.id,
+        initialStatus: item.status,
+        platform: item.platform,
+        url: item.canonicalUrl ?? item.url,
+        onSettled: () async {
+          if (!mounted) return;
+          try {
+            final refreshed = await _repo.getItem(widget.itemId);
+            if (!mounted) return;
+            final wasSuccess = _item.isSuccess;
+            setState(() => _item = refreshed);
+            _syncItemPolling(refreshed);
+            if (refreshed.isSuccess && !wasSuccess) {
+              unawaited(_markReadIfNeeded());
+              _onItemReadyForReading(refreshed);
+            }
+          } catch (_) {}
+        },
+      );
+    } on ApiException catch (e) {
+      ParseProgressTracker.cancel();
+      if (!mounted) return;
+      AppToast.show(context, e.message);
+    }
+  }
+
+  String get _linkToCopy {
+    final canonical = _item.canonicalUrl?.trim();
+    if (canonical != null && canonical.isNotEmpty) return canonical;
+    return _item.url.trim();
+  }
+
+  Future<void> _copyLink() async {
+    final link = _linkToCopy;
+    if (link.isEmpty) {
+      AppToast.show(context, '暂无链接');
+      return;
+    }
+    await Clipboard.setData(ClipboardData(text: link));
+    if (!mounted) return;
+    AppToast.show(context, '链接已复制');
+  }
+
+  Future<void> _confirmPurgeDelete() async {
+    final ok = await showAppConfirmDialog(
+      context,
+      title: '彻底删除？',
+      message: '删除后不可恢复。',
+      confirmLabel: '删除',
+    );
+    if (ok != true || !mounted) return;
+    try {
+      await _repo.purgeFromTrash(_item.id);
+      if (!mounted) return;
+      AppToast.show(context, '已彻底删除');
+      Navigator.of(context).pop(true);
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      AppToast.show(context, e.message);
+    }
   }
 
   Future<void> _loadItemTags() async {
@@ -947,9 +1116,55 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
 
   @override
   Widget build(BuildContext context) {
+    if (_pageLoading && widget.initialItem == null) {
+      return Scaffold(
+        backgroundColor: Colors.white,
+        body: Column(
+          children: [
+            _ReadingTopBar(
+              onBack: () => Navigator.of(context).maybePop(),
+              menuEnabled: false,
+              onCopyLink: _copyLink,
+              onReparse: _reparseItem,
+              onDelete: _confirmPurgeDelete,
+            ),
+            const Expanded(
+              child: Center(child: CircularProgressIndicator()),
+            ),
+          ],
+        ),
+      );
+    }
+
+    if (_pageError != null && widget.initialItem == null) {
+      return Scaffold(
+        backgroundColor: Colors.white,
+        body: Column(
+          children: [
+            _ReadingTopBar(
+              onBack: () => Navigator.of(context).maybePop(),
+              menuEnabled: false,
+              onCopyLink: _copyLink,
+              onReparse: _reparseItem,
+              onDelete: _confirmPurgeDelete,
+            ),
+            Expanded(
+              child: Center(
+                child: Text(
+                  _pageError!,
+                  style: const TextStyle(color: _muted),
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
     final title =
         _item.title?.isNotEmpty == true ? _item.title! : _item.url;
     final body = _bodyText;
+    final canRead = _item.isSuccess;
 
     final mq = MediaQuery.of(context);
     final topChrome = mq.padding.top + _topBarHeight;
@@ -964,10 +1179,12 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
             curve: Curves.easeOutCubic,
             padding: EdgeInsets.only(
               top: _chromeVisible ? topChrome : mq.padding.top,
-              bottom: _chromeVisible ? bottomChrome : mq.padding.bottom,
+              bottom: _chromeVisible && canRead
+                  ? bottomChrome
+                  : mq.padding.bottom,
             ),
             child: GestureDetector(
-              onTap: _toggleReadingChrome,
+              onTap: canRead ? _toggleReadingChrome : null,
               behavior: HitTestBehavior.translucent,
               child: ListView(
                 controller: _scrollController,
@@ -996,6 +1213,17 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
                     ),
                   ),
                   const SizedBox(height: 22),
+                  if (!canRead) ...[
+                    _ReadingStatusChip(status: _item.status),
+                    const SizedBox(height: 16),
+                    if (_item.isPending)
+                      const _ReadingPendingCard()
+                    else if (_item.isFailed)
+                      _ReadingFailedCard(
+                        message: _item.errorMessage,
+                        onRetry: _reparseItem,
+                      ),
+                  ] else ...[
                   if (_item.hasVideo && !_hasInlineVideos) ...[
                     ItemVideoPlayer(
                       key: ValueKey('item-video-${_item.id}'),
@@ -1080,6 +1308,7 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
                     sourceTitle: title,
                     onRetry: () => _onMindmap(force: true),
                   ),
+                  ],
                 ],
               ),
             ),
@@ -1098,11 +1327,16 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
                       _chromeVisible ? Offset.zero : const Offset(0, -1),
                   child: _ReadingTopBar(
                     onBack: () => Navigator.of(context).maybePop(),
+                    menuEnabled: true,
+                    onCopyLink: _copyLink,
+                    onReparse: _reparseItem,
+                    onDelete: _confirmPurgeDelete,
                   ),
                 ),
               ),
             ),
           ),
+          if (canRead)
           Positioned(
             left: 0,
             right: 0,
@@ -1898,12 +2132,22 @@ class _ToolbarAction extends StatelessWidget {
 }
 
 class _ReadingTopBar extends StatelessWidget {
-  const _ReadingTopBar({required this.onBack});
+  const _ReadingTopBar({
+    required this.onBack,
+    required this.onCopyLink,
+    required this.onReparse,
+    required this.onDelete,
+    this.menuEnabled = true,
+  });
 
   final VoidCallback onBack;
+  final VoidCallback onCopyLink;
+  final VoidCallback onReparse;
+  final VoidCallback onDelete;
+  final bool menuEnabled;
 
   static const _text = Color(0xFF1F242E);
-  static const _muted = Color(0xFF737A85);
+  static const _danger = Color(0xFFE34D59);
 
   @override
   Widget build(BuildContext context) {
@@ -1914,7 +2158,7 @@ class _ReadingTopBar extends StatelessWidget {
         child: SizedBox(
           height: 52,
           child: Padding(
-            padding: const EdgeInsets.only(left: 4, right: 16),
+            padding: const EdgeInsets.only(left: 4, right: 4),
             child: Row(
               children: [
                 TextButton.icon(
@@ -1930,12 +2174,76 @@ class _ReadingTopBar extends StatelessWidget {
                   ),
                 ),
                 const Spacer(),
-                const Text(
-                  '阅读',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w500,
-                    color: _muted,
+                PopupMenuButton<String>(
+                  enabled: menuEnabled,
+                  tooltip: '更多',
+                  offset: const Offset(0, 40),
+                  elevation: 8,
+                  color: Colors.white,
+                  shadowColor: Colors.black.withValues(alpha: 0.14),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    side: const BorderSide(color: Color(0xFFE6E8EB)),
+                  ),
+                  constraints:
+                      const BoxConstraints(minWidth: 148, maxWidth: 168),
+                  onSelected: (value) {
+                    if (value == 'copy') onCopyLink();
+                    if (value == 'reparse') onReparse();
+                    if (value == 'delete') onDelete();
+                  },
+                  itemBuilder: (context) => [
+                    const PopupMenuItem<String>(
+                      value: 'copy',
+                      height: 44,
+                      child: Text(
+                        '复制链接',
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w500,
+                          color: _text,
+                        ),
+                      ),
+                    ),
+                    const PopupMenuItem<String>(
+                      value: 'reparse',
+                      height: 44,
+                      child: Text(
+                        '重新解析',
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w500,
+                          color: _text,
+                        ),
+                      ),
+                    ),
+                    const PopupMenuItem<String>(
+                      value: 'delete',
+                      height: 44,
+                      child: Text(
+                        '删除',
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w500,
+                          color: _danger,
+                        ),
+                      ),
+                    ),
+                  ],
+                  child: const SizedBox(
+                    width: 44,
+                    height: 44,
+                    child: Center(
+                      child: Text(
+                        '⋯',
+                        style: TextStyle(
+                          fontSize: 22,
+                          fontWeight: FontWeight.w700,
+                          color: _text,
+                          height: 1,
+                        ),
+                      ),
+                    ),
                   ),
                 ),
               ],
@@ -1943,6 +2251,142 @@ class _ReadingTopBar extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+class _ReadingStatusChip extends StatelessWidget {
+  const _ReadingStatusChip({required this.status});
+
+  final String status;
+
+  @override
+  Widget build(BuildContext context) {
+    late final Color bg;
+    late final Color fg;
+    late final String label;
+    switch (status) {
+      case 'success':
+        bg = const Color(0xFFE5F7EB);
+        fg = const Color(0xFF26804D);
+        label = '解析完成';
+      case 'failed':
+        bg = const Color(0xFFFDECEC);
+        fg = const Color(0xFFE34D59);
+        label = '解析失败';
+      default:
+        bg = const Color(0xFFFFF3E6);
+        fg = const Color(0xFFD97706);
+        label = '正在解析…';
+    }
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+        decoration: BoxDecoration(
+          color: bg,
+          borderRadius: BorderRadius.circular(999),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w500,
+            color: fg,
+            height: 17 / 12,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ReadingPendingCard extends StatelessWidget {
+  const _ReadingPendingCard();
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _skel(height: 14, width: double.infinity),
+        const SizedBox(height: 12),
+        _skel(height: 14, width: 220),
+        const SizedBox(height: 12),
+        _skel(height: 14, width: 160),
+        const SizedBox(height: 20),
+        _skel(height: 14, width: double.infinity),
+        const SizedBox(height: 12),
+        _skel(height: 14, width: 200),
+      ],
+    );
+  }
+
+  Widget _skel({required double height, required double width}) {
+    return Container(
+      height: height,
+      width: width,
+      decoration: BoxDecoration(
+        color: const Color(0xFFEDF0F5),
+        borderRadius: BorderRadius.circular(6),
+      ),
+    );
+  }
+}
+
+class _ReadingFailedCard extends StatelessWidget {
+  const _ReadingFailedCard({this.message, required this.onRetry});
+
+  final String? message;
+  final VoidCallback onRetry;
+
+  static const _blue = Color(0xFF2F6FED);
+  static const _text = Color(0xFF1F242E);
+  static const _muted = Color(0xFF737A85);
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          '无法解析该链接的正文',
+          style: TextStyle(
+            fontSize: 15,
+            fontWeight: FontWeight.w600,
+            color: _text,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          (message != null && message!.isNotEmpty)
+              ? message!
+              : '请稍后重试。第一期不支持打开原文。',
+          style: const TextStyle(
+            fontSize: 14,
+            color: _muted,
+            height: 1.5,
+          ),
+        ),
+        const SizedBox(height: 16),
+        SizedBox(
+          width: double.infinity,
+          height: 44,
+          child: FilledButton(
+            onPressed: onRetry,
+            style: FilledButton.styleFrom(
+              backgroundColor: _blue,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+            child: const Text(
+              '重试解析',
+              style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
