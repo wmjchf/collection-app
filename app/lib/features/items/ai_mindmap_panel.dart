@@ -180,7 +180,7 @@ class _AiMindmapPanelState extends State<AiMindmapPanel> {
 }
 
 /// 可缩放平移的思维导图视图（内嵌预览与全屏页共用）
-class MindmapInteractiveView extends StatelessWidget {
+class MindmapInteractiveView extends StatefulWidget {
   const MindmapInteractiveView({
     super.key,
     required this.root,
@@ -199,22 +199,78 @@ class MindmapInteractiveView extends StatelessWidget {
   final double maxScale;
 
   @override
+  State<MindmapInteractiveView> createState() => _MindmapInteractiveViewState();
+}
+
+class _MindmapInteractiveViewState extends State<MindmapInteractiveView> {
+  final _controller = TransformationController();
+  bool _initialFitDone = false;
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  void didUpdateWidget(covariant MindmapInteractiveView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.root != widget.root ||
+        oldWidget.collapsed != widget.collapsed) {
+      _initialFitDone = false;
+    }
+  }
+
+  void _fitPreviewIfNeeded(double viewportWidth, double viewportHeight) {
+    if (_initialFitDone || widget.viewHeight == null || viewportWidth <= 0) {
+      return;
+    }
+    final layout = _MindmapLayout.compute(widget.root, widget.collapsed);
+    final scale = math.min(
+      1.0,
+      math.min(
+        (viewportWidth - 16) / layout.width,
+        (viewportHeight - 16) / layout.height,
+      ),
+    );
+    _controller.value = Matrix4.identity()
+      ..translate(8.0, 8.0)
+      ..scale(scale);
+    _initialFitDone = true;
+  }
+
+  @override
   Widget build(BuildContext context) {
     final viewer = InteractiveViewer(
+      transformationController: _controller,
       constrained: false,
-      minScale: minScale,
-      maxScale: maxScale,
+      alignment: Alignment.topLeft,
+      minScale: widget.minScale,
+      maxScale: widget.maxScale,
       boundaryMargin: const EdgeInsets.all(80),
       clipBehavior: Clip.none,
       child: _MindmapCanvas(
-        root: root,
-        collapsed: collapsed,
-        onToggle: onToggle,
+        root: widget.root,
+        collapsed: widget.collapsed,
+        onToggle: widget.onToggle,
       ),
     );
 
-    if (viewHeight != null) {
-      return SizedBox(height: viewHeight, child: viewer);
+    if (widget.viewHeight != null) {
+      return SizedBox(
+        height: widget.viewHeight,
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              _fitPreviewIfNeeded(
+                constraints.maxWidth,
+                widget.viewHeight!,
+              );
+            });
+            return viewer;
+          },
+        ),
+      );
     }
     return viewer;
   }
@@ -414,39 +470,70 @@ class _MindmapLayout {
   final double width;
   final double height;
 
-  static const _gapX = 16.0;
-  static const _gapY = 44.0;
+  static const _gapX = 24.0;
+  static const _gapY = 22.0;
   static const _padH = 10.0;
-  static const _padV = 6.0;
+  static const _padV = 8.0;
   static const _canvasPad = 32.0;
+  static const _maxTextWidth = 200.0;
+  static const _nodeTextStyle = TextStyle(
+    fontSize: 13,
+    fontWeight: FontWeight.w500,
+    height: 1.35,
+  );
+
+  static double _subtreeBottom(
+    String branchPath,
+    Map<String, _MindmapNodeLayout> nodes,
+  ) {
+    double bottom = 0;
+    for (final entry in nodes.entries) {
+      final key = entry.key;
+      if (key == branchPath || key.startsWith('$branchPath-')) {
+        bottom = math.max(bottom, entry.value.rect.bottom);
+      }
+    }
+    return bottom;
+  }
+
+  static double _subtreeRight(
+    String branchPath,
+    Map<String, _MindmapNodeLayout> nodes,
+  ) {
+    double right = 0;
+    for (final entry in nodes.entries) {
+      final key = entry.key;
+      if (key == branchPath || key.startsWith('$branchPath-')) {
+        right = math.max(right, entry.value.rect.right);
+      }
+    }
+    return right;
+  }
 
   static _MindmapLayout compute(AiMindmapNode root, Set<String> collapsed) {
     final nodes = <String, _MindmapNodeLayout>{};
     final edges = <(_MindmapNodeLayout, _MindmapNodeLayout)>[];
 
-    double layoutSubtree(
+    Size layoutSubtree(
       AiMindmapNode node,
       String path,
       double x,
       double y,
     ) {
       final tp = TextPainter(
-        text: TextSpan(
-          text: node.title,
-          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
-        ),
+        text: TextSpan(text: node.title, style: _nodeTextStyle),
         textDirection: TextDirection.ltr,
-        maxLines: 2,
-      )..layout(maxWidth: 140);
+        maxLines: 3,
+      )..layout(maxWidth: _maxTextWidth);
 
-      final w = tp.width + _padH * 2;
-      final h = tp.height + _padV * 2;
+      final textWidth = _textBlockWidth(tp);
+      final w = textWidth + _padH * 2;
+      final h = math.max(tp.height + _padV * 2, 28.0);
       final isRoot = path == 'r';
 
       final isCollapsed = collapsed.contains(path);
-      final visibleChildren = isCollapsed
-          ? <AiMindmapNode>[]
-          : node.children;
+      final visibleChildren =
+          isCollapsed ? <AiMindmapNode>[] : node.children;
 
       if (visibleChildren.isEmpty) {
         final layout = _MindmapNodeLayout(
@@ -454,32 +541,41 @@ class _MindmapLayout {
           title: node.title,
           rect: Rect.fromLTWH(x, y, w, h),
           isRoot: isRoot,
+          textWidth: textWidth,
         );
         nodes[path] = layout;
-        return w;
+        return Size(w, h);
       }
 
-      final childY = y + h + _gapY;
-      double cursorX = x;
+      final childX = x + w + _gapX;
+      double childY = y;
+      double maxChildWidth = 0;
+      double subtreeBottom = y;
 
       for (var i = 0; i < visibleChildren.length; i++) {
         final childPath = '$path-$i';
-        final childW = layoutSubtree(
+        layoutSubtree(
           visibleChildren[i],
           childPath,
-          cursorX,
+          childX,
           childY,
         );
-        cursorX += childW + _gapX;
+        subtreeBottom = _subtreeBottom(childPath, nodes);
+        maxChildWidth = math.max(
+          maxChildWidth,
+          _subtreeRight(childPath, nodes) - childX,
+        );
+        childY = subtreeBottom + _gapY;
       }
 
-      final totalChildWidth = cursorX - x - _gapX;
-      final centerX = x + totalChildWidth / 2 - w / 2;
+      final totalChildHeight = subtreeBottom - y;
+      final parentY = y + (totalChildHeight - h) / 2;
       final layout = _MindmapNodeLayout(
         path: path,
         title: node.title,
-        rect: Rect.fromLTWH(centerX, y, w, h),
+        rect: Rect.fromLTWH(x, parentY, w, h),
         isRoot: isRoot,
+        textWidth: textWidth,
       );
       nodes[path] = layout;
 
@@ -491,8 +587,9 @@ class _MindmapLayout {
         }
       }
 
-      final right = math.max(centerX + w, x + totalChildWidth);
-      return right - x;
+      final subtreeWidth = w + _gapX + maxChildWidth;
+      final subtreeHeight = math.max(h, totalChildHeight);
+      return Size(subtreeWidth, subtreeHeight);
     }
 
     layoutSubtree(root, 'r', 0, 0);
@@ -518,6 +615,7 @@ class _MindmapLayout {
           title: n.title,
           rect: n.rect.shift(Offset(shiftX, shiftY)),
           isRoot: n.isRoot,
+          textWidth: n.textWidth,
         );
       }
       maxX += shiftX;
@@ -538,6 +636,12 @@ class _MindmapLayout {
       height: maxY + _canvasPad,
     );
   }
+
+  static double _textBlockWidth(TextPainter tp) {
+    final metrics = tp.computeLineMetrics();
+    if (metrics.isEmpty) return tp.width;
+    return metrics.map((m) => m.width).fold(0.0, math.max);
+  }
 }
 
 class _MindmapNodeLayout {
@@ -546,15 +650,17 @@ class _MindmapNodeLayout {
     required this.title,
     required this.rect,
     required this.isRoot,
+    required this.textWidth,
   });
 
   final String path;
   final String title;
   final Rect rect;
   final bool isRoot;
+  final double textWidth;
 
-  Offset get anchorBottom => Offset(rect.center.dx, rect.bottom);
-  Offset get anchorTop => Offset(rect.center.dx, rect.top);
+  Offset get anchorRight => Offset(rect.right, rect.center.dy);
+  Offset get anchorLeft => Offset(rect.left, rect.center.dy);
 }
 
 class _MindmapPainter extends CustomPainter {
@@ -567,15 +673,16 @@ class _MindmapPainter extends CustomPainter {
     final linePaint = Paint()
       ..color = const Color(0xFFD9DBE0)
       ..strokeWidth = 1.5
-      ..style = PaintingStyle.stroke;
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round;
 
     for (final (from, to) in layout.edges) {
-      final start = from.anchorBottom;
-      final end = to.anchorTop;
-      final midY = (start.dy + end.dy) / 2;
+      final start = from.anchorRight;
+      final end = to.anchorLeft;
+      final midX = (start.dx + end.dx) / 2;
       final path = Path()
         ..moveTo(start.dx, start.dy)
-        ..cubicTo(start.dx, midY, end.dx, midY, end.dx, end.dy);
+        ..cubicTo(midX, start.dy, midX, end.dy, end.dx, end.dy);
       canvas.drawPath(path, linePaint);
     }
 
@@ -607,12 +714,13 @@ class _MindmapPainter extends CustomPainter {
           style: TextStyle(
             fontSize: 13,
             fontWeight: FontWeight.w500,
+            height: 1.35,
             color: node.isRoot ? Colors.white : const Color(0xFF1F242E),
           ),
         ),
         textDirection: TextDirection.ltr,
-        maxLines: 2,
-      )..layout(maxWidth: node.rect.width - 20);
+        maxLines: 3,
+      )..layout(maxWidth: node.textWidth);
 
       tp.paint(
         canvas,

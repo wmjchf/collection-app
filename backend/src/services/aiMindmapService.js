@@ -8,20 +8,37 @@ const {
   computeContentHash,
 } = require('./aiInput');
 
+/** 根 + 3 层子节点（与 App 横向脑图一致） */
 const MAX_DEPTH = 3;
-const MAX_CHILDREN = 6;
+const MAX_CHILDREN_BY_DEPTH = [7, 5, 5];
+const MAX_TITLE_BY_DEPTH = [24, 24, 20, 80];
+
+const MINDMAP_SYSTEM_PROMPT =
+  '你是专业的内容结构化助手。根据用户收藏的文章或视频转写，生成「知识脑图」JSON 树，' +
+  '风格类似商业案例拆解：模块化主题 + 要点罗列，便于横向展开阅读。\n\n' +
+  '结构要求：\n' +
+  '1. 根节点 title：全文核心主题（8～24 字）\n' +
+  '2. 第一层 children（5～7 个）：按内容选用并命名，优先覆盖——人物/背景简介、核心认知与关键观点、' +
+  '底层方法论/原则、分类案例（如资金门槛/行业）、实操落地框架、行动目标或路径、风险提醒或常见误区\n' +
+  '3. 第二层：该模块下的子主题（2～5 个）\n' +
+  '4. 第三层：具体要点、数据、案例细节（叶子节点；每条一句话 12～50 字，保留关键数字与专有名词）\n\n' +
+  '节点 title 长度：根与一级 4～24 字；二级 4～20 字；叶子 12～50 字。\n' +
+  '每层子节点 2～5 个；全树最多 4 层（含根）。覆盖核心论点，不遗漏关键数据与方法论。\n' +
+  '只输出 JSON：{"title":"…","children":[{"title":"…","children":[…]}]}，不要其它字段。';
 
 function normalizeTree(raw, depth = 0) {
   if (!raw || typeof raw !== 'object') return null;
   const title = String(raw.title || raw.name || '').trim();
-  if (!title || title.length > 64) return null;
+  const maxTitle = MAX_TITLE_BY_DEPTH[depth] ?? 80;
+  if (!title || title.length > maxTitle) return null;
   const children = [];
   if (depth < MAX_DEPTH) {
+    const maxChildren = MAX_CHILDREN_BY_DEPTH[depth] ?? 5;
     const rawChildren = Array.isArray(raw.children) ? raw.children : [];
     for (const c of rawChildren) {
       const n = normalizeTree(c, depth + 1);
       if (n) children.push(n);
-      if (children.length >= MAX_CHILDREN) break;
+      if (children.length >= maxChildren) break;
     }
   }
   return { title, children };
@@ -135,11 +152,7 @@ async function runMindmapJob(itemId) {
       messages: [
         {
           role: 'system',
-          content:
-            '你是内容结构分析助手。根据用户收藏的内容，生成思维导图 JSON 树。' +
-            '要求：根节点 title 为全文中心主题；children 为分支；最多 4 层（含根）；' +
-            '每节点 title 简短（2～12 字）；每层子节点 2～5 个；覆盖核心论点与结构。' +
-            '只输出 JSON：{"title":"中心主题","children":[{"title":"分支","children":[]}]}，不要其它字段。',
+          content: MINDMAP_SYSTEM_PROMPT,
         },
         {
           role: 'user',
