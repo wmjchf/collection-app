@@ -43,16 +43,20 @@ class _AiMindmapPanelState extends State<AiMindmapPanel> {
     });
   }
 
-  Future<void> _shareMindmap(AiMindmapNode root) async {
+  Future<void> _shareMindmap(
+    AiMindmapNode root, {
+    Rect? shareOrigin,
+  }) async {
     if (_sharing) return;
     setState(() => _sharing = true);
     try {
       await shareMindmapImage(
-        context: context,
         root: root,
         sourceTitle: widget.sourceTitle,
+        sharePositionOrigin: shareOrigin,
       );
-    } catch (_) {
+    } catch (error, stack) {
+      debugPrint('mindmap share failed: $error\n$stack');
       if (mounted) {
         AppToast.show(context, '分享失败，请稍后重试');
       }
@@ -189,7 +193,9 @@ class _AiMindmapPanelState extends State<AiMindmapPanel> {
                 ),
                 _MindmapShareButton(
                   loading: _sharing,
-                  onTap: _sharing ? null : () => _shareMindmap(meta.tree!),
+                  onTap: _sharing
+                      ? null
+                      : (origin) => _shareMindmap(meta.tree!, shareOrigin: origin),
                 ),
               ],
             ),
@@ -484,13 +490,21 @@ class _MindmapShareButton extends StatelessWidget {
     this.loading = false,
   });
 
-  final VoidCallback? onTap;
+  final void Function(Rect? shareOrigin)? onTap;
   final bool loading;
+
+  static Rect? _shareOriginFor(BuildContext context) {
+    final box = context.findRenderObject() as RenderBox?;
+    if (box == null || !box.hasSize || box.size.isEmpty) {
+      return null;
+    }
+    return box.localToGlobal(Offset.zero) & box.size;
+  }
 
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
-      onTap: onTap,
+      onTap: onTap == null ? null : () => onTap!(_shareOriginFor(context)),
       behavior: HitTestBehavior.opaque,
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
