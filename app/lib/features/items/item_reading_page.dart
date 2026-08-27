@@ -9,6 +9,7 @@ import 'package:super_collection/core/ui/app_toast.dart';
 import 'package:super_collection/features/collection/tag_models.dart';
 import 'package:super_collection/features/home/home_format.dart';
 import 'package:super_collection/features/items/ai_meta_models.dart';
+import 'package:super_collection/features/items/ai_mindmap_panel.dart';
 import 'package:super_collection/features/items/ai_tag_suggest_panel.dart';
 import 'package:super_collection/features/items/article_body_text.dart';
 import 'package:super_collection/features/items/article_content_blocks.dart';
@@ -74,6 +75,9 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
     }
     if (_item.hasAiTagsPending) {
       _pollAiSuggest();
+    }
+    if (_item.hasMindmapPending) {
+      _pollMindmap();
     }
   }
 
@@ -456,6 +460,8 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
           _item.canRequestTranscript ||
           _item.hasAnyTranscriptPending ||
           _item.hasAnyTranscript,
+      mindmapEnabled: _item.canTriggerMindmap,
+      mindmapPending: _item.hasMindmapPending,
     );
     if (!mounted || action == null) return;
     switch (action) {
@@ -468,6 +474,8 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
         if (updated != null && mounted) setState(() => _item = updated);
       case ReadingMoreAction.transcript:
         await _onTranscript();
+      case ReadingMoreAction.mindmap:
+        await _onMindmap();
       case ReadingMoreAction.delete:
         await _confirmDelete();
     }
@@ -550,6 +558,93 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
           AppToast.show(context, '暂无新的标签建议');
         } else if (st.tags.isFailed) {
           AppToast.show(context, st.tags.error ?? '标签建议生成失败');
+        }
+        return;
+      } catch (_) {
+        // ignore poll errors
+      }
+    }
+  }
+
+  Future<void> _onMindmap({bool force = false}) async {
+    if (_item.hasAnyTranscriptPending) {
+      AppToast.show(context, '转写进行中，请稍候再生成思维导图');
+      return;
+    }
+    if (!_item.canRequestAiSuggest) {
+      AppToast.show(context, '内容不足，无法生成思维导图');
+      return;
+    }
+    if (_item.hasMindmapPending) {
+      AppToast.show(context, '思维导图生成中，请稍候');
+      return;
+    }
+
+    if (!force &&
+        _item.aiMeta.mindmap.isSuccess &&
+        _item.aiMeta.mindmap.hasTree) {
+      final retry = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('重新生成'),
+          content: const Text('将覆盖当前思维导图，是否继续？'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('取消'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('重新生成'),
+            ),
+          ],
+        ),
+      );
+      if (retry != true || !mounted) return;
+      force = true;
+    }
+
+    try {
+      final updated = await _repo.requestMindmap(_item.id, force: force);
+      if (!mounted) return;
+      setState(() => _item = updated);
+      _scrollToArticleEnd();
+      _pollMindmap();
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      AppToast.show(context, e.message);
+    }
+  }
+
+  Future<void> _pollMindmap() async {
+    for (var i = 0; i < 45; i++) {
+      await Future<void>.delayed(const Duration(seconds: 2));
+      if (!mounted) return;
+      try {
+        final st = await _repo.getMindmapStatus(_item.id);
+        if (st.mindmap.isPending) {
+          if (_item.aiMeta.mindmap.status != 'pending') {
+            setState(
+              () => _item = _item.withAiMeta(
+                AiMeta(
+                  tags: _item.aiMeta.tags,
+                  mindmap: st.mindmap,
+                  model: st.model,
+                ),
+              ),
+            );
+            _scrollToArticleEnd();
+          }
+          continue;
+        }
+        final item = await _repo.getItem(_item.id);
+        if (!mounted) return;
+        setState(() => _item = item);
+        _scrollToArticleEnd();
+        if (st.mindmap.isSuccess) {
+          AppToast.show(context, '思维导图已生成');
+        } else if (st.mindmap.isFailed) {
+          AppToast.show(context, st.mindmap.error ?? '思维导图生成失败');
         }
         return;
       } catch (_) {
@@ -1026,6 +1121,10 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
                     onApply: _applyAiSuggest,
                     onDismiss: _dismissAiSuggest,
                     onRetry: () => _onAiSuggest(force: true),
+                  ),
+                  AiMindmapPanel(
+                    mindmapMeta: _item.aiMeta.mindmap,
+                    onRetry: () => _onMindmap(force: true),
                   ),
                 ],
               ),

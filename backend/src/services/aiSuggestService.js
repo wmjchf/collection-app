@@ -3,52 +3,10 @@ const aiMeta = require('./aiMeta');
 const aliyunDashScope = require('./aliyunDashScope');
 const tagService = require('./tagService');
 const transcriptSegments = require('./transcriptSegments');
-
-const CONTENT_LIMIT = 8000;
-const TRANSCRIPT_LIMIT = 6000;
-
-function stripMarkdown(text) {
-  return String(text || '')
-    .replace(/!v?\[[^\]]*\]\([^)]+\)/g, ' ')
-    .replace(/!\[[^\]]*\]\([^)]+\)/g, ' ')
-    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
-    .replace(/[#>*`_~-]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
-function collectTranscriptText(row) {
-  const segments = transcriptSegments.parseSegments(row.transcript_segments);
-  const parts = [];
-  for (const seg of Object.values(segments)) {
-    const t = (seg?.text || '').trim();
-    if (t) parts.push(t);
-  }
-  return parts.join('\n\n');
-}
-
-function hasAiInput(row) {
-  const title = (row.title || '').trim();
-  const content = stripMarkdown(row.content || '');
-  const summary = (row.summary || '').trim();
-  const transcript = collectTranscriptText(row);
-  return Boolean(title || content || summary || transcript);
-}
-
-function buildInputText(row) {
-  const parts = [];
-  const title = (row.title || '').trim();
-  const summary = (row.summary || '').trim();
-  const platform = (row.platform || '').trim();
-  if (title) parts.push(`标题：${title}`);
-  if (platform) parts.push(`来源：${platform}`);
-  if (summary) parts.push(`摘要：${summary}`);
-  const content = stripMarkdown(row.content || '').slice(0, CONTENT_LIMIT);
-  if (content) parts.push(`正文：${content}`);
-  const transcript = collectTranscriptText(row).slice(0, TRANSCRIPT_LIMIT);
-  if (transcript) parts.push(`文稿：${transcript}`);
-  return parts.join('\n\n');
-}
+const {
+  hasAiInput,
+  buildInputText,
+} = require('./aiInput');
 
 async function listUserTagsForMatch(userId) {
   const [rows] = await pool.execute(
@@ -333,7 +291,6 @@ async function applyAiSuggest(userId, itemId, { names = [] } = {}) {
 }
 
 module.exports = {
-  hasAiInput,
   requestAiSuggest,
   getAiSuggestStatus,
   runAiSuggestJob,

@@ -382,6 +382,38 @@ class ItemsRepository {
     return CollectionItem.fromJson(itemJson);
   }
 
+  Future<({
+    AiMindmapMeta mindmap,
+    String? model,
+  })> getMindmapStatus(int id) async {
+    final token = await _token();
+    final json = await _api.get(
+      '/api/items/$id/mindmap-status',
+      accessToken: token,
+    );
+    final raw = json['mindmap'];
+    AiMindmapMeta mindmap = const AiMindmapMeta();
+    if (raw is Map<String, dynamic>) {
+      mindmap = AiMindmapMeta.fromJson(raw);
+    } else if (raw is Map) {
+      mindmap = AiMindmapMeta.fromJson(
+        raw.map((k, v) => MapEntry(k.toString(), v)),
+      );
+    }
+    return (mindmap: mindmap, model: json['model'] as String?);
+  }
+
+  Future<CollectionItem> requestMindmap(int id, {bool force = false}) async {
+    final token = await _token();
+    final json = await _api.post(
+      '/api/items/$id/mindmap',
+      body: {'force': force},
+      accessToken: token,
+    );
+    final itemJson = json['item'] as Map<String, dynamic>? ?? {};
+    return CollectionItem.fromJson(itemJson);
+  }
+
   Future<List<ItemAnnotation>> listAnnotations(int id) async {
     final token = await _token();
     final json =
