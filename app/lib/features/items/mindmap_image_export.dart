@@ -143,33 +143,38 @@ Future<File> writeMindmapPngFile(Uint8List bytes) async {
 
 /// 导出完整脑图 PNG 并唤起系统分享面板（微信等）。
 Future<void> shareMindmapImage({
-  required BuildContext context,
   required AiMindmapNode root,
   String? sourceTitle,
+  Rect? sharePositionOrigin,
 }) async {
-  Rect? shareOrigin;
-  final box = context.findRenderObject() as RenderBox?;
-  if (box != null && box.hasSize) {
-    shareOrigin = box.localToGlobal(Offset.zero) & box.size;
-  }
-
   final bytes = await renderMindmapPngBytes(
     root: root,
     sourceTitle: sourceTitle,
   );
   final file = await writeMindmapPngFile(bytes);
 
-  final title = sourceTitle?.trim();
-  final shareText = (title != null && title.isNotEmpty)
-      ? '思维导图：$title'
-      : '思维导图';
-
   await SharePlus.instance.share(
     ShareParams(
-      files: [XFile(file.path, mimeType: 'image/png')],
-      text: shareText,
-      subject: shareText,
-      sharePositionOrigin: shareOrigin,
+      files: [
+        XFile(
+          file.path,
+          name: 'mindmap.png',
+          mimeType: 'image/png',
+        ),
+      ],
+      sharePositionOrigin: _safeShareOrigin(sharePositionOrigin),
     ),
   );
+}
+
+/// iPad / 部分分享扩展要求锚点有效；滚动页里用整块卡片 context 会得到错误 rect。
+Rect? _safeShareOrigin(Rect? origin) {
+  if (origin == null) return null;
+  if (origin.width <= 0 ||
+      origin.height <= 0 ||
+      !origin.width.isFinite ||
+      !origin.height.isFinite) {
+    return null;
+  }
+  return origin;
 }
