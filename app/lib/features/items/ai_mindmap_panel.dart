@@ -50,10 +50,12 @@ class _AiMindmapPanelState extends State<AiMindmapPanel> {
     if (_sharing) return;
     setState(() => _sharing = true);
     try {
+      final screenSize = MediaQuery.sizeOf(context);
       await shareMindmapImage(
         root: root,
         sourceTitle: widget.sourceTitle,
         sharePositionOrigin: shareOrigin,
+        screenSize: screenSize,
       );
     } catch (error, stack) {
       debugPrint('mindmap share failed: $error\n$stack');

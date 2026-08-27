@@ -48,5 +48,15 @@
             <action android:name="android.intent.action.PROCESS_TEXT"/>
             <data android:mimeType="text/plain"/>
         </intent>
+        <!-- share_plus 分享图片：Android 11+ 需声明可见性，否则选不了微信等 -->
+        <intent>
+            <action android:name="android.intent.action.SEND"/>
+            <data android:mimeType="image/*"/>
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.SEND_MULTIPLE"/>
+            <data android:mimeType="image/*"/>
+        </intent>
+        <package android:name="com.tencent.mm"/>
     </queries>
 </manifest>

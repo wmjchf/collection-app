@@ -1,13 +1,15 @@
-import 'dart:io';
 import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:super_collection/features/items/ai_meta_models.dart';
 import 'package:super_collection/features/items/mindmap_render.dart';
+
+/// 微信等对体积/尺寸敏感：长边与文件大小上限。
+const _shareMaxLongSide = 3072.0;
+const _shareMaxBytes = 8 * 1024 * 1024;
 
 /// 离屏渲染完整展开的思维导图为 PNG（忽略折叠状态）。
 Future<Uint8List> renderMindmapPngBytes({
@@ -88,6 +90,50 @@ Future<Uint8List> renderMindmapPngBytes({
   return byteData.buffer.asUint8List();
 }
 
+/// 为分享导出 PNG：自动压低像素比，避免微信因过大图片失败。
+Future<Uint8List> renderMindmapPngBytesForShare({
+  required AiMindmapNode root,
+  String? sourceTitle,
+}) async {
+  final layout = MindmapLayout.compute(root, const {});
+  const hPad = 24.0;
+  const vPad = 24.0;
+  const footerGap = 12.0;
+  const footerHeight = 20.0;
+  final footer = _footerText(sourceTitle);
+  final footerBlock = footer == null ? 0.0 : footerGap + footerHeight;
+  final contentW = layout.width + hPad * 2;
+  final contentH = layout.height + vPad * 2 + footerBlock;
+  final longSide = math.max(contentW, contentH);
+
+  var ratio = 2.0;
+  if (longSide * ratio > _shareMaxLongSide) {
+    ratio = _shareMaxLongSide / longSide;
+  }
+
+  Uint8List bytes = await renderMindmapPngBytes(
+    root: root,
+    sourceTitle: sourceTitle,
+    pixelRatio: ratio,
+  );
+
+  for (var i = 0; i < 4 && bytes.length > _shareMaxBytes; i++) {
+    ratio *= 0.72;
+    bytes = await renderMindmapPngBytes(
+      root: root,
+      sourceTitle: sourceTitle,
+      pixelRatio: ratio,
+    );
+  }
+
+  if (bytes.length > _shareMaxBytes) {
+    throw StateError(
+      'Mindmap image too large for share (${bytes.length} bytes)',
+    );
+  }
+  return bytes;
+}
+
 /// 脑图区域斜向平铺半透明 CONFLUX 水印（不遮挡阅读）。
 void _paintConfluxWatermark(Canvas canvas, Size size) {
   const text = 'CONFLUX';
@@ -132,49 +178,75 @@ String? _footerText(String? sourceTitle) {
   return '$title · Conflux';
 }
 
-Future<File> writeMindmapPngFile(Uint8List bytes) async {
-  final dir = await getTemporaryDirectory();
-  final file = File(
-    '${dir.path}/mindmap_${DateTime.now().millisecondsSinceEpoch}.png',
-  );
-  await file.writeAsBytes(bytes, flush: true);
-  return file;
-}
-
 /// 导出完整脑图 PNG 并唤起系统分享面板（微信等）。
 Future<void> shareMindmapImage({
   required AiMindmapNode root,
   String? sourceTitle,
   Rect? sharePositionOrigin,
+  Size? screenSize,
 }) async {
-  final bytes = await renderMindmapPngBytes(
+  final bytes = await renderMindmapPngBytesForShare(
     root: root,
     sourceTitle: sourceTitle,
   );
-  final file = await writeMindmapPngFile(bytes);
 
-  await SharePlus.instance.share(
+  final origin = _effectiveShareOrigin(
+    sharePositionOrigin,
+    screenSize,
+  );
+
+  final file = XFile.fromData(
+    bytes,
+    mimeType: 'image/png',
+    name: 'mindmap.png',
+  );
+
+  await _shareWithFallback(
     ShareParams(
-      files: [
-        XFile(
-          file.path,
-          name: 'mindmap.png',
-          mimeType: 'image/png',
-        ),
-      ],
-      sharePositionOrigin: _safeShareOrigin(sharePositionOrigin),
+      files: [file],
+      fileNameOverrides: const ['mindmap.png'],
+      sharePositionOrigin: origin,
     ),
   );
 }
 
-/// iPad / 部分分享扩展要求锚点有效；滚动页里用整块卡片 context 会得到错误 rect。
-Rect? _safeShareOrigin(Rect? origin) {
-  if (origin == null) return null;
-  if (origin.width <= 0 ||
-      origin.height <= 0 ||
-      !origin.width.isFinite ||
-      !origin.height.isFinite) {
-    return null;
+Future<void> _shareWithFallback(ShareParams params) async {
+  try {
+    await SharePlus.instance.share(params);
+  } catch (error) {
+    final origin = params.sharePositionOrigin;
+    if (origin == null || origin == Rect.zero) {
+      rethrow;
+    }
+    debugPrint('mindmap share retry without origin: $error');
+    await SharePlus.instance.share(
+      ShareParams(
+        files: params.files,
+        fileNameOverrides: params.fileNameOverrides,
+      ),
+    );
   }
-  return origin;
+}
+
+/// 滚动页里按钮 global rect 可能偏屏外；iOS 26+ 又要求有效锚点。
+Rect _effectiveShareOrigin(Rect? buttonOrigin, Size? screenSize) {
+  if (screenSize == null) {
+    return buttonOrigin ?? Rect.zero;
+  }
+
+  final screen = Rect.fromLTWH(0, 0, screenSize.width, screenSize.height);
+  if (buttonOrigin != null &&
+      buttonOrigin.width > 0 &&
+      buttonOrigin.height > 0 &&
+      screen.overlaps(buttonOrigin.inflate(1))) {
+    return buttonOrigin;
+  }
+
+  // 落在屏幕中下，供 iOS share sheet / 微信扩展取锚点
+  return Rect.fromLTWH(
+    screenSize.width * 0.5 - 1,
+    screenSize.height * 0.82,
+    2,
+    2,
+  );
 }
