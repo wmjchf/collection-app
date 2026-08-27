@@ -1,12 +1,11 @@
 import 'package:flutter/material.dart';
 
-enum ReadingMoreAction { moveFolder, transcript, mindmap, delete }
+enum ReadingMoreAction { moveFolder, transcript, note, delete }
 
 Future<ReadingMoreAction?> showReadingMoreSheet(
   BuildContext context, {
   bool showTranscript = false,
-  bool mindmapEnabled = true,
-  bool mindmapPending = false,
+  bool hasNote = false,
 }) {
   return showModalBottomSheet<ReadingMoreAction>(
     context: context,
@@ -14,8 +13,7 @@ Future<ReadingMoreAction?> showReadingMoreSheet(
     barrierColor: const Color(0x66000000),
     builder: (context) => _ReadingMoreSheet(
       showTranscript: showTranscript,
-      mindmapEnabled: mindmapEnabled,
-      mindmapPending: mindmapPending,
+      hasNote: hasNote,
     ),
   );
 }
@@ -23,16 +21,15 @@ Future<ReadingMoreAction?> showReadingMoreSheet(
 class _ReadingMoreSheet extends StatelessWidget {
   const _ReadingMoreSheet({
     required this.showTranscript,
-    required this.mindmapEnabled,
-    required this.mindmapPending,
+    required this.hasNote,
   });
 
   final bool showTranscript;
-  final bool mindmapEnabled;
-  final bool mindmapPending;
+  final bool hasNote;
 
   static const _text = Color(0xFF1F242E);
   static const _muted = Color(0xFF737A85);
+  static const _blue = Color(0xFF2F6FED);
   static const _handle = Color(0xFFD9DBE0);
   static const _iconBg = Color(0xFFF5F7FA);
   static const _danger = Color(0xFFBF3333);
@@ -98,13 +95,11 @@ class _ReadingMoreSheet extends StatelessWidget {
                           Navigator.pop(context, ReadingMoreAction.transcript),
                     ),
                   _GridItem(
-                    icon: Icons.hub_outlined,
-                    label: mindmapPending ? '生成中…' : '思维导图',
-                    enabled: mindmapEnabled && !mindmapPending,
-                    onTap: mindmapEnabled && !mindmapPending
-                        ? () =>
-                            Navigator.pop(context, ReadingMoreAction.mindmap)
-                        : null,
+                    icon: Icons.edit_note_outlined,
+                    label: '备注',
+                    color: hasNote ? _blue : _text,
+                    onTap: () =>
+                        Navigator.pop(context, ReadingMoreAction.note),
                   ),
                   _GridItem(
                     icon: Icons.delete_outline,
