@@ -1077,6 +1077,7 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
                   ),
                   AiMindmapPanel(
                     mindmapMeta: _item.aiMeta.mindmap,
+                    sourceTitle: title,
                     onRetry: () => _onMindmap(force: true),
                   ),
                 ],
