@@ -458,7 +458,7 @@ function emptyCard(text) {
   return el;
 }
 
-function sectionEl({ title, emptyText, items, kind, filter, moreTitleText }) {
+function sectionEl({ title, emptyText, items, kind, filter, moreTitleText, onMore }) {
   const wrap = document.createElement('section');
   const head = document.createElement('div');
   head.className = 'section-head';
@@ -467,15 +467,19 @@ function sectionEl({ title, emptyText, items, kind, filter, moreTitleText }) {
   const moreBtn = document.createElement('button');
   moreBtn.type = 'button';
   moreBtn.className = 'more';
-  moreBtn.textContent = '查看更多 ›';
-  moreBtn.addEventListener('click', () =>
+  moreBtn.textContent = onMore ? '换一批 ›' : '查看更多 ›';
+  moreBtn.addEventListener('click', () => {
+    if (onMore) {
+      onMore();
+      return;
+    }
     openMore({
       source: 'filter',
       key: filter,
       title: moreTitleText,
       kind,
-    }),
-  );
+    });
+  });
   head.append(h2, moreBtn);
   wrap.append(head);
   const cards = document.createElement('div');
@@ -508,20 +512,19 @@ function renderHome(data) {
       moreTitleText: '未读',
     }),
     sectionEl({
-      title: '标注',
-      emptyText: '暂无标注',
-      items: data.annotated?.items || [],
-      kind: 'annotated',
-      filter: 'annotated',
-      moreTitleText: '标注',
-    }),
-    sectionEl({
       title: '最近阅读',
       emptyText: '暂无最近阅读',
       items: data.recentRead?.items || [],
       kind: 'recent',
       filter: 'recent_read',
       moreTitleText: '最近阅读',
+    }),
+    sectionEl({
+      title: '漫游',
+      emptyText: '暂无内容',
+      items: data.randomPick?.items || [],
+      kind: 'random',
+      onMore: loadHome,
     }),
   );
 }

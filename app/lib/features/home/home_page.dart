@@ -23,7 +23,7 @@ import 'package:super_collection/features/onboarding/home_coach_overlay.dart';
 import 'package:super_collection/features/onboarding/shortcuts_help_page.dart';
 import 'package:super_collection/features/search/search_page.dart';
 
-/// 一级页：首页 — 未读 / 标注 / 最近阅读
+/// 一级页：首页 — 未读 / 最近阅读 / 漫游
 class HomePage extends StatefulWidget {
   const HomePage({
     super.key,
@@ -595,8 +595,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       setState(() {
         _data = HomeData(
           unread: strip(data.unread),
-          annotated: strip(data.annotated),
           recentRead: strip(data.recentRead),
+          randomPick: strip(data.randomPick),
         );
       });
     }
@@ -605,8 +605,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   @override
   Widget build(BuildContext context) {
     final unread = _data?.unread.items ?? const <CollectionItem>[];
-    final annotated = _data?.annotated.items ?? const <CollectionItem>[];
     final recent = _data?.recentRead.items ?? const <CollectionItem>[];
+    final random = _data?.randomPick.items ?? const <CollectionItem>[];
 
     return Scaffold(
       backgroundColor: _bg,
@@ -719,23 +719,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                           ),
                           const SizedBox(height: 16),
                           _HomeSection(
-                            title: '标注',
-                            emptyText: '暂无标注',
-                            emptyIcon: Icons.highlight_outlined,
-                            emptyHeight: emptyCardH,
-                            items: [
-                              for (final item in annotated)
-                                previewForAnnotated(item),
-                            ],
-                            onMore: () => _openFilter('annotated', '标注'),
-                            onItemTap: (preview) {
-                              final item = annotated
-                                  .firstWhere((e) => e.id == preview.id);
-                              _openItem(item);
-                            },
-                          ),
-                          const SizedBox(height: 16),
-                          _HomeSection(
                             title: '最近阅读',
                             emptyText: '暂无最近阅读',
                             emptyIcon: Icons.menu_book_outlined,
@@ -748,6 +731,24 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                                 _openFilter('recent_read', '最近阅读'),
                             onItemTap: (preview) {
                               final item = recent
+                                  .firstWhere((e) => e.id == preview.id);
+                              _openItem(item);
+                            },
+                          ),
+                          const SizedBox(height: 16),
+                          _HomeSection(
+                            title: '漫游',
+                            emptyText: '暂无内容',
+                            emptyIcon: Icons.auto_stories_outlined,
+                            emptyHeight: emptyCardH,
+                            moreLabel: '换一批 ›',
+                            items: [
+                              for (final item in random)
+                                previewForRandom(item),
+                            ],
+                            onMore: () => _load(quiet: true),
+                            onItemTap: (preview) {
+                              final item = random
                                   .firstWhere((e) => e.id == preview.id);
                               _openItem(item);
                             },
@@ -770,6 +771,7 @@ class _HomeSection extends StatelessWidget {
     required this.items,
     required this.onMore,
     required this.onItemTap,
+    this.moreLabel = '查看更多 ›',
   });
 
   final String title;
@@ -779,6 +781,7 @@ class _HomeSection extends StatelessWidget {
   final List<HomeItemPreview> items;
   final VoidCallback onMore;
   final ValueChanged<HomeItemPreview> onItemTap;
+  final String moreLabel;
 
   static const _muted = Color(0xFF737A85);
   static const _iconMuted = Color(0xFFC5CAD3);
@@ -802,11 +805,11 @@ class _HomeSection extends StatelessWidget {
             GestureDetector(
               onTap: onMore,
               behavior: HitTestBehavior.opaque,
-              child: const Padding(
-                padding: EdgeInsets.symmetric(vertical: 2),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 2),
                 child: Text(
-                  '查看更多 ›',
-                  style: TextStyle(
+                  moreLabel,
+                  style: const TextStyle(
                     fontSize: 13,
                     fontWeight: FontWeight.w400,
                     color: _HomePageState._blue,
