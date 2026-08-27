@@ -308,25 +308,15 @@ router.post('/:id/star', async (req, res, next) => {
   }
 });
 
-/** PATCH /api/items/:id — body { note?, folderId? } */
+/** PATCH /api/items/:id — body { note? } */
 router.patch('/:id', async (req, res, next) => {
   try {
     const itemId = Number(req.params.id);
     const userId = req.auth.userId;
-    let item = null;
-    if (Object.prototype.hasOwnProperty.call(req.body || {}, 'note')) {
-      item = await itemService.updateNote(userId, itemId, req.body.note);
+    if (!Object.prototype.hasOwnProperty.call(req.body || {}, 'note')) {
+      return res.status(400).json({ message: '请提供 note' });
     }
-    if (Object.prototype.hasOwnProperty.call(req.body || {}, 'folderId')) {
-      item = await itemService.moveToFolder(
-        userId,
-        itemId,
-        Number(req.body.folderId),
-      );
-    }
-    if (!item) {
-      return res.status(400).json({ message: '请提供 note 或 folderId' });
-    }
+    const item = await itemService.updateNote(userId, itemId, req.body.note);
     return res.json({ item });
   } catch (err) {
     return next(err);

@@ -28,11 +28,6 @@ class CollectionMockData {
     CollectionNavItem(title: '最近阅读', countLabel: '0', code: 'recent_read'),
   ];
 
-  static const folders = [
-    CollectionNavItem(title: '未分类', countLabel: '1', code: 'uncategorized'),
-    CollectionNavItem(title: '帮助文档 & 样例', countLabel: '3'),
-  ];
-
   static const tags = [
     CollectionNavItem(title: '无标签', countLabel: '2', code: 'untagged'),
     CollectionNavItem(title: 'cubox', countLabel: '1'),

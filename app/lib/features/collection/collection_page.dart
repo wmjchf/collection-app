@@ -2,10 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:super_collection/core/network/api_client.dart';
 import 'package:super_collection/core/ui/app_confirm_dialog.dart';
 import 'package:super_collection/core/ui/app_toast.dart';
-import 'package:super_collection/features/collection/create_folder_sheet.dart';
 import 'package:super_collection/features/collection/create_tag_sheet.dart';
-import 'package:super_collection/features/collection/folder_models.dart';
-import 'package:super_collection/features/collection/folders_repository.dart';
 import 'package:super_collection/features/collection/items_browse_page.dart';
 import 'package:super_collection/features/collection/system_filter_list_page.dart';
 import 'package:super_collection/features/collection/system_filter_models.dart';
@@ -15,7 +12,7 @@ import 'package:super_collection/features/collection/tags_repository.dart';
 import 'package:super_collection/features/collection/trash_page.dart';
 import 'package:super_collection/features/settings/settings_page.dart';
 
-/// 我的收藏（对齐 Figma：系统分类 / 收藏夹 / 标签 / 其他）
+/// 我的收藏（系统分类 / 标签 / 其他）
 class CollectionPage extends StatefulWidget {
   const CollectionPage({
     super.key,
@@ -38,18 +35,15 @@ class _CollectionPageState extends State<CollectionPage> {
   static const _headerBg = Color(0xFFF5F7FA);
   static const _text = Color(0xFF1F242E);
 
-  final _foldersRepo = FoldersRepository();
   final _tagsRepo = TagsRepository();
   final _systemFiltersRepo = SystemFiltersRepository();
 
-  List<Folder> _folders = const [];
   List<Tag> _tags = const [];
   List<SystemFilter> _systemFilters = const [];
   List<SystemFilter> _otherFilters = const [];
   bool _loading = true;
   String? _error;
   bool _systemExpanded = true;
-  bool _foldersExpanded = true;
   bool _tagsExpanded = true;
   bool _othersExpanded = true;
 
@@ -71,8 +65,8 @@ class _CollectionPageState extends State<CollectionPage> {
   }
 
   Future<void> _load({bool quiet = false}) async {
-    final showSpinner = !quiet ||
-        (_systemFilters.isEmpty && _folders.isEmpty && _tags.isEmpty);
+    final showSpinner =
+        !quiet || (_systemFilters.isEmpty && _tags.isEmpty);
     if (showSpinner) {
       setState(() {
         _loading = true;
@@ -81,16 +75,14 @@ class _CollectionPageState extends State<CollectionPage> {
     }
     try {
       final results = await Future.wait([
-        _foldersRepo.listFolders(),
         _tagsRepo.listTags(),
         _systemFiltersRepo.listFilters(),
       ]);
       if (!mounted) return;
       final filterResult =
-          results[2] as ({List<SystemFilter> filters, List<SystemFilter> others});
+          results[1] as ({List<SystemFilter> filters, List<SystemFilter> others});
       setState(() {
-        _folders = results[0] as List<Folder>;
-        _tags = results[1] as List<Tag>;
+        _tags = results[0] as List<Tag>;
         _systemFilters = filterResult.filters;
         _otherFilters = filterResult.others;
         _loading = false;
@@ -129,26 +121,6 @@ class _CollectionPageState extends State<CollectionPage> {
     });
   }
 
-  void _openFolder(Folder folder) {
-    Navigator.of(context)
-        .push(
-      MaterialPageRoute<void>(
-        builder: (_) => ItemsBrowsePage(
-          title: folder.name,
-          loader: ({required limit, required offset}) =>
-              _foldersRepo.listFolderItems(
-            folder.id,
-            limit: limit,
-            offset: offset,
-          ),
-        ),
-      ),
-    )
-        .then((_) {
-      if (mounted) _load(quiet: true);
-    });
-  }
-
   void _openTag(Tag tag) {
     Navigator.of(context)
         .push(
@@ -168,43 +140,12 @@ class _CollectionPageState extends State<CollectionPage> {
     });
   }
 
-  Future<void> _onCreateFolder() async {
-    final folder = await showCreateFolderSheet(context);
-    if (!mounted || folder == null) return;
-    await _load();
-    if (!mounted) return;
-    AppToast.show(context, '已创建「${folder.name}」');
-  }
-
   Future<void> _onCreateTag() async {
     final tag = await showCreateTagSheet(context);
     if (!mounted || tag == null) return;
     await _load();
     if (!mounted) return;
     AppToast.show(context, '已创建标签「${tag.name}」');
-  }
-
-  Future<void> _onDeleteFolder(Folder folder) async {
-    if (folder.isSystem) return;
-    final confirmed = await _confirmDelete(
-      title: '删除收藏夹',
-      message: '确定删除「${folder.name}」？夹内条目将移回「未分类」，不会删除条目。',
-    );
-    if (confirmed != true || !mounted) return;
-
-    try {
-      await _foldersRepo.deleteFolder(folder.id);
-      if (!mounted) return;
-      await _load();
-      if (!mounted) return;
-      AppToast.show(context, '已删除「${folder.name}」');
-    } on ApiException catch (e) {
-      if (!mounted) return;
-      AppToast.show(context, e.message);
-    } catch (_) {
-      if (!mounted) return;
-      AppToast.show(context, '删除失败');
-    }
   }
 
   Future<void> _onDeleteTag(Tag tag) async {
@@ -343,19 +284,7 @@ class _CollectionPageState extends State<CollectionPage> {
                   : const SizedBox(width: double.infinity),
             ),
             const SizedBox(height: 16),
-            _SectionLabel(
-              '收藏夹',
-              expanded: _foldersExpanded,
-              onToggleExpand: () {
-                setState(() => _foldersExpanded = !_foldersExpanded);
-              },
-              trailing: '＋',
-              onTrailingTap: _onCreateFolder,
-            ),
-            if (_loading &&
-                _folders.isEmpty &&
-                _tags.isEmpty &&
-                _systemFilters.isEmpty)
+            if (_loading && _tags.isEmpty && _systemFilters.isEmpty)
               const Padding(
                 padding: EdgeInsets.symmetric(vertical: 20),
                 child: Center(
@@ -366,37 +295,9 @@ class _CollectionPageState extends State<CollectionPage> {
                   ),
                 ),
               )
-            else if (_error != null &&
-                _folders.isEmpty &&
-                _tags.isEmpty &&
-                _systemFilters.isEmpty)
+            else if (_error != null && _tags.isEmpty && _systemFilters.isEmpty)
               _ErrorCard(message: _error!, onRetry: _load)
             else ...[
-              AnimatedSize(
-                duration: const Duration(milliseconds: 200),
-                curve: Curves.easeInOut,
-                alignment: Alignment.topCenter,
-                child: _foldersExpanded
-                    ? Padding(
-                        padding: const EdgeInsets.only(top: 8),
-                        child: _EntityGroup(
-                          entries: [
-                            for (final f in _folders)
-                              _EntityEntry(
-                                title: f.name,
-                                countLabel: f.countLabel,
-                                icon: _CollectionNavIcon.folder,
-                                onTap: () => _openFolder(f),
-                                onLongPress: f.isSystem
-                                    ? null
-                                    : () => _onDeleteFolder(f),
-                              ),
-                          ],
-                        ),
-                      )
-                    : const SizedBox(width: double.infinity),
-              ),
-              const SizedBox(height: 16),
               _SectionLabel(
                 '标签',
                 expanded: _tagsExpanded,
@@ -477,11 +378,6 @@ class _CollectionNavIcon {
 
   final IconData icon;
   final Color background;
-
-  static const folder = _CollectionNavIcon(
-    icon: Icons.folder_rounded,
-    background: Color(0xFF5B8FF9),
-  );
 
   static const tagSystem = _CollectionNavIcon(
     icon: Icons.local_offer_rounded,

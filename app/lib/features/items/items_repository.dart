@@ -265,17 +265,6 @@ class ItemsRepository {
     return CollectionItem.fromJson(itemJson);
   }
 
-  Future<CollectionItem> moveToFolder(int id, int folderId) async {
-    final token = await _token();
-    final json = await _api.patch(
-      '/api/items/$id',
-      body: {'folderId': folderId},
-      accessToken: token,
-    );
-    final itemJson = json['item'] as Map<String, dynamic>? ?? {};
-    return CollectionItem.fromJson(itemJson);
-  }
-
   Future<void> softDelete(int id) async {
     final token = await _token();
     await _api.delete('/api/items/$id', accessToken: token);

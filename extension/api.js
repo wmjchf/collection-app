@@ -162,26 +162,6 @@ export async function fetchSystemFilters() {
   );
 }
 
-export function listFolders() {
-  return authRequest('GET', '/api/folders');
-}
-
-export function createFolder(name) {
-  return authRequest('POST', '/api/folders', { body: { name } });
-}
-
-export function deleteFolder(id) {
-  return authRequest('DELETE', `/api/folders/${id}`);
-}
-
-export function listFolderItems(id, { limit = 30, offset = 0 } = {}) {
-  const qs = new URLSearchParams({
-    limit: String(limit),
-    offset: String(offset),
-  });
-  return authRequest('GET', `/api/folders/${id}/items?${qs}`);
-}
-
 export function listTags() {
   return authRequest('GET', '/api/tags');
 }
