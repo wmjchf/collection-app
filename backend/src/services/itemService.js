@@ -906,8 +906,8 @@ async function beginTranscriptSegment(
   }
 
   const cur = transcriptSegments.normalizeSegment(segments[key]);
-  if (cur.status === 'success' && cur.text && !force) {
-    return mapItem(row);
+  if (cur.status === 'success' && String(cur.text || '').trim() && !force) {
+    throw Object.assign(new Error('该段已有文稿，无需重复转写'), { status: 409 });
   }
 
   const mediaUrl = transcriptSegments.resolveMediaUrlForSegment(
