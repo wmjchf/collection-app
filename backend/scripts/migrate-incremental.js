@@ -17,6 +17,7 @@ const MIGRATION_FILES = [
   '007_transcript_segments.sql',
   '008_item_ai_meta.sql',
   '009_trash_system_section.sql',
+  '010_content_edited_at.sql',
 ];
 
 async function getConnection() {
@@ -148,6 +149,16 @@ async function apply008(conn, dbName) {
   );
 }
 
+async function apply010(conn, dbName) {
+  if (await columnExists(conn, dbName, 'items', 'content_edited_at')) {
+    console.log('[db:migrate] 010: content_edited_at 已存在，跳过');
+    return;
+  }
+  await conn.query(
+    "ALTER TABLE `items` ADD COLUMN `content_edited_at` DATETIME(3) DEFAULT NULL COMMENT '用户手工改正文时间' AFTER `note`",
+  );
+}
+
 async function apply007(conn, dbName) {
   const hasSegments = await columnExists(conn, dbName, 'items', 'transcript_segments');
   const hasTranscript = await columnExists(conn, dbName, 'items', 'transcript');
@@ -207,6 +218,10 @@ async function applyMigration(conn, dbName, file) {
   }
   if (file === '008_item_ai_meta.sql') {
     await apply008(conn, dbName);
+    return;
+  }
+  if (file === '010_content_edited_at.sql') {
+    await apply010(conn, dbName);
     return;
   }
   await runSqlFile(conn, file);

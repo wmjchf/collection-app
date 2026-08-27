@@ -18,6 +18,7 @@ class CollectionItem {
     this.platform,
     this.errorMessage,
     this.note,
+    this.contentEditedAt,
     this.folderId,
     this.isUnread = true,
     this.isStarred = false,
@@ -45,6 +46,7 @@ class CollectionItem {
   final String status; // pending | success | failed
   final String? errorMessage;
   final String? note;
+  final DateTime? contentEditedAt;
   final int? folderId;
   final bool isUnread;
   final bool isStarred;
@@ -54,6 +56,7 @@ class CollectionItem {
   final DateTime? deletedAt;
   final int? annotationCount;
 
+  bool get hasUserEditedContent => contentEditedAt != null;
   bool get isPending => status == 'pending';
   bool get isSuccess => status == 'success';
   bool get isFailed => status == 'failed';
@@ -133,6 +136,7 @@ class CollectionItem {
       status: status,
       errorMessage: errorMessage,
       note: note,
+      contentEditedAt: contentEditedAt,
       folderId: folderId,
       isUnread: isUnread,
       isStarred: isStarred,
@@ -163,6 +167,7 @@ class CollectionItem {
       status: status,
       errorMessage: errorMessage,
       note: note,
+      contentEditedAt: contentEditedAt,
       folderId: folderId,
       isUnread: isUnread,
       isStarred: isStarred,
@@ -279,6 +284,7 @@ class CollectionItem {
       status: json['status'] as String? ?? 'pending',
       errorMessage: json['errorMessage'] as String?,
       note: json['note'] as String?,
+      contentEditedAt: _parseTime(json['contentEditedAt']),
       folderId: (json['folderId'] as num?)?.toInt(),
       isUnread: json['isUnread'] as bool? ?? true,
       isStarred: json['isStarred'] as bool? ?? false,

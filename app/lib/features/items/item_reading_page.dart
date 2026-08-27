@@ -25,7 +25,9 @@ import 'package:super_collection/features/items/reading_annotation_sheet.dart';
 import 'package:super_collection/features/items/reading_delete_confirm_dialog.dart';
 import 'package:super_collection/features/items/reading_regenerate_confirm_dialog.dart';
 import 'package:super_collection/features/items/reading_more_sheet.dart';
+import 'package:super_collection/features/items/reading_content_edit_page.dart';
 import 'package:super_collection/features/items/reading_note_sheet.dart';
+import 'package:super_collection/features/items/reading_reparse_confirm_dialog.dart';
 import 'package:super_collection/features/items/reading_tags_sheet.dart';
 import 'package:super_collection/features/items/transcript_models.dart';
 import 'package:super_collection/features/items/transcript_picker_sheet.dart';
@@ -187,9 +189,19 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
   }
 
   Future<void> _reparseItem() async {
+    if (_item.hasUserEditedContent) {
+      final ok = await showReadingReparseConfirmDialog(
+        context,
+        hasUserEditedContent: true,
+      );
+      if (ok != true || !mounted) return;
+    }
     try {
       ParseProgressTracker.begin();
-      final item = await _repo.reparse(widget.itemId);
+      final item = await _repo.reparse(
+        widget.itemId,
+        forceOverwrite: _item.hasUserEditedContent,
+      );
       if (!mounted) return;
       setState(() => _item = item);
       _syncItemPolling(item);
@@ -611,6 +623,30 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
         );
       },
     );
+  }
+
+  Future<void> _onEditContent() async {
+    if (!_item.isSuccess) return;
+    if (_annotations.isNotEmpty) {
+      final go = await showAppConfirmDialog(
+        context,
+        title: '编辑正文',
+        message: '本篇已有高亮标注，修改正文后标注位置可能不准确。',
+        confirmLabel: '继续编辑',
+        dangerConfirm: false,
+      );
+      if (go != true || !mounted) return;
+    }
+    final updated = await showReadingContentEditPage(
+      context,
+      itemId: _item.id,
+      initialContent: _item.content ?? '',
+    );
+    if (updated == null || !mounted) return;
+    setState(() => _item = updated);
+    await _loadAnnotations();
+    if (!mounted) return;
+    AppToast.show(context, '正文已更新');
   }
 
   Future<void> _onNote() async {
@@ -1198,6 +1234,8 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
             _ReadingTopBar(
               onBack: () => Navigator.of(context).maybePop(),
               menuEnabled: false,
+              editEnabled: false,
+              onEditContent: _onEditContent,
               onCopyLink: _copyLink,
               onReparse: _reparseItem,
               onDelete: _confirmPurgeDelete,
@@ -1218,6 +1256,8 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
             _ReadingTopBar(
               onBack: () => Navigator.of(context).maybePop(),
               menuEnabled: false,
+              editEnabled: false,
+              onEditContent: _onEditContent,
               onCopyLink: _copyLink,
               onReparse: _reparseItem,
               onDelete: _confirmPurgeDelete,
@@ -1403,6 +1443,8 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
                   child: _ReadingTopBar(
                     onBack: () => Navigator.of(context).maybePop(),
                     menuEnabled: true,
+                    editEnabled: canRead,
+                    onEditContent: _onEditContent,
                     onCopyLink: _copyLink,
                     onReparse: _reparseItem,
                     onDelete: _confirmPurgeDelete,
@@ -2213,14 +2255,18 @@ class _ReadingTopBar extends StatelessWidget {
     required this.onCopyLink,
     required this.onReparse,
     required this.onDelete,
+    required this.onEditContent,
     this.menuEnabled = true,
+    this.editEnabled = false,
   });
 
   final VoidCallback onBack;
   final VoidCallback onCopyLink;
   final VoidCallback onReparse;
   final VoidCallback onDelete;
+  final VoidCallback onEditContent;
   final bool menuEnabled;
+  final bool editEnabled;
 
   static const _text = Color(0xFF1F242E);
   static const _danger = Color(0xFFE34D59);
@@ -2264,11 +2310,25 @@ class _ReadingTopBar extends StatelessWidget {
                   constraints:
                       const BoxConstraints(minWidth: 148, maxWidth: 168),
                   onSelected: (value) {
+                    if (value == 'edit') onEditContent();
                     if (value == 'copy') onCopyLink();
                     if (value == 'reparse') onReparse();
                     if (value == 'delete') onDelete();
                   },
                   itemBuilder: (context) => [
+                    if (editEnabled)
+                      const PopupMenuItem<String>(
+                        value: 'edit',
+                        height: 44,
+                        child: Text(
+                          '编辑正文',
+                          style: TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w500,
+                            color: _text,
+                          ),
+                        ),
+                      ),
                     const PopupMenuItem<String>(
                       value: 'copy',
                       height: 44,
