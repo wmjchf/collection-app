@@ -45,6 +45,10 @@ Future<Uint8List> renderMindmapPngBytes({
   canvas.save();
   canvas.translate(hPad, vPad);
   MindmapPainter(layout: layout).paint(canvas, Size(layout.width, layout.height));
+  _paintConfluxWatermark(
+    canvas,
+    Size(layout.width, layout.height),
+  );
   canvas.restore();
 
   if (footer != null) {
@@ -82,6 +86,42 @@ Future<Uint8List> renderMindmapPngBytes({
     throw StateError('PNG encode failed');
   }
   return byteData.buffer.asUint8List();
+}
+
+/// 脑图区域斜向平铺半透明 CONFLUX 水印（不遮挡阅读）。
+void _paintConfluxWatermark(Canvas canvas, Size size) {
+  const text = 'CONFLUX';
+  const style = TextStyle(
+    fontSize: 24,
+    fontWeight: FontWeight.w600,
+    letterSpacing: 3,
+    color: Color(0x0D1F242E),
+  );
+
+  canvas.save();
+  canvas.clipRect(Rect.fromLTWH(0, 0, size.width, size.height));
+  canvas.translate(size.width / 2, size.height / 2);
+  canvas.rotate(-math.pi / 6);
+
+  final tp = TextPainter(
+    text: const TextSpan(text: text, style: style),
+    textDirection: TextDirection.ltr,
+  )..layout();
+
+  const stepX = 260.0;
+  const stepY = 168.0;
+  final spanW = size.width + size.height;
+  final spanH = size.height + size.width;
+
+  for (var y = -spanH; y < spanH; y += stepY) {
+    for (var x = -spanW; x < spanW; x += stepX) {
+      tp.paint(
+        canvas,
+        Offset(x - tp.width / 2, y - tp.height / 2),
+      );
+    }
+  }
+  canvas.restore();
 }
 
 String? _footerText(String? sourceTitle) {
