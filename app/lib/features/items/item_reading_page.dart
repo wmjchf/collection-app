@@ -943,22 +943,35 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
       return;
     }
 
+    final pendingTargets =
+        targets.where((t) => t.status != 'success').toList(growable: false);
+    if (pendingTargets.isEmpty) {
+      if (!mounted) return;
+      AppToast.show(context, '本篇已有文稿，无需重复转写');
+      return;
+    }
+
     TranscriptTarget? chosen;
-    if (targets.length == 1) {
-      chosen = targets.first;
+    if (pendingTargets.length == 1) {
+      chosen = pendingTargets.first;
     } else {
       if (!mounted) return;
-      chosen = await showTranscriptPickerSheet(context, targets: targets);
+      chosen = await showTranscriptPickerSheet(
+        context,
+        targets: pendingTargets,
+      );
     }
     if (chosen == null || !mounted) return;
 
+    if (chosen.status == 'success') {
+      AppToast.show(context, '该段已有文稿，无需重复转写');
+      return;
+    }
+
     final existing = _item.segmentTranscript(chosen.segmentKey);
-    if (existing?.hasText == true) {
-      final retry = await showReadingRegenerateConfirmDialog(
-        context,
-        ReadingRegenerateKind.transcript,
-      );
-      if (retry != true || !mounted) return;
+    if (existing != null && existing.isSuccess && existing.hasText) {
+      AppToast.show(context, '该段已有文稿，无需重复转写');
+      return;
     }
 
     try {
@@ -980,7 +993,6 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
       final updated = await _repo.requestTranscript(
         _item.id,
         segmentKey: chosen.segmentKey,
-        force: existing?.hasText == true,
         mediaUrl: mediaUrl,
       );
       if (!mounted) return;
