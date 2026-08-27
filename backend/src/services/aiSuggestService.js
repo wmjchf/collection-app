@@ -119,6 +119,13 @@ async function requestAiSuggest(userId, itemId, { force = false } = {}) {
   if (!row) {
     throw Object.assign(new Error('条目不存在'), { status: 404 });
   }
+  const segments = transcriptSegments.parseSegments(row.transcript_segments);
+  if (transcriptSegments.hasPendingSegment(segments)) {
+    throw Object.assign(
+      new Error('转写进行中，请稍候再生成标签建议'),
+      { status: 409 },
+    );
+  }
   if (!hasAiInput(row)) {
     throw Object.assign(new Error('内容不足，无法生成标签建议'), { status: 400 });
   }
