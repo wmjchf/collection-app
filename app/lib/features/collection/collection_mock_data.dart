@@ -32,9 +32,4 @@ class CollectionMockData {
     CollectionNavItem(title: '无标签', countLabel: '2', code: 'untagged'),
     CollectionNavItem(title: 'cubox', countLabel: '1'),
   ];
-
-  static const others = [
-    CollectionNavItem(title: '已归档', countLabel: '0', code: 'archived'),
-    CollectionNavItem(title: '回收站', countLabel: '0', code: 'trash'),
-  ];
 }

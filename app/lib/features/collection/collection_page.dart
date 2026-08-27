@@ -12,7 +12,7 @@ import 'package:super_collection/features/collection/tags_repository.dart';
 import 'package:super_collection/features/collection/trash_page.dart';
 import 'package:super_collection/features/settings/settings_page.dart';
 
-/// 我的收藏（系统分类 / 标签 / 其他）
+/// 我的收藏（系统分类 / 标签）
 class CollectionPage extends StatefulWidget {
   const CollectionPage({
     super.key,
@@ -40,12 +40,10 @@ class _CollectionPageState extends State<CollectionPage> {
 
   List<Tag> _tags = const [];
   List<SystemFilter> _systemFilters = const [];
-  List<SystemFilter> _otherFilters = const [];
   bool _loading = true;
   String? _error;
   bool _systemExpanded = true;
   bool _tagsExpanded = true;
-  bool _othersExpanded = true;
 
   @override
   void initState() {
@@ -84,7 +82,6 @@ class _CollectionPageState extends State<CollectionPage> {
       setState(() {
         _tags = results[0] as List<Tag>;
         _systemFilters = filterResult.filters;
-        _otherFilters = filterResult.others;
         _loading = false;
         _error = null;
       });
@@ -334,35 +331,6 @@ class _CollectionPageState extends State<CollectionPage> {
                     : const SizedBox(width: double.infinity),
               ),
             ],
-            const SizedBox(height: 16),
-            _SectionLabel(
-              '其他',
-              expanded: _othersExpanded,
-              onToggleExpand: () {
-                setState(() => _othersExpanded = !_othersExpanded);
-              },
-            ),
-            AnimatedSize(
-              duration: const Duration(milliseconds: 200),
-              curve: Curves.easeInOut,
-              alignment: Alignment.topCenter,
-              child: _othersExpanded
-                  ? Padding(
-                      padding: const EdgeInsets.only(top: 8),
-                      child: _EntityGroup(
-                        entries: [
-                          for (final f in _otherFilters)
-                            _EntityEntry(
-                              title: f.name,
-                              countLabel: f.countLabel,
-                              icon: _CollectionNavIcon.forSystemCode(f.code),
-                              onTap: () => _openSystemFilter(f),
-                            ),
-                        ],
-                      ),
-                    )
-                  : const SizedBox(width: double.infinity),
-            ),
           ],
         ),
       ),

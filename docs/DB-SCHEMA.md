@@ -124,7 +124,8 @@
 | system | recent_read | 最近阅读（系统筛选；首页「查看更多」进入此列表） |
 | folder | uncategorized | 未分类 |
 | tag | untagged | 无标签 |
-| other | archived / trash | 已归档 / 最近删除 |
+| other | archived | 已归档（不在 App 导航展示；`filter=archived` API 仍可用） |
+| system | trash | 回收站（原 other，见 `009_trash_system_section.sql`） |
 
 ---
 

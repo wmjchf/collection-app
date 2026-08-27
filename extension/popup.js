@@ -142,7 +142,6 @@ function emptyCollection() {
     others: [],
     systemExpanded: true,
     tagsExpanded: true,
-    othersExpanded: true,
     loading: false,
     error: null,
   };
@@ -801,20 +800,6 @@ function renderCollection() {
       entityGroup(s.tags.map((t) => tagRow(t))),
     );
   }
-
-  collectionBody.append(
-    sectionLabel('其他', {
-      expandable: true,
-      expanded: s.othersExpanded,
-      onToggle: () => {
-        collectionState.othersExpanded = !s.othersExpanded;
-        renderCollection();
-      },
-    }),
-  );
-  if (s.othersExpanded) {
-    collectionBody.append(entityGroup(s.others.map((f) => filterRow(f))));
-  }
 }
 
 function filterRow(filter) {
@@ -863,7 +848,6 @@ async function loadCollection({ quiet = false } = {}) {
     ]);
     collectionState.tags = tagsRes.tags || [];
     collectionState.filters = filtersRes.filters || [];
-    collectionState.others = filtersRes.others || [];
     collectionState.loading = false;
     collectionState.error = null;
     renderCollection();
