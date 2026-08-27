@@ -77,9 +77,9 @@ class _AiMindmapPanelState extends State<AiMindmapPanel> {
     }
 
     if (meta.isPending) {
-      return const Padding(
-        padding: EdgeInsets.only(top: 12),
-        child: _MindmapLoadingCard(),
+      return Padding(
+        padding: const EdgeInsets.only(top: 12),
+        child: _MindmapLoadingCard(awaitTranscript: meta.awaitTranscript),
       );
     }
 
@@ -582,10 +582,18 @@ class _MindmapActionIcon extends StatelessWidget {
 }
 
 class _MindmapLoadingCard extends StatelessWidget {
-  const _MindmapLoadingCard();
+  const _MindmapLoadingCard({this.awaitTranscript = false});
+
+  final bool awaitTranscript;
 
   @override
   Widget build(BuildContext context) {
+    final title = awaitTranscript
+        ? '正在转写，完成后生成思维导图…'
+        : '正在生成思维导图…';
+    final subtitle = awaitTranscript
+        ? '转写完成后将自动开始生成'
+        : '完成后可缩放查看结构';
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(12),
@@ -607,10 +615,10 @@ class _MindmapLoadingCard extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 10),
-              const Expanded(
+              Expanded(
                 child: Text(
-                  '正在生成思维导图…',
-                  style: TextStyle(
+                  title,
+                  style: const TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.w600,
                     color: AiMindmapPanel._muted,
@@ -621,7 +629,7 @@ class _MindmapLoadingCard extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           Text(
-            '完成后可缩放查看结构',
+            subtitle,
             style: TextStyle(
               fontSize: 12,
               color: AiMindmapPanel._muted.withValues(alpha: 0.85),

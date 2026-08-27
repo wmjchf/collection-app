@@ -107,12 +107,13 @@ router.get('/:id/parse-status', async (req, res, next) => {
   }
 });
 
-/** POST /api/items/:id/reparse — 重试正文解析 */
+/** POST /api/items/:id/reparse — 重试正文解析；body 可选 { forceOverwrite: true } */
 router.post('/:id/reparse', async (req, res, next) => {
   try {
     const item = await itemService.reparseItem(
       req.auth.userId,
       Number(req.params.id),
+      { forceOverwrite: req.body?.forceOverwrite === true },
     );
     return res.json({ item, message: '已开始重新解析' });
   } catch (err) {
@@ -308,15 +309,26 @@ router.post('/:id/star', async (req, res, next) => {
   }
 });
 
-/** PATCH /api/items/:id — body { note? } */
+/** PATCH /api/items/:id — body { note? } 或 { content? } */
 router.patch('/:id', async (req, res, next) => {
   try {
     const itemId = Number(req.params.id);
     const userId = req.auth.userId;
-    if (!Object.prototype.hasOwnProperty.call(req.body || {}, 'note')) {
-      return res.status(400).json({ message: '请提供 note' });
+    const body = req.body || {};
+    const hasNote = Object.prototype.hasOwnProperty.call(body, 'note');
+    const hasContent = Object.prototype.hasOwnProperty.call(body, 'content');
+    if (!hasNote && !hasContent) {
+      return res.status(400).json({ message: '请提供 note 或 content' });
     }
-    const item = await itemService.updateNote(userId, itemId, req.body.note);
+    if (hasNote && hasContent) {
+      return res.status(400).json({ message: '请分别更新 note 或 content' });
+    }
+    let item;
+    if (hasNote) {
+      item = await itemService.updateNote(userId, itemId, body.note);
+    } else {
+      item = await itemService.updateContent(userId, itemId, body.content);
+    }
     return res.json({ item });
   } catch (err) {
     return next(err);

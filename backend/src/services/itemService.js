@@ -50,6 +50,7 @@ function mapItem(row) {
     status: row.status,
     errorMessage: row.error_message,
     note: row.note,
+    contentEditedAt: row.content_edited_at || null,
     folderId: row.folder_id,
     isStarred: !!row.is_starred,
     isUnread: !!row.is_unread,
@@ -254,6 +255,7 @@ async function runContentParse(itemId) {
         row.platform === 'bilibili'
           ? normalizeBilibiliCanonical(parsed.pageUrl)
           : null;
+      const preserveUserContent = !!row.content_edited_at;
       await pool.execute(
         `UPDATE items SET
            title = COALESCE(:title, title),
@@ -273,7 +275,7 @@ async function runContentParse(itemId) {
           coverImageUrl: parsed.coverImageUrl || null,
           imageUrls: JSON.stringify(imageUrls),
           videoUrl: parsed.videoUrl || null,
-          content: parsed.content,
+          content: preserveUserContent ? row.content : parsed.content,
           canonicalUrl: bilibiliCanonical,
         },
       );
@@ -426,14 +428,29 @@ async function parseWithClientHtml(userId, itemId, html) {
   return getByIdForUser(userId, itemId);
 }
 
-async function reparseItem(userId, itemId) {
-  const item = await getByIdForUser(userId, itemId);
-  if (!item) {
+async function reparseItem(userId, itemId, { forceOverwrite = false } = {}) {
+  const [rows] = await pool.execute(
+    `SELECT content_edited_at FROM items
+     WHERE id = :itemId AND user_id = :userId AND deleted_at IS NULL
+     LIMIT 1`,
+    { itemId, userId },
+  );
+  const row = rows[0];
+  if (!row) {
     throw Object.assign(new Error('条目不存在'), { status: 404 });
+  }
+  if (row.content_edited_at && !forceOverwrite) {
+    throw Object.assign(
+      new Error('正文已手工修改，重新解析将覆盖您的编辑'),
+      { status: 409, code: 'CONTENT_USER_EDITED' },
+    );
   }
 
   await pool.execute(
-    `UPDATE items SET status = 'pending', error_message = NULL
+    `UPDATE items
+     SET status = 'pending',
+         error_message = NULL,
+         content_edited_at = NULL
      WHERE id = :itemId AND user_id = :userId`,
     { itemId, userId },
   );
@@ -471,6 +488,14 @@ async function refreshItemVideo(userId, itemId) {
     );
   }
 
+  const [rows] = await pool.execute(
+    `SELECT content_edited_at FROM items
+     WHERE id = :itemId AND user_id = :userId AND deleted_at IS NULL
+     LIMIT 1`,
+    { itemId, userId },
+  );
+  const preserveUserContent = !!rows[0]?.content_edited_at;
+
   await pool.execute(
     `UPDATE items
      SET video_url = :videoUrl,
@@ -483,7 +508,7 @@ async function refreshItemVideo(userId, itemId) {
       itemId,
       userId,
       videoUrl: parsed.videoUrl || null,
-      content: parsed.content || null,
+      content: preserveUserContent ? null : parsed.content || null,
       coverImageUrl: parsed.coverImageUrl || null,
       canonicalUrl:
         item.platform === 'bilibili'
@@ -610,6 +635,27 @@ async function updateNote(userId, itemId, note) {
     `UPDATE items SET note = :note
      WHERE id = :itemId AND user_id = :userId AND deleted_at IS NULL`,
     { itemId, userId, note: value || null },
+  );
+  return getByIdForUser(userId, itemId);
+}
+
+const CONTENT_MAX_LEN = 512000;
+
+/** 用户手工更新正文（Markdown 原文）；保留已有 AI 标签/思维导图（微调场景） */
+async function updateContent(userId, itemId, content) {
+  const existing = await getByIdForUser(userId, itemId);
+  if (!existing) {
+    throw Object.assign(new Error('条目不存在'), { status: 404 });
+  }
+  const value =
+    content == null ? null : String(content).slice(0, CONTENT_MAX_LEN);
+  await pool.execute(
+    `UPDATE items
+     SET content = :content,
+         content_edited_at = CURRENT_TIMESTAMP(3),
+         updated_at = CURRENT_TIMESTAMP(3)
+     WHERE id = :itemId AND user_id = :userId AND deleted_at IS NULL`,
+    { itemId, userId, content: value },
   );
   return getByIdForUser(userId, itemId);
 }
@@ -816,10 +862,11 @@ async function listTranscriptTargetsForUser(userId, itemId) {
  * 用户触发：按 segmentKey 提交阿里云录音文件识别。
  * 已有任一段 pending 时拒绝（409）。
  */
-async function requestTranscript(
+async function beginTranscriptSegment(
   userId,
   itemId,
-  { segmentKey, force = false, mediaUrl: clientMediaUrl } = {},
+  segmentKey,
+  { force = false, mediaUrl: clientMediaUrl } = {},
 ) {
   const aliyunAsr = require('./aliyunAsr');
   const { enqueueTranscript } = require('./transcriptQueue');
@@ -897,6 +944,17 @@ async function requestTranscript(
 
   enqueueTranscript(itemId);
   return getByIdForUser(userId, itemId);
+}
+
+async function requestTranscript(
+  userId,
+  itemId,
+  { segmentKey, force = false, mediaUrl: clientMediaUrl } = {},
+) {
+  return beginTranscriptSegment(userId, itemId, segmentKey, {
+    force,
+    mediaUrl: clientMediaUrl,
+  });
 }
 
 async function getTranscriptStatus(userId, itemId) {
@@ -1128,6 +1186,24 @@ async function runTranscriptJob(itemId) {
         console.warn(`[runTranscriptJob] OSS cleanup ${ossKeyToDelete}`, err.message);
       });
     }
+    try {
+      const aiMindmapService = require('./aiMindmapService');
+      await aiMindmapService.onTranscriptSettledForMindmap(itemId);
+    } catch (err) {
+      console.error(
+        `[runTranscriptJob] mindmap resume failed item=${itemId}`,
+        err.message,
+      );
+    }
+    try {
+      const aiSuggestService = require('./aiSuggestService');
+      await aiSuggestService.onTranscriptSettledForAiSuggest(itemId);
+    } catch (err) {
+      console.error(
+        `[runTranscriptJob] ai-suggest resume failed item=${itemId}`,
+        err.message,
+      );
+    }
   }
 }
 
@@ -1334,6 +1410,7 @@ module.exports = {
   markAsRead,
   setStarred,
   updateNote,
+  updateContent,
   softDelete,
   restoreFromTrash,
   purgeFromTrash,
@@ -1342,6 +1419,7 @@ module.exports = {
   setItemTags,
   searchItems,
   listTranscriptTargetsForUser,
+  beginTranscriptSegment,
   requestTranscript,
   getTranscriptStatus,
   runTranscriptJob,

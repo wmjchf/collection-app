@@ -15,7 +15,7 @@ import 'package:super_collection/features/home/home_format.dart';
 import 'package:super_collection/features/home/home_mock_data.dart';
 import 'package:super_collection/features/home/home_repository.dart';
 import 'package:super_collection/features/home/widgets/home_item_card.dart';
-import 'package:super_collection/features/items/item_detail_page.dart';
+import 'package:super_collection/features/items/item_reading_page.dart';
 import 'package:super_collection/features/items/item_models.dart';
 import 'package:super_collection/features/items/items_repository.dart';
 import 'package:super_collection/features/onboarding/coach_prefs.dart';
@@ -574,7 +574,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   void _openItem(CollectionItem item) async {
     final deleted = await Navigator.of(context).push<bool>(
       MaterialPageRoute(
-        builder: (_) => ItemDetailPage(
+        builder: (_) => ItemReadingPage(
           itemId: item.id,
           initialItem: item,
         ),

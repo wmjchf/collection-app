@@ -4,7 +4,7 @@ import 'package:super_collection/core/ui/app_subpage_app_bar.dart';
 import 'package:super_collection/core/ui/paged_list.dart';
 import 'package:super_collection/features/home/home_format.dart';
 import 'package:super_collection/features/items/cover_image.dart';
-import 'package:super_collection/features/items/item_detail_page.dart';
+import 'package:super_collection/features/items/item_reading_page.dart';
 import 'package:super_collection/features/items/item_models.dart';
 
 typedef ItemsBrowseLoader = Future<({List<CollectionItem> items, int total})>
@@ -194,7 +194,7 @@ class _ItemsBrowsePageState extends State<ItemsBrowsePage> {
                             onTap: () async {
                               final deleted = await Navigator.of(context).push<bool>(
                                 MaterialPageRoute(
-                                  builder: (_) => ItemDetailPage(
+                                  builder: (_) => ItemReadingPage(
                                     itemId: item.id,
                                     initialItem: item,
                                   ),

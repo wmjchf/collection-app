@@ -66,9 +66,9 @@ class _AiTagSuggestPanelState extends State<AiTagSuggestPanel> {
     }
 
     if (meta.isPending) {
-      return const Padding(
-        padding: EdgeInsets.only(top: 12),
-        child: _AiTagLoadingCard(),
+      return Padding(
+        padding: const EdgeInsets.only(top: 12),
+        child: _AiTagLoadingCard(awaitTranscript: meta.awaitTranscript),
       );
     }
 
@@ -297,7 +297,9 @@ class _SuggestChip extends StatelessWidget {
 }
 
 class _AiTagLoadingCard extends StatelessWidget {
-  const _AiTagLoadingCard();
+  const _AiTagLoadingCard({this.awaitTranscript = false});
+
+  final bool awaitTranscript;
 
   static const _muted = Color(0xFF737A85);
   static const _brand = Color(0xFF2F6FED);
@@ -305,6 +307,12 @@ class _AiTagLoadingCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final title = awaitTranscript
+        ? '正在转写，完成后生成标签建议…'
+        : '正在生成标签建议…';
+    final subtitle = awaitTranscript
+        ? '转写完成后将自动开始生成'
+        : '完成后可选择采纳，不会自动修改标签';
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(12),
@@ -326,10 +334,10 @@ class _AiTagLoadingCard extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 10),
-              const Expanded(
+              Expanded(
                 child: Text(
-                  '正在生成标签建议…',
-                  style: TextStyle(
+                  title,
+                  style: const TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.w600,
                     color: _muted,
@@ -340,7 +348,7 @@ class _AiTagLoadingCard extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           Text(
-            '完成后可选择采纳，不会自动修改标签',
+            subtitle,
             style: TextStyle(
               fontSize: 12,
               color: _muted.withValues(alpha: 0.85),

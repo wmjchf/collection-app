@@ -55,6 +55,7 @@ class AiMindmapMeta {
     this.contentHash,
     this.error,
     this.generatedAt,
+    this.awaitTranscript = false,
   });
 
   final String status;
@@ -62,6 +63,7 @@ class AiMindmapMeta {
   final String? contentHash;
   final String? error;
   final DateTime? generatedAt;
+  final bool awaitTranscript;
 
   bool get isPending => status == 'pending';
   bool get isSuccess => status == 'success';
@@ -86,6 +88,7 @@ class AiMindmapMeta {
       contentHash: json['contentHash'] as String?,
       error: json['error'] as String?,
       generatedAt: AiTagsMeta._parseTime(json['generatedAt']),
+      awaitTranscript: json['awaitTranscript'] == true,
     );
   }
 }
@@ -96,12 +99,14 @@ class AiTagsMeta {
     this.items = const [],
     this.error,
     this.generatedAt,
+    this.awaitTranscript = false,
   });
 
   final String status;
   final List<AiTagSuggestion> items;
   final String? error;
   final DateTime? generatedAt;
+  final bool awaitTranscript;
 
   bool get isPending => status == 'pending';
   bool get isSuccess => status == 'success';
@@ -129,6 +134,7 @@ class AiTagsMeta {
       items: items,
       error: json['error'] as String?,
       generatedAt: _parseTime(json['generatedAt']),
+      awaitTranscript: json['awaitTranscript'] == true,
     );
   }
 

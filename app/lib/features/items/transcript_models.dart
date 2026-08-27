@@ -172,4 +172,26 @@ class TranscriptTargets {
       ),
     ];
   }
+
+  /// 顶栏音视频（含小宇宙）在生成思维导图前是否需先转写
+  static bool shouldAutoTranscribeBeforeMindmap({
+    String? content,
+    String? videoUrl,
+    required bool hasTopVideo,
+    Map<String, TranscriptSegment> segments = const {},
+  }) {
+    final targets = listFor(
+      content: content,
+      videoUrl: videoUrl,
+      hasTopVideo: hasTopVideo,
+    );
+    if (targets.length != 1 || targets.first.segmentKey != segmentVideoUrl) {
+      return false;
+    }
+    final target = targets.first;
+    if (target.needsClientResolve) return false;
+    final seg = segments[segmentVideoUrl];
+    if (seg != null && seg.isSuccess && seg.hasText) return false;
+    return true;
+  }
 }

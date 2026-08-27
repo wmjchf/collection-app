@@ -66,10 +66,36 @@ class ItemsRepository {
     );
   }
 
-  Future<CollectionItem> reparse(int id) async {
+  Future<CollectionItem> updateNote(int id, String? note) async {
+    final token = await _token();
+    final json = await _api.patch(
+      '/api/items/$id',
+      body: {'note': note},
+      accessToken: token,
+    );
+    final itemJson = json['item'] as Map<String, dynamic>? ?? {};
+    return CollectionItem.fromJson(itemJson);
+  }
+
+  Future<CollectionItem> updateContent(int id, String content) async {
+    final token = await _token();
+    final json = await _api.patch(
+      '/api/items/$id',
+      body: {'content': content},
+      accessToken: token,
+    );
+    final itemJson = json['item'] as Map<String, dynamic>? ?? {};
+    return CollectionItem.fromJson(itemJson);
+  }
+
+  Future<CollectionItem> reparse(
+    int id, {
+    bool forceOverwrite = false,
+  }) async {
     final token = await _token();
     final json = await _api.post(
       '/api/items/$id/reparse',
+      body: forceOverwrite ? {'forceOverwrite': true} : null,
       accessToken: token,
     );
     final itemJson = json['item'] as Map<String, dynamic>? ?? {};
@@ -248,17 +274,6 @@ class ItemsRepository {
     final json = await _api.post(
       '/api/items/$id/star',
       body: {'starred': starred},
-      accessToken: token,
-    );
-    final itemJson = json['item'] as Map<String, dynamic>? ?? {};
-    return CollectionItem.fromJson(itemJson);
-  }
-
-  Future<CollectionItem> updateNote(int id, String? note) async {
-    final token = await _token();
-    final json = await _api.patch(
-      '/api/items/$id',
-      body: {'note': note},
       accessToken: token,
     );
     final itemJson = json['item'] as Map<String, dynamic>? ?? {};

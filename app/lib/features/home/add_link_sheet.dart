@@ -4,7 +4,7 @@ import 'package:super_collection/core/ui/app_toast.dart';
 import 'package:super_collection/core/ui/parse_progress_tracker.dart';
 import 'package:super_collection/core/utils/clipboard_utils.dart';
 import 'package:super_collection/core/utils/link_utils.dart';
-import 'package:super_collection/features/items/item_detail_page.dart';
+import 'package:super_collection/features/items/item_reading_page.dart';
 import 'package:super_collection/features/items/items_repository.dart';
 
 /// 弹出「添加链接」底部弹框（对齐 Figma）。
@@ -112,7 +112,7 @@ class _AddLinkSheetState extends State<AddLinkSheet> {
       }
       navigator.push(
         MaterialPageRoute<void>(
-          builder: (_) => ItemDetailPage(
+          builder: (_) => ItemReadingPage(
             itemId: result.item.id,
             initialItem: result.item,
           ),
