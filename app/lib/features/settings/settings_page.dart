@@ -129,82 +129,122 @@ class _SettingsPageState extends State<SettingsPage> {
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
-          : ListView(
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
+          : Column(
               children: [
-                const _SectionLabel('账号'),
-                const SizedBox(height: 8),
-                _CardGroup(
-                  children: [
-                    _InfoRow(
-                      title: '手机号',
-                      trailing: Text(
-                        _maskedPhone(_session?.phone),
-                        style: const TextStyle(fontSize: 14, color: _muted),
+                Expanded(
+                  child: ListView(
+                    padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+                    children: [
+                      const _SectionLabel('账号'),
+                      const SizedBox(height: 8),
+                      _CardGroup(
+                        children: [
+                          _InfoRow(
+                            title: '手机号',
+                            trailing: Text(
+                              _maskedPhone(_session?.phone),
+                              style:
+                                  const TextStyle(fontSize: 14, color: _muted),
+                            ),
+                          ),
+                        ],
                       ),
-                    ),
-                    _InfoRow(
-                      title: '退出登录',
-                      titleColor: const Color(0xFFD14343),
-                      onTap: _logout,
-                    ),
-                    _InfoRow(
-                      title: '注销账号',
-                      titleColor: const Color(0xFFD14343),
-                      onTap: _deleting ? null : _deleteAccount,
-                    ),
-                  ],
+                      const SizedBox(height: 16),
+                      const _SectionLabel('使用帮助'),
+                      const SizedBox(height: 8),
+                      _CardGroup(
+                        children: [
+                          _InfoRow(
+                            title: 'iOS 快捷指令说明',
+                            showChevron: true,
+                            onTap: () => _open(const ShortcutsHelpPage()),
+                          ),
+                          _InfoRow(
+                            title: '如何添加链接',
+                            showChevron: true,
+                            onTap: () => _open(const HowToAddLinkPage()),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+                      const _SectionLabel('关于'),
+                      const SizedBox(height: 8),
+                      _CardGroup(
+                        children: [
+                          _InfoRow(
+                            title: '用户协议',
+                            showChevron: true,
+                            onTap: () => _open(
+                              const SimpleDocPage(
+                                title: '用户协议',
+                                body: LegalDocs.userAgreement,
+                              ),
+                            ),
+                          ),
+                          _InfoRow(
+                            title: '隐私政策',
+                            showChevron: true,
+                            onTap: () => _open(
+                              const SimpleDocPage(
+                                title: '隐私政策',
+                                body: LegalDocs.privacyPolicy,
+                              ),
+                            ),
+                          ),
+                          const _InfoRow(
+                            title: '关于 Conflux',
+                            trailing: Text(
+                              _version,
+                              style: TextStyle(fontSize: 14, color: _muted),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
                 ),
-                const SizedBox(height: 16),
-                const _SectionLabel('使用帮助'),
-                const SizedBox(height: 8),
-                _CardGroup(
-                  children: [
-                    _InfoRow(
-                      title: 'iOS 快捷指令说明',
-                      showChevron: true,
-                      onTap: () => _open(const ShortcutsHelpPage()),
-                    ),
-                    _InfoRow(
-                      title: '如何添加链接',
-                      showChevron: true,
-                      onTap: () => _open(const HowToAddLinkPage()),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 16),
-                const _SectionLabel('关于'),
-                const SizedBox(height: 8),
-                _CardGroup(
-                  children: [
-                    _InfoRow(
-                      title: '用户协议',
-                      showChevron: true,
-                      onTap: () => _open(
-                        const SimpleDocPage(
-                          title: '用户协议',
-                          body: LegalDocs.userAgreement,
+                SafeArea(
+                  top: false,
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+                    child: Column(
+                      children: [
+                        SizedBox(
+                          width: double.infinity,
+                          height: 48,
+                          child: TextButton(
+                            onPressed: _logout,
+                            style: TextButton.styleFrom(
+                              backgroundColor: Colors.white,
+                              foregroundColor: const Color(0xFFD14343),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                            ),
+                            child: const Text(
+                              '退出账户',
+                              style: TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.w600,
+                                color: Color(0xFFD14343),
+                              ),
+                            ),
+                          ),
                         ),
-                      ),
-                    ),
-                    _InfoRow(
-                      title: '隐私政策',
-                      showChevron: true,
-                      onTap: () => _open(
-                        const SimpleDocPage(
-                          title: '隐私政策',
-                          body: LegalDocs.privacyPolicy,
+                        TextButton(
+                          onPressed: _deleting ? null : _deleteAccount,
+                          style: TextButton.styleFrom(
+                            foregroundColor: _muted,
+                            minimumSize: const Size(double.infinity, 36),
+                          ),
+                          child: Text(
+                            _deleting ? '注销中…' : '注销账户',
+                            style: const TextStyle(fontSize: 14),
+                          ),
                         ),
-                      ),
+                      ],
                     ),
-                    const _InfoRow(
-                      title: '关于 Conflux',
-                      trailing: Text(
-                        _version,
-                        style: TextStyle(fontSize: 14, color: _muted),
-                      ),
-                    ),
-                  ],
+                  ),
                 ),
               ],
             ),
@@ -253,14 +293,12 @@ class _InfoRow extends StatelessWidget {
   const _InfoRow({
     required this.title,
     this.trailing,
-    this.titleColor,
     this.showChevron = false,
     this.onTap,
   });
 
   final String title;
   final Widget? trailing;
-  final Color? titleColor;
   final bool showChevron;
   final VoidCallback? onTap;
 
@@ -275,9 +313,9 @@ class _InfoRow extends StatelessWidget {
             Expanded(
               child: Text(
                 title,
-                style: TextStyle(
+                style: const TextStyle(
                   fontSize: 15,
-                  color: titleColor ?? const Color(0xFF1F242E),
+                  color: Color(0xFF1F242E),
                 ),
               ),
             ),
