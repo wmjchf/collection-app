@@ -31,6 +31,7 @@ class AiMindmapPanel extends StatefulWidget {
 
 class _AiMindmapPanelState extends State<AiMindmapPanel> {
   final _collapsed = <String>{};
+  bool _sharing = false;
 
   void _toggleCollapsed(String path) {
     setState(() {
@@ -40,6 +41,26 @@ class _AiMindmapPanelState extends State<AiMindmapPanel> {
         _collapsed.add(path);
       }
     });
+  }
+
+  Future<void> _shareMindmap(AiMindmapNode root) async {
+    if (_sharing) return;
+    setState(() => _sharing = true);
+    try {
+      await shareMindmapImage(
+        context: context,
+        root: root,
+        sourceTitle: widget.sourceTitle,
+      );
+    } catch (_) {
+      if (mounted) {
+        AppToast.show(context, '分享失败，请稍后重试');
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _sharing = false);
+      }
+    }
   }
 
   @override
@@ -112,6 +133,7 @@ class _AiMindmapPanelState extends State<AiMindmapPanel> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
               children: [
                 const Text(
                   '思维导图',
@@ -119,41 +141,23 @@ class _AiMindmapPanelState extends State<AiMindmapPanel> {
                     fontSize: 14,
                     fontWeight: FontWeight.w600,
                     color: AiMindmapPanel._text,
+                    height: 1,
                   ),
                 ),
                 const Spacer(),
-                GestureDetector(
+                _MindmapActionIcon(
+                  icon: Icons.fullscreen_rounded,
                   onTap: () => showMindmapFullscreen(
                     context,
                     root: meta.tree!,
-                    sourceTitle: widget.sourceTitle,
                     initialCollapsed: Set<String>.from(_collapsed),
                   ),
-                  behavior: HitTestBehavior.opaque,
-                  child: const Padding(
-                    padding: EdgeInsets.all(4),
-                    child: Icon(
-                      Icons.fullscreen_rounded,
-                      size: 18,
-                      color: AiMindmapPanel._muted,
-                    ),
-                  ),
                 ),
-                if (widget.onRetry != null) ...[
-                  const SizedBox(width: 4),
-                  GestureDetector(
+                if (widget.onRetry != null)
+                  _MindmapActionIcon(
+                    icon: Icons.refresh_rounded,
                     onTap: widget.onRetry,
-                    behavior: HitTestBehavior.opaque,
-                    child: const Padding(
-                      padding: EdgeInsets.all(4),
-                      child: Icon(
-                        Icons.refresh_rounded,
-                        size: 18,
-                        color: AiMindmapPanel._muted,
-                      ),
-                    ),
                   ),
-                ],
               ],
             ),
             const SizedBox(height: 10),
@@ -170,13 +174,24 @@ class _AiMindmapPanelState extends State<AiMindmapPanel> {
               ),
             ),
             const SizedBox(height: 8),
-            const Text(
-              '点击节点可折叠/展开分支；双指缩放查看',
-              style: TextStyle(
-                fontSize: 12,
-                color: AiMindmapPanel._muted,
-                height: 1.4,
-              ),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                const Expanded(
+                  child: Text(
+                    '点击节点可折叠/展开分支；双指缩放查看',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: AiMindmapPanel._muted,
+                      height: 1.4,
+                    ),
+                  ),
+                ),
+                _MindmapShareButton(
+                  loading: _sharing,
+                  onTap: _sharing ? null : () => _shareMindmap(meta.tree!),
+                ),
+              ],
             ),
           ],
         ),
@@ -286,7 +301,6 @@ class _MindmapInteractiveViewState extends State<MindmapInteractiveView> {
 void showMindmapFullscreen(
   BuildContext context, {
   required AiMindmapNode root,
-  String? sourceTitle,
   Set<String>? initialCollapsed,
 }) {
   Navigator.of(context).push<void>(
@@ -294,7 +308,6 @@ void showMindmapFullscreen(
       fullscreenDialog: true,
       builder: (ctx) => MindmapFullscreenPage(
         root: root,
-        sourceTitle: sourceTitle,
         initialCollapsed: initialCollapsed,
       ),
     ),
@@ -305,12 +318,10 @@ class MindmapFullscreenPage extends StatefulWidget {
   const MindmapFullscreenPage({
     super.key,
     required this.root,
-    this.sourceTitle,
     this.initialCollapsed,
   });
 
   final AiMindmapNode root;
-  final String? sourceTitle;
   final Set<String>? initialCollapsed;
 
   static const _text = Color(0xFF1F242E);
@@ -323,7 +334,6 @@ class MindmapFullscreenPage extends StatefulWidget {
 class _MindmapFullscreenPageState extends State<MindmapFullscreenPage> {
   late final Set<String> _collapsed;
   bool _landscape = false;
-  bool _sharing = false;
 
   @override
   void initState() {
@@ -363,26 +373,6 @@ class _MindmapFullscreenPageState extends State<MindmapFullscreenPage> {
     );
   }
 
-  Future<void> _shareMindmap() async {
-    if (_sharing) return;
-    setState(() => _sharing = true);
-    try {
-      await shareMindmapImage(
-        context: context,
-        root: widget.root,
-        sourceTitle: widget.sourceTitle,
-      );
-    } catch (_) {
-      if (mounted) {
-        AppToast.show(context, '分享失败，请稍后重试');
-      }
-    } finally {
-      if (mounted) {
-        setState(() => _sharing = false);
-      }
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -406,23 +396,6 @@ class _MindmapFullscreenPageState extends State<MindmapFullscreenPage> {
         ),
         centerTitle: true,
         actions: [
-          IconButton(
-            tooltip: '分享',
-            icon: _sharing
-                ? SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: MindmapFullscreenPage._muted.withValues(alpha: 0.85),
-                    ),
-                  )
-                : const Icon(
-                    Icons.ios_share_rounded,
-                    color: MindmapFullscreenPage._muted,
-                  ),
-            onPressed: _sharing ? null : _shareMindmap,
-          ),
           IconButton(
             tooltip: _landscape ? '竖屏' : '横屏',
             icon: Icon(
@@ -499,6 +472,93 @@ class _MindmapCanvas extends StatelessWidget {
         child: CustomPaint(
           size: Size(layout.width, layout.height),
           painter: MindmapPainter(layout: layout),
+        ),
+      ),
+    );
+  }
+}
+
+class _MindmapShareButton extends StatelessWidget {
+  const _MindmapShareButton({
+    required this.onTap,
+    this.loading = false,
+  });
+
+  final VoidCallback? onTap;
+  final bool loading;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+        decoration: BoxDecoration(
+          color: AiMindmapPanel._brand.withValues(alpha: 0.1),
+          borderRadius: BorderRadius.circular(6),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (loading)
+              SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: AiMindmapPanel._brand.withValues(alpha: 0.85),
+                ),
+              )
+            else
+              const Icon(
+                Icons.ios_share_rounded,
+                size: 16,
+                color: AiMindmapPanel._brand,
+              ),
+            const SizedBox(width: 4),
+            const Text(
+              '分享',
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: AiMindmapPanel._brand,
+                height: 1,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _MindmapActionIcon extends StatelessWidget {
+  const _MindmapActionIcon({
+    required this.icon,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final VoidCallback? onTap;
+
+  static const _iconSize = 18.0;
+  static const _hitSize = 26.0;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: SizedBox(
+        width: _hitSize,
+        height: _hitSize,
+        child: Center(
+          child: Icon(
+            icon,
+            size: _iconSize,
+            color: AiMindmapPanel._muted,
+          ),
         ),
       ),
     );
