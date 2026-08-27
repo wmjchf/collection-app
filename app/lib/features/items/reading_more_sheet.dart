@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 
-enum ReadingMoreAction { moveFolder, transcript, delete }
+enum ReadingMoreAction { moveFolder, transcript, mindmap, delete }
 
 Future<ReadingMoreAction?> showReadingMoreSheet(
   BuildContext context, {
   bool showTranscript = false,
+  bool mindmapEnabled = true,
+  bool mindmapPending = false,
 }) {
   return showModalBottomSheet<ReadingMoreAction>(
     context: context,
@@ -12,6 +14,8 @@ Future<ReadingMoreAction?> showReadingMoreSheet(
     barrierColor: const Color(0x66000000),
     builder: (context) => _ReadingMoreSheet(
       showTranscript: showTranscript,
+      mindmapEnabled: mindmapEnabled,
+      mindmapPending: mindmapPending,
     ),
   );
 }
@@ -19,9 +23,13 @@ Future<ReadingMoreAction?> showReadingMoreSheet(
 class _ReadingMoreSheet extends StatelessWidget {
   const _ReadingMoreSheet({
     required this.showTranscript,
+    required this.mindmapEnabled,
+    required this.mindmapPending,
   });
 
   final bool showTranscript;
+  final bool mindmapEnabled;
+  final bool mindmapPending;
 
   static const _text = Color(0xFF1F242E);
   static const _muted = Color(0xFF737A85);
@@ -89,6 +97,15 @@ class _ReadingMoreSheet extends StatelessWidget {
                       onTap: () =>
                           Navigator.pop(context, ReadingMoreAction.transcript),
                     ),
+                  _GridItem(
+                    icon: Icons.hub_outlined,
+                    label: mindmapPending ? '生成中…' : '思维导图',
+                    enabled: mindmapEnabled && !mindmapPending,
+                    onTap: mindmapEnabled && !mindmapPending
+                        ? () =>
+                            Navigator.pop(context, ReadingMoreAction.mindmap)
+                        : null,
+                  ),
                   _GridItem(
                     icon: Icons.delete_outline,
                     label: '删除',

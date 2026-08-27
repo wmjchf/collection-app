@@ -1351,4 +1351,7 @@ module.exports = {
   applyAiSuggest: require('./aiSuggestService').applyAiSuggest,
   dismissAiSuggest: require('./aiSuggestService').dismissAiSuggest,
   runAiSuggestJob: require('./aiSuggestService').runAiSuggestJob,
+  requestMindmap: require('./aiMindmapService').requestMindmap,
+  getMindmapStatus: require('./aiMindmapService').getMindmapStatus,
+  runMindmapJob: require('./aiMindmapService').runMindmapJob,
 };

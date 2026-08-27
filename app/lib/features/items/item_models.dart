@@ -94,6 +94,11 @@ class CollectionItem {
 
   bool get hasAiTagsPending => aiMeta.tags.isPending;
 
+  bool get hasMindmapPending => aiMeta.mindmap.isPending;
+
+  bool get canTriggerMindmap =>
+      canRequestAiSuggest && !hasMindmapPending && !hasAnyTranscriptPending;
+
   CollectionItem withAiMeta(AiMeta meta) {
     return CollectionItem(
       id: id,

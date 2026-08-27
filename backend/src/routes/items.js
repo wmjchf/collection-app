@@ -222,6 +222,33 @@ router.post('/:id/ai-suggest/dismiss', async (req, res, next) => {
   }
 });
 
+/** GET /api/items/:id/mindmap-status — 思维导图轮询 */
+router.get('/:id/mindmap-status', async (req, res, next) => {
+  try {
+    const status = await itemService.getMindmapStatus(
+      req.auth.userId,
+      Number(req.params.id),
+    );
+    return res.json(status);
+  } catch (err) {
+    return next(err);
+  }
+});
+
+/** POST /api/items/:id/mindmap — 手动触发思维导图 */
+router.post('/:id/mindmap', async (req, res, next) => {
+  try {
+    const item = await itemService.requestMindmap(
+      req.auth.userId,
+      Number(req.params.id),
+      { force: !!req.body?.force },
+    );
+    return res.json({ item, message: '正在生成思维导图…' });
+  } catch (err) {
+    return next(err);
+  }
+});
+
 /** GET /api/items/:id/transcript-status — 转写状态轮询 */
 router.get('/:id/transcript-status', async (req, res, next) => {
   try {

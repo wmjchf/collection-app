@@ -15,6 +15,81 @@ class AiTagSuggestion {
   }
 }
 
+class AiMindmapNode {
+  const AiMindmapNode({
+    required this.title,
+    this.children = const [],
+  });
+
+  final String title;
+  final List<AiMindmapNode> children;
+
+  factory AiMindmapNode.fromJson(Map<String, dynamic>? json) {
+    if (json == null) {
+      return const AiMindmapNode(title: '');
+    }
+    final raw = json['children'];
+    final children = <AiMindmapNode>[];
+    if (raw is List) {
+      for (final e in raw) {
+        if (e is Map<String, dynamic>) {
+          children.add(AiMindmapNode.fromJson(e));
+        } else if (e is Map) {
+          children.add(AiMindmapNode.fromJson(
+            e.map((k, v) => MapEntry(k.toString(), v)),
+          ));
+        }
+      }
+    }
+    return AiMindmapNode(
+      title: json['title'] as String? ?? '',
+      children: children,
+    );
+  }
+}
+
+class AiMindmapMeta {
+  const AiMindmapMeta({
+    this.status = 'none',
+    this.tree,
+    this.contentHash,
+    this.error,
+    this.generatedAt,
+  });
+
+  final String status;
+  final AiMindmapNode? tree;
+  final String? contentHash;
+  final String? error;
+  final DateTime? generatedAt;
+
+  bool get isPending => status == 'pending';
+  bool get isSuccess => status == 'success';
+  bool get isFailed => status == 'failed';
+  bool get hasTree =>
+      tree != null && tree!.title.trim().isNotEmpty;
+
+  factory AiMindmapMeta.fromJson(Map<String, dynamic>? json) {
+    if (json == null) return const AiMindmapMeta();
+    AiMindmapNode? tree;
+    final rawTree = json['tree'];
+    if (rawTree is Map<String, dynamic>) {
+      tree = AiMindmapNode.fromJson(rawTree);
+    } else if (rawTree is Map) {
+      tree = AiMindmapNode.fromJson(
+        rawTree.map((k, v) => MapEntry(k.toString(), v)),
+      );
+    }
+    return AiMindmapMeta(
+      status: json['status'] as String? ?? 'none',
+      tree: tree,
+      contentHash: json['contentHash'] as String?,
+      error: json['error'] as String?,
+      generatedAt: AiTagsMeta._parseTime(json['generatedAt']),
+    );
+  }
+}
+
 class AiTagsMeta {
   const AiTagsMeta({
     this.status = 'none',
@@ -68,10 +143,12 @@ class AiTagsMeta {
 class AiMeta {
   const AiMeta({
     this.tags = const AiTagsMeta(),
+    this.mindmap = const AiMindmapMeta(),
     this.model,
   });
 
   final AiTagsMeta tags;
+  final AiMindmapMeta mindmap;
   final String? model;
 
   factory AiMeta.fromJson(Map<String, dynamic>? json) {
@@ -82,6 +159,15 @@ class AiMeta {
             ? json['tags'] as Map<String, dynamic>
             : json['tags'] is Map
                 ? (json['tags'] as Map).map(
+                    (k, v) => MapEntry(k.toString(), v),
+                  )
+                : null,
+      ),
+      mindmap: AiMindmapMeta.fromJson(
+        json['mindmap'] is Map<String, dynamic>
+            ? json['mindmap'] as Map<String, dynamic>
+            : json['mindmap'] is Map
+                ? (json['mindmap'] as Map).map(
                     (k, v) => MapEntry(k.toString(), v),
                   )
                 : null,
