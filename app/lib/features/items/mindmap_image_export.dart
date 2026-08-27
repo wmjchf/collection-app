@@ -7,6 +7,10 @@ import 'package:share_plus/share_plus.dart';
 import 'package:super_collection/features/items/ai_meta_models.dart';
 import 'package:super_collection/features/items/mindmap_render.dart';
 
+/// 分享 PNG 页脚品牌行；平铺水印仅用短名 [_shareBrandShort]。
+const _shareBrandShort = 'Conflux';
+const _shareBrandLine = 'Conflux不再吃灰的收藏夹';
+
 /// 微信等对体积/尺寸敏感：长边与文件大小上限。
 const _shareMaxLongSide = 3072.0;
 const _shareMaxBytes = 8 * 1024 * 1024;
@@ -134,13 +138,13 @@ Future<Uint8List> renderMindmapPngBytesForShare({
   return bytes;
 }
 
-/// 脑图区域斜向平铺半透明 CONFLUX 水印（不遮挡阅读）。
+/// 脑图区域斜向平铺半透明 Conflux 水印（不遮挡阅读）。
 void _paintConfluxWatermark(Canvas canvas, Size size) {
-  const text = 'CONFLUX';
+  const text = _shareBrandShort;
   const style = TextStyle(
     fontSize: 24,
     fontWeight: FontWeight.w600,
-    letterSpacing: 3,
+    letterSpacing: 2,
     color: Color(0x0D1F242E),
   );
 
@@ -173,9 +177,9 @@ void _paintConfluxWatermark(Canvas canvas, Size size) {
 String? _footerText(String? sourceTitle) {
   final title = sourceTitle?.trim();
   if (title == null || title.isEmpty) {
-    return 'Conflux';
+    return _shareBrandLine;
   }
-  return '$title · Conflux';
+  return '$title · $_shareBrandLine';
 }
 
 /// 导出完整脑图 PNG 并唤起系统分享面板（微信等）。

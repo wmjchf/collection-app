@@ -30,18 +30,7 @@ class AiMindmapPanel extends StatefulWidget {
 }
 
 class _AiMindmapPanelState extends State<AiMindmapPanel> {
-  final _collapsed = <String>{};
   bool _sharing = false;
-
-  void _toggleCollapsed(String path) {
-    setState(() {
-      if (_collapsed.contains(path)) {
-        _collapsed.remove(path);
-      } else {
-        _collapsed.add(path);
-      }
-    });
-  }
 
   Future<void> _shareMindmap(
     AiMindmapNode root, {
@@ -151,14 +140,6 @@ class _AiMindmapPanelState extends State<AiMindmapPanel> {
                   ),
                 ),
                 const Spacer(),
-                _MindmapActionIcon(
-                  icon: Icons.fullscreen_rounded,
-                  onTap: () => showMindmapFullscreen(
-                    context,
-                    root: meta.tree!,
-                    initialCollapsed: Set<String>.from(_collapsed),
-                  ),
-                ),
                 if (widget.onRetry != null)
                   _MindmapActionIcon(
                     icon: Icons.refresh_rounded,
@@ -173,33 +154,42 @@ class _AiMindmapPanelState extends State<AiMindmapPanel> {
                 color: Colors.white,
                 child: MindmapInteractiveView(
                   root: meta.tree!,
-                  collapsed: _collapsed,
-                  onToggle: _toggleCollapsed,
+                  collapsed: const {},
+                  onToggle: (_) {},
                   viewHeight: 280,
+                  onPreviewTap: () => showMindmapFullscreen(
+                    context,
+                    root: meta.tree!,
+                  ),
                 ),
               ),
             ),
             const SizedBox(height: 8),
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                const Expanded(
-                  child: Text(
-                    '点击节点可折叠/展开分支；双指缩放查看',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: AiMindmapPanel._muted,
-                      height: 1.4,
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 4),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  const Expanded(
+                    child: Text(
+                      '点击思维导图进入全屏；全屏内可折叠节点、双指缩放',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: AiMindmapPanel._muted,
+                        height: 1.4,
+                      ),
                     ),
                   ),
-                ),
-                _MindmapShareButton(
-                  loading: _sharing,
-                  onTap: _sharing
-                      ? null
-                      : (origin) => _shareMindmap(meta.tree!, shareOrigin: origin),
-                ),
-              ],
+                  const SizedBox(width: 12),
+                  _MindmapShareButton(
+                    loading: _sharing,
+                    onTap: _sharing
+                        ? null
+                        : (origin) =>
+                            _shareMindmap(meta.tree!, shareOrigin: origin),
+                  ),
+                ],
+              ),
             ),
           ],
         ),
@@ -218,6 +208,7 @@ class MindmapInteractiveView extends StatefulWidget {
     this.viewHeight,
     this.minScale = 0.4,
     this.maxScale = 2.5,
+    this.onPreviewTap,
   });
 
   final AiMindmapNode root;
@@ -226,6 +217,7 @@ class MindmapInteractiveView extends StatefulWidget {
   final double? viewHeight;
   final double minScale;
   final double maxScale;
+  final VoidCallback? onPreviewTap;
 
   @override
   State<MindmapInteractiveView> createState() => _MindmapInteractiveViewState();
@@ -233,7 +225,15 @@ class MindmapInteractiveView extends StatefulWidget {
 
 class _MindmapInteractiveViewState extends State<MindmapInteractiveView> {
   final _controller = TransformationController();
+  final _canvasKey = GlobalKey();
   bool _initialFitDone = false;
+  int _activePointers = 0;
+  Offset? _pointerDown;
+  Matrix4? _pointerDownMatrix;
+
+  static const _tapSlop = 20.0;
+  static const _transformSlop = 1.5;
+  static const _scaleSlop = 0.015;
 
   @override
   void dispose() {
@@ -268,6 +268,88 @@ class _MindmapInteractiveViewState extends State<MindmapInteractiveView> {
     _initialFitDone = true;
   }
 
+  void _onPointerDown(PointerDownEvent event) {
+    _activePointers++;
+    if (_activePointers == 1) {
+      _pointerDown = event.position;
+      _pointerDownMatrix = _controller.value.clone();
+    } else {
+      _pointerDown = null;
+      _pointerDownMatrix = null;
+    }
+  }
+
+  void _onPointerUp(PointerUpEvent event) {
+    _activePointers = (_activePointers - 1).clamp(0, 10);
+    final down = _pointerDown;
+    final startMatrix = _pointerDownMatrix;
+    if (_activePointers != 0 || down == null || startMatrix == null) {
+      if (_activePointers == 0) {
+        _pointerDown = null;
+        _pointerDownMatrix = null;
+      }
+      return;
+    }
+
+    final moved = (event.position - down).distance;
+    final transformChanged =
+        !_matricesSimilar(startMatrix, _controller.value);
+    _pointerDown = null;
+    _pointerDownMatrix = null;
+
+    if (moved >= _tapSlop || transformChanged) return;
+
+    if (widget.onPreviewTap != null) {
+      widget.onPreviewTap!();
+      return;
+    }
+
+    final path = _hitTestNode(event.position);
+    if (path != null) {
+      widget.onToggle(path);
+    }
+  }
+
+  void _onPointerCancel(PointerCancelEvent event) {
+    _activePointers = (_activePointers - 1).clamp(0, 10);
+    if (_activePointers == 0) {
+      _pointerDown = null;
+      _pointerDownMatrix = null;
+    }
+  }
+
+  bool _matricesSimilar(Matrix4 a, Matrix4 b) {
+    if ((a.getMaxScaleOnAxis() - b.getMaxScaleOnAxis()).abs() > _scaleSlop) {
+      return false;
+    }
+    final ta = a.getTranslation();
+    final tb = b.getTranslation();
+    return (Offset(ta.x, ta.y) - Offset(tb.x, tb.y)).distance < _transformSlop;
+  }
+
+  String? _hitTestNode(Offset globalPosition) {
+    final box = _canvasKey.currentContext?.findRenderObject() as RenderBox?;
+    if (box == null || !box.hasSize) return null;
+    final local = box.globalToLocal(globalPosition);
+    final layout = MindmapLayout.compute(widget.root, widget.collapsed);
+    for (final node in layout.nodes.values) {
+      if (node.rect.contains(local)) {
+        return node.path;
+      }
+    }
+    return null;
+  }
+
+  Widget _wrapPointerHandler(Widget child) {
+    return Listener(
+      behavior: HitTestBehavior.translucent,
+      onPointerDown: _onPointerDown,
+      onPointerUp: _onPointerUp,
+      onPointerCancel: _onPointerCancel,
+      child: child,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final viewer = InteractiveViewer(
@@ -279,11 +361,13 @@ class _MindmapInteractiveViewState extends State<MindmapInteractiveView> {
       boundaryMargin: const EdgeInsets.all(80),
       clipBehavior: Clip.none,
       child: _MindmapCanvas(
+        key: _canvasKey,
         root: widget.root,
         collapsed: widget.collapsed,
-        onToggle: widget.onToggle,
       ),
     );
+
+    final wrapped = _wrapPointerHandler(viewer);
 
     if (widget.viewHeight != null) {
       return SizedBox(
@@ -296,12 +380,12 @@ class _MindmapInteractiveViewState extends State<MindmapInteractiveView> {
                 widget.viewHeight!,
               );
             });
-            return viewer;
+            return wrapped;
           },
         ),
       );
     }
-    return viewer;
+    return wrapped;
   }
 }
 
@@ -450,37 +534,23 @@ class _MindmapFullscreenPageState extends State<MindmapFullscreenPage> {
 
 class _MindmapCanvas extends StatelessWidget {
   const _MindmapCanvas({
+    super.key,
     required this.root,
     required this.collapsed,
-    required this.onToggle,
   });
 
   final AiMindmapNode root;
   final Set<String> collapsed;
-  final ValueChanged<String> onToggle;
 
   @override
   Widget build(BuildContext context) {
     final layout = MindmapLayout.compute(root, collapsed);
-    return Listener(
-      onPointerUp: (event) {
-        final box = context.findRenderObject() as RenderBox?;
-        if (box == null) return;
-        final local = box.globalToLocal(event.position);
-        for (final node in layout.nodes.values) {
-          if (node.rect.contains(local)) {
-            onToggle(node.path);
-            break;
-          }
-        }
-      },
-      child: SizedBox(
-        width: layout.width,
-        height: layout.height,
-        child: CustomPaint(
-          size: Size(layout.width, layout.height),
-          painter: MindmapPainter(layout: layout),
-        ),
+    return SizedBox(
+      width: layout.width,
+      height: layout.height,
+      child: CustomPaint(
+        size: Size(layout.width, layout.height),
+        painter: MindmapPainter(layout: layout),
       ),
     );
   }
@@ -651,7 +721,7 @@ class _AiCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
       decoration: BoxDecoration(
         color: AiMindmapPanel._surface,
         borderRadius: BorderRadius.circular(8),
