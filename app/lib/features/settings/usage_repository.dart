@@ -3,6 +3,7 @@ import 'package:super_collection/features/auth/auth_repository.dart';
 
 class UsageSummary {
   const UsageSummary({
+    required this.plan,
     required this.yearMonth,
     required this.transcriptUsedMinutes,
     required this.transcriptLimitMinutes,
@@ -15,6 +16,8 @@ class UsageSummary {
     required this.aiMindmapRemaining,
   });
 
+  /// `free` | `pro`（后端暂固定 free）
+  final String plan;
   final String yearMonth;
   final double transcriptUsedMinutes;
   final double transcriptLimitMinutes;
@@ -26,12 +29,15 @@ class UsageSummary {
   final int aiMindmapLimit;
   final int aiMindmapRemaining;
 
+  bool get isPro => plan == 'pro';
+
   factory UsageSummary.fromJson(Map<String, dynamic> json) {
     final period = json['period'] as Map<String, dynamic>? ?? {};
     final transcript = json['transcript'] as Map<String, dynamic>? ?? {};
     final aiTags = json['aiTags'] as Map<String, dynamic>? ?? {};
     final aiMindmap = json['aiMindmap'] as Map<String, dynamic>? ?? {};
     return UsageSummary(
+      plan: (json['plan'] as String?)?.trim().toLowerCase() ?? 'free',
       yearMonth: period['yearMonth'] as String? ?? '',
       transcriptUsedMinutes:
           (transcript['usedMinutes'] as num?)?.toDouble() ?? 0,

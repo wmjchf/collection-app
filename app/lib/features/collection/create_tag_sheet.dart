@@ -15,20 +15,53 @@ Future<Tag?> showCreateTagSheet(BuildContext context) {
         padding: EdgeInsets.only(
           bottom: MediaQuery.viewInsetsOf(context).bottom,
         ),
-        child: const CreateTagSheet(),
+        child: const _TagNameSheet(),
       );
     },
   );
 }
 
-class CreateTagSheet extends StatefulWidget {
-  const CreateTagSheet({super.key});
-
-  @override
-  State<CreateTagSheet> createState() => _CreateTagSheetState();
+/// 弹出「编辑标签名」弹框；成功返回更新后的 [Tag]。
+Future<Tag?> showEditTagSheet(
+  BuildContext context, {
+  required int tagId,
+  required String initialName,
+}) {
+  return showModalBottomSheet<Tag>(
+    context: context,
+    isScrollControlled: true,
+    backgroundColor: Colors.transparent,
+    barrierColor: const Color(0x59000000),
+    builder: (context) {
+      return Padding(
+        padding: EdgeInsets.only(
+          bottom: MediaQuery.viewInsetsOf(context).bottom,
+        ),
+        child: _TagNameSheet(
+          tagId: tagId,
+          initialName: initialName,
+        ),
+      );
+    },
+  );
 }
 
-class _CreateTagSheetState extends State<CreateTagSheet> {
+class _TagNameSheet extends StatefulWidget {
+  const _TagNameSheet({
+    this.tagId,
+    this.initialName,
+  });
+
+  final int? tagId;
+  final String? initialName;
+
+  bool get isEdit => tagId != null;
+
+  @override
+  State<_TagNameSheet> createState() => _TagNameSheetState();
+}
+
+class _TagNameSheetState extends State<_TagNameSheet> {
   static const _text = Color(0xFF1F242E);
   static const _muted = Color(0xFF737A85);
   static const _fieldBg = Color(0xFFF5F7FA);
@@ -43,7 +76,13 @@ class _CreateTagSheetState extends State<CreateTagSheet> {
   @override
   void initState() {
     super.initState();
-    _controller = TextEditingController();
+    _controller = TextEditingController(text: widget.initialName ?? '');
+    if (widget.isEdit) {
+      _controller.selection = TextSelection(
+        baseOffset: 0,
+        extentOffset: _controller.text.length,
+      );
+    }
   }
 
   @override
@@ -57,7 +96,7 @@ class _CreateTagSheetState extends State<CreateTagSheet> {
     Navigator.of(context).pop();
   }
 
-  Future<void> _onCreate() async {
+  Future<void> _onSubmit() async {
     if (_submitting) return;
     final name = _controller.text.trim();
     if (name.isEmpty) {
@@ -75,7 +114,9 @@ class _CreateTagSheetState extends State<CreateTagSheet> {
     });
 
     try {
-      final tag = await _tags.createTag(name);
+      final tag = widget.isEdit
+          ? await _tags.renameTag(widget.tagId!, name)
+          : await _tags.createTag(name);
       if (!mounted) return;
       Navigator.of(context).pop(tag);
     } on ApiException catch (e) {
@@ -88,7 +129,9 @@ class _CreateTagSheetState extends State<CreateTagSheet> {
       if (!mounted) return;
       setState(() {
         _submitting = false;
-        _error = '创建失败，请检查网络或后端是否启动';
+        _error = widget.isEdit
+            ? '保存失败，请检查网络或后端是否启动'
+            : '创建失败，请检查网络或后端是否启动';
       });
     }
   }
@@ -96,6 +139,8 @@ class _CreateTagSheetState extends State<CreateTagSheet> {
   @override
   Widget build(BuildContext context) {
     final bottom = MediaQuery.paddingOf(context).bottom;
+    final title = widget.isEdit ? '编辑标签名' : '新建标签';
+    final action = widget.isEdit ? '保存' : '创建';
 
     return Padding(
       padding: EdgeInsets.fromLTRB(16, 0, 16, 16 + (bottom > 0 ? bottom : 0)),
@@ -121,9 +166,9 @@ class _CreateTagSheetState extends State<CreateTagSheet> {
                 height: 27,
                 child: Row(
                   children: [
-                    const Text(
-                      '新建标签',
-                      style: TextStyle(
+                    Text(
+                      title,
+                      style: const TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.w700,
                         color: _text,
@@ -156,7 +201,7 @@ class _CreateTagSheetState extends State<CreateTagSheet> {
                 onChanged: (_) {
                   if (_error != null) setState(() => _error = null);
                 },
-                onSubmitted: (_) => _onCreate(),
+                onSubmitted: (_) => _onSubmit(),
                 decoration: InputDecoration(
                   hintText: '例如：读书',
                   hintStyle: const TextStyle(fontSize: 15, color: _muted),
@@ -198,7 +243,7 @@ class _CreateTagSheetState extends State<CreateTagSheet> {
               SizedBox(
                 width: double.infinity,
                 child: FilledButton(
-                  onPressed: _submitting ? null : _onCreate,
+                  onPressed: _submitting ? null : _onSubmit,
                   style: FilledButton.styleFrom(
                     backgroundColor: _blue,
                     disabledBackgroundColor: _blue.withValues(alpha: 0.6),
@@ -218,9 +263,9 @@ class _CreateTagSheetState extends State<CreateTagSheet> {
                             color: Colors.white,
                           ),
                         )
-                      : const Text(
-                          '创建',
-                          style: TextStyle(
+                      : Text(
+                          action,
+                          style: const TextStyle(
                             fontSize: 15,
                             fontWeight: FontWeight.w500,
                           ),

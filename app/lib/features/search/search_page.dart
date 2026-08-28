@@ -21,8 +21,8 @@ class _SearchPageState extends State<SearchPage> {
   static const _bg = Color(0xFFF7F7FA);
   static const _text = Color(0xFF1F242E);
   static const _muted = Color(0xFF737A85);
-  static const _blue = Color(0xFF2F6FED);
-  static const _inputBg = Color(0xFFF7F7FA);
+  static const _inputBg = Color(0xFFF5F7FA);
+  static const _searchRadius = 20.0;
 
   final _repo = ItemsRepository();
   final _controller = TextEditingController();
@@ -178,77 +178,100 @@ class _SearchPageState extends State<SearchPage> {
         child: Column(
           children: [
             Padding(
-              padding: const EdgeInsets.fromLTRB(12, 10, 16, 10),
+              padding: const EdgeInsets.fromLTRB(12, 10, 8, 10),
               child: Row(
                 children: [
                   Expanded(
-                    child: Container(
-                      height: 38,
-                      padding: const EdgeInsets.symmetric(horizontal: 12),
-                      decoration: BoxDecoration(
-                        color: _inputBg,
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: Row(
-                        children: [
-                          const Icon(
-                            Icons.search,
-                            size: 18,
+                    child: SizedBox(
+                      height: 40,
+                      child: TextField(
+                        controller: _controller,
+                        focusNode: _focus,
+                        textInputAction: TextInputAction.search,
+                        onChanged: _onQueryChanged,
+                        onTapOutside: (_) => _unfocusSearch(),
+                        onSubmitted: (v) {
+                          _debounce?.cancel();
+                          final q = v.trim();
+                          if (q.isNotEmpty) _search(q, reset: true);
+                          _unfocusSearch();
+                        },
+                        style: const TextStyle(
+                          fontSize: 15,
+                          color: _text,
+                          height: 1.2,
+                        ),
+                        decoration: InputDecoration(
+                          hintText: '搜索标题、正文、备注、标注…',
+                          hintStyle: const TextStyle(
+                            fontSize: 15,
                             color: _muted,
                           ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: TextField(
-                              controller: _controller,
-                              focusNode: _focus,
-                              textInputAction: TextInputAction.search,
-                              onChanged: _onQueryChanged,
-                              onTapOutside: (_) => _unfocusSearch(),
-                              onSubmitted: (v) {
-                                _debounce?.cancel();
-                                final q = v.trim();
-                                if (q.isNotEmpty) _search(q, reset: true);
-                                _unfocusSearch();
-                              },
-                              style: const TextStyle(
-                                fontSize: 15,
-                                color: _text,
-                              ),
-                              decoration: const InputDecoration(
-                                isDense: true,
-                                border: InputBorder.none,
-                                hintText: '搜索标题、正文、备注、标注…',
-                                hintStyle: TextStyle(
-                                  fontSize: 15,
-                                  color: _muted,
+                          prefixIcon: const Icon(
+                            Icons.search_rounded,
+                            color: _muted,
+                            size: 22,
+                          ),
+                          suffixIcon: _controller.text.isEmpty
+                              ? null
+                              : IconButton(
+                                  icon: const Icon(
+                                    Icons.close_rounded,
+                                    color: _muted,
+                                    size: 20,
+                                  ),
+                                  onPressed: () {
+                                    _controller.clear();
+                                    _onQueryChanged('');
+                                    _focus.requestFocus();
+                                  },
                                 ),
-                              ),
+                          filled: true,
+                          fillColor: _inputBg,
+                          isDense: true,
+                          contentPadding:
+                              const EdgeInsets.symmetric(vertical: 10),
+                          border: OutlineInputBorder(
+                            borderRadius:
+                                BorderRadius.circular(_searchRadius),
+                            borderSide: const BorderSide(
+                              color: Color(0xFFB8CCFA),
+                              width: 1,
                             ),
                           ),
-                          if (_controller.text.isNotEmpty)
-                            GestureDetector(
-                              onTap: () {
-                                _controller.clear();
-                                _onQueryChanged('');
-                              },
-                              child: const Icon(
-                                Icons.close,
-                                size: 16,
-                                color: _muted,
-                              ),
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius:
+                                BorderRadius.circular(_searchRadius),
+                            borderSide: const BorderSide(
+                              color: Color(0xFFB8CCFA),
+                              width: 1,
                             ),
-                        ],
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius:
+                                BorderRadius.circular(_searchRadius),
+                            borderSide: const BorderSide(
+                              color: Color(0xFFB8CCFA),
+                              width: 1,
+                            ),
+                          ),
+                        ),
                       ),
                     ),
                   ),
-                  const SizedBox(width: 10),
-                  GestureDetector(
-                    onTap: () => Navigator.of(context).maybePop(),
+                  TextButton(
+                    onPressed: () => Navigator.of(context).maybePop(),
+                    style: TextButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                      minimumSize: const Size(0, 36),
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    ),
                     child: const Text(
                       '取消',
                       style: TextStyle(
                         fontSize: 15,
-                        color: _blue,
+                        fontWeight: FontWeight.w500,
+                        color: _text,
                       ),
                     ),
                   ),

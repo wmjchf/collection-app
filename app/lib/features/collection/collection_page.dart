@@ -8,7 +8,7 @@ import 'package:super_collection/features/collection/system_filters_repository.d
 import 'package:super_collection/features/collection/tag_models.dart';
 import 'package:super_collection/features/collection/tags_repository.dart';
 import 'package:super_collection/features/collection/trash_page.dart';
-import 'package:super_collection/features/settings/settings_page.dart';
+import 'package:super_collection/features/shell/user_avatar_button.dart';
 
 /// 我的收藏（系统分类 + 标签）
 class CollectionPage extends StatefulWidget {
@@ -16,6 +16,7 @@ class CollectionPage extends StatefulWidget {
     super.key,
     this.isActive = true,
     this.refreshTick = 0,
+    this.onOpenAccount,
   });
 
   /// 是否为当前 Tab；切回时静默刷新数量。
@@ -23,6 +24,9 @@ class CollectionPage extends StatefulWidget {
 
   /// 外部递增时静默刷新（分享入库、解析完成）。
   final int refreshTick;
+
+  /// 打开账户抽屉。
+  final VoidCallback? onOpenAccount;
 
   @override
   State<CollectionPage> createState() => _CollectionPageState();
@@ -246,6 +250,7 @@ class _CollectionPageState extends State<CollectionPage>
       MaterialPageRoute<void>(
         builder: (_) => ItemsBrowsePage(
           title: tag.name,
+          tagId: tag.isSystem ? null : tag.id,
           loader: ({required limit, required offset}) => _tagsRepo.listTagItems(
             tag.id,
             limit: limit,
@@ -270,7 +275,7 @@ class _CollectionPageState extends State<CollectionPage>
       actionsPadding: EdgeInsets.zero,
       automaticallyImplyLeading: false,
       centerTitle: false,
-      // 整条顶栏自绘：搜索从标签右缘向左展开；标签/设置间距对齐首页
+      // 左头像 + 标签搜索（从标签右缘展开）
       title: AnimatedBuilder(
         animation: _searchExpand,
         child: _tagSearchMounted ? _buildHeaderSearchField() : null,
@@ -281,7 +286,7 @@ class _CollectionPageState extends State<CollectionPage>
             width: MediaQuery.sizeOf(context).width,
             height: 40,
             child: Padding(
-              padding: const EdgeInsets.only(left: 20),
+              padding: const EdgeInsets.only(left: 12),
               child: Row(
                 children: [
                   Expanded(
@@ -295,19 +300,10 @@ class _CollectionPageState extends State<CollectionPage>
                             opacity: (1 - t * 1.4).clamp(0.0, 1.0),
                             child: Row(
                               children: [
-                                const Expanded(
-                                  child: Text(
-                                    '我的收藏',
-                                    maxLines: 1,
-                                    overflow: TextOverflow.clip,
-                                    style: TextStyle(
-                                      fontSize: 22,
-                                      fontWeight: FontWeight.w700,
-                                      color: _text,
-                                      height: 1.2,
-                                    ),
-                                  ),
+                                UserAvatarButton(
+                                  onPressed: widget.onOpenAccount ?? () {},
                                 ),
+                                const Spacer(),
                                 IconButton(
                                   tooltip: '搜索标签',
                                   padding: EdgeInsets.zero,
@@ -332,7 +328,7 @@ class _CollectionPageState extends State<CollectionPage>
                             alignment: Alignment.centerRight,
                             child: LayoutBuilder(
                               builder: (context, constraints) {
-                                // fullW = 标题区 + 标签；右缘对齐标签右缘
+                                // fullW：用户图标左边 → 标签右缘
                                 final fullW = constraints.maxWidth;
                                 final width =
                                     (fullW * t).clamp(0.0, fullW);
@@ -364,71 +360,29 @@ class _CollectionPageState extends State<CollectionPage>
                       ],
                     ),
                   ),
-                  Stack(
-                    alignment: Alignment.centerRight,
-                    children: [
-                      IgnorePointer(
-                        ignoring: showCancel,
-                        child: Opacity(
-                          opacity: (1 - t * 2.2).clamp(0.0, 1.0),
-                          child: Padding(
-                            padding: const EdgeInsets.only(right: 8),
-                            child: IconButton(
-                              tooltip: '设置',
-                              padding: EdgeInsets.zero,
-                              constraints: const BoxConstraints(
-                                minWidth: 36,
-                                minHeight: 36,
-                              ),
-                              onPressed: t > 0.01
-                                  ? null
-                                  : () {
-                                      Navigator.of(context).push(
-                                        MaterialPageRoute<void>(
-                                          builder: (_) =>
-                                              const SettingsPage(),
-                                        ),
-                                      );
-                                    },
-                              icon: const Icon(
-                                Icons.settings_outlined,
-                                size: 22,
-                                color: _text,
-                              ),
-                            ),
+                  if (showCancel)
+                    Opacity(
+                      opacity: ((t - 0.7) / 0.3).clamp(0.0, 1.0),
+                      child: TextButton(
+                        onPressed: _closeTagSearch,
+                        style: TextButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                          ),
+                          minimumSize: const Size(0, 36),
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        ),
+                        child: const Text(
+                          '取消',
+                          style: TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w500,
+                            color: _text,
                           ),
                         ),
                       ),
-                      IgnorePointer(
-                        ignoring: !showCancel,
-                        child: Opacity(
-                          opacity: ((t - 0.7) / 0.3).clamp(0.0, 1.0),
-                          child: Padding(
-                            padding: const EdgeInsets.only(right: 8),
-                            child: TextButton(
-                              onPressed: _closeTagSearch,
-                              style: TextButton.styleFrom(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 8,
-                                ),
-                                minimumSize: const Size(0, 36),
-                                tapTargetSize:
-                                    MaterialTapTargetSize.shrinkWrap,
-                              ),
-                              child: const Text(
-                                '取消',
-                                style: TextStyle(
-                                  fontSize: 15,
-                                  fontWeight: FontWeight.w500,
-                                  color: _text,
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
+                    ),
+                  const SizedBox(width: 8),
                 ],
               ),
             ),
@@ -468,11 +422,11 @@ class _CollectionPageState extends State<CollectionPage>
         contentPadding: const EdgeInsets.symmetric(vertical: 10),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(_searchRadius),
-          borderSide: BorderSide.none,
+          borderSide: const BorderSide(color: Color(0xFFB8CCFA), width: 1),
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(_searchRadius),
-          borderSide: BorderSide.none,
+          borderSide: const BorderSide(color: Color(0xFFB8CCFA), width: 1),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(_searchRadius),
