@@ -511,20 +511,19 @@ function renderHome(data) {
       moreTitleText: '未读',
     }),
     sectionEl({
-      title: '星标',
-      emptyText: '暂无星标',
-      items: data.starred?.items || [],
+      title: '漫游',
+      emptyText: '暂无内容',
+      items: data.randomPick?.items || [],
       kind: 'unread',
-      filter: 'starred',
-      moreTitleText: '星标',
+      onMore: () => loadHome({ refreshRandom: true }),
     }),
   );
 }
 
-async function loadHome() {
+async function loadHome({ refreshRandom = false } = {}) {
   renderHome(null);
   try {
-    const data = await fetchHome();
+    const data = await fetchHome({ refreshRandom });
     renderHome(data);
   } catch (err) {
     if (await handleAuthError(err)) return;

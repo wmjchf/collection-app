@@ -26,19 +26,19 @@ class HomeSectionData {
 class HomeData {
   const HomeData({
     required this.unread,
-    required this.starred,
+    required this.randomPick,
   });
 
   final HomeSectionData unread;
-  final HomeSectionData starred;
+  final HomeSectionData randomPick;
 
   factory HomeData.fromJson(Map<String, dynamic> json) {
     return HomeData(
       unread: HomeSectionData.fromJson(
         json['unread'] as Map<String, dynamic>? ?? const {},
       ),
-      starred: HomeSectionData.fromJson(
-        json['starred'] as Map<String, dynamic>? ?? const {},
+      randomPick: HomeSectionData.fromJson(
+        json['randomPick'] as Map<String, dynamic>? ?? const {},
       ),
     );
   }
@@ -62,11 +62,12 @@ class HomeRepository {
     return session.accessToken;
   }
 
-  Future<HomeData> fetchHome() async {
+  Future<HomeData> fetchHome({bool refreshRandom = false}) async {
     final token = await _token();
     final tz = DateTime.now().timeZoneOffset.inMinutes;
+    final refresh = refreshRandom ? '&refreshRandom=1' : '';
     final json = await _api.get(
-      '/api/home?tzOffsetMinutes=$tz',
+      '/api/home?tzOffsetMinutes=$tz$refresh',
       accessToken: token,
     );
     return HomeData.fromJson(json);

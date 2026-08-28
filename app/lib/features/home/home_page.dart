@@ -23,7 +23,7 @@ import 'package:super_collection/features/onboarding/home_coach_overlay.dart';
 import 'package:super_collection/features/onboarding/shortcuts_help_page.dart';
 import 'package:super_collection/features/search/search_page.dart';
 
-/// 一级页：首页 — 未读 / 星标
+/// 一级页：首页 — 未读 / 漫游
 class HomePage extends StatefulWidget {
   const HomePage({
     super.key,
@@ -111,7 +111,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     }
   }
 
-  Future<void> _load({bool quiet = false}) async {
+  Future<void> _load({bool quiet = false, bool refreshRandom = false}) async {
     final showSpinner = !quiet || _data == null;
     if (showSpinner) {
       setState(() {
@@ -120,7 +120,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       });
     }
     try {
-      final data = await _repo.fetchHome();
+      final data = await _repo.fetchHome(refreshRandom: refreshRandom);
       if (!mounted) return;
       setState(() {
         _data = data;
@@ -595,7 +595,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       setState(() {
         _data = HomeData(
           unread: strip(data.unread),
-          starred: strip(data.starred),
+          randomPick: strip(data.randomPick),
         );
       });
     }
@@ -604,7 +604,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   @override
   Widget build(BuildContext context) {
     final unread = _data?.unread.items ?? const <CollectionItem>[];
-    final starred = _data?.starred.items ?? const <CollectionItem>[];
+    final random = _data?.randomPick.items ?? const <CollectionItem>[];
 
     return Scaffold(
       backgroundColor: _bg,
@@ -685,53 +685,51 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                   )
                 : LayoutBuilder(
                     builder: (context, constraints) {
-                      // 未读 / 星标各占一半可视高度（空态与有数据一致）
+                      // 仅空态均分可视高度；有数据时按内容高度
                       const listPaddingV = 12.0 + 24.0;
                       const sectionGap = 16.0;
-                      final sectionH =
+                      final emptyCardH =
                           ((constraints.maxHeight - listPaddingV - sectionGap) /
                                   2)
-                              .clamp(160.0, 10000.0);
+                              .clamp(140.0, 360.0);
                       return ListView(
                         physics: const AlwaysScrollableScrollPhysics(),
                         padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
                         children: [
-                          SizedBox(
-                            height: sectionH,
-                            child: _HomeSection(
-                              title: '未读',
-                              emptyText: '暂无未读',
-                              emptyIcon: Icons.mark_email_unread_outlined,
-                              items: [
-                                for (final item in unread)
-                                  previewForUnread(item),
-                              ],
-                              onMore: () => _openFilter('unread', '未读'),
-                              onItemTap: (preview) {
-                                final item = unread
-                                    .firstWhere((e) => e.id == preview.id);
-                                _openItem(item);
-                              },
-                            ),
+                          _HomeSection(
+                            title: '未读',
+                            emptyText: '暂无未读',
+                            emptyIcon: Icons.mark_email_unread_outlined,
+                            emptyHeight: emptyCardH,
+                            items: [
+                              for (final item in unread)
+                                previewForUnread(item),
+                            ],
+                            onMore: () => _openFilter('unread', '未读'),
+                            onItemTap: (preview) {
+                              final item = unread
+                                  .firstWhere((e) => e.id == preview.id);
+                              _openItem(item);
+                            },
                           ),
                           const SizedBox(height: sectionGap),
-                          SizedBox(
-                            height: sectionH,
-                            child: _HomeSection(
-                              title: '星标',
-                              emptyText: '暂无星标',
-                              emptyIcon: Icons.star_outline_rounded,
-                              items: [
-                                for (final item in starred)
-                                  previewForStarred(item),
-                              ],
-                              onMore: () => _openFilter('starred', '星标'),
-                              onItemTap: (preview) {
-                                final item = starred
-                                    .firstWhere((e) => e.id == preview.id);
-                                _openItem(item);
-                              },
-                            ),
+                          _HomeSection(
+                            title: '漫游',
+                            emptyText: '暂无内容',
+                            emptyIcon: Icons.auto_stories_outlined,
+                            emptyHeight: emptyCardH,
+                            moreLabel: '换一批 ›',
+                            items: [
+                              for (final item in random)
+                                previewForRandom(item),
+                            ],
+                            onMore: () =>
+                                _load(quiet: true, refreshRandom: true),
+                            onItemTap: (preview) {
+                              final item = random
+                                  .firstWhere((e) => e.id == preview.id);
+                              _openItem(item);
+                            },
                           ),
                         ],
                       );
@@ -747,17 +745,21 @@ class _HomeSection extends StatelessWidget {
     required this.title,
     required this.emptyText,
     required this.emptyIcon,
+    required this.emptyHeight,
     required this.items,
     required this.onMore,
     required this.onItemTap,
+    this.moreLabel = '查看更多 ›',
   });
 
   final String title;
   final String emptyText;
   final IconData emptyIcon;
+  final double emptyHeight;
   final List<HomeItemPreview> items;
   final VoidCallback onMore;
   final ValueChanged<HomeItemPreview> onItemTap;
+  final String moreLabel;
 
   static const _muted = Color(0xFF737A85);
   static const _iconMuted = Color(0xFFC5CAD3);
@@ -781,11 +783,11 @@ class _HomeSection extends StatelessWidget {
             GestureDetector(
               onTap: onMore,
               behavior: HitTestBehavior.opaque,
-              child: const Padding(
-                padding: EdgeInsets.symmetric(vertical: 2),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 2),
                 child: Text(
-                  '查看更多 ›',
-                  style: TextStyle(
+                  moreLabel,
+                  style: const TextStyle(
                     fontSize: 13,
                     fontWeight: FontWeight.w400,
                     color: _HomePageState._blue,
@@ -796,40 +798,42 @@ class _HomeSection extends StatelessWidget {
           ],
         ),
         const SizedBox(height: 8),
-        Expanded(
-          child: items.isEmpty
-              ? Container(
-                  width: double.infinity,
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(emptyIcon, size: 40, color: _iconMuted),
-                      const SizedBox(height: 10),
-                      Text(
-                        emptyText,
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(
-                          fontSize: 14,
-                          color: _muted,
-                        ),
-                      ),
-                    ],
-                  ),
-                )
-              : ListView.separated(
-                  padding: EdgeInsets.zero,
-                  itemCount: items.length,
-                  separatorBuilder: (_, __) => const SizedBox(height: 8),
-                  itemBuilder: (context, i) => HomeItemCard(
-                    item: items[i],
-                    onTap: () => onItemTap(items[i]),
+        if (items.isEmpty)
+          Container(
+            width: double.infinity,
+            height: emptyHeight,
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(emptyIcon, size: 40, color: _iconMuted),
+                const SizedBox(height: 10),
+                Text(
+                  emptyText,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    color: _muted,
                   ),
                 ),
-        ),
+              ],
+            ),
+          )
+        else
+          Column(
+            children: [
+              for (var i = 0; i < items.length; i++) ...[
+                if (i > 0) const SizedBox(height: 8),
+                HomeItemCard(
+                  item: items[i],
+                  onTap: () => onItemTap(items[i]),
+                ),
+              ],
+            ],
+          ),
       ],
     );
   }

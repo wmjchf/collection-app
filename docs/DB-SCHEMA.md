@@ -192,7 +192,7 @@ API：`GET …/transcript-targets`、`POST …/transcript`（body.segmentKey）�
 | --- | --- |
 | `GET /api/system-filters` | 未读/所有/今天/星标/解析/标注/最近阅读 + 数量；`tzOffsetMinutes` 可选（默认 480） |
 | `GET /api/items?filter=` | 按系统筛选列条目；`filter` 同上；支持 `limit`/`offset`/`tzOffsetMinutes` |
-| `GET /api/home` | 首页三板块：未读 / 最近阅读 / 漫游（`randomPick`），各最多 3 条 + `total` |
+| `GET /api/home` | 首页两板块：未读 / 漫游（`randomPick`），各最多 3 条；漫游默认缓存 4h，`refreshRandom=1` 强制换一批 |
 
 未读无数据时 `countLabel` 为「无」；列表默认排除已删除与已归档。
 

@@ -47,7 +47,7 @@ HomeItemPreview previewForUnread(CollectionItem item) {
   );
 }
 
-HomeItemPreview previewForStarred(CollectionItem item) {
+HomeItemPreview previewForRandom(CollectionItem item) {
   final title = item.title?.isNotEmpty == true ? item.title! : item.url;
   final subtitle =
       '${platformLabel(item.platform)} · ${formatRelativeDay(item.createdAt)}';

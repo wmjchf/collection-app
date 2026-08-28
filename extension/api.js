@@ -139,10 +139,11 @@ export async function listItems({
   return authRequest('GET', `/api/items?${qs}`);
 }
 
-export async function fetchHome() {
+export async function fetchHome({ refreshRandom = false } = {}) {
+  const refresh = refreshRandom ? '&refreshRandom=1' : '';
   return authRequest(
     'GET',
-    `/api/home?tzOffsetMinutes=${tzOffsetMinutes()}`,
+    `/api/home?tzOffsetMinutes=${tzOffsetMinutes()}${refresh}`,
   );
 }
 

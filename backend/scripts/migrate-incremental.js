@@ -21,6 +21,7 @@ const MIGRATION_FILES = [
   '011_drop_untagged.sql',
   '012_ai_preference_events.sql',
   '013_usage_events.sql',
+  '014_home_roam_cache.sql',
 ];
 
 async function getConnection() {
