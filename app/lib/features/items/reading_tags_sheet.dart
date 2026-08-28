@@ -340,8 +340,8 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
             clipBehavior: Clip.none,
             children: [
               Positioned(
-                left: targetRect.left,
-                width: info.childSize.width,
+                left: targetRect.left + 4,
+                width: info.childSize.width - 8,
                 bottom: info.overlaySize.height - targetRect.top + 8,
                 child: _buildSearchOverlay(query, filtered),
               ),
@@ -365,7 +365,7 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
             children: [
               Expanded(
                 child: Text(
-                  tag.name,
+                  '#${tag.name}',
                   style: const TextStyle(
                     fontSize: 15,
                     fontWeight: FontWeight.w500,
@@ -393,8 +393,12 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
         primary: false,
         physics: const ClampingScrollPhysics(),
         itemCount: filtered.length,
-        separatorBuilder: (context, _) =>
-            const Divider(height: 1, color: Color(0xFFF0F2F5)),
+        separatorBuilder: (context, _) => const Divider(
+          height: 1,
+          indent: 12,
+          endIndent: 12,
+          color: Color(0xFFF0F2F5),
+        ),
         itemBuilder: (context, index) =>
             _buildSearchResultRow(filtered[index]),
       ),

@@ -319,16 +319,27 @@ async function runMindmapJob(itemId) {
     }
 
     const contentHash = computeContentHash(row);
+    const generatedAt = new Date().toISOString();
     meta = aiMeta.withMindmapState(meta, {
       status: 'success',
       awaitTranscript: false,
       tree,
       contentHash,
       error: null,
-      generatedAt: new Date().toISOString(),
+      generatedAt,
       direction: null,
     });
     await saveAiMeta(itemId, meta);
+    try {
+      const usageService = require('./usageService');
+      await usageService.recordAiMindmapUsage({
+        userId: row.user_id,
+        itemId,
+        generatedAt,
+      });
+    } catch (usageErr) {
+      console.warn(`[runMindmapJob] usage record failed item=${itemId}`, usageErr.message);
+    }
     console.log(
       `[runMindmapJob] ok item=${itemId} ms=${Date.now() - started}`,
     );

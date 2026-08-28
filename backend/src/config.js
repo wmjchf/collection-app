@@ -57,4 +57,11 @@ module.exports = {
       'https://dashscope.aliyuncs.com/compatible-mode/v1',
     aiModel: process.env.ALIYUN_AI_MODEL || 'qwen3.8-max',
   },
+  /** 免费额度（统计用；支付落地前不强制拦截） */
+  usage: {
+    freeTranscriptMinutesPerMonth:
+      Number(process.env.FREE_TRANSCRIPT_MINUTES_PER_MONTH) || 60,
+    freeAiTagsPerMonth: Number(process.env.FREE_AI_TAGS_PER_MONTH) || 30,
+    freeAiMindmapPerMonth: Number(process.env.FREE_AI_MINDMAP_PER_MONTH) || 20,
+  },
 };

@@ -7,6 +7,7 @@ const itemsRouter = require('./routes/items');
 const tagsRouter = require('./routes/tags');
 const systemFiltersRouter = require('./routes/systemFilters');
 const homeRouter = require('./routes/home');
+const usageRouter = require('./routes/usage');
 
 const app = express();
 const publicDir = path.join(__dirname, '..', 'public');
@@ -42,6 +43,7 @@ app.use('/api/items', itemsRouter);
 app.use('/api/tags', tagsRouter);
 app.use('/api/system-filters', systemFiltersRouter);
 app.use('/api/home', homeRouter);
+app.use('/api/usage', usageRouter);
 
 app.use((err, _req, res, _next) => {
   console.error(err);
