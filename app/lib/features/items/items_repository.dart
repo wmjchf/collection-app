@@ -351,11 +351,19 @@ class ItemsRepository {
     return (tags: tags, model: json['model'] as String?);
   }
 
-  Future<CollectionItem> requestAiSuggest(int id, {bool force = false}) async {
+  Future<CollectionItem> requestAiSuggest(
+    int id, {
+    bool force = false,
+    String? direction,
+  }) async {
     final token = await _token();
+    final trimmed = direction?.trim();
     final json = await _api.post(
       '/api/items/$id/ai-suggest',
-      body: {'force': force},
+      body: {
+        'force': force,
+        if (trimmed != null && trimmed.isNotEmpty) 'direction': trimmed,
+      },
       accessToken: token,
     );
     final itemJson = json['item'] as Map<String, dynamic>? ?? {};
@@ -407,11 +415,19 @@ class ItemsRepository {
     return (mindmap: mindmap, model: json['model'] as String?);
   }
 
-  Future<CollectionItem> requestMindmap(int id, {bool force = false}) async {
+  Future<CollectionItem> requestMindmap(
+    int id, {
+    bool force = false,
+    String? direction,
+  }) async {
     final token = await _token();
+    final trimmed = direction?.trim();
     final json = await _api.post(
       '/api/items/$id/mindmap',
-      body: {'force': force},
+      body: {
+        'force': force,
+        if (trimmed != null && trimmed.isNotEmpty) 'direction': trimmed,
+      },
       accessToken: token,
     );
     final itemJson = json['item'] as Map<String, dynamic>? ?? {};

@@ -6,7 +6,7 @@ const router = express.Router();
 
 router.use(requireAuth);
 
-/** GET /api/tags — 无标签 + 用户自建，含条目数 */
+/** GET /api/tags — 用户自建标签，含条目数 */
 router.get('/', async (req, res, next) => {
   try {
     const tags = await tagService.listTags(req.auth.userId);

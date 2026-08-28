@@ -78,6 +78,7 @@ async function failAiSuggestJob(itemId, message) {
     items: [],
     error: String(message || '生成失败').slice(0, 500),
     generatedAt: new Date().toISOString(),
+    direction: null,
   });
   await saveAiMeta(itemId, meta);
 }
@@ -120,13 +121,15 @@ async function onTranscriptSettledForAiSuggest(itemId) {
   enqueueAiSuggest(itemId);
 }
 
-async function requestAiSuggest(userId, itemId, { force = false } = {}) {
+async function requestAiSuggest(userId, itemId, { force = false, direction = null } = {}) {
   if (!aliyunDashScope.isConfigured()) {
     throw Object.assign(
       new Error('AI 未配置：请设置 DASHSCOPE_API_KEY'),
       { status: 503 },
     );
   }
+
+  const userDirection = aiMeta.normalizeUserDirection(direction);
 
   const row = await getItemRow(itemId, userId);
   if (!row) {
@@ -154,6 +157,15 @@ async function requestAiSuggest(userId, itemId, { force = false } = {}) {
     return itemService.getByIdForUser(userId, itemId);
   }
 
+  if (userDirection) {
+    const aiPreference = require('./aiPreferenceService');
+    aiPreference.recordDirectionSafe(userId, {
+      kind: aiPreference.KIND_TAGS,
+      itemId,
+      direction: userDirection,
+    });
+  }
+
   if (transcriptSegments.shouldAutoTranscribeBeforeMindmap(row)) {
     const aliyunAsr = require('./aliyunAsr');
     if (!aliyunAsr.isConfigured()) {
@@ -176,6 +188,7 @@ async function requestAiSuggest(userId, itemId, { force = false } = {}) {
       items: [],
       error: null,
       generatedAt: null,
+      direction: userDirection,
     });
     meta.model = require('../config').aliyun.aiModel || 'qwen3.8-max';
     await saveAiMeta(itemId, meta);
@@ -204,6 +217,7 @@ async function requestAiSuggest(userId, itemId, { force = false } = {}) {
     items: [],
     error: null,
     generatedAt: null,
+    direction: userDirection,
   });
   meta.model = require('../config').aliyun.aiModel || 'qwen3.8-max';
   await saveAiMeta(itemId, meta);
@@ -251,6 +265,28 @@ async function runAiSuggestJob(itemId) {
     const currentTagNames = await listItemTagNames(row.user_id, itemId);
     const existingNames = userTags.map((t) => t.name).join('、') || '（无）';
     const currentNames = currentTagNames.join('、') || '（无）';
+    const direction = meta.tags.direction;
+    const aiPreference = require('./aiPreferenceService');
+    const prefs = await aiPreference.listRecentDirections(
+      row.user_id,
+      aiPreference.KIND_TAGS,
+      { limit: 5 },
+    );
+    const prefsBlock = aiPreference.formatPreferencesBlock(prefs, {
+      hasExplicitDirection: Boolean(direction),
+    });
+
+    const userContentParts = [
+      `用户已有标签（可复用）：${existingNames}`,
+      `本篇已打标签（请勿重复建议）：${currentNames}`,
+    ];
+    if (direction) {
+      userContentParts.push(`用户期望方向（请尽量遵循）：${direction}`);
+    }
+    if (prefsBlock) {
+      userContentParts.push(prefsBlock);
+    }
+    userContentParts.push(`请为以下内容建议标签：\n\n${inputText}`);
 
     const result = await aliyunDashScope.chatJson({
       messages: [
@@ -260,14 +296,13 @@ async function runAiSuggestJob(itemId) {
             '你是收藏整理助手。根据用户收藏的内容，建议 3～5 个简短中文标签（每个 2～8 字），帮助分类与检索。' +
             '优先从用户已有标签里选择（多篇收藏可共用同一标签）；若无合适项可建议新标签名。' +
             '不要建议「本篇已打标签」列表中的任何名称。' +
+            '若提供了「用户期望方向」，在不违背上述规则的前提下尽量贴合该方向。' +
+            '若仅有「用户近期偏好」而无本次方向，可适度参考偏好，但仍须贴合正文，勿生造无关标签。' +
             '只输出 JSON：{"tags":["标签1","标签2"]}，不要其它字段或说明。',
         },
         {
           role: 'user',
-          content:
-            `用户已有标签（可复用）：${existingNames}\n` +
-            `本篇已打标签（请勿重复建议）：${currentNames}\n\n` +
-            `请为以下内容建议标签：\n\n${inputText}`,
+          content: userContentParts.join('\n'),
         },
       ],
     });
@@ -281,6 +316,7 @@ async function runAiSuggestJob(itemId) {
         items: [],
         error: null,
         generatedAt: new Date().toISOString(),
+        direction: null,
       });
       await saveAiMeta(itemId, meta);
       console.log(
@@ -295,6 +331,7 @@ async function runAiSuggestJob(itemId) {
       items,
       error: null,
       generatedAt: new Date().toISOString(),
+      direction: null,
     });
     await saveAiMeta(itemId, meta);
     console.log(
@@ -307,6 +344,7 @@ async function runAiSuggestJob(itemId) {
       items: [],
       error: (err.message || '生成失败').slice(0, 500),
       generatedAt: new Date().toISOString(),
+      direction: null,
     });
     await saveAiMeta(itemId, meta);
     console.error(
@@ -387,6 +425,9 @@ async function applyAiSuggest(userId, itemId, { names = [] } = {}) {
     error: null,
   });
   await saveAiMeta(itemId, cleared);
+
+  const aiPreference = require('./aiPreferenceService');
+  await aiPreference.markLatestTagsApplied(userId, itemId);
 
   return itemService.getByIdForUser(userId, itemId);
 }

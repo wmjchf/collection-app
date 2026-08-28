@@ -87,6 +87,7 @@ async function failMindmapJob(itemId, message) {
     tree: null,
     error: String(message || '生成失败').slice(0, 500),
     generatedAt: new Date().toISOString(),
+    direction: null,
   });
   await saveAiMeta(itemId, meta);
 }
@@ -133,13 +134,15 @@ async function onTranscriptSettledForMindmap(itemId) {
   enqueueMindmap(itemId);
 }
 
-async function requestMindmap(userId, itemId, { force = false } = {}) {
+async function requestMindmap(userId, itemId, { force = false, direction = null } = {}) {
   if (!aliyunDashScope.isConfigured()) {
     throw Object.assign(
       new Error('AI 未配置：请设置 DASHSCOPE_API_KEY'),
       { status: 503 },
     );
   }
+
+  const userDirection = aiMeta.normalizeUserDirection(direction);
 
   const row = await getItemRow(itemId, userId);
   if (!row) {
@@ -169,6 +172,15 @@ async function requestMindmap(userId, itemId, { force = false } = {}) {
     return itemService.getByIdForUser(userId, itemId);
   }
 
+  if (userDirection) {
+    const aiPreference = require('./aiPreferenceService');
+    aiPreference.recordDirectionSafe(userId, {
+      kind: aiPreference.KIND_MINDMAP,
+      itemId,
+      direction: userDirection,
+    });
+  }
+
   if (transcriptSegments.shouldAutoTranscribeBeforeMindmap(row)) {
     const aliyunAsr = require('./aliyunAsr');
     if (!aliyunAsr.isConfigured()) {
@@ -192,6 +204,7 @@ async function requestMindmap(userId, itemId, { force = false } = {}) {
       contentHash: null,
       error: null,
       generatedAt: null,
+      direction: userDirection,
     });
     meta.model = require('../config').aliyun.aiModel || 'qwen3.8-max';
     await saveAiMeta(itemId, meta);
@@ -221,6 +234,7 @@ async function requestMindmap(userId, itemId, { force = false } = {}) {
     contentHash,
     error: null,
     generatedAt: null,
+    direction: userDirection,
   });
   meta.model = require('../config').aliyun.aiModel || 'qwen3.8-max';
   await saveAiMeta(itemId, meta);
@@ -264,6 +278,28 @@ async function runMindmapJob(itemId) {
       throw new Error('内容不足');
     }
 
+    const direction = meta.mindmap.direction;
+    const aiPreference = require('./aiPreferenceService');
+    const prefs = await aiPreference.listRecentDirections(
+      row.user_id,
+      aiPreference.KIND_MINDMAP,
+      { limit: 5 },
+    );
+    const prefsBlock = aiPreference.formatPreferencesBlock(prefs, {
+      hasExplicitDirection: Boolean(direction),
+    });
+
+    let userContent =
+      '请阅读以下内容，按 system 要求输出思维导图 JSON（仅 JSON，无其它文字）：';
+    if (direction) {
+      userContent +=
+        `\n\n用户期望方向（请尽量遵循，在不破坏结构规则的前提下调整侧重点）：${direction}`;
+    }
+    if (prefsBlock) {
+      userContent += `\n\n${prefsBlock}`;
+    }
+    userContent += `\n\n${inputText}`;
+
     const result = await aliyunDashScope.chatJson({
       messages: [
         {
@@ -272,9 +308,7 @@ async function runMindmapJob(itemId) {
         },
         {
           role: 'user',
-          content:
-            '请阅读以下内容，按 system 要求输出思维导图 JSON（仅 JSON，无其它文字）：\n\n' +
-            inputText,
+          content: userContent,
         },
       ],
     });
@@ -292,6 +326,7 @@ async function runMindmapJob(itemId) {
       contentHash,
       error: null,
       generatedAt: new Date().toISOString(),
+      direction: null,
     });
     await saveAiMeta(itemId, meta);
     console.log(
@@ -304,6 +339,7 @@ async function runMindmapJob(itemId) {
       tree: null,
       error: (err.message || '生成失败').slice(0, 500),
       generatedAt: new Date().toISOString(),
+      direction: null,
     });
     await saveAiMeta(itemId, meta);
     console.error(

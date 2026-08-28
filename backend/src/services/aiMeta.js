@@ -4,6 +4,7 @@ const DEFAULT_TAGS = {
   error: null,
   generatedAt: null,
   awaitTranscript: false,
+  direction: null,
 };
 
 const DEFAULT_MINDMAP = {
@@ -13,6 +14,7 @@ const DEFAULT_MINDMAP = {
   error: null,
   generatedAt: null,
   awaitTranscript: false,
+  direction: null,
 };
 
 function normalizeMindmapTree(raw) {
@@ -65,6 +67,10 @@ function parseAiMeta(raw) {
       error: tags.error != null ? String(tags.error) : null,
       generatedAt: tags.generatedAt || null,
       awaitTranscript: tags.awaitTranscript === true,
+      direction:
+        tags.direction != null && String(tags.direction).trim()
+          ? String(tags.direction).trim().slice(0, 200)
+          : null,
     },
     mindmap: {
       status: mindmap.status || 'none',
@@ -73,6 +79,10 @@ function parseAiMeta(raw) {
       error: mindmap.error != null ? String(mindmap.error) : null,
       generatedAt: mindmap.generatedAt || null,
       awaitTranscript: mindmap.awaitTranscript === true,
+      direction:
+        mindmap.direction != null && String(mindmap.direction).trim()
+          ? String(mindmap.direction).trim().slice(0, 200)
+          : null,
     },
     model: obj.model != null ? String(obj.model) : null,
   };
@@ -123,6 +133,11 @@ function withMindmapState(meta, patch) {
   return m;
 }
 
+function normalizeUserDirection(raw) {
+  const text = String(raw || '').trim().slice(0, 200);
+  return text || null;
+}
+
 module.exports = {
   defaultAiMeta,
   parseAiMeta,
@@ -131,4 +146,5 @@ module.exports = {
   isMindmapPending,
   withTagsState,
   withMindmapState,
+  normalizeUserDirection,
 };
