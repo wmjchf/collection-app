@@ -692,19 +692,25 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
       return;
     }
 
-    if (!force &&
-        _item.aiMeta.tags.isSuccess &&
-        _item.aiMeta.tags.hasSuggestions) {
-      final retry = await showReadingRegenerateConfirmDialog(
+    String? direction;
+    final isRegen = force ||
+        (_item.aiMeta.tags.isSuccess && _item.aiMeta.tags.hasSuggestions);
+    if (isRegen) {
+      final result = await showReadingRegenerateConfirmDialog(
         context,
         ReadingRegenerateKind.tags,
       );
-      if (retry != true || !mounted) return;
+      if (result == null || !mounted) return;
       force = true;
+      direction = result;
     }
 
     try {
-      final updated = await _repo.requestAiSuggest(_item.id, force: force);
+      final updated = await _repo.requestAiSuggest(
+        _item.id,
+        force: force,
+        direction: direction,
+      );
       if (!mounted) return;
       setState(() => _item = updated);
       _scrollToArticleEnd();
@@ -804,19 +810,25 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
       return;
     }
 
-    if (!force &&
-        _item.aiMeta.mindmap.isSuccess &&
-        _item.aiMeta.mindmap.hasTree) {
-      final retry = await showReadingRegenerateConfirmDialog(
+    String? direction;
+    final isRegen = force ||
+        (_item.aiMeta.mindmap.isSuccess && _item.aiMeta.mindmap.hasTree);
+    if (isRegen) {
+      final result = await showReadingRegenerateConfirmDialog(
         context,
         ReadingRegenerateKind.mindmap,
       );
-      if (retry != true || !mounted) return;
+      if (result == null || !mounted) return;
       force = true;
+      direction = result;
     }
 
     try {
-      final updated = await _repo.requestMindmap(_item.id, force: force);
+      final updated = await _repo.requestMindmap(
+        _item.id,
+        force: force,
+        direction: direction,
+      );
       if (!mounted) return;
       setState(() => _item = updated);
       _scrollToArticleEnd();

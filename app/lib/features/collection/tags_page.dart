@@ -218,7 +218,7 @@ class _TagsPageState extends State<TagsPage> {
             if (_error != null && _all.isEmpty) {
               return ListView(
                 physics: const AlwaysScrollableScrollPhysics(),
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
                 children: [
                   SizedBox(
                     height: constraints.maxHeight,
@@ -251,7 +251,7 @@ class _TagsPageState extends State<TagsPage> {
             }
             return ListView(
               physics: const AlwaysScrollableScrollPhysics(),
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
               children: [
                 _TagChipWrap(
                   tags: visible,

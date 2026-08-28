@@ -187,7 +187,10 @@ router.post('/:id/ai-suggest', async (req, res, next) => {
     const item = await itemService.requestAiSuggest(
       req.auth.userId,
       Number(req.params.id),
-      { force: !!req.body?.force },
+      {
+        force: !!req.body?.force,
+        direction: req.body?.direction ?? req.body?.hint ?? null,
+      },
     );
     return res.json({ item, message: '正在生成标签建议…' });
   } catch (err) {
@@ -242,7 +245,10 @@ router.post('/:id/mindmap', async (req, res, next) => {
     const item = await itemService.requestMindmap(
       req.auth.userId,
       Number(req.params.id),
-      { force: !!req.body?.force },
+      {
+        force: !!req.body?.force,
+        direction: req.body?.direction ?? req.body?.hint ?? null,
+      },
     );
     return res.json({ item, message: '正在生成思维导图…' });
   } catch (err) {

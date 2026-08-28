@@ -19,6 +19,7 @@ const MIGRATION_FILES = [
   '009_trash_system_section.sql',
   '010_content_edited_at.sql',
   '011_drop_untagged.sql',
+  '012_ai_preference_events.sql',
 ];
 
 async function getConnection() {
