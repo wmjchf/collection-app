@@ -42,8 +42,6 @@ class _CollectionPageState extends State<CollectionPage> {
   List<SystemFilter> _systemFilters = const [];
   bool _loading = true;
   String? _error;
-  bool _systemExpanded = true;
-  bool _tagsExpanded = true;
 
   @override
   void initState() {
@@ -228,58 +226,44 @@ class _CollectionPageState extends State<CollectionPage> {
           physics: const AlwaysScrollableScrollPhysics(),
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
           children: [
-            _SectionLabel(
-              '系统分类',
-              expanded: _systemExpanded,
-              onToggleExpand: () {
-                setState(() => _systemExpanded = !_systemExpanded);
-              },
-            ),
-            AnimatedSize(
-              duration: const Duration(milliseconds: 200),
-              curve: Curves.easeInOut,
-              alignment: Alignment.topCenter,
-              child: _systemExpanded && _systemFilters.isNotEmpty
-                  ? Padding(
-                      padding: const EdgeInsets.only(top: 8),
-                      child: Column(
-                        children: [
-                          if (_systemFilters.any((e) => e.code == 'unread'))
-                            _EntityGroup(
-                              entries: [
-                                for (final f in _systemFilters
-                                    .where((e) => e.code == 'unread'))
-                                  _EntityEntry(
-                                    title: f.name,
-                                    countLabel: f.countLabel,
-                                    icon:
-                                        _CollectionNavIcon.forSystemCode(f.code),
-                                    onTap: () => _openSystemFilter(f),
-                                  ),
-                              ],
+            const _SectionLabel('系统分类'),
+            if (_systemFilters.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Column(
+                  children: [
+                    if (_systemFilters.any((e) => e.code == 'unread'))
+                      _EntityGroup(
+                        entries: [
+                          for (final f in _systemFilters
+                              .where((e) => e.code == 'unread'))
+                            _EntityEntry(
+                              title: f.name,
+                              countLabel: f.countLabel,
+                              icon: _CollectionNavIcon.forSystemCode(f.code),
+                              onTap: () => _openSystemFilter(f),
                             ),
-                          if (_systemFilters.any((f) => f.code != 'unread')) ...[
-                            if (_systemFilters.any((e) => e.code == 'unread'))
-                              const SizedBox(height: 16),
-                            _EntityGroup(
-                              entries: [
-                                for (final f in _systemFilters
-                                    .where((e) => e.code != 'unread'))
-                                  _EntityEntry(
-                                    title: f.name,
-                                    countLabel: f.countLabel,
-                                    icon:
-                                        _CollectionNavIcon.forSystemCode(f.code),
-                                    onTap: () => _openSystemFilter(f),
-                                  ),
-                              ],
-                            ),
-                          ],
                         ],
                       ),
-                    )
-                  : const SizedBox(width: double.infinity),
-            ),
+                    if (_systemFilters.any((f) => f.code != 'unread')) ...[
+                      if (_systemFilters.any((e) => e.code == 'unread'))
+                        const SizedBox(height: 16),
+                      _EntityGroup(
+                        entries: [
+                          for (final f in _systemFilters
+                              .where((e) => e.code != 'unread'))
+                            _EntityEntry(
+                              title: f.name,
+                              countLabel: f.countLabel,
+                              icon: _CollectionNavIcon.forSystemCode(f.code),
+                              onTap: () => _openSystemFilter(f),
+                            ),
+                        ],
+                      ),
+                    ],
+                  ],
+                ),
+              ),
             const SizedBox(height: 16),
             if (_loading && _tags.isEmpty && _systemFilters.isEmpty)
               const Padding(
@@ -297,38 +281,19 @@ class _CollectionPageState extends State<CollectionPage> {
             else ...[
               _SectionLabel(
                 '标签',
-                expanded: _tagsExpanded,
-                onToggleExpand: () {
-                  setState(() => _tagsExpanded = !_tagsExpanded);
-                },
                 trailing: '＋',
                 onTrailingTap: _onCreateTag,
               ),
-              AnimatedSize(
-                duration: const Duration(milliseconds: 200),
-                curve: Curves.easeInOut,
-                alignment: Alignment.topCenter,
-                child: _tagsExpanded
-                    ? Padding(
-                        padding: const EdgeInsets.only(top: 8),
-                        child: _EntityGroup(
-                          entries: [
-                            for (final t in _tags)
-                              _EntityEntry(
-                                title: t.name,
-                                countLabel: t.countLabel,
-                                icon: t.isSystem
-                                    ? _CollectionNavIcon.tagSystem
-                                    : _CollectionNavIcon.tagUser,
-                                onTap: () => _openTag(t),
-                                onLongPress: t.isSystem
-                                    ? null
-                                    : () => _onDeleteTag(t),
-                              ),
-                          ],
-                        ),
-                      )
-                    : const SizedBox(width: double.infinity),
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: _TagChipWrap(
+                  tags: [
+                    for (final t in _tags)
+                      if (t.code != 'untagged' || t.itemCount > 0) t,
+                  ],
+                  onTap: _openTag,
+                  onRemove: _onDeleteTag,
+                ),
               ),
             ],
           ],
@@ -346,16 +311,6 @@ class _CollectionNavIcon {
 
   final IconData icon;
   final Color background;
-
-  static const tagSystem = _CollectionNavIcon(
-    icon: Icons.local_offer_rounded,
-    background: Color(0xFF788CAA),
-  );
-
-  static const tagUser = _CollectionNavIcon(
-    icon: Icons.local_offer_rounded,
-    background: Color(0xFFFF8C64),
-  );
 
   static _CollectionNavIcon forSystemCode(String code) {
     switch (code) {
@@ -419,14 +374,150 @@ class _EntityEntry {
     required this.countLabel,
     required this.icon,
     required this.onTap,
-    this.onLongPress,
   });
 
   final String title;
   final String countLabel;
   final _CollectionNavIcon icon;
   final VoidCallback onTap;
-  final VoidCallback? onLongPress;
+}
+
+class _TagChipWrap extends StatelessWidget {
+  const _TagChipWrap({
+    required this.tags,
+    required this.onTap,
+    required this.onRemove,
+  });
+
+  final List<Tag> tags;
+  final ValueChanged<Tag> onTap;
+  final ValueChanged<Tag> onRemove;
+
+  static const _blue = Color(0xFF2F6FED);
+  static const _chipOn = Color(0xFFE5EDFF);
+  static const _perRow = 4;
+  static const _gap = 7.0;
+  static const _chipPadH = 12.0;
+
+  static const _labelStyle = TextStyle(
+    fontSize: 13,
+    fontWeight: FontWeight.w500,
+    color: _blue,
+  );
+
+  List<List<Tag>> _chunkRows(List<Tag> all) {
+    final rows = <List<Tag>>[];
+    for (var i = 0; i < all.length; i += _perRow) {
+      rows.add(
+        all.sublist(i, i + _perRow > all.length ? all.length : i + _perRow),
+      );
+    }
+    return rows;
+  }
+
+  double _chipWidth(String text) {
+    final painter = TextPainter(
+      text: TextSpan(text: text, style: _labelStyle),
+      textDirection: TextDirection.ltr,
+      maxLines: 1,
+    )..layout();
+    return painter.width + _chipPadH * 2;
+  }
+
+  double _rowWidth(List<Tag> row) {
+    if (row.isEmpty) return 0;
+    var total = 0.0;
+    for (var i = 0; i < row.length; i++) {
+      if (i > 0) total += _gap;
+      total += _chipWidth('${row[i].name} ${row[i].countLabel}');
+    }
+    return total;
+  }
+
+  Widget _buildChip(Tag tag) {
+    return GestureDetector(
+      onTap: () => onTap(tag),
+      onLongPress: tag.isSystem ? null : () => onRemove(tag),
+      behavior: HitTestBehavior.opaque,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: _chipPadH, vertical: 6),
+        decoration: BoxDecoration(
+          color: _chipOn,
+          borderRadius: BorderRadius.circular(14),
+        ),
+        child: Text(
+          '${tag.name} ${tag.countLabel}',
+          style: _labelStyle,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildRow(List<Tag> row, double maxWidth) {
+    final chips = Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        for (var i = 0; i < row.length; i++) ...[
+          if (i > 0) const SizedBox(width: _gap),
+          _buildChip(row[i]),
+        ],
+      ],
+    );
+
+    if (_rowWidth(row) <= maxWidth) {
+      return chips;
+    }
+
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      physics: const BouncingScrollPhysics(),
+      child: chips,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (tags.isEmpty) {
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(14),
+        ),
+        child: const Text(
+          '暂无标签，点右上角 ＋ 新建',
+          textAlign: TextAlign.center,
+          style: TextStyle(fontSize: 14, color: _CollectionColors.muted),
+        ),
+      );
+    }
+
+    final rows = _chunkRows(tags);
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(14, 14, 14, 10),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final maxWidth = constraints.maxWidth;
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              for (var r = 0; r < rows.length; r++) ...[
+                if (r > 0) const SizedBox(height: _gap),
+                _buildRow(rows[r], maxWidth),
+              ],
+            ],
+          );
+        },
+      ),
+    );
+  }
 }
 
 class _EntityGroup extends StatelessWidget {
@@ -467,7 +558,6 @@ class _EntityGroup extends StatelessWidget {
               countLabel: entries[i].countLabel,
               icon: entries[i].icon,
               onTap: entries[i].onTap,
-              onLongPress: entries[i].onLongPress,
             ),
             if (i < entries.length - 1)
               const Divider(
@@ -516,47 +606,23 @@ class _SectionLabel extends StatelessWidget {
     this.title, {
     this.trailing,
     this.onTrailingTap,
-    this.expanded,
-    this.onToggleExpand,
   });
 
   final String title;
   final String? trailing;
   final VoidCallback? onTrailingTap;
-  final bool? expanded;
-  final VoidCallback? onToggleExpand;
 
   @override
   Widget build(BuildContext context) {
-    final canToggle = onToggleExpand != null && expanded != null;
-
     return Row(
       children: [
         Expanded(
-          child: GestureDetector(
-            onTap: canToggle ? onToggleExpand : null,
-            behavior: HitTestBehavior.opaque,
-            child: Row(
-              children: [
-                Text(
-                  title,
-                  style: const TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w500,
-                    color: _CollectionColors.muted,
-                  ),
-                ),
-                if (canToggle) ...[
-                  const SizedBox(width: 2),
-                  Icon(
-                    expanded!
-                        ? Icons.keyboard_arrow_down_rounded
-                        : Icons.keyboard_arrow_right_rounded,
-                    size: 18,
-                    color: _CollectionColors.muted,
-                  ),
-                ],
-              ],
+          child: Text(
+            title,
+            style: const TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w500,
+              color: _CollectionColors.muted,
             ),
           ),
         ),
@@ -588,14 +654,12 @@ class _NavRow extends StatelessWidget {
     required this.countLabel,
     required this.icon,
     required this.onTap,
-    this.onLongPress,
   });
 
   final String title;
   final String countLabel;
   final _CollectionNavIcon icon;
   final VoidCallback onTap;
-  final VoidCallback? onLongPress;
 
   @override
   Widget build(BuildContext context) {
@@ -603,22 +667,21 @@ class _NavRow extends StatelessWidget {
       color: Colors.white,
       child: InkWell(
         onTap: onTap,
-        onLongPress: onLongPress,
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
           child: Row(
             children: [
               Container(
-                width: 22,
-                height: 22,
+                width: 24,
+                height: 24,
                 decoration: BoxDecoration(
                   color: icon.background,
-                  borderRadius: BorderRadius.circular(6),
+                  borderRadius: BorderRadius.circular(7),
                 ),
                 alignment: Alignment.center,
                 child: Icon(
                   icon.icon,
-                  size: 13,
+                  size: 14,
                   color: Colors.white,
                 ),
               ),
@@ -627,7 +690,7 @@ class _NavRow extends StatelessWidget {
                 child: Text(
                   title,
                   style: const TextStyle(
-                    fontSize: 15,
+                    fontSize: 16,
                     fontWeight: FontWeight.w400,
                     color: _CollectionColors.text,
                   ),
@@ -636,7 +699,7 @@ class _NavRow extends StatelessWidget {
               Text(
                 countLabel,
                 style: const TextStyle(
-                  fontSize: 14,
+                  fontSize: 15,
                   color: _CollectionColors.muted,
                 ),
               ),
