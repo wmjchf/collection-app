@@ -246,6 +246,7 @@ class _CollectionPageState extends State<CollectionPage>
       MaterialPageRoute<void>(
         builder: (_) => ItemsBrowsePage(
           title: tag.name,
+          tagId: tag.isSystem ? null : tag.id,
           loader: ({required limit, required offset}) => _tagsRepo.listTagItems(
             tag.id,
             limit: limit,

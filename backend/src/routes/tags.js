@@ -46,6 +46,27 @@ router.get('/:id/items', async (req, res, next) => {
   }
 });
 
+/** PATCH /api/tags/:id — 重命名自建标签 */
+router.patch('/:id', async (req, res, next) => {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id) || id <= 0) {
+      return res.status(400).json({ message: '无效的标签 ID' });
+    }
+    const tag = await tagService.renameTag(
+      req.auth.userId,
+      id,
+      req.body?.name,
+    );
+    return res.json({
+      tag,
+      message: '已更新',
+    });
+  } catch (err) {
+    return next(err);
+  }
+});
+
 /** DELETE /api/tags/:id — 删除自建标签（仅解除关联） */
 router.delete('/:id', async (req, res, next) => {
   try {

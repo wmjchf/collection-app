@@ -63,12 +63,6 @@ class _RegenerateWithDirectionDialogState
         ReadingRegenerateKind.transcript => '重新转写文稿？',
       };
 
-  String get _message => switch (widget.kind) {
-        ReadingRegenerateKind.tags => '将覆盖当前标签建议',
-        ReadingRegenerateKind.mindmap => '将覆盖当前思维导图',
-        ReadingRegenerateKind.transcript => '',
-      };
-
   String get _hint => switch (widget.kind) {
         ReadingRegenerateKind.tags => '期望方向（可选），如：偏工作方法论…',
         ReadingRegenerateKind.mindmap => '期望方向（可选），如：突出步骤与方法…',
@@ -98,17 +92,6 @@ class _RegenerateWithDirectionDialogState
                   fontWeight: FontWeight.w700,
                   color: _text,
                   height: 1.2,
-                ),
-              ),
-              const SizedBox(height: 12),
-              Text(
-                _message,
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w400,
-                  color: _muted,
-                  height: 1.3,
                 ),
               ),
               const SizedBox(height: 14),

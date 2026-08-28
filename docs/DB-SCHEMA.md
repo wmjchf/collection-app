@@ -184,6 +184,7 @@ API：`GET …/transcript-targets`、`POST …/transcript`（body.segmentKey）�
 | --- | --- |
 | `GET /api/tags` | 当前用户自建标签；含 `itemCount` |
 | `POST /api/tags` | body `{ name }` 新建 |
+| `PATCH /api/tags/:id` | body `{ name }` 重命名自建标签 |
 | `DELETE /api/tags/:id` | 仅自建标签；解除 `item_tags` 关联，不删条目 |
 
 ## 系统筛选 API（约定）

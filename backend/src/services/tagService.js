@@ -112,6 +112,71 @@ async function getOwnedTag(userId, tagId) {
 }
 
 /**
+ * 重命名用户自建标签
+ */
+async function renameTag(userId, tagId, rawName) {
+  const name = String(rawName || '').trim();
+  if (!name) {
+    throw Object.assign(new Error('请输入标签名称'), { status: 400 });
+  }
+  if (name.length > 64) {
+    throw Object.assign(new Error('名称最多 64 个字'), { status: 400 });
+  }
+  if (name === '无标签') {
+    throw Object.assign(new Error('不能使用系统预留名称'), { status: 400 });
+  }
+
+  const tag = await getOwnedTag(userId, tagId);
+  if (tag.name === name) {
+    const [rows] = await pool.execute(
+      `SELECT c.*,
+         (SELECT COUNT(*) FROM item_tags it
+          INNER JOIN items i ON i.id = it.item_id
+            AND i.user_id = :userId AND i.deleted_at IS NULL
+          WHERE it.category_id = c.id) AS item_count
+       FROM categories c WHERE c.id = :id LIMIT 1`,
+      { id: tag.id, userId },
+    );
+    return mapTag(rows[0]);
+  }
+
+  const [existing] = await pool.execute(
+    `SELECT id FROM categories
+     WHERE user_id = :userId AND section = 'tag' AND name = :name AND id <> :tagId
+     LIMIT 1`,
+    { userId, name, tagId: tag.id },
+  );
+  if (existing[0]) {
+    throw Object.assign(new Error('同名标签已存在'), { status: 409 });
+  }
+
+  try {
+    await pool.execute(
+      `UPDATE categories
+       SET name = :name, updated_at = CURRENT_TIMESTAMP(3)
+       WHERE id = :tagId AND user_id = :userId AND section = 'tag'`,
+      { name, tagId: tag.id, userId },
+    );
+  } catch (err) {
+    if (err && err.code === 'ER_DUP_ENTRY') {
+      throw Object.assign(new Error('同名标签已存在'), { status: 409 });
+    }
+    throw err;
+  }
+
+  const [rows] = await pool.execute(
+    `SELECT c.*,
+       (SELECT COUNT(*) FROM item_tags it
+        INNER JOIN items i ON i.id = it.item_id
+          AND i.user_id = :userId AND i.deleted_at IS NULL
+        WHERE it.category_id = c.id) AS item_count
+     FROM categories c WHERE c.id = :id LIMIT 1`,
+    { id: tag.id, userId },
+  );
+  return mapTag(rows[0]);
+}
+
+/**
  * 删除用户自建标签：仅解除关联（item_tags CASCADE），不删条目
  */
 async function deleteTag(userId, tagId) {
@@ -183,6 +248,7 @@ async function listTagItems(userId, tagId, { limit = 50, offset = 0 } = {}) {
 module.exports = {
   listTags,
   createTag,
+  renameTag,
   deleteTag,
   listTagItems,
 };

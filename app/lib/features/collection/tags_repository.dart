@@ -42,6 +42,17 @@ class TagsRepository {
     return Tag.fromJson(tagJson);
   }
 
+  Future<Tag> renameTag(int id, String name) async {
+    final token = await _token();
+    final json = await _api.patch(
+      '/api/tags/$id',
+      body: {'name': name},
+      accessToken: token,
+    );
+    final tagJson = json['tag'] as Map<String, dynamic>? ?? {};
+    return Tag.fromJson(tagJson);
+  }
+
   Future<void> deleteTag(int id) async {
     final token = await _token();
     await _api.delete('/api/tags/$id', accessToken: token);
