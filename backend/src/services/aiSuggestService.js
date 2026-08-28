@@ -310,30 +310,52 @@ async function runAiSuggestJob(itemId) {
     const rawTags = Array.isArray(result?.tags) ? result.tags : [];
     const items = matchSuggestedTags(rawTags, userTags, currentTagNames);
     if (!items.length) {
+      const generatedAt = new Date().toISOString();
       meta = aiMeta.withTagsState(meta, {
         status: 'empty',
         awaitTranscript: false,
         items: [],
         error: null,
-        generatedAt: new Date().toISOString(),
+        generatedAt,
         direction: null,
       });
       await saveAiMeta(itemId, meta);
+      try {
+        const usageService = require('./usageService');
+        await usageService.recordAiTagsUsage({
+          userId: row.user_id,
+          itemId,
+          generatedAt,
+        });
+      } catch (usageErr) {
+        console.warn(`[runAiSuggestJob] usage record failed item=${itemId}`, usageErr.message);
+      }
       console.log(
         `[runAiSuggestJob] empty item=${itemId} ms=${Date.now() - started}`,
       );
       return;
     }
 
+    const generatedAt = new Date().toISOString();
     meta = aiMeta.withTagsState(meta, {
       status: 'success',
       awaitTranscript: false,
       items,
       error: null,
-      generatedAt: new Date().toISOString(),
+      generatedAt,
       direction: null,
     });
     await saveAiMeta(itemId, meta);
+    try {
+      const usageService = require('./usageService');
+      await usageService.recordAiTagsUsage({
+        userId: row.user_id,
+        itemId,
+        generatedAt,
+      });
+    } catch (usageErr) {
+      console.warn(`[runAiSuggestJob] usage record failed item=${itemId}`, usageErr.message);
+    }
     console.log(
       `[runAiSuggestJob] ok item=${itemId} count=${items.length} ms=${Date.now() - started}`,
     );

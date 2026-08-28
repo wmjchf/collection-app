@@ -10,6 +10,7 @@ import 'package:super_collection/features/settings/how_to_add_link_page.dart';
 import 'package:super_collection/features/settings/legal_docs.dart';
 import 'package:super_collection/features/settings/logout_confirm_dialog.dart';
 import 'package:super_collection/features/settings/simple_doc_page.dart';
+import 'package:super_collection/features/settings/usage_repository.dart';
 
 /// 设置页（对齐 Figma `24. 设置`）
 class SettingsPage extends StatefulWidget {
@@ -26,7 +27,9 @@ class _SettingsPageState extends State<SettingsPage> {
   static const _version = 'v1.0.0';
 
   final _auth = AuthRepository();
+  final _usageRepo = UsageRepository();
   AuthSession? _session;
+  UsageSummary? _usage;
   bool _loading = true;
   bool _deleting = false;
 
@@ -38,11 +41,23 @@ class _SettingsPageState extends State<SettingsPage> {
 
   Future<void> _load() async {
     final session = await _auth.readSession();
+    UsageSummary? usage;
+    try {
+      usage = await _usageRepo.fetchUsage();
+    } catch (_) {
+      usage = null;
+    }
     if (!mounted) return;
     setState(() {
       _session = session;
+      _usage = usage;
       _loading = false;
     });
+  }
+
+  String _fmtMinutes(double m) {
+    if (m == m.roundToDouble()) return m.toInt().toString();
+    return m.toStringAsFixed(1);
   }
 
   String _maskedPhone(String? phone) {
@@ -149,6 +164,49 @@ class _SettingsPageState extends State<SettingsPage> {
                           ),
                         ],
                       ),
+                      if (_usage != null) ...[
+                        const SizedBox(height: 16),
+                        _SectionLabel(
+                          _usage!.yearMonth.isEmpty
+                              ? '本月用量'
+                              : '本月用量（${_usage!.yearMonth}）',
+                        ),
+                        const SizedBox(height: 8),
+                        _CardGroup(
+                          children: [
+                            _InfoRow(
+                              title: '转写',
+                              trailing: Text(
+                                '${_fmtMinutes(_usage!.transcriptUsedMinutes)} / ${_fmtMinutes(_usage!.transcriptLimitMinutes)} 分钟',
+                                style: const TextStyle(
+                                  fontSize: 14,
+                                  color: _muted,
+                                ),
+                              ),
+                            ),
+                            _InfoRow(
+                              title: 'AI 标签',
+                              trailing: Text(
+                                '${_usage!.aiTagsUsed} / ${_usage!.aiTagsLimit} 次',
+                                style: const TextStyle(
+                                  fontSize: 14,
+                                  color: _muted,
+                                ),
+                              ),
+                            ),
+                            _InfoRow(
+                              title: '思维导图',
+                              trailing: Text(
+                                '${_usage!.aiMindmapUsed} / ${_usage!.aiMindmapLimit} 次',
+                                style: const TextStyle(
+                                  fontSize: 14,
+                                  color: _muted,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
                       const SizedBox(height: 16),
                       const _SectionLabel('使用帮助'),
                       const SizedBox(height: 8),

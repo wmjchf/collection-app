@@ -1031,6 +1031,7 @@ async function runTranscriptJob(itemId) {
   let pollMs = 0;
   let pollAttempts = 0;
   let lastStatus = '';
+  let probedDurationSec = null;
 
   const persistPhase = async (phase, phaseLabel) => {
     segments = transcriptSegments.setSegment(segments, segmentKey, {
@@ -1061,6 +1062,12 @@ async function runTranscriptJob(itemId) {
       downloadMs = resolved.downloadMs || 0;
       uploadMs = resolved.uploadMs || 0;
       ossKeyToDelete = resolved.ossKey;
+      if (
+        resolved.durationSec != null &&
+        Number.isFinite(Number(resolved.durationSec))
+      ) {
+        probedDurationSec = Number(resolved.durationSec);
+      }
       console.log(
         `[runTranscriptJob] file_link ready item=${itemId} viaOss=${viaOss} ` +
           `resolveMs=${Date.now() - resolveT0} ` +
@@ -1136,6 +1143,7 @@ async function runTranscriptJob(itemId) {
           `totalMs=${Date.now() - jobT0} textLen=${(result.text || '').length} ` +
           `cues=${Array.isArray(result.cues) ? result.cues.length : 0}`,
       );
+      const transcribedAt = new Date().toISOString();
       segments = transcriptSegments.setSegment(segments, segmentKey, {
         status: 'success',
         text: result.text || '',
@@ -1143,11 +1151,32 @@ async function runTranscriptJob(itemId) {
         error: null,
         taskId: null,
         mediaUrl: null,
-        transcribedAt: new Date().toISOString(),
+        transcribedAt,
         phase: null,
         phaseLabel: null,
       });
       await saveTranscriptSegments(itemId, segments);
+
+      try {
+        const usageService = require('./usageService');
+        const fromCues = usageService.durationSecFromCues(result.cues);
+        const durationSec =
+          probedDurationSec != null && probedDurationSec > 0
+            ? probedDurationSec
+            : fromCues;
+        await usageService.recordTranscriptUsage({
+          userId: row.user_id,
+          itemId,
+          segmentKey,
+          durationSec,
+          transcribedAt,
+        });
+      } catch (usageErr) {
+        console.warn(
+          `[runTranscriptJob] usage record failed item=${itemId}`,
+          usageErr.message,
+        );
+      }
       return;
     }
 
