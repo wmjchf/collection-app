@@ -13,41 +13,10 @@ function mapTag(row) {
   };
 }
 
-async function getUntaggedCategory() {
-  const [rows] = await pool.execute(
-    `SELECT * FROM categories
-     WHERE user_id = 0 AND section = 'tag' AND code = 'untagged'
-     LIMIT 1`,
-  );
-  if (!rows[0]) {
-    throw Object.assign(new Error('系统「无标签」不存在，请先执行数据库迁移'), {
-      status: 500,
-    });
-  }
-  return rows[0];
-}
-
-async function countUntaggedItems(userId) {
-  const [rows] = await pool.execute(
-    `SELECT COUNT(*) AS cnt
-     FROM items i
-     WHERE i.user_id = :userId
-       AND i.deleted_at IS NULL
-       AND NOT EXISTS (
-         SELECT 1 FROM item_tags it WHERE it.item_id = i.id
-       )`,
-    { userId },
-  );
-  return Number(rows[0]?.cnt || 0);
-}
-
 /**
- * 系统「无标签」+ 用户自建标签（含条目数）
+ * 用户自建标签（含条目数）
  */
 async function listTags(userId) {
-  const untagged = await getUntaggedCategory();
-  const untaggedCount = await countUntaggedItems(userId);
-
   const [rows] = await pool.execute(
     `SELECT
        c.id,
@@ -72,13 +41,7 @@ async function listTags(userId) {
     { userId },
   );
 
-  return [
-    mapTag({
-      ...untagged,
-      item_count: untaggedCount,
-    }),
-    ...rows.map(mapTag),
-  ];
+  return rows.map(mapTag);
 }
 
 async function createTag(userId, rawName) {
@@ -165,50 +128,14 @@ async function deleteTag(userId, tagId) {
 }
 
 /**
- * 列出标签下条目（未删除）。
- * - 系统「无标签」：无任何 item_tags 关联的条目
- * - 用户自建标签：item_tags 关联条目
+ * 列出用户自建标签下的条目（未删除）
  */
 async function listTagItems(userId, tagId, { limit = 50, offset = 0 } = {}) {
   const id = Number(tagId);
   const safeLimit = Math.min(Math.max(Number(limit) || 50, 1), 100);
   const safeOffset = Math.max(Number(offset) || 0, 0);
 
-  const untagged = await getUntaggedCategory();
   const { mapItem } = require('./itemService');
-
-  if (id === untagged.id) {
-    const [countRows] = await pool.execute(
-      `SELECT COUNT(*) AS cnt
-       FROM items i
-       WHERE i.user_id = :userId
-         AND i.deleted_at IS NULL
-         AND NOT EXISTS (
-           SELECT 1 FROM item_tags it WHERE it.item_id = i.id
-         )`,
-      { userId },
-    );
-    const total = Number(countRows[0]?.cnt || 0);
-    const [rows] = await pool.execute(
-      `SELECT i.*
-       FROM items i
-       WHERE i.user_id = :userId
-         AND i.deleted_at IS NULL
-         AND NOT EXISTS (
-           SELECT 1 FROM item_tags it WHERE it.item_id = i.id
-         )
-       ORDER BY i.created_at DESC, i.id DESC
-       LIMIT ${safeLimit} OFFSET ${safeOffset}`,
-      { userId },
-    );
-    return {
-      tag: mapTag({ ...untagged, item_count: total }),
-      total,
-      items: rows.map(mapItem),
-      limit: safeLimit,
-      offset: safeOffset,
-    };
-  }
 
   const [cats] = await pool.execute(
     `SELECT * FROM categories
@@ -257,6 +184,5 @@ module.exports = {
   listTags,
   createTag,
   deleteTag,
-  getUntaggedCategory,
   listTagItems,
 };

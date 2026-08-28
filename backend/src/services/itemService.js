@@ -763,7 +763,7 @@ async function emptyTrash(userId) {
   return { emptied: true, deletedCount: Number(result.affectedRows || 0) };
 }
 
-/** 条目当前标签（不含系统「无标签」） */
+/** 条目当前标签 */
 async function listItemTags(userId, itemId) {
   const existing = await getByIdForUser(userId, itemId);
   if (!existing) {

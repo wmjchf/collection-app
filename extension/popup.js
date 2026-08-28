@@ -511,19 +511,12 @@ function renderHome(data) {
       moreTitleText: '未读',
     }),
     sectionEl({
-      title: '最近阅读',
-      emptyText: '暂无最近阅读',
-      items: data.recentRead?.items || [],
-      kind: 'recent',
-      filter: 'recent_read',
-      moreTitleText: '最近阅读',
-    }),
-    sectionEl({
-      title: '漫游',
-      emptyText: '暂无内容',
-      items: data.randomPick?.items || [],
-      kind: 'random',
-      onMore: loadHome,
+      title: '星标',
+      emptyText: '暂无星标',
+      items: data.starred?.items || [],
+      kind: 'unread',
+      filter: 'starred',
+      moreTitleText: '星标',
     }),
   );
 }

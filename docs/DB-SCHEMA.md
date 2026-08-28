@@ -22,7 +22,7 @@
   └─ other    其他
        │
        ▼
-第二层 categories（具体入口，含「未分类」「无标签」等）
+第二层 categories（具体入口，含「未分类」与用户自建标签等）
        │
        ▼
 第三层 items（一条可同时命中多个第二层：多标签 + 多系统规则）
@@ -32,7 +32,7 @@
 | --- | --- | --- |
 | system | 未读 / 所有 / 今天 / 星标 / 解析 / 标注 | **规则命中**（不算归属边） |
 | folder | **未分类** / 用户自建夹 | **恰好一个**（`items.folder_id`） |
-| tag | **无标签** / cubox / … | **0～N 个**（`item_tags`）；无标签=零条关联 |
+| tag | （仅用户自建） | **0～N 个**（`item_tags`） |
 | other | 已归档 / 最近删除 | **状态字段**（`is_archived` / `deleted_at`） |
 
 **多用户约定**
@@ -123,7 +123,6 @@
 | system | unread / all / today / starred / parsed / annotated | 未读/所有/今天/星标/解析/标注 |
 | system | recent_read | 最近阅读（系统筛选；首页「查看更多」进入此列表） |
 | folder | uncategorized | 未分类 |
-| tag | untagged | 无标签 |
 | other | archived | 已归档（不在 App 导航展示；`filter=archived` API 仍可用） |
 | system | trash | 回收站（原 other，见 `009_trash_system_section.sql`） |
 
@@ -183,7 +182,7 @@ API：`GET …/transcript-targets`、`POST …/transcript`（body.segmentKey）�
 
 | 接口 | 说明 |
 | --- | --- |
-| `GET /api/tags` | 系统「无标签」+ 当前用户自建；含 `itemCount` |
+| `GET /api/tags` | 当前用户自建标签；含 `itemCount` |
 | `POST /api/tags` | body `{ name }` 新建 |
 | `DELETE /api/tags/:id` | 仅自建标签；解除 `item_tags` 关联，不删条目 |
 

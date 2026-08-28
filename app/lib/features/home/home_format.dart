@@ -47,7 +47,7 @@ HomeItemPreview previewForUnread(CollectionItem item) {
   );
 }
 
-HomeItemPreview previewForRandom(CollectionItem item) {
+HomeItemPreview previewForStarred(CollectionItem item) {
   final title = item.title?.isNotEmpty == true ? item.title! : item.url;
   final subtitle =
       '${platformLabel(item.platform)} · ${formatRelativeDay(item.createdAt)}';
@@ -55,17 +55,6 @@ HomeItemPreview previewForRandom(CollectionItem item) {
     id: item.id,
     title: title,
     subtitle: subtitle,
-    coverImageUrl: item.coverImageUrl,
-    pageUrl: item.sourcePageUrl,
-  );
-}
-
-HomeItemPreview previewForRecent(CollectionItem item) {
-  final title = item.title?.isNotEmpty == true ? item.title! : item.url;
-  return HomeItemPreview(
-    id: item.id,
-    title: title,
-    subtitle: formatRelativeTime(item.lastReadAt ?? item.updatedAt),
     coverImageUrl: item.coverImageUrl,
     pageUrl: item.sourcePageUrl,
   );

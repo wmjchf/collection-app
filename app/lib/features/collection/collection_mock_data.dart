@@ -29,7 +29,6 @@ class CollectionMockData {
   ];
 
   static const tags = [
-    CollectionNavItem(title: '无标签', countLabel: '2', code: 'untagged'),
     CollectionNavItem(title: 'cubox', countLabel: '1'),
   ];
 }
