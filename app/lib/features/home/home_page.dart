@@ -22,6 +22,7 @@ import 'package:super_collection/features/onboarding/coach_prefs.dart';
 import 'package:super_collection/features/onboarding/home_coach_overlay.dart';
 import 'package:super_collection/features/onboarding/shortcuts_help_page.dart';
 import 'package:super_collection/features/search/search_page.dart';
+import 'package:super_collection/features/shell/user_avatar_button.dart';
 
 /// 一级页：首页 — 未读 / 漫游
 class HomePage extends StatefulWidget {
@@ -29,6 +30,7 @@ class HomePage extends StatefulWidget {
     super.key,
     this.isActive = true,
     this.refreshTick = 0,
+    this.onOpenAccount,
   });
 
   /// 是否为当前 Tab；切回时静默刷新。
@@ -36,6 +38,9 @@ class HomePage extends StatefulWidget {
 
   /// 外部递增时静默刷新（如后台补齐正文完成）。
   final int refreshTick;
+
+  /// 打开账户抽屉。
+  final VoidCallback? onOpenAccount;
 
   @override
   State<HomePage> createState() => _HomePageState();
@@ -614,14 +619,13 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         elevation: 0,
         scrolledUnderElevation: 0,
         toolbarHeight: 56,
-        titleSpacing: 20,
-        title: const Text(
-          '首页',
-          style: TextStyle(
-            fontSize: 22,
-            fontWeight: FontWeight.w700,
-            color: _text,
-            height: 1.2,
+        titleSpacing: 0,
+        automaticallyImplyLeading: false,
+        leadingWidth: 56,
+        leading: Padding(
+          padding: const EdgeInsets.only(left: 12),
+          child: UserAvatarButton(
+            onPressed: widget.onOpenAccount ?? () {},
           ),
         ),
         actions: [

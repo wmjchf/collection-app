@@ -9,6 +9,7 @@ import 'package:super_collection/core/ui/parse_progress_controller.dart';
 import 'package:super_collection/core/ui/parse_progress_tracker.dart';
 import 'package:super_collection/features/collection/collection_page.dart';
 import 'package:super_collection/features/home/home_page.dart';
+import 'package:super_collection/features/settings/account_drawer.dart';
 import 'package:super_collection/features/shell/app_bottom_nav_bar.dart';
 import 'package:super_collection/features/shortcuts/shortcut_inbound.dart';
 
@@ -22,7 +23,12 @@ class MainShell extends StatefulWidget {
 class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
   int _index = 0;
   final _parseProgress = ParseProgressController.instance;
+  final _scaffoldKey = GlobalKey<ScaffoldState>();
   int _homeRefreshTick = 0;
+
+  void _openAccountDrawer() {
+    _scaffoldKey.currentState?.openDrawer();
+  }
 
   @override
   void initState() {
@@ -39,10 +45,8 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
       if (mounted) {
         ClientPageFetch.overlayContext = context;
       }
-      // 先挂好 Overlay，再消化快捷指令 / 补齐队列（避免冷启动抓页失败）
       unawaited(ShortcutInbound.flushPending());
       unawaited(ClientFetchBackfill.run());
-      // 后台预热抖音域：首链抓取往往明显变快（不挡补齐）
       unawaited(
         Future<void>.delayed(const Duration(milliseconds: 900), () async {
           if (!mounted) return;
@@ -71,7 +75,6 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
       }
       unawaited(ShortcutInbound.flushPending());
       unawaited(ClientFetchBackfill.run());
-      // 长时间后台后 Cookie 可能失效，回前台再轻量预热
       unawaited(
         Future<void>.delayed(const Duration(milliseconds: 600), () async {
           if (!mounted) return;
@@ -85,6 +88,8 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
   Widget build(BuildContext context) {
     ClientPageFetch.overlayContext = context;
     return Scaffold(
+      key: _scaffoldKey,
+      drawer: const AccountDrawer(),
       body: Stack(
         children: [
           IndexedStack(
@@ -93,10 +98,12 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
               HomePage(
                 isActive: _index == 0,
                 refreshTick: _homeRefreshTick,
+                onOpenAccount: _openAccountDrawer,
               ),
               CollectionPage(
                 isActive: _index == 1,
                 refreshTick: _homeRefreshTick,
+                onOpenAccount: _openAccountDrawer,
               ),
             ],
           ),
