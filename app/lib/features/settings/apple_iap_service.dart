@@ -53,49 +53,60 @@ class AppleIapService {
     _sub = null;
   }
 
-  Future<Map<String, ProductDetails>> loadProducts() async {
+  /// 从 App Store 拉商品详情。
+  /// [monthlyId]/[yearlyId] 可由升级页一次 `/api/billing/products` 传入，避免重复打后端。
+  Future<Map<String, ProductDetails>> loadProducts({
+    String? monthlyId,
+    String? yearlyId,
+  }) async {
     await ensureListening();
     final available = await isAvailable();
     if (!available) {
       throw ApiException('当前设备不支持应用内购买', statusCode: 400);
     }
 
-    var monthlyId = IapProductIds.monthly;
-    var yearlyId = IapProductIds.yearly;
-    try {
-      final token = await _token();
-      final json = await _api.get('/api/billing/products', accessToken: token);
-      final products = json['products'];
-      if (products is Map) {
-        final m = (products['monthly'] as String?)?.trim();
-        final y = (products['yearly'] as String?)?.trim();
-        if (m != null && m.isNotEmpty) monthlyId = m;
-        if (y != null && y.isNotEmpty) yearlyId = y;
-      }
-    } catch (_) {
-      // 后端不可达时用本地默认 id
-    }
-
-    // 月付 / 年付分开查：某一个未就绪不拖垮另一个
-    final result = <String, ProductDetails>{};
-    try {
-      result.addAll(await _queryProducts({monthlyId}));
-    } catch (_) {}
-    if (yearlyId.isNotEmpty && yearlyId != monthlyId) {
+    var monthly = monthlyId?.trim();
+    var yearly = yearlyId?.trim();
+    if (monthly == null ||
+        monthly.isEmpty ||
+        yearly == null ||
+        yearly.isEmpty) {
       try {
-        result.addAll(await _queryProducts({yearlyId}));
-      } catch (_) {}
+        final token = await _token();
+        final json = await _api.get('/api/billing/products', accessToken: token);
+        final products = json['products'];
+        if (products is Map) {
+          final m = (products['monthly'] as String?)?.trim();
+          final y = (products['yearly'] as String?)?.trim();
+          if (m != null && m.isNotEmpty) monthly ??= m;
+          if (y != null && y.isNotEmpty) yearly ??= y;
+        }
+      } catch (_) {
+        // 后端不可达时用本地默认 id
+      }
     }
+    monthly = (monthly == null || monthly.isEmpty)
+        ? IapProductIds.monthly
+        : monthly;
+    yearly =
+        (yearly == null || yearly.isEmpty) ? IapProductIds.yearly : yearly;
+
+    // 一次查询月+年：未就绪的 id 进 notFoundIDs，不拖垮已就绪商品
+    final ids = <String>{monthly, if (yearly != monthly) yearly};
+    final result = await _queryProducts(ids, allowPartial: true);
     if (result.isEmpty) {
       throw ApiException(
-        '未从 App Store 拉到商品（已查: $monthlyId, $yearlyId）',
+        '未从 App Store 拉到商品（已查: ${ids.join(", ")}）',
         statusCode: 404,
       );
     }
     return result;
   }
 
-  Future<Map<String, ProductDetails>> _queryProducts(Set<String> ids) async {
+  Future<Map<String, ProductDetails>> _queryProducts(
+    Set<String> ids, {
+    bool allowPartial = false,
+  }) async {
     if (ids.isEmpty) {
       throw ApiException('未配置订阅商品', statusCode: 400);
     }
@@ -113,6 +124,7 @@ class AppleIapService {
       throw ApiException(msg, statusCode: 502);
     }
     if (resp.productDetails.isEmpty) {
+      if (allowPartial) return {};
       final missing = resp.notFoundIDs.join(', ');
       throw ApiException(
         '未从 App Store 拉到商品'

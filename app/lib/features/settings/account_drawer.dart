@@ -22,8 +22,17 @@ class _AccountDrawerState extends State<AccountDrawer> {
   @override
   void initState() {
     super.initState();
+    UsageRefresh.version.addListener(_onUsageRefresh);
     _loadPlan();
   }
+
+  @override
+  void dispose() {
+    UsageRefresh.version.removeListener(_onUsageRefresh);
+    super.dispose();
+  }
+
+  void _onUsageRefresh() => _loadPlan();
 
   Future<void> _loadPlan() async {
     try {
@@ -43,13 +52,9 @@ class _AccountDrawerState extends State<AccountDrawer> {
   }
 
   void _openUpgrade() {
-    Navigator.of(context)
-        .push(
+    Navigator.of(context).push(
       MaterialPageRoute<bool?>(builder: (_) => const UpgradeProPage()),
-    )
-        .then((ok) {
-      if (ok == true) _loadPlan();
-    });
+    );
   }
 
   @override
