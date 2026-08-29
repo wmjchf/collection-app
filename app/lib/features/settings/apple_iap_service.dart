@@ -61,7 +61,7 @@ class AppleIapService {
     }
 
     var monthlyId = IapProductIds.monthly;
-    String? yearlyId;
+    var yearlyId = IapProductIds.yearly;
     try {
       final token = await _token();
       final json = await _api.get('/api/billing/products', accessToken: token);
@@ -70,21 +70,27 @@ class AppleIapService {
         final m = (products['monthly'] as String?)?.trim();
         final y = (products['yearly'] as String?)?.trim();
         if (m != null && m.isNotEmpty) monthlyId = m;
-        if (y != null && y.isNotEmpty && y != monthlyId) yearlyId = y;
+        if (y != null && y.isNotEmpty) yearlyId = y;
       }
     } catch (_) {
-      // 后端不可达时只用本地月付 id（ASC 目前仅有月付）
+      // 后端不可达时用本地默认 id
     }
 
-    // 切勿一次 query 不存在的商品 id，否则 StoreKit 常直接
-    // “failed to get response from platform”
-    final result = await _queryProducts({monthlyId});
-    if (yearlyId != null) {
+    // 月付 / 年付分开查：某一个未就绪不拖垮另一个
+    final result = <String, ProductDetails>{};
+    try {
+      result.addAll(await _queryProducts({monthlyId}));
+    } catch (_) {}
+    if (yearlyId.isNotEmpty && yearlyId != monthlyId) {
       try {
         result.addAll(await _queryProducts({yearlyId}));
-      } catch (_) {
-        // 年付未在 ASC 创建时忽略
-      }
+      } catch (_) {}
+    }
+    if (result.isEmpty) {
+      throw ApiException(
+        '未从 App Store 拉到商品（已查: $monthlyId, $yearlyId）',
+        statusCode: 404,
+      );
     }
     return result;
   }
