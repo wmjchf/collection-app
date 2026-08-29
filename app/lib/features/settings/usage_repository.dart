@@ -85,9 +85,72 @@ class UsageRepository {
     return UsageSummary.fromJson(json);
   }
 
+  /// 普通 / Pro 月额度对照（以后端 env 为准）
+  Future<PlanQuotasTable> fetchPlanQuotas() async {
+    final token = await _token();
+    try {
+      final json = await _api.get('/api/billing/products', accessToken: token);
+      final quotas = json['quotas'];
+      if (quotas is Map) {
+        return PlanQuotasTable.fromJson(
+          quotas.map((k, v) => MapEntry(k.toString(), v)),
+        );
+      }
+    } catch (_) {}
+    return PlanQuotasTable.defaults;
+  }
+
   /// 支付占位；当前恒为 501
   Future<void> checkout() async {
     final token = await _token();
     await _api.post('/api/billing/checkout', accessToken: token);
+  }
+}
+
+class PlanQuota {
+  const PlanQuota({
+    required this.transcriptMinutes,
+    required this.aiTags,
+    required this.aiMindmap,
+  });
+
+  final int transcriptMinutes;
+  final int aiTags;
+  final int aiMindmap;
+
+  factory PlanQuota.fromJson(Map<String, dynamic> json) {
+    return PlanQuota(
+      transcriptMinutes:
+          (json['transcriptMinutesPerMonth'] as num?)?.toInt() ?? 0,
+      aiTags: (json['aiTagsPerMonth'] as num?)?.toInt() ?? 0,
+      aiMindmap: (json['aiMindmapPerMonth'] as num?)?.toInt() ?? 0,
+    );
+  }
+}
+
+class PlanQuotasTable {
+  const PlanQuotasTable({required this.free, required this.pro});
+
+  final PlanQuota free;
+  final PlanQuota pro;
+
+  static const defaults = PlanQuotasTable(
+    free: PlanQuota(transcriptMinutes: 60, aiTags: 30, aiMindmap: 20),
+    pro: PlanQuota(transcriptMinutes: 300, aiTags: 200, aiMindmap: 100),
+  );
+
+  factory PlanQuotasTable.fromJson(Map<String, dynamic> json) {
+    Map<String, dynamic> asMap(dynamic v) {
+      if (v is Map<String, dynamic>) return v;
+      if (v is Map) {
+        return v.map((k, val) => MapEntry(k.toString(), val));
+      }
+      return {};
+    }
+
+    return PlanQuotasTable(
+      free: PlanQuota.fromJson(asMap(json['free'])),
+      pro: PlanQuota.fromJson(asMap(json['pro'])),
+    );
   }
 }

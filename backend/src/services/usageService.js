@@ -32,6 +32,14 @@ function quotasForPlan(plan) {
   };
 }
 
+/** 升级页对照表：free + pro */
+function planQuotasTable() {
+  return {
+    free: quotasForPlan('free'),
+    pro: quotasForPlan('pro'),
+  };
+}
+
 /** @deprecated 用 quotasForPlan；保留兼容旧调用 */
 function freeQuotas() {
   return quotasForPlan('free');
@@ -282,6 +290,7 @@ module.exports = {
   KIND_AI_MINDMAP,
   freeQuotas,
   quotasForPlan,
+  planQuotasTable,
   periodBounds,
   durationSecFromCues,
   recordEvent,
