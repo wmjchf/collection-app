@@ -330,6 +330,7 @@ async function handleServerNotification(signedPayload) {
 
 function publicProductConfig() {
   const a = config.appleIap || {};
+  const usageService = require('./usageService');
   return {
     configured: isConfigured(),
     bundleId: a.bundleId,
@@ -337,6 +338,8 @@ function publicProductConfig() {
       monthly: a.productMonthly,
       yearly: a.productYearly,
     },
+    /** 普通 / Pro 月额度（与 env 一致，供升级页展示） */
+    quotas: usageService.planQuotasTable(),
   };
 }
 
