@@ -190,6 +190,114 @@ async function markExpiredSubscriptions() {
   );
 }
 
+/** 按商店 originalTransactionId 延长有效期（续订通知） */
+async function extendByExternalId({
+  source,
+  externalId,
+  expiresAt,
+  metaPatch = null,
+}) {
+  if (!externalId) return { updated: false };
+  const [rows] = await pool.execute(
+    `SELECT * FROM subscriptions
+     WHERE source = :source AND external_id = :externalId
+     ORDER BY id DESC
+     LIMIT 1`,
+    { source: String(source).slice(0, 32), externalId: String(externalId).slice(0, 191) },
+  );
+  const row = rows[0];
+  if (!row) return { updated: false, reason: 'not_found' };
+
+  let meta = {};
+  if (typeof row.meta === 'string') {
+    try {
+      meta = JSON.parse(row.meta) || {};
+    } catch (_) {
+      meta = {};
+    }
+  } else if (row.meta && typeof row.meta === 'object') {
+    meta = { ...row.meta };
+  }
+  if (metaPatch && typeof metaPatch === 'object') {
+    Object.assign(meta, metaPatch);
+  }
+
+  const nextExpires = expiresAt ? new Date(expiresAt) : null;
+  let expires = nextExpires;
+  if (row.expires_at && nextExpires) {
+    const cur = new Date(row.expires_at);
+    expires = nextExpires > cur ? nextExpires : cur;
+  }
+
+  await pool.execute(
+    `UPDATE subscriptions
+     SET status = :status,
+         expires_at = :expiresAt,
+         cancelled_at = NULL,
+         meta = :meta,
+         updated_at = CURRENT_TIMESTAMP(3)
+     WHERE id = :id`,
+    {
+      id: row.id,
+      status: STATUS_ACTIVE,
+      expiresAt: expires,
+      meta: JSON.stringify(meta),
+    },
+  );
+  const [fresh] = await pool.execute(
+    `SELECT * FROM subscriptions WHERE id = :id LIMIT 1`,
+    { id: row.id },
+  );
+  return { updated: true, subscription: mapSub(fresh[0]) };
+}
+
+/** 按 originalTransactionId 标过期/取消（退款、到期通知） */
+async function expireByExternalId({ source, externalId, reason = null }) {
+  if (!externalId) return { updated: false };
+  const [rows] = await pool.execute(
+    `SELECT * FROM subscriptions
+     WHERE source = :source
+       AND external_id = :externalId
+       AND status = :status
+     ORDER BY id DESC
+     LIMIT 1`,
+    {
+      source: String(source).slice(0, 32),
+      externalId: String(externalId).slice(0, 191),
+      status: STATUS_ACTIVE,
+    },
+  );
+  const row = rows[0];
+  if (!row) return { updated: false, reason: 'not_found' };
+
+  let meta = {};
+  if (typeof row.meta === 'string') {
+    try {
+      meta = JSON.parse(row.meta) || {};
+    } catch (_) {
+      meta = {};
+    }
+  } else if (row.meta && typeof row.meta === 'object') {
+    meta = { ...row.meta };
+  }
+  if (reason) meta.expireReason = String(reason).slice(0, 200);
+
+  await pool.execute(
+    `UPDATE subscriptions
+     SET status = :status,
+         cancelled_at = UTC_TIMESTAMP(3),
+         meta = :meta,
+         updated_at = CURRENT_TIMESTAMP(3)
+     WHERE id = :id`,
+    {
+      id: row.id,
+      status: STATUS_EXPIRED,
+      meta: JSON.stringify(meta),
+    },
+  );
+  return { updated: true };
+}
+
 module.exports = {
   PLAN_PRO,
   STATUS_ACTIVE,
@@ -200,5 +308,7 @@ module.exports = {
   activatePro,
   cancelActivePro,
   markExpiredSubscriptions,
+  extendByExternalId,
+  expireByExternalId,
   mapSub,
 };

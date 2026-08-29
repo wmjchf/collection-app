@@ -71,4 +71,25 @@ module.exports = {
     proAiTagsPerMonth: Number(process.env.PRO_AI_TAGS_PER_MONTH) || 200,
     proAiMindmapPerMonth: Number(process.env.PRO_AI_MINDMAP_PER_MONTH) || 100,
   },
+  /**
+   * Apple IAP（App Store Server API）
+   * 密钥：App Store Connect → 用户和访问 → 密钥 → In-App Purchase
+   */
+  appleIap: {
+    issuerId: process.env.APPLE_IAP_ISSUER_ID || '',
+    keyId: process.env.APPLE_IAP_KEY_ID || '',
+    /** PEM 内容；可用 \\n 换行。也可设 APPLE_IAP_PRIVATE_KEY_PATH */
+    privateKey: (process.env.APPLE_IAP_PRIVATE_KEY || '').replace(/\\n/g, '\n'),
+    privateKeyPath: process.env.APPLE_IAP_PRIVATE_KEY_PATH || '',
+    bundleId:
+      process.env.APPLE_IAP_BUNDLE_ID || 'com.bufang.supercollection',
+    productMonthly:
+      process.env.APPLE_IAP_PRODUCT_MONTHLY ||
+      'com.bufang.supercollection.pro.monthly',
+    productYearly:
+      process.env.APPLE_IAP_PRODUCT_YEARLY ||
+      'com.bufang.supercollection.pro.yearly',
+    /** auto | production | sandbox */
+    env: process.env.APPLE_IAP_ENV || 'auto',
+  },
 };

@@ -3,8 +3,24 @@ const { requireAuth } = require('../middleware/auth');
 const config = require('../config');
 const subscriptionService = require('../services/subscriptionService');
 const usageService = require('../services/usageService');
+const appleIapService = require('../services/appleIapService');
 
 const router = express.Router();
+
+/** App Store Server Notifications V2（无用户 JWT） */
+router.post('/apple/notifications', async (req, res, next) => {
+  try {
+    const signedPayload =
+      req.body?.signedPayload || req.body?.signed_payload || null;
+    if (!signedPayload) {
+      return res.status(400).json({ message: '缺少 signedPayload' });
+    }
+    const result = await appleIapService.handleServerNotification(signedPayload);
+    return res.json({ ok: true, ...result });
+  } catch (err) {
+    return next(err);
+  }
+});
 
 router.use(requireAuth);
 
@@ -17,6 +33,38 @@ router.get('/subscription', async (req, res, next) => {
       planExpiresAt: summary.planExpiresAt,
       subscription: summary.subscription,
       enforcing: summary.enforcing,
+      apple: appleIapService.publicProductConfig(),
+    });
+  } catch (err) {
+    return next(err);
+  }
+});
+
+/** GET /api/billing/products — 客户端商品 id（与 ASC 一致） */
+router.get('/products', async (_req, res) => {
+  return res.json(appleIapService.publicProductConfig());
+});
+
+/**
+ * POST /api/billing/apple/verify
+ * body: { transactionId, productId?, jws? }
+ * 客户端 StoreKit 购买成功后必调；以后端开通 Pro 为准
+ */
+router.post('/apple/verify', async (req, res, next) => {
+  try {
+    const { transactionId, productId, jws, verificationData } = req.body || {};
+    const result = await appleIapService.verifyAndActivate({
+      userId: req.auth.userId,
+      transactionId,
+      productId,
+      jws: jws || verificationData || null,
+    });
+    const summary = await usageService.getUsageSummary(req.auth.userId);
+    return res.json({
+      message: '订阅已生效',
+      ...result,
+      plan: summary.plan,
+      usage: summary,
     });
   } catch (err) {
     return next(err);
@@ -24,13 +72,22 @@ router.get('/subscription', async (req, res, next) => {
 });
 
 /**
- * POST /api/billing/checkout — 支付占位（未接入）
- * 真实支付接入后在此创建订单 / 拉起 IAP 校验
+ * POST /api/billing/checkout — 兼容旧占位
+ * iOS 请走 StoreKit + /apple/verify；此处返回商品配置
  */
-router.post('/checkout', async (_req, res) => {
-  return res.status(501).json({
-    message: '支付即将开放，敬请期待',
-    code: 'PAYMENT_NOT_READY',
+router.post('/checkout', async (req, res) => {
+  const apple = appleIapService.publicProductConfig();
+  if (!apple.configured) {
+    return res.status(501).json({
+      message: '支付即将开放，敬请期待',
+      code: 'PAYMENT_NOT_READY',
+      apple,
+    });
+  }
+  return res.json({
+    platform: 'ios',
+    message: '请使用 App 内 StoreKit 购买，完成后调用 /api/billing/apple/verify',
+    apple,
   });
 });
 
