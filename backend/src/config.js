@@ -85,10 +85,10 @@ module.exports = {
       process.env.APPLE_IAP_BUNDLE_ID || 'com.bufang.supercollection',
     productMonthly:
       process.env.APPLE_IAP_PRODUCT_MONTHLY ||
-      'com.bufang.supercollection.pro.monthly',
+      'com.bufang.supercollection.monthly',
     productYearly:
       process.env.APPLE_IAP_PRODUCT_YEARLY ||
-      'com.bufang.supercollection.pro.yearly',
+      'com.bufang.supercollection.yearly',
     /** auto | production | sandbox */
     env: process.env.APPLE_IAP_ENV || 'auto',
   },

@@ -9,8 +9,8 @@ import 'package:super_collection/features/settings/usage_repository.dart';
 
 /// App Store 商品 id（须与 ASC / 后端 env 一致）
 class IapProductIds {
-  static const monthly = 'com.bufang.supercollection.pro.monthly';
-  static const yearly = 'com.bufang.supercollection.pro.yearly';
+  static const monthly = 'com.bufang.supercollection.monthly';
+  static const yearly = 'com.bufang.supercollection.yearly';
 
   static const all = <String>{monthly, yearly};
 }
@@ -81,10 +81,16 @@ class AppleIapService {
 
     final resp = await _iap.queryProductDetails(ids);
     if (resp.error != null) {
-      throw ApiException(
-        resp.error!.message,
-        statusCode: 502,
-      );
+      final msg = resp.error!.message;
+      if (msg.toLowerCase().contains('failed to get response from platform') ||
+          msg.toLowerCase().contains('storekit')) {
+        throw ApiException(
+          'StoreKit 无响应：请用真机（非模拟器），确认已加 In-App Purchase，'
+          '且 ASC 订阅商品 id 与 App 一致后重新安装运行',
+          statusCode: 502,
+        );
+      }
+      throw ApiException(msg, statusCode: 502);
     }
     if (resp.productDetails.isEmpty) {
       throw ApiException(
