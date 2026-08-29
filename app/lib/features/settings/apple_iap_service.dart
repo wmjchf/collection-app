@@ -15,6 +15,18 @@ class IapProductIds {
   static const all = <String>{monthly, yearly};
 }
 
+/// StoreKit 购买阶段（供 UI 展示细分文案）
+enum AppleIapPhase {
+  /// 系统支付弹窗 / 等待用户确认
+  paying,
+
+  /// 已付款，正在服务端校验并开通
+  activating,
+
+  /// 恢复购买：拉取历史交易
+  restoring,
+}
+
 /// iOS StoreKit 购买；Android 暂不支持
 class AppleIapService {
   AppleIapService({
@@ -138,8 +150,12 @@ class AppleIapService {
     };
   }
 
-  /// 发起购买并等结果；成功后服务端 verify，再 completePurchase
-  Future<UsageSummary> buy(ProductDetails product) async {
+  /// 发起购买并等结果；成功后服务端 verify，再 completePurchase。
+  /// [onPhase]：支付中 → 开通中，便于按钮文案细分。
+  Future<UsageSummary> buy(
+    ProductDetails product, {
+    void Function(AppleIapPhase phase)? onPhase,
+  }) async {
     if (!isIos) {
       throw ApiException('请在 iPhone 上订阅 Pro', statusCode: 400);
     }
@@ -150,6 +166,7 @@ class AppleIapService {
 
     _pending = Completer<PurchaseDetails>();
     _pendingProductId = product.id;
+    onPhase?.call(AppleIapPhase.paying);
 
     final param = PurchaseParam(productDetails: product);
     final ok = await _iap.buyNonConsumable(purchaseParam: param);
@@ -182,6 +199,7 @@ class AppleIapService {
       );
     }
 
+    onPhase?.call(AppleIapPhase.activating);
     try {
       final usage = await _verifyWithBackend(purchase);
       if (purchase.pendingCompletePurchase) {
@@ -198,7 +216,9 @@ class AppleIapService {
   }
 
   /// 恢复购买：把 StoreKit 交易再提交后端校验
-  Future<UsageSummary?> restore() async {
+  Future<UsageSummary?> restore({
+    void Function(AppleIapPhase phase)? onPhase,
+  }) async {
     if (!isIos) {
       throw ApiException('请在 iPhone 上恢复购买', statusCode: 400);
     }
@@ -207,6 +227,8 @@ class AppleIapService {
     if (!available) {
       throw ApiException('当前设备不支持应用内购买', statusCode: 400);
     }
+
+    onPhase?.call(AppleIapPhase.restoring);
 
     // restore 会往 purchaseStream 推历史交易
     final restored = <PurchaseDetails>[];
@@ -247,6 +269,7 @@ class AppleIapService {
           !p.productID.contains('.pro.')) {
         continue;
       }
+      onPhase?.call(AppleIapPhase.activating);
       last = await _verifyWithBackend(p);
       if (p.pendingCompletePurchase) {
         await _iap.completePurchase(p);
