@@ -4,6 +4,7 @@ import 'package:super_collection/features/auth/auth_repository.dart';
 class UsageSummary {
   const UsageSummary({
     required this.plan,
+    required this.enforcing,
     required this.yearMonth,
     required this.transcriptUsedMinutes,
     required this.transcriptLimitMinutes,
@@ -14,10 +15,13 @@ class UsageSummary {
     required this.aiMindmapUsed,
     required this.aiMindmapLimit,
     required this.aiMindmapRemaining,
+    this.planExpiresAt,
   });
 
-  /// `free` | `pro`（后端暂固定 free）
+  /// `free` | `pro`
   final String plan;
+  final bool enforcing;
+  final String? planExpiresAt;
   final String yearMonth;
   final double transcriptUsedMinutes;
   final double transcriptLimitMinutes;
@@ -38,6 +42,8 @@ class UsageSummary {
     final aiMindmap = json['aiMindmap'] as Map<String, dynamic>? ?? {};
     return UsageSummary(
       plan: (json['plan'] as String?)?.trim().toLowerCase() ?? 'free',
+      enforcing: json['enforcing'] as bool? ?? false,
+      planExpiresAt: json['planExpiresAt'] as String?,
       yearMonth: period['yearMonth'] as String? ?? '',
       transcriptUsedMinutes:
           (transcript['usedMinutes'] as num?)?.toDouble() ?? 0,
@@ -77,5 +83,11 @@ class UsageRepository {
     final token = await _token();
     final json = await _api.get('/api/usage', accessToken: token);
     return UsageSummary.fromJson(json);
+  }
+
+  /// 支付占位；当前恒为 501
+  Future<void> checkout() async {
+    final token = await _token();
+    await _api.post('/api/billing/checkout', accessToken: token);
   }
 }

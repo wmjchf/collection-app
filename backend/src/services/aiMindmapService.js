@@ -172,6 +172,9 @@ async function requestMindmap(userId, itemId, { force = false, direction = null 
     return itemService.getByIdForUser(userId, itemId);
   }
 
+  const usageService = require('./usageService');
+  await usageService.assertAiMindmapQuota(userId);
+
   if (userDirection) {
     const aiPreference = require('./aiPreferenceService');
     aiPreference.recordDirectionSafe(userId, {
@@ -182,6 +185,7 @@ async function requestMindmap(userId, itemId, { force = false, direction = null 
   }
 
   if (transcriptSegments.shouldAutoTranscribeBeforeMindmap(row)) {
+    await usageService.assertTranscriptQuota(userId);
     const aliyunAsr = require('./aliyunAsr');
     if (!aliyunAsr.isConfigured()) {
       throw Object.assign(

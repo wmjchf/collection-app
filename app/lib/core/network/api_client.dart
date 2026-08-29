@@ -6,10 +6,23 @@ import 'package:super_collection/core/config/api_config.dart';
 import 'package:super_collection/features/auth/auth_repository.dart';
 
 class ApiException implements Exception {
-  ApiException(this.message, {this.statusCode});
+  ApiException(
+    this.message, {
+    this.statusCode,
+    this.code,
+    this.quotaKind,
+  });
 
   final String message;
   final int? statusCode;
+  final String? code;
+  final String? quotaKind;
+
+  bool get isQuotaExceeded =>
+      statusCode == 402 || code == 'QUOTA_EXCEEDED';
+
+  bool get isPaymentNotReady =>
+      statusCode == 501 || code == 'PAYMENT_NOT_READY';
 
   @override
   String toString() => message;
@@ -214,6 +227,8 @@ class ApiClient {
     throw ApiException(
       (json['message'] as String?) ?? '请求失败',
       statusCode: res.statusCode,
+      code: json['code'] as String?,
+      quotaKind: json['quotaKind'] as String?,
     );
   }
 }

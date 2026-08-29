@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:super_collection/core/network/api_client.dart';
 import 'package:super_collection/core/ui/app_toast.dart';
+import 'package:super_collection/features/settings/usage_repository.dart';
 
-/// 升级 Pro 说明（支付未接入；CTA 暂为即将开放）
+/// 升级 Pro 说明（支付未接入；CTA 调 checkout 占位）
 class UpgradeProPage extends StatelessWidget {
   const UpgradeProPage({super.key});
 
@@ -10,6 +12,23 @@ class UpgradeProPage extends StatelessWidget {
   static const _muted = Color(0xFF737A85);
   static const _blue = Color(0xFF2F6FED);
   static const _blueSoft = Color(0xFFE8F0FF);
+
+  Future<void> _onCheckout(BuildContext context) async {
+    try {
+      await UsageRepository().checkout();
+      if (!context.mounted) return;
+      AppToast.show(context, '订阅即将开放，敬请期待');
+    } on ApiException catch (e) {
+      if (!context.mounted) return;
+      AppToast.show(
+        context,
+        e.isPaymentNotReady ? '订阅即将开放，敬请期待' : e.message,
+      );
+    } catch (_) {
+      if (!context.mounted) return;
+      AppToast.show(context, '订阅即将开放，敬请期待');
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -94,9 +113,7 @@ class UpgradeProPage extends StatelessWidget {
             width: double.infinity,
             height: 48,
             child: FilledButton(
-              onPressed: () {
-                AppToast.show(context, '订阅即将开放，敬请期待');
-              },
+              onPressed: () => _onCheckout(context),
               style: FilledButton.styleFrom(
                 backgroundColor: _blue,
                 foregroundColor: Colors.white,
@@ -133,10 +150,10 @@ class _BenefitRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 14),
+      padding: const EdgeInsets.symmetric(vertical: 12),
       child: Row(
         children: [
-          const Icon(Icons.check_rounded, size: 20, color: Color(0xFF2F6FED)),
+          const Icon(Icons.check_circle_outline, size: 20, color: Color(0xFF2F6FED)),
           const SizedBox(width: 10),
           Expanded(
             child: Text(
@@ -144,6 +161,7 @@ class _BenefitRow extends StatelessWidget {
               style: const TextStyle(
                 fontSize: 15,
                 color: Color(0xFF1F242E),
+                height: 1.3,
               ),
             ),
           ),

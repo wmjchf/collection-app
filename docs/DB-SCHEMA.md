@@ -55,6 +55,10 @@
 | `items` | 收藏条目（含 `transcript_segments` 分段转写） |
 | `item_tags` | 条目 ↔ 标签 |
 | `annotations` | 阅读标注 |
+| `usage_events` | 用量事件（转写秒 / AI 次） |
+| `subscriptions` | 订阅（Pro；支付前可有 `source=dev`） |
+| `ai_preference_events` | AI 偏好方向 |
+| `home_roam_cache` | 首页漫游缓存 |
 
 ---
 
@@ -201,12 +205,28 @@ API：`GET …/transcript-targets`、`POST …/transcript`（body.segmentKey）�
 
 ---
 
+## `subscriptions`（迁移 `015`）
+
+| 字段 | 说明 |
+| --- | --- |
+| user_id | FK → users |
+| plan | 目前仅 `pro` |
+| status | `active` / `expired` / `cancelled` |
+| source | `manual` / `dev` / `apple` / `google` / `wechat` / `alipay` … |
+| external_id | 商店订单号（支付接入后） |
+| expires_at | NULL=不限期；有效 Pro = active 且未过期 |
+| meta | JSON |
+
+当前是否 Pro：查有效 active 行；额度数字在环境变量（`FREE_*` / `PRO_*`），不写进本表。
+
+---
+
 ## 二期预留
 
 - 收藏夹嵌套（`categories.parent_id`）
 - 一键登录（运营商取号，同属号码认证，可后加）
-- AI 相关表
+- 支付校验与商店回调写入 `subscriptions`
 
 ## DDL
 
-见 [`backend/sql/001_schema.sql`](../backend/sql/001_schema.sql)
+见 [`backend/sql/001_schema.sql`](../backend/sql/001_schema.sql) 与增量 `backend/sql/015_subscriptions.sql`

@@ -157,6 +157,9 @@ async function requestAiSuggest(userId, itemId, { force = false, direction = nul
     return itemService.getByIdForUser(userId, itemId);
   }
 
+  const usageService = require('./usageService');
+  await usageService.assertAiTagsQuota(userId);
+
   if (userDirection) {
     const aiPreference = require('./aiPreferenceService');
     aiPreference.recordDirectionSafe(userId, {
@@ -167,6 +170,7 @@ async function requestAiSuggest(userId, itemId, { force = false, direction = nul
   }
 
   if (transcriptSegments.shouldAutoTranscribeBeforeMindmap(row)) {
+    await usageService.assertTranscriptQuota(userId);
     const aliyunAsr = require('./aliyunAsr');
     if (!aliyunAsr.isConfigured()) {
       throw Object.assign(

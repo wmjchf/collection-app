@@ -28,6 +28,7 @@ import 'package:super_collection/features/items/reading_more_sheet.dart';
 import 'package:super_collection/features/items/reading_content_edit_page.dart';
 import 'package:super_collection/features/items/reading_note_sheet.dart';
 import 'package:super_collection/features/items/reading_reparse_confirm_dialog.dart';
+import 'package:super_collection/features/settings/quota_gate.dart';
 import 'package:super_collection/features/items/reading_tags_sheet.dart';
 import 'package:super_collection/features/items/transcript_models.dart';
 import 'package:super_collection/features/items/transcript_picker_sheet.dart';
@@ -717,7 +718,7 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
       _pollAiSuggest();
     } on ApiException catch (e) {
       if (!mounted) return;
-      AppToast.show(context, e.message);
+      await handleApiException(context, e);
     }
   }
 
@@ -835,7 +836,7 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
       _pollMindmap();
     } on ApiException catch (e) {
       if (!mounted) return;
-      AppToast.show(context, e.message);
+      await handleApiException(context, e);
     }
   }
 
@@ -1013,7 +1014,7 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
       _pollTranscript();
     } on ApiException catch (e) {
       if (!mounted) return;
-      AppToast.show(context, e.message);
+      await handleApiException(context, e);
     }
   }
 
