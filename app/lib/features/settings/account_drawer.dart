@@ -43,9 +43,13 @@ class _AccountDrawerState extends State<AccountDrawer> {
   }
 
   void _openUpgrade() {
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(builder: (_) => const UpgradeProPage()),
-    );
+    Navigator.of(context)
+        .push(
+      MaterialPageRoute<bool?>(builder: (_) => const UpgradeProPage()),
+    )
+        .then((ok) {
+      if (ok == true) _loadPlan();
+    });
   }
 
   @override

@@ -1,18 +1,40 @@
 const { pool } = require('../db');
 const config = require('../config');
+const subscriptionService = require('./subscriptionService');
 
 const KIND_TRANSCRIPT = 'transcript';
 const KIND_AI_TAGS = 'ai_tags';
 const KIND_AI_MINDMAP = 'ai_mindmap';
 
-function freeQuotas() {
+const QUOTA_MESSAGES = {
+  transcript: '本月转写分钟已用完，订阅后可继续',
+  ai_tags: '本月 AI 标签额度已用完，订阅后可继续',
+  ai_mindmap: '本月 AI 思维导图额度已用完，订阅后可继续',
+};
+
+function isEnforcing() {
+  return config.usage?.enforcing !== false;
+}
+
+function quotasForPlan(plan) {
+  const u = config.usage || {};
+  if (plan === 'pro') {
+    return {
+      transcriptMinutesPerMonth: Number(u.proTranscriptMinutesPerMonth ?? 300),
+      aiTagsPerMonth: Number(u.proAiTagsPerMonth ?? 200),
+      aiMindmapPerMonth: Number(u.proAiMindmapPerMonth ?? 100),
+    };
+  }
   return {
-    transcriptMinutesPerMonth: Number(
-      config.usage?.freeTranscriptMinutesPerMonth ?? 60,
-    ),
-    aiTagsPerMonth: Number(config.usage?.freeAiTagsPerMonth ?? 30),
-    aiMindmapPerMonth: Number(config.usage?.freeAiMindmapPerMonth ?? 20),
+    transcriptMinutesPerMonth: Number(u.freeTranscriptMinutesPerMonth ?? 60),
+    aiTagsPerMonth: Number(u.freeAiTagsPerMonth ?? 30),
+    aiMindmapPerMonth: Number(u.freeAiMindmapPerMonth ?? 20),
   };
+}
+
+/** @deprecated 用 quotasForPlan；保留兼容旧调用 */
+function freeQuotas() {
+  return quotasForPlan('free');
 }
 
 /** 自然月（Asia/Shanghai）起止 */
@@ -27,7 +49,6 @@ function periodBounds(now = new Date()) {
   const y = parts.find((p) => p.type === 'year').value;
   const m = parts.find((p) => p.type === 'month').value;
   const yearMonth = `${y}-${m}`;
-  // 上海当月 00:00 → UTC 存库比较用 ISO
   const start = new Date(`${yearMonth}-01T00:00:00+08:00`);
   const nextMonth =
     Number(m) === 12
@@ -158,12 +179,61 @@ function round1(n) {
   return Math.round(Number(n) * 10) / 10;
 }
 
+function quotaExceededError(quotaKind) {
+  const message = QUOTA_MESSAGES[quotaKind] || '本月额度已用完，订阅后可继续';
+  return Object.assign(new Error(message), {
+    status: 402,
+    code: 'QUOTA_EXCEEDED',
+    quotaKind,
+  });
+}
+
 /**
- * 当前用户本月用量摘要（含免费额度；暂不拦截）
+ * 触顶拦截（USAGE_ENFORCING=false 时跳过）
+ * - transcript：剩余分钟 ≤ 0
+ * - ai_tags / ai_mindmap：剩余次数 ≤ 0
+ */
+async function assertQuota(userId, kind) {
+  if (!isEnforcing()) return;
+  const summary = await getUsageSummary(userId);
+  if (kind === KIND_TRANSCRIPT) {
+    if (summary.transcript.remainingMinutes <= 0) {
+      throw quotaExceededError(KIND_TRANSCRIPT);
+    }
+    return;
+  }
+  if (kind === KIND_AI_TAGS) {
+    if (summary.aiTags.remaining <= 0) {
+      throw quotaExceededError(KIND_AI_TAGS);
+    }
+    return;
+  }
+  if (kind === KIND_AI_MINDMAP) {
+    if (summary.aiMindmap.remaining <= 0) {
+      throw quotaExceededError(KIND_AI_MINDMAP);
+    }
+  }
+}
+
+async function assertTranscriptQuota(userId) {
+  return assertQuota(userId, KIND_TRANSCRIPT);
+}
+
+async function assertAiTagsQuota(userId) {
+  return assertQuota(userId, KIND_AI_TAGS);
+}
+
+async function assertAiMindmapQuota(userId) {
+  return assertQuota(userId, KIND_AI_MINDMAP);
+}
+
+/**
+ * 当前用户本月用量摘要（按订阅档位返回额度）
  */
 async function getUsageSummary(userId) {
   const { yearMonth, start, end } = periodBounds();
-  const quotas = freeQuotas();
+  const { plan, subscription } = await subscriptionService.getPlanForUser(userId);
+  const quotas = quotasForPlan(plan);
 
   const [transcriptSeconds, aiTags, aiMindmap] = await Promise.all([
     sumAmount(userId, KIND_TRANSCRIPT, start, end),
@@ -183,8 +253,10 @@ async function getUsageSummary(userId) {
       end: end.toISOString(),
       timeZone: 'Asia/Shanghai',
     },
-    plan: 'free',
-    enforcing: false,
+    plan,
+    planExpiresAt: subscription?.expiresAt || null,
+    subscription,
+    enforcing: isEnforcing(),
     transcript: {
       usedSeconds: round1(transcriptSeconds),
       usedMinutes: round1(usedMinutes),
@@ -209,6 +281,7 @@ module.exports = {
   KIND_AI_TAGS,
   KIND_AI_MINDMAP,
   freeQuotas,
+  quotasForPlan,
   periodBounds,
   durationSecFromCues,
   recordEvent,
@@ -216,4 +289,9 @@ module.exports = {
   recordAiTagsUsage,
   recordAiMindmapUsage,
   getUsageSummary,
+  assertQuota,
+  assertTranscriptQuota,
+  assertAiTagsQuota,
+  assertAiMindmapQuota,
+  isEnforcing,
 };

@@ -878,6 +878,9 @@ async function beginTranscriptSegment(
     );
   }
 
+  const usageService = require('./usageService');
+  await usageService.assertTranscriptQuota(userId);
+
   const key = String(segmentKey || '').trim();
   if (!key) {
     throw Object.assign(new Error('缺少 segmentKey'), { status: 400 });

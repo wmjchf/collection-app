@@ -46,6 +46,7 @@ dependencies:
   webview_flutter: ^4.14.1
   just_audio: ^0.10.6
   audio_session: ^0.2.4
+  in_app_purchase: ^3.3.0
 
 dev_dependencies:
   flutter_test:

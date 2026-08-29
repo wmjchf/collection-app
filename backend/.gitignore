@@ -7,3 +7,5 @@ logs/
 *.log
 .idea/
 .vscode/
+secrets/
+*.p8

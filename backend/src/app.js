@@ -8,6 +8,7 @@ const tagsRouter = require('./routes/tags');
 const systemFiltersRouter = require('./routes/systemFilters');
 const homeRouter = require('./routes/home');
 const usageRouter = require('./routes/usage');
+const billingRouter = require('./routes/billing');
 
 const app = express();
 const publicDir = path.join(__dirname, '..', 'public');
@@ -44,13 +45,17 @@ app.use('/api/tags', tagsRouter);
 app.use('/api/system-filters', systemFiltersRouter);
 app.use('/api/home', homeRouter);
 app.use('/api/usage', usageRouter);
+app.use('/api/billing', billingRouter);
 
 app.use((err, _req, res, _next) => {
   console.error(err);
   const status = err.status || 500;
-  res.status(status).json({
+  const body = {
     message: err.message || 'Internal Server Error',
-  });
+  };
+  if (err.code) body.code = err.code;
+  if (err.quotaKind) body.quotaKind = err.quotaKind;
+  res.status(status).json(body);
 });
 
 module.exports = app;

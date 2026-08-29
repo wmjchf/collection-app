@@ -6,7 +6,7 @@ const router = express.Router();
 
 router.use(requireAuth);
 
-/** GET /api/usage — 本月用量（转写分钟 / AI 次数）+ 免费额度（暂不强制） */
+/** GET /api/usage — 本月用量 + 当前方案额度（触顶由 USAGE_ENFORCING 控制） */
 router.get('/', async (req, res, next) => {
   try {
     const summary = await usageService.getUsageSummary(req.auth.userId);

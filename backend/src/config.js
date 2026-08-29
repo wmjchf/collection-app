@@ -57,11 +57,39 @@ module.exports = {
       'https://dashscope.aliyuncs.com/compatible-mode/v1',
     aiModel: process.env.ALIYUN_AI_MODEL || 'qwen3.8-max',
   },
-  /** 免费额度（统计用；支付落地前不强制拦截） */
+  /**
+   * 月额度：free / pro 分档；USAGE_ENFORCING 控制触顶是否拦截（默认 true）
+   */
   usage: {
+    enforcing: process.env.USAGE_ENFORCING !== 'false',
     freeTranscriptMinutesPerMonth:
       Number(process.env.FREE_TRANSCRIPT_MINUTES_PER_MONTH) || 60,
     freeAiTagsPerMonth: Number(process.env.FREE_AI_TAGS_PER_MONTH) || 30,
     freeAiMindmapPerMonth: Number(process.env.FREE_AI_MINDMAP_PER_MONTH) || 20,
+    proTranscriptMinutesPerMonth:
+      Number(process.env.PRO_TRANSCRIPT_MINUTES_PER_MONTH) || 300,
+    proAiTagsPerMonth: Number(process.env.PRO_AI_TAGS_PER_MONTH) || 200,
+    proAiMindmapPerMonth: Number(process.env.PRO_AI_MINDMAP_PER_MONTH) || 100,
+  },
+  /**
+   * Apple IAP（App Store Server API）
+   * 密钥：App Store Connect → 用户和访问 → 密钥 → In-App Purchase
+   */
+  appleIap: {
+    issuerId: process.env.APPLE_IAP_ISSUER_ID || '',
+    keyId: process.env.APPLE_IAP_KEY_ID || '',
+    /** PEM 内容；可用 \\n 换行。也可设 APPLE_IAP_PRIVATE_KEY_PATH */
+    privateKey: (process.env.APPLE_IAP_PRIVATE_KEY || '').replace(/\\n/g, '\n'),
+    privateKeyPath: process.env.APPLE_IAP_PRIVATE_KEY_PATH || '',
+    bundleId:
+      process.env.APPLE_IAP_BUNDLE_ID || 'com.bufang.supercollection',
+    productMonthly:
+      process.env.APPLE_IAP_PRODUCT_MONTHLY ||
+      'com.bufang.supercollection.pro.monthly',
+    productYearly:
+      process.env.APPLE_IAP_PRODUCT_YEARLY ||
+      'com.bufang.supercollection.pro.yearly',
+    /** auto | production | sandbox */
+    env: process.env.APPLE_IAP_ENV || 'auto',
   },
 };
