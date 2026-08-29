@@ -30,11 +30,26 @@ class _UpgradeProPageState extends State<UpgradeProPage> {
   Map<String, ProductDetails> _products = {};
   PlanQuotasTable _quotas = PlanQuotasTable.defaults;
   bool _productsLoading = true;
-  bool _busy = false;
+  AppleIapPhase? _phase;
+  bool _restoreFlow = false;
   String? _error;
   String? _selectedId;
 
   bool get _isIos => !kIsWeb && Platform.isIOS;
+  bool get _busy => _phase != null;
+
+  String get _phaseLabel {
+    switch (_phase) {
+      case AppleIapPhase.paying:
+        return '支付中…';
+      case AppleIapPhase.activating:
+        return '开通中…';
+      case AppleIapPhase.restoring:
+        return '恢复中…';
+      case null:
+        return '';
+    }
+  }
 
   @override
   void initState() {
@@ -136,19 +151,30 @@ class _UpgradeProPageState extends State<UpgradeProPage> {
   }
 
   String _subscribeLabel() {
-    if (_busy) return '处理中…';
+    if (_busy && !_restoreFlow) return _phaseLabel;
     final p = _selected;
     if (p == null) return '选择方案';
     if (_isYearlyProduct(p)) return '订阅 ${p.price} / 年';
     return '订阅 ${p.price}';
   }
 
+  void _setPhase(AppleIapPhase? phase) {
+    if (!mounted) return;
+    setState(() => _phase = phase);
+  }
+
   Future<void> _buy() async {
     final product = _selected;
     if (product == null || _busy) return;
-    setState(() => _busy = true);
+    setState(() {
+      _restoreFlow = false;
+      _phase = AppleIapPhase.paying;
+    });
     try {
-      await _iap.buy(product);
+      await _iap.buy(
+        product,
+        onPhase: _setPhase,
+      );
       if (!mounted) return;
       UsageRefresh.bump();
       AppToast.show(context, 'Pro 已开通');
@@ -164,15 +190,23 @@ class _UpgradeProPageState extends State<UpgradeProPage> {
       if (!mounted) return;
       AppToast.show(context, '购买失败，请稍后重试');
     } finally {
-      if (mounted) setState(() => _busy = false);
+      if (mounted) {
+        setState(() {
+          _phase = null;
+          _restoreFlow = false;
+        });
+      }
     }
   }
 
   Future<void> _restore() async {
     if (_busy) return;
-    setState(() => _busy = true);
+    setState(() {
+      _restoreFlow = true;
+      _phase = AppleIapPhase.restoring;
+    });
     try {
-      final usage = await _iap.restore();
+      final usage = await _iap.restore(onPhase: _setPhase);
       if (!mounted) return;
       if (usage == null || !usage.isPro) {
         AppToast.show(context, '未找到可恢复的订阅');
@@ -188,7 +222,12 @@ class _UpgradeProPageState extends State<UpgradeProPage> {
       if (!mounted) return;
       AppToast.show(context, '恢复失败');
     } finally {
-      if (mounted) setState(() => _busy = false);
+      if (mounted) {
+        setState(() {
+          _phase = null;
+          _restoreFlow = false;
+        });
+      }
     }
   }
 
@@ -254,7 +293,8 @@ class _UpgradeProPageState extends State<UpgradeProPage> {
             const SizedBox(height: 14),
             _SubscribeButton(
               label: _subscribeLabel(),
-              enabled: !_busy && _selected != null,
+              busy: _busy && !_restoreFlow,
+              enabled: _selected != null,
               onPressed: _buy,
             ),
             const SizedBox(height: 8),
@@ -264,7 +304,10 @@ class _UpgradeProPageState extends State<UpgradeProPage> {
                 foregroundColor: _muted,
                 minimumSize: const Size(0, 36),
               ),
-              child: const Text('恢复购买', style: TextStyle(fontSize: 14)),
+              child: Text(
+                _busy && _restoreFlow ? _phaseLabel : '恢复购买',
+                style: const TextStyle(fontSize: 14),
+              ),
             ),
           ],
         ],
@@ -768,22 +811,25 @@ class _SubscribeButton extends StatelessWidget {
   const _SubscribeButton({
     required this.label,
     required this.enabled,
+    required this.busy,
     required this.onPressed,
   });
 
   final String label;
   final bool enabled;
+  final bool busy;
   final VoidCallback onPressed;
 
   @override
   Widget build(BuildContext context) {
+    final canTap = enabled && !busy;
     return SizedBox(
       width: double.infinity,
       height: 50,
       child: DecoratedBox(
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(12),
-          boxShadow: enabled
+          boxShadow: (canTap || busy)
               ? [
                   BoxShadow(
                     color: const Color(0xFF2E59D9).withValues(alpha: 0.28),
@@ -794,25 +840,50 @@ class _SubscribeButton extends StatelessWidget {
               : null,
         ),
         child: FilledButton(
-          onPressed: enabled ? onPressed : null,
+          onPressed: canTap ? onPressed : null,
           style: FilledButton.styleFrom(
             backgroundColor: _UpgradeProPageState._blue,
             foregroundColor: Colors.white,
-            disabledBackgroundColor:
-                _UpgradeProPageState._blue.withValues(alpha: 0.5),
+            disabledBackgroundColor: busy
+                ? _UpgradeProPageState._blue
+                : _UpgradeProPageState._blue.withValues(alpha: 0.5),
+            disabledForegroundColor: Colors.white,
             elevation: 0,
             shadowColor: Colors.transparent,
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(12),
             ),
           ),
-          child: Text(
-            label,
-            style: const TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
+          child: busy
+              ? Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Text(
+                      label,
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                )
+              : Text(
+                  label,
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
         ),
       ),
     );
