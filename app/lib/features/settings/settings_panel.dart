@@ -35,8 +35,17 @@ class _SettingsPanelState extends State<SettingsPanel> {
   @override
   void initState() {
     super.initState();
+    UsageRefresh.version.addListener(_onUsageRefresh);
     _load();
   }
+
+  @override
+  void dispose() {
+    UsageRefresh.version.removeListener(_onUsageRefresh);
+    super.dispose();
+  }
+
+  void _onUsageRefresh() => _load();
 
   Future<void> _load() async {
     final session = await _auth.readSession();

@@ -1,5 +1,10 @@
+import 'package:flutter/foundation.dart';
 import 'package:super_collection/core/network/api_client.dart';
 import 'package:super_collection/features/auth/auth_repository.dart';
+
+/// 与 [IapProductIds] 默认值一致（避免与 apple_iap_service 循环依赖）
+const _kDefaultMonthlyId = 'com.bufang.supercollection.monthly';
+const _kDefaultYearlyId = 'com.bufang.supercollection.yearly';
 
 class UsageSummary {
   const UsageSummary({
@@ -61,6 +66,27 @@ class UsageSummary {
   }
 }
 
+/// 购买/恢复 Pro 成功后 bump，账户抽屉与设置用量监听刷新。
+class UsageRefresh {
+  UsageRefresh._();
+
+  static final ValueNotifier<int> version = ValueNotifier(0);
+
+  static void bump() => version.value++;
+}
+
+class BillingProductsConfig {
+  const BillingProductsConfig({
+    required this.monthlyId,
+    required this.yearlyId,
+    required this.quotas,
+  });
+
+  final String monthlyId;
+  final String yearlyId;
+  final PlanQuotasTable quotas;
+}
+
 class UsageRepository {
   UsageRepository({
     ApiClient? apiClient,
@@ -85,19 +111,45 @@ class UsageRepository {
     return UsageSummary.fromJson(json);
   }
 
-  /// 普通 / Pro 月额度对照（以后端 env 为准）
-  Future<PlanQuotasTable> fetchPlanQuotas() async {
+  /// 一次拉商品 id + 额度表（升级页用，避免重复请求）
+  Future<BillingProductsConfig> fetchBillingProducts() async {
     final token = await _token();
     try {
       final json = await _api.get('/api/billing/products', accessToken: token);
-      final quotas = json['quotas'];
-      if (quotas is Map) {
-        return PlanQuotasTable.fromJson(
-          quotas.map((k, v) => MapEntry(k.toString(), v)),
+      var monthly = _kDefaultMonthlyId;
+      var yearly = _kDefaultYearlyId;
+      final products = json['products'];
+      if (products is Map) {
+        final m = (products['monthly'] as String?)?.trim();
+        final y = (products['yearly'] as String?)?.trim();
+        if (m != null && m.isNotEmpty) monthly = m;
+        if (y != null && y.isNotEmpty) yearly = y;
+      }
+      PlanQuotasTable quotas = PlanQuotasTable.defaults;
+      final q = json['quotas'];
+      if (q is Map) {
+        quotas = PlanQuotasTable.fromJson(
+          q.map((k, v) => MapEntry(k.toString(), v)),
         );
       }
-    } catch (_) {}
-    return PlanQuotasTable.defaults;
+      return BillingProductsConfig(
+        monthlyId: monthly,
+        yearlyId: yearly,
+        quotas: quotas,
+      );
+    } catch (_) {
+      return const BillingProductsConfig(
+        monthlyId: _kDefaultMonthlyId,
+        yearlyId: _kDefaultYearlyId,
+        quotas: PlanQuotasTable.defaults,
+      );
+    }
+  }
+
+  /// 普通 / Pro 月额度对照（以后端 env 为准）
+  Future<PlanQuotasTable> fetchPlanQuotas() async {
+    final cfg = await fetchBillingProducts();
+    return cfg.quotas;
   }
 
   /// 支付占位；当前恒为 501

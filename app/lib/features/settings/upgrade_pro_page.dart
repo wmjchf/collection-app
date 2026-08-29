@@ -29,7 +29,7 @@ class _UpgradeProPageState extends State<UpgradeProPage> {
 
   Map<String, ProductDetails> _products = {};
   PlanQuotasTable _quotas = PlanQuotasTable.defaults;
-  bool _loading = true;
+  bool _productsLoading = true;
   bool _busy = false;
   String? _error;
   String? _selectedId;
@@ -50,53 +50,45 @@ class _UpgradeProPageState extends State<UpgradeProPage> {
 
   Future<void> _load() async {
     setState(() {
-      _loading = true;
+      _productsLoading = _isIos;
       _error = null;
     });
 
-    final quotasFuture = _usageRepo.fetchPlanQuotas();
+    // 1) 先拉额度（快），立刻上屏；商品 id 一并拿到
+    final billing = await _usageRepo.fetchBillingProducts();
+    if (!mounted) return;
+    setState(() => _quotas = billing.quotas);
 
     if (!_isIos) {
-      final quotas = await quotasFuture;
-      if (!mounted) return;
-      setState(() {
-        _quotas = quotas;
-        _loading = false;
-        _error = null;
-      });
+      setState(() => _productsLoading = false);
       return;
     }
 
+    // 2) 再查 StoreKit（慢）；不再重复打 /api/billing/products
     try {
-      final results = await Future.wait<Object>([
-        _iap.loadProducts(),
-        quotasFuture,
-      ]);
+      final map = await _iap.loadProducts(
+        monthlyId: billing.monthlyId,
+        yearlyId: billing.yearlyId,
+      );
       if (!mounted) return;
-      final map = results[0] as Map<String, ProductDetails>;
-      final quotas = results[1] as PlanQuotasTable;
       final yearly = _findProduct(map, yearly: true);
       final monthly = _findProduct(map, yearly: false);
       setState(() {
         _products = map;
-        _quotas = quotas;
         _selectedId = yearly?.id ?? monthly?.id ?? map.keys.firstOrNull;
-        _loading = false;
+        _productsLoading = false;
+        _error = null;
       });
     } on ApiException catch (e) {
-      final quotas = await quotasFuture;
       if (!mounted) return;
       setState(() {
-        _quotas = quotas;
-        _loading = false;
+        _productsLoading = false;
         _error = e.message;
       });
-    } catch (e) {
-      final quotas = await quotasFuture;
+    } catch (_) {
       if (!mounted) return;
       setState(() {
-        _quotas = quotas;
-        _loading = false;
+        _productsLoading = false;
         _error = '无法加载订阅商品';
       });
     }
@@ -158,6 +150,7 @@ class _UpgradeProPageState extends State<UpgradeProPage> {
     try {
       await _iap.buy(product);
       if (!mounted) return;
+      UsageRefresh.bump();
       AppToast.show(context, 'Pro 已开通');
       Navigator.of(context).maybePop(true);
     } on ApiException catch (e) {
@@ -184,6 +177,7 @@ class _UpgradeProPageState extends State<UpgradeProPage> {
       if (usage == null || !usage.isPro) {
         AppToast.show(context, '未找到可恢复的订阅');
       } else {
+        UsageRefresh.bump();
         AppToast.show(context, '已恢复 Pro');
         Navigator.of(context).maybePop(true);
       }
@@ -242,7 +236,7 @@ class _UpgradeProPageState extends State<UpgradeProPage> {
                 style: TextStyle(fontSize: 14, color: _muted, height: 1.4),
               ),
             )
-          else if (_loading)
+          else if (_productsLoading)
             const Padding(
               padding: EdgeInsets.symmetric(vertical: 28),
               child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
