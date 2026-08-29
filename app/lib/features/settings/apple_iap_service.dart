@@ -60,41 +60,58 @@ class AppleIapService {
       throw ApiException('当前设备不支持应用内购买', statusCode: 400);
     }
 
-    // 以后端配置为准（若可得）
-    var ids = Set<String>.from(IapProductIds.all);
+    var monthlyId = IapProductIds.monthly;
+    String? yearlyId;
     try {
       final token = await _token();
       final json = await _api.get('/api/billing/products', accessToken: token);
       final products = json['products'];
       if (products is Map) {
-        final monthly = products['monthly'] as String?;
-        final yearly = products['yearly'] as String?;
-        ids = {
-          if (monthly != null && monthly.isNotEmpty) monthly,
-          if (yearly != null && yearly.isNotEmpty) yearly,
-        };
-        if (ids.isEmpty) ids = Set<String>.from(IapProductIds.all);
+        final m = (products['monthly'] as String?)?.trim();
+        final y = (products['yearly'] as String?)?.trim();
+        if (m != null && m.isNotEmpty) monthlyId = m;
+        if (y != null && y.isNotEmpty && y != monthlyId) yearlyId = y;
       }
     } catch (_) {
-      // 用本地默认 id
+      // 后端不可达时只用本地月付 id（ASC 目前仅有月付）
     }
 
+    // 切勿一次 query 不存在的商品 id，否则 StoreKit 常直接
+    // “failed to get response from platform”
+    final result = await _queryProducts({monthlyId});
+    if (yearlyId != null) {
+      try {
+        result.addAll(await _queryProducts({yearlyId}));
+      } catch (_) {
+        // 年付未在 ASC 创建时忽略
+      }
+    }
+    return result;
+  }
+
+  Future<Map<String, ProductDetails>> _queryProducts(Set<String> ids) async {
+    if (ids.isEmpty) {
+      throw ApiException('未配置订阅商品', statusCode: 400);
+    }
     final resp = await _iap.queryProductDetails(ids);
-    if (resp.error != null) {
+    if (resp.error != null && resp.productDetails.isEmpty) {
       final msg = resp.error!.message;
       if (msg.toLowerCase().contains('failed to get response from platform') ||
           msg.toLowerCase().contains('storekit')) {
         throw ApiException(
-          'StoreKit 无响应：请用真机（非模拟器），确认已加 In-App Purchase，'
-          '且 ASC 订阅商品 id 与 App 一致后重新安装运行',
+          'StoreKit 无响应：请用真机新装含 IAP 的包；确认沙盒账号已登录；'
+          '商品 id 须与 ASC 一致（当前查询：${ids.join(", ")}）',
           statusCode: 502,
         );
       }
       throw ApiException(msg, statusCode: 502);
     }
     if (resp.productDetails.isEmpty) {
+      final missing = resp.notFoundIDs.join(', ');
       throw ApiException(
-        '未从 App Store 拉到商品，请确认 ASC 已创建订阅且协议/沙盒账号就绪',
+        '未从 App Store 拉到商品'
+        '${missing.isEmpty ? '' : '（未找到: $missing）'}，'
+        '请确认 ASC 已创建且 id 一致',
         statusCode: 404,
       );
     }
