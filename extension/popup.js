@@ -1105,13 +1105,22 @@ async function openSettings() {
       title: '用户协议',
       chevron: true,
       onClick: () =>
-        window.open('https://inkmind.xyz/collection/privacy', '_blank'),
+        window.open(
+          'https://conflux.wobufang.com/support#user-agreement',
+          '_blank',
+        ),
     }),
     setRow({
       title: '隐私政策',
       chevron: true,
       onClick: () =>
-        window.open('https://inkmind.xyz/collection/privacy', '_blank'),
+        window.open('https://conflux.wobufang.com/privacy', '_blank'),
+    }),
+    setRow({
+      title: '用户支持',
+      chevron: true,
+      onClick: () =>
+        window.open('https://conflux.wobufang.com/support', '_blank'),
     }),
     setRow({ title: '关于 Conflux', meta: `v${version}` }),
   );

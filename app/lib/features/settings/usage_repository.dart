@@ -187,8 +187,8 @@ class PlanQuotasTable {
   final PlanQuota pro;
 
   static const defaults = PlanQuotasTable(
-    free: PlanQuota(transcriptMinutes: 60, aiTags: 30, aiMindmap: 20),
-    pro: PlanQuota(transcriptMinutes: 300, aiTags: 200, aiMindmap: 100),
+    free: PlanQuota(transcriptMinutes: 40, aiTags: 15, aiMindmap: 8),
+    pro: PlanQuota(transcriptMinutes: 200, aiTags: 90, aiMindmap: 35),
   );
 
   factory PlanQuotasTable.fromJson(Map<String, dynamic> json) {
