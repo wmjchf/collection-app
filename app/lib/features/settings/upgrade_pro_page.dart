@@ -6,6 +6,8 @@ import 'package:in_app_purchase/in_app_purchase.dart';
 import 'package:super_collection/core/network/api_client.dart';
 import 'package:super_collection/core/ui/app_toast.dart';
 import 'package:super_collection/features/settings/apple_iap_service.dart';
+import 'package:super_collection/features/settings/legal_docs.dart';
+import 'package:super_collection/features/settings/simple_doc_page.dart';
 import 'package:super_collection/features/settings/usage_repository.dart';
 
 /// 升级 Pro（对齐 Figma `42. 升级 Pro`；iOS StoreKit）
@@ -259,58 +261,79 @@ class _UpgradeProPageState extends State<UpgradeProPage> {
           ),
         ),
       ),
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 14, 16, 28),
+      body: Column(
         children: [
-          const _HeroCard(),
-          const SizedBox(height: 14),
-          _QuotaTable(quotas: _quotas),
-          const SizedBox(height: 14),
-          if (!_isIos)
-            const Padding(
-              padding: EdgeInsets.symmetric(vertical: 12),
-              child: Text(
-                '请在 iPhone 上通过 App Store 订阅。',
-                textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 14, color: _muted, height: 1.4),
-              ),
-            )
-          else if (_productsLoading)
-            const Padding(
-              padding: EdgeInsets.symmetric(vertical: 28),
-              child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
-            )
-          else if (_error != null) ...[
-            Text(
-              _error!,
-              textAlign: TextAlign.center,
-              style: const TextStyle(fontSize: 14, color: _muted, height: 1.4),
+          Expanded(
+            child: ListView(
+              padding: const EdgeInsets.fromLTRB(16, 14, 16, 20),
+              children: [
+                const _HeroCard(),
+                const SizedBox(height: 14),
+                _QuotaTable(quotas: _quotas),
+                const SizedBox(height: 14),
+                if (!_isIos)
+                  const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 12),
+                    child: Text(
+                      '请在 iPhone 上通过 App Store 订阅。',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(fontSize: 14, color: _muted, height: 1.4),
+                    ),
+                  )
+                else if (_productsLoading)
+                  const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 28),
+                    child: Center(
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                  )
+                else if (_error != null) ...[
+                  Text(
+                    _error!,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      fontSize: 14,
+                      color: _muted,
+                      height: 1.4,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  TextButton(
+                    onPressed: _busy ? null : _load,
+                    child: const Text('重试'),
+                  ),
+                ] else
+                  ..._planTiles(),
+              ],
             ),
-            const SizedBox(height: 12),
-            TextButton(onPressed: _busy ? null : _load, child: const Text('重试')),
-          ] else ...[
-            ..._planTiles(),
-            const SizedBox(height: 14),
-            _SubscribeButton(
-              label: _subscribeLabel(),
-              busy: _busy && !_restoreFlow,
-              enabled: _selected != null,
-              onPressed: _buy,
+          ),
+          _BottomActionBar(
+            showPurchaseActions: _isIos && !_productsLoading && _error == null,
+            subscribeLabel: _subscribeLabel(),
+            restoreLabel: _busy && _restoreFlow ? _phaseLabel : '恢复购买',
+            busy: _busy,
+            restoreFlow: _restoreFlow,
+            subscribeEnabled: _selected != null,
+            onSubscribe: _buy,
+            onRestore: _restore,
+            onUserAgreement: () => _openLegal(
+              title: '用户协议',
+              body: LegalDocs.userAgreement,
             ),
-            const SizedBox(height: 8),
-            TextButton(
-              onPressed: _busy ? null : _restore,
-              style: TextButton.styleFrom(
-                foregroundColor: _muted,
-                minimumSize: const Size(0, 36),
-              ),
-              child: Text(
-                _busy && _restoreFlow ? _phaseLabel : '恢复购买',
-                style: const TextStyle(fontSize: 14),
-              ),
+            onPrivacy: () => _openLegal(
+              title: '隐私政策',
+              body: LegalDocs.privacyPolicy,
             ),
-          ],
+          ),
         ],
+      ),
+    );
+  }
+
+  void _openLegal({required String title, required String body}) {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => SimpleDocPage(title: title, body: body),
       ),
     );
   }
@@ -886,6 +909,131 @@ class _SubscribeButton extends StatelessWidget {
                 ),
         ),
       ),
+    );
+  }
+}
+
+class _BottomActionBar extends StatelessWidget {
+  const _BottomActionBar({
+    required this.showPurchaseActions,
+    required this.subscribeLabel,
+    required this.restoreLabel,
+    required this.busy,
+    required this.restoreFlow,
+    required this.subscribeEnabled,
+    required this.onSubscribe,
+    required this.onRestore,
+    required this.onUserAgreement,
+    required this.onPrivacy,
+  });
+
+  final bool showPurchaseActions;
+  final String subscribeLabel;
+  final String restoreLabel;
+  final bool busy;
+  final bool restoreFlow;
+  final bool subscribeEnabled;
+  final VoidCallback onSubscribe;
+  final VoidCallback onRestore;
+  final VoidCallback onUserAgreement;
+  final VoidCallback onPrivacy;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.white,
+      child: DecoratedBox(
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          border: Border(top: BorderSide(color: Color(0xFFE8EBF0))),
+        ),
+        child: SafeArea(
+          top: false,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 10),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (showPurchaseActions) ...[
+                  _SubscribeButton(
+                    label: subscribeLabel,
+                    busy: busy && !restoreFlow,
+                    enabled: subscribeEnabled,
+                    onPressed: onSubscribe,
+                  ),
+                  const SizedBox(height: 4),
+                  TextButton(
+                    onPressed: busy ? null : onRestore,
+                    style: TextButton.styleFrom(
+                      foregroundColor: const Color(0xFF737A85),
+                      minimumSize: const Size(0, 36),
+                    ),
+                    child: Text(
+                      restoreLabel,
+                      style: const TextStyle(fontSize: 14),
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                ],
+                _SubscriptionLegalFooter(
+                  onUserAgreement: onUserAgreement,
+                  onPrivacy: onPrivacy,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SubscriptionLegalFooter extends StatelessWidget {
+  const _SubscriptionLegalFooter({
+    required this.onUserAgreement,
+    required this.onPrivacy,
+  });
+
+  final VoidCallback onUserAgreement;
+  final VoidCallback onPrivacy;
+
+  @override
+  Widget build(BuildContext context) {
+    const style = TextStyle(fontSize: 12, color: Color(0xFF737A85), height: 1.55);
+    const linkStyle = TextStyle(
+      fontSize: 12,
+      color: Color(0xFF2F6FED),
+      height: 1.55,
+    );
+    return Text.rich(
+      TextSpan(
+        style: style,
+        children: [
+          const TextSpan(
+            text:
+                '订阅会自动续费，除非您在当前订阅结束前 24 小时以上取消自动续订。订阅高级会员即表示你接受我们的',
+          ),
+          WidgetSpan(
+            alignment: PlaceholderAlignment.baseline,
+            baseline: TextBaseline.alphabetic,
+            child: GestureDetector(
+              onTap: onPrivacy,
+              child: const Text('隐私政策', style: linkStyle),
+            ),
+          ),
+          const TextSpan(text: '和'),
+          WidgetSpan(
+            alignment: PlaceholderAlignment.baseline,
+            baseline: TextBaseline.alphabetic,
+            child: GestureDetector(
+              onTap: onUserAgreement,
+              child: const Text('用户条款', style: linkStyle),
+            ),
+          ),
+          const TextSpan(text: '。如果您已经订阅过但未生效，请恢复购买。'),
+        ],
+      ),
+      textAlign: TextAlign.center,
     );
   }
 }
