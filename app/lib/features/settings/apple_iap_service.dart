@@ -61,8 +61,20 @@ class AppleIapService {
   }
 
   Future<void> dispose() async {
+    _clearPending(error: ApiException('购买已取消', statusCode: 400));
     await _sub?.cancel();
     _sub = null;
+  }
+
+  void _clearPending({Object? error}) {
+    final waiting = _pending;
+    _pending = null;
+    _pendingProductId = null;
+    if (waiting != null && !waiting.isCompleted) {
+      waiting.completeError(
+        error ?? ApiException('购买已取消', statusCode: 400),
+      );
+    }
   }
 
   /// 从 App Store 拉商品详情。
@@ -160,33 +172,44 @@ class AppleIapService {
       throw ApiException('请在 iPhone 上订阅 Pro', statusCode: 400);
     }
     await ensureListening();
+
+    // 上一笔若异常中断可能残留锁；再次点订阅时清掉，允许重试
     if (_pending != null) {
-      throw ApiException('已有购买进行中', statusCode: 409);
+      _clearPending(
+        error: ApiException('上一笔购买已中断，请重试', statusCode: 409),
+      );
     }
 
-    _pending = Completer<PurchaseDetails>();
+    final waiting = Completer<PurchaseDetails>();
+    _pending = waiting;
     _pendingProductId = product.id;
     onPhase?.call(AppleIapPhase.paying);
 
-    final param = PurchaseParam(productDetails: product);
-    final ok = await _iap.buyNonConsumable(purchaseParam: param);
-    if (!ok) {
-      _pending = null;
-      _pendingProductId = null;
-      throw ApiException('无法发起购买', statusCode: 400);
-    }
-
     late PurchaseDetails purchase;
     try {
-      purchase = await _pending!.future.timeout(
+      final param = PurchaseParam(productDetails: product);
+      final ok = await _iap.buyNonConsumable(purchaseParam: param);
+      if (!ok) {
+        throw ApiException('无法发起购买', statusCode: 400);
+      }
+
+      purchase = await waiting.future.timeout(
         const Duration(minutes: 5),
         onTimeout: () {
-          throw ApiException('购买超时', statusCode: 408);
+          throw ApiException('购买超时，请重试', statusCode: 408);
         },
       );
+    } catch (_) {
+      if (identical(_pending, waiting)) {
+        _pending = null;
+        _pendingProductId = null;
+      }
+      rethrow;
     } finally {
-      _pending = null;
-      _pendingProductId = null;
+      if (identical(_pending, waiting)) {
+        _pending = null;
+        _pendingProductId = null;
+      }
     }
 
     if (purchase.status == PurchaseStatus.canceled) {
@@ -311,21 +334,26 @@ class AppleIapService {
       if (p.status == PurchaseStatus.pending) continue;
 
       final waiting = _pending;
-      if (waiting == null || waiting.isCompleted) {
-        // 恢复购买或未跟踪的交易：仅 complete 非 pending（避免泄漏）
-        // 主动 restore() 会自己 verify
-        continue;
-      }
+      final matchesPending = waiting != null &&
+          !waiting.isCompleted &&
+          (_pendingProductId == null || p.productID == _pendingProductId);
 
-      if (_pendingProductId != null && p.productID != _pendingProductId) {
-        continue;
-      }
-
-      if (p.status == PurchaseStatus.purchased ||
-          p.status == PurchaseStatus.restored ||
-          p.status == PurchaseStatus.canceled ||
-          p.status == PurchaseStatus.error) {
+      if (matchesPending &&
+          (p.status == PurchaseStatus.purchased ||
+              p.status == PurchaseStatus.restored ||
+              p.status == PurchaseStatus.canceled ||
+              p.status == PurchaseStatus.error)) {
         waiting.complete(p);
+        continue;
+      }
+
+      // 无等待方的未完成交易：complete 掉，避免卡死后续购买
+      if (p.pendingCompletePurchase &&
+          (p.status == PurchaseStatus.purchased ||
+              p.status == PurchaseStatus.restored ||
+              p.status == PurchaseStatus.error ||
+              p.status == PurchaseStatus.canceled)) {
+        unawaited(_iap.completePurchase(p));
       }
     }
   }
