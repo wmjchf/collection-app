@@ -235,6 +235,22 @@ async function requestMindmap(userId, itemId, { force = false, direction = null 
     throw Object.assign(new Error('内容不足，无法生成思维导图'), { status: 400 });
   }
 
+  const previewMessages = [
+    { role: 'system', content: MINDMAP_SYSTEM_PROMPT },
+    {
+      role: 'user',
+      content:
+        `请阅读以下内容，按 system 要求输出思维导图 JSON（仅 JSON，无其它文字）：\n\n` +
+        buildInputText(row),
+    },
+  ];
+  await usageService.assertAiQuota(userId, {
+    estimatedTokens: usageService.estimateAiTokens({
+      messages: previewMessages,
+      feature: 'mindmap',
+    }),
+  });
+
   meta = aiMeta.withMindmapState(meta, {
     status: 'pending',
     awaitTranscript: false,
@@ -308,17 +324,26 @@ async function runMindmapJob(itemId) {
     }
     userContent += `\n\n${inputText}`;
 
+    const messages = [
+      {
+        role: 'system',
+        content: MINDMAP_SYSTEM_PROMPT,
+      },
+      {
+        role: 'user',
+        content: userContent,
+      },
+    ];
+    const usageService = require('./usageService');
+    await usageService.assertAiQuota(row.user_id, {
+      estimatedTokens: usageService.estimateAiTokens({
+        messages,
+        feature: 'mindmap',
+      }),
+    });
+
     const { json: result, usage: modelUsage } = await aliyunDashScope.chatJson({
-      messages: [
-        {
-          role: 'system',
-          content: MINDMAP_SYSTEM_PROMPT,
-        },
-        {
-          role: 'user',
-          content: userContent,
-        },
-      ],
+      messages,
     });
 
     const tree = normalizeTree(result);

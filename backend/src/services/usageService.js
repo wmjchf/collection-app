@@ -11,8 +11,30 @@ const QUOTA_MESSAGES = {
   ai: '本月 AI 额度已用完，订阅后可继续',
 };
 
+/** 标签 / 脑图 completion 预留（偏保守，避免打穿） */
+const AI_COMPLETION_RESERVE = {
+  tags: 800,
+  mindmap: 2500,
+};
+
 function isEnforcing() {
   return config.usage?.enforcing !== false;
+}
+
+/**
+ * 按消息字符粗估 token（对齐 DashScope 中文约 2 字/token）+ completion 预留。
+ * @param {{ messages?: Array<{content?: string}>, feature?: 'tags'|'mindmap', extraChars?: number }} opts
+ */
+function estimateAiTokens({ messages = [], feature = 'tags', extraChars = 0 } = {}) {
+  const chars =
+    messages.reduce((n, m) => n + String(m?.content || '').length, 0) +
+    Number(extraChars || 0);
+  const promptEst = Math.ceil(Math.max(0, chars) / 2);
+  const reserve =
+    feature === 'mindmap'
+      ? AI_COMPLETION_RESERVE.mindmap
+      : AI_COMPLETION_RESERVE.tags;
+  return Math.max(1, promptEst + reserve);
 }
 
 function quotasForPlan(plan) {
@@ -195,9 +217,8 @@ function round1(n) {
   return Math.round(Number(n) * 10) / 10;
 }
 
-function quotaExceededError(quotaKind) {
-  const message = QUOTA_MESSAGES[quotaKind] || '本月额度已用完，订阅后可继续';
-  return Object.assign(new Error(message), {
+function quotaExceededError(quotaKind, message) {
+  return Object.assign(new Error(message || QUOTA_MESSAGES[quotaKind] || '本月额度已用完，订阅后可继续'), {
     status: 402,
     code: 'QUOTA_EXCEEDED',
     quotaKind,
@@ -205,32 +226,56 @@ function quotaExceededError(quotaKind) {
 }
 
 /**
- * 触顶拦截（USAGE_ENFORCING=false 时跳过）
- * - transcript：剩余分钟 ≤ 0
- * - ai：剩余 token ≤ 0
+ * 触顶拦截（USAGE_ENFORCING=false 时跳过）— 严格模式：
+ * - transcript：传入 estimatedSeconds 时，剩余秒数必须盖得住预估；未传则仅要求剩余 > 0
+ * - ai：传入 estimatedTokens 时，剩余 token 必须盖得住预估；未传则仅要求剩余 > 0
  */
-async function assertQuota(userId, kind) {
+async function assertQuota(userId, kind, { estimatedSeconds, estimatedTokens } = {}) {
   if (!isEnforcing()) return;
   const summary = await getUsageSummary(userId);
   if (kind === KIND_TRANSCRIPT) {
-    if (summary.transcript.remainingMinutes <= 0) {
+    const remainingSec = Number(summary.transcript.remainingMinutes) * 60;
+    const est = Number(estimatedSeconds);
+    if (Number.isFinite(est) && est > 0) {
+      if (remainingSec + 1e-6 < est) {
+        const needMin = round1(est / 60);
+        const leftMin = round1(summary.transcript.remainingMinutes);
+        throw quotaExceededError(
+          KIND_TRANSCRIPT,
+          `本段转写约需 ${needMin} 分钟，本月剩余 ${leftMin} 分钟不足，订阅后可继续`,
+        );
+      }
+      return;
+    }
+    if (remainingSec <= 0) {
       throw quotaExceededError(KIND_TRANSCRIPT);
     }
     return;
   }
   if (kind === KIND_AI) {
-    if (summary.ai.remainingTokens <= 0) {
+    const remaining = Number(summary.ai.remainingTokens);
+    const est = Math.round(Number(estimatedTokens));
+    if (Number.isFinite(est) && est > 0) {
+      if (remaining < est) {
+        throw quotaExceededError(
+          KIND_AI,
+          `本次 AI 预估约需 ${est} token，本月剩余 ${remaining} 不足，订阅后可继续`,
+        );
+      }
+      return;
+    }
+    if (remaining <= 0) {
       throw quotaExceededError(KIND_AI);
     }
   }
 }
 
-async function assertTranscriptQuota(userId) {
-  return assertQuota(userId, KIND_TRANSCRIPT);
+async function assertTranscriptQuota(userId, opts = {}) {
+  return assertQuota(userId, KIND_TRANSCRIPT, opts);
 }
 
-async function assertAiQuota(userId) {
-  return assertQuota(userId, KIND_AI);
+async function assertAiQuota(userId, opts = {}) {
+  return assertQuota(userId, KIND_AI, opts);
 }
 
 /** @deprecated 使用 assertAiQuota */
@@ -295,6 +340,7 @@ module.exports = {
   planQuotasTable,
   periodBounds,
   durationSecFromCues,
+  estimateAiTokens,
   recordEvent,
   recordTranscriptUsage,
   recordAiTokenUsage,
