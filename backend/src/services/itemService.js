@@ -1078,6 +1078,34 @@ async function runTranscriptJob(itemId) {
           `durationSec=${resolved.durationSec == null ? 'unknown' : Number(resolved.durationSec).toFixed(1)}`,
       );
 
+      // 严格：探测到时长后、提交 ASR 前，按预估秒数校验转写额度
+      if (probedDurationSec != null && probedDurationSec > 0) {
+        const usageService = require('./usageService');
+        try {
+          await usageService.assertTranscriptQuota(row.user_id, {
+            estimatedSeconds: probedDurationSec,
+          });
+        } catch (quotaErr) {
+          if (quotaErr && quotaErr.code === 'QUOTA_EXCEEDED') {
+            console.warn(
+              `[runTranscriptJob] quota exceeded item=${itemId} ` +
+                `needSec=${probedDurationSec.toFixed(1)}: ${quotaErr.message}`,
+            );
+            segments = transcriptSegments.setSegment(segments, segmentKey, {
+              status: 'failed',
+              error: String(quotaErr.message || '转写额度不足').slice(0, 500),
+              taskId: null,
+              mediaUrl: null,
+              phase: null,
+              phaseLabel: null,
+            });
+            await saveTranscriptSegments(itemId, segments);
+            return;
+          }
+          throw quotaErr;
+        }
+      }
+
       await persistPhase('submitting', '提交识别中');
       const submitT0 = Date.now();
       const submitted = await aliyunAsr.submitFileTrans(resolved.fileLink);

@@ -8,6 +8,14 @@ const {
   buildInputText,
 } = require('./aiInput');
 
+const TAGS_SYSTEM_PROMPT =
+  '你是收藏整理助手。根据用户收藏的内容，建议 3～5 个简短中文标签（每个 2～8 字），帮助分类与检索。' +
+  '优先从用户已有标签里选择（多篇收藏可共用同一标签）；若无合适项可建议新标签名。' +
+  '不要建议「本篇已打标签」列表中的任何名称。' +
+  '若提供了「用户期望方向」，在不违背上述规则的前提下尽量贴合该方向。' +
+  '若仅有「用户近期偏好」而无本次方向，可适度参考偏好，但仍须贴合正文，勿生造无关标签。' +
+  '只输出 JSON：{"tags":["标签1","标签2"]}，不要其它字段或说明。';
+
 async function listUserTagsForMatch(userId) {
   const [rows] = await pool.execute(
     `SELECT id, name FROM categories
@@ -158,7 +166,7 @@ async function requestAiSuggest(userId, itemId, { force = false, direction = nul
   }
 
   const usageService = require('./usageService');
-  await usageService.assertAiTagsQuota(userId);
+  await usageService.assertAiQuota(userId);
 
   if (userDirection) {
     const aiPreference = require('./aiPreferenceService');
@@ -214,6 +222,19 @@ async function requestAiSuggest(userId, itemId, { force = false, direction = nul
   if (!hasAiInput(row)) {
     throw Object.assign(new Error('内容不足，无法生成标签建议'), { status: 400 });
   }
+
+  await usageService.assertAiQuota(userId, {
+    estimatedTokens: usageService.estimateAiTokens({
+      messages: [
+        { role: 'system', content: TAGS_SYSTEM_PROMPT },
+        {
+          role: 'user',
+          content: `请为以下内容建议标签：\n\n${buildInputText(row)}`,
+        },
+      ],
+      feature: 'tags',
+    }),
+  });
 
   meta = aiMeta.withTagsState(meta, {
     status: 'pending',
@@ -292,23 +313,26 @@ async function runAiSuggestJob(itemId) {
     }
     userContentParts.push(`请为以下内容建议标签：\n\n${inputText}`);
 
-    const result = await aliyunDashScope.chatJson({
-      messages: [
-        {
-          role: 'system',
-          content:
-            '你是收藏整理助手。根据用户收藏的内容，建议 3～5 个简短中文标签（每个 2～8 字），帮助分类与检索。' +
-            '优先从用户已有标签里选择（多篇收藏可共用同一标签）；若无合适项可建议新标签名。' +
-            '不要建议「本篇已打标签」列表中的任何名称。' +
-            '若提供了「用户期望方向」，在不违背上述规则的前提下尽量贴合该方向。' +
-            '若仅有「用户近期偏好」而无本次方向，可适度参考偏好，但仍须贴合正文，勿生造无关标签。' +
-            '只输出 JSON：{"tags":["标签1","标签2"]}，不要其它字段或说明。',
-        },
-        {
-          role: 'user',
-          content: userContentParts.join('\n'),
-        },
-      ],
+    const messages = [
+      {
+        role: 'system',
+        content: TAGS_SYSTEM_PROMPT,
+      },
+      {
+        role: 'user',
+        content: userContentParts.join('\n'),
+      },
+    ];
+    const usageService = require('./usageService');
+    await usageService.assertAiQuota(row.user_id, {
+      estimatedTokens: usageService.estimateAiTokens({
+        messages,
+        feature: 'tags',
+      }),
+    });
+
+    const { json: result, usage: modelUsage } = await aliyunDashScope.chatJson({
+      messages,
     });
 
     const rawTags = Array.isArray(result?.tags) ? result.tags : [];
@@ -326,16 +350,19 @@ async function runAiSuggestJob(itemId) {
       await saveAiMeta(itemId, meta);
       try {
         const usageService = require('./usageService');
-        await usageService.recordAiTagsUsage({
+        await usageService.recordAiTokenUsage({
           userId: row.user_id,
           itemId,
+          feature: 'tags',
+          tokens: modelUsage.totalTokens,
           generatedAt,
+          meta: modelUsage,
         });
       } catch (usageErr) {
         console.warn(`[runAiSuggestJob] usage record failed item=${itemId}`, usageErr.message);
       }
       console.log(
-        `[runAiSuggestJob] empty item=${itemId} ms=${Date.now() - started}`,
+        `[runAiSuggestJob] empty item=${itemId} tokens=${modelUsage.totalTokens} ms=${Date.now() - started}`,
       );
       return;
     }
@@ -352,16 +379,19 @@ async function runAiSuggestJob(itemId) {
     await saveAiMeta(itemId, meta);
     try {
       const usageService = require('./usageService');
-      await usageService.recordAiTagsUsage({
+      await usageService.recordAiTokenUsage({
         userId: row.user_id,
         itemId,
+        feature: 'tags',
+        tokens: modelUsage.totalTokens,
         generatedAt,
+        meta: modelUsage,
       });
     } catch (usageErr) {
       console.warn(`[runAiSuggestJob] usage record failed item=${itemId}`, usageErr.message);
     }
     console.log(
-      `[runAiSuggestJob] ok item=${itemId} count=${items.length} ms=${Date.now() - started}`,
+      `[runAiSuggestJob] ok item=${itemId} count=${items.length} tokens=${modelUsage.totalTokens} ms=${Date.now() - started}`,
     );
   } catch (err) {
     meta = aiMeta.withTagsState(meta, {
