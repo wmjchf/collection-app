@@ -158,7 +158,7 @@ async function requestAiSuggest(userId, itemId, { force = false, direction = nul
   }
 
   const usageService = require('./usageService');
-  await usageService.assertAiTagsQuota(userId);
+  await usageService.assertAiQuota(userId);
 
   if (userDirection) {
     const aiPreference = require('./aiPreferenceService');
@@ -292,7 +292,7 @@ async function runAiSuggestJob(itemId) {
     }
     userContentParts.push(`请为以下内容建议标签：\n\n${inputText}`);
 
-    const result = await aliyunDashScope.chatJson({
+    const { json: result, usage: modelUsage } = await aliyunDashScope.chatJson({
       messages: [
         {
           role: 'system',
@@ -326,16 +326,19 @@ async function runAiSuggestJob(itemId) {
       await saveAiMeta(itemId, meta);
       try {
         const usageService = require('./usageService');
-        await usageService.recordAiTagsUsage({
+        await usageService.recordAiTokenUsage({
           userId: row.user_id,
           itemId,
+          feature: 'tags',
+          tokens: modelUsage.totalTokens,
           generatedAt,
+          meta: modelUsage,
         });
       } catch (usageErr) {
         console.warn(`[runAiSuggestJob] usage record failed item=${itemId}`, usageErr.message);
       }
       console.log(
-        `[runAiSuggestJob] empty item=${itemId} ms=${Date.now() - started}`,
+        `[runAiSuggestJob] empty item=${itemId} tokens=${modelUsage.totalTokens} ms=${Date.now() - started}`,
       );
       return;
     }
@@ -352,16 +355,19 @@ async function runAiSuggestJob(itemId) {
     await saveAiMeta(itemId, meta);
     try {
       const usageService = require('./usageService');
-      await usageService.recordAiTagsUsage({
+      await usageService.recordAiTokenUsage({
         userId: row.user_id,
         itemId,
+        feature: 'tags',
+        tokens: modelUsage.totalTokens,
         generatedAt,
+        meta: modelUsage,
       });
     } catch (usageErr) {
       console.warn(`[runAiSuggestJob] usage record failed item=${itemId}`, usageErr.message);
     }
     console.log(
-      `[runAiSuggestJob] ok item=${itemId} count=${items.length} ms=${Date.now() - started}`,
+      `[runAiSuggestJob] ok item=${itemId} count=${items.length} tokens=${modelUsage.totalTokens} ms=${Date.now() - started}`,
     );
   } catch (err) {
     meta = aiMeta.withTagsState(meta, {

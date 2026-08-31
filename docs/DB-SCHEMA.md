@@ -55,7 +55,7 @@
 | `items` | 收藏条目（含 `transcript_segments` 分段转写） |
 | `item_tags` | 条目 ↔ 标签 |
 | `annotations` | 阅读标注 |
-| `usage_events` | 用量事件（转写秒 / AI 次） |
+| `usage_events` | 用量事件（转写秒 / AI token） |
 | `subscriptions` | 订阅（Pro；支付前可有 `source=dev`） |
 | `ai_preference_events` | AI 偏好方向 |
 | `home_roam_cache` | 首页漫游缓存 |

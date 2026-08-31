@@ -64,12 +64,12 @@ module.exports = {
     enforcing: process.env.USAGE_ENFORCING !== 'false',
     freeTranscriptMinutesPerMonth:
       Number(process.env.FREE_TRANSCRIPT_MINUTES_PER_MONTH) || 40,
-    freeAiTagsPerMonth: Number(process.env.FREE_AI_TAGS_PER_MONTH) || 15,
-    freeAiMindmapPerMonth: Number(process.env.FREE_AI_MINDMAP_PER_MONTH) || 8,
+    freeAiTokensPerMonth:
+      Number(process.env.FREE_AI_TOKENS_PER_MONTH) || 200000,
     proTranscriptMinutesPerMonth:
       Number(process.env.PRO_TRANSCRIPT_MINUTES_PER_MONTH) || 200,
-    proAiTagsPerMonth: Number(process.env.PRO_AI_TAGS_PER_MONTH) || 90,
-    proAiMindmapPerMonth: Number(process.env.PRO_AI_MINDMAP_PER_MONTH) || 35,
+    proAiTokensPerMonth:
+      Number(process.env.PRO_AI_TOKENS_PER_MONTH) || 1000000,
   },
   /**
    * Apple IAP（App Store Server API）

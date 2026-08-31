@@ -501,16 +501,10 @@ class _QuotaTable extends StatelessWidget {
         '${quotas.pro.transcriptMinutes}',
       ),
       (
-        'AI 标签',
-        '每月 · 次',
-        '${quotas.free.aiTags}',
-        '${quotas.pro.aiTags}',
-      ),
-      (
-        '思维导图',
-        '每月 · 次',
-        '${quotas.free.aiMindmap}',
-        '${quotas.pro.aiMindmap}',
+        'AI',
+        '每月 · token',
+        formatTokenCount(quotas.free.aiTokens),
+        formatTokenCount(quotas.pro.aiTokens),
       ),
     ];
 

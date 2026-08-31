@@ -6,6 +6,7 @@ function isConfigured() {
 
 /**
  * 调用百炼 OpenAI 兼容接口（qwen3.8-max 等）
+ * @returns {Promise<{ json: object, usage: { promptTokens: number, completionTokens: number, totalTokens: number } }>}
  */
 async function chatJson({ messages, model }) {
   const apiKey = config.aliyun.dashScopeApiKey;
@@ -56,11 +57,38 @@ async function chatJson({ messages, model }) {
     throw Object.assign(new Error('AI 返回为空'), { status: 502 });
   }
 
+  let json;
   try {
-    return JSON.parse(content);
+    json = JSON.parse(content);
   } catch {
     throw Object.assign(new Error('AI 未返回合法 JSON'), { status: 502 });
   }
+
+  const u = body?.usage || {};
+  const promptTokens = Number(u.prompt_tokens) || 0;
+  const completionTokens = Number(u.completion_tokens) || 0;
+  let totalTokens = Number(u.total_tokens) || 0;
+  if (totalTokens <= 0) {
+    totalTokens = promptTokens + completionTokens;
+  }
+  // 接口偶发不带 usage：按内容长度粗估，避免漏记
+  if (totalTokens <= 0) {
+    const chars = messages.reduce(
+      (n, m) => n + String(m?.content || '').length,
+      0,
+    ) + content.length;
+    totalTokens = Math.max(1, Math.ceil(chars / 2));
+  }
+
+  return {
+    json,
+    usage: {
+      promptTokens,
+      completionTokens,
+      totalTokens,
+      model: modelId,
+    },
+  };
 }
 
 module.exports = {

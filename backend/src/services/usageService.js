@@ -3,13 +3,12 @@ const config = require('../config');
 const subscriptionService = require('./subscriptionService');
 
 const KIND_TRANSCRIPT = 'transcript';
-const KIND_AI_TAGS = 'ai_tags';
-const KIND_AI_MINDMAP = 'ai_mindmap';
+/** 标签 + 思维导图共用 AI token 池 */
+const KIND_AI = 'ai';
 
 const QUOTA_MESSAGES = {
   transcript: '本月转写分钟已用完，订阅后可继续',
-  ai_tags: '本月 AI 标签额度已用完，订阅后可继续',
-  ai_mindmap: '本月 AI 思维导图额度已用完，订阅后可继续',
+  ai: '本月 AI 额度已用完，订阅后可继续',
 };
 
 function isEnforcing() {
@@ -20,15 +19,13 @@ function quotasForPlan(plan) {
   const u = config.usage || {};
   if (plan === 'pro') {
     return {
-      transcriptMinutesPerMonth: Number(u.proTranscriptMinutesPerMonth ?? 300),
-      aiTagsPerMonth: Number(u.proAiTagsPerMonth ?? 200),
-      aiMindmapPerMonth: Number(u.proAiMindmapPerMonth ?? 100),
+      transcriptMinutesPerMonth: Number(u.proTranscriptMinutesPerMonth ?? 200),
+      aiTokensPerMonth: Number(u.proAiTokensPerMonth ?? 1000000),
     };
   }
   return {
-    transcriptMinutesPerMonth: Number(u.freeTranscriptMinutesPerMonth ?? 60),
-    aiTagsPerMonth: Number(u.freeAiTagsPerMonth ?? 30),
-    aiMindmapPerMonth: Number(u.freeAiMindmapPerMonth ?? 20),
+    transcriptMinutesPerMonth: Number(u.freeTranscriptMinutesPerMonth ?? 40),
+    aiTokensPerMonth: Number(u.freeAiTokensPerMonth ?? 200000),
   };
 }
 
@@ -146,27 +143,38 @@ async function recordTranscriptUsage({
   });
 }
 
-async function recordAiTagsUsage({ userId, itemId, generatedAt }) {
-  const key = `ai_tags:${userId}:${itemId}:${generatedAt || Date.now()}`;
+/**
+ * AI 标签 / 思维导图共用 token 池。
+ * @param {{ userId: number, itemId: number, feature: 'tags'|'mindmap', tokens: number, generatedAt?: string, meta?: object }} args
+ */
+async function recordAiTokenUsage({
+  userId,
+  itemId,
+  feature,
+  tokens,
+  generatedAt,
+  meta = null,
+}) {
+  const tok = Math.round(Number(tokens));
+  if (!Number.isFinite(tok) || tok <= 0) {
+    console.warn(
+      `[usage] ai skip no tokens item=${itemId} feature=${feature}`,
+    );
+    return { recorded: false, reason: 'no_tokens' };
+  }
+  const feat = feature === 'mindmap' ? 'mindmap' : 'tags';
+  const key = `ai:${feat}:${userId}:${itemId}:${generatedAt || Date.now()}`;
   return recordEvent({
     userId,
     itemId,
-    kind: KIND_AI_TAGS,
-    amount: 1,
-    unit: 'count',
+    kind: KIND_AI,
+    amount: tok,
+    unit: 'tokens',
     idempotencyKey: key,
-  });
-}
-
-async function recordAiMindmapUsage({ userId, itemId, generatedAt }) {
-  const key = `ai_mindmap:${userId}:${itemId}:${generatedAt || Date.now()}`;
-  return recordEvent({
-    userId,
-    itemId,
-    kind: KIND_AI_MINDMAP,
-    amount: 1,
-    unit: 'count',
-    idempotencyKey: key,
+    meta: {
+      feature: feat,
+      ...(meta && typeof meta === 'object' ? meta : {}),
+    },
   });
 }
 
@@ -199,7 +207,7 @@ function quotaExceededError(quotaKind) {
 /**
  * 触顶拦截（USAGE_ENFORCING=false 时跳过）
  * - transcript：剩余分钟 ≤ 0
- * - ai_tags / ai_mindmap：剩余次数 ≤ 0
+ * - ai：剩余 token ≤ 0
  */
 async function assertQuota(userId, kind) {
   if (!isEnforcing()) return;
@@ -210,15 +218,9 @@ async function assertQuota(userId, kind) {
     }
     return;
   }
-  if (kind === KIND_AI_TAGS) {
-    if (summary.aiTags.remaining <= 0) {
-      throw quotaExceededError(KIND_AI_TAGS);
-    }
-    return;
-  }
-  if (kind === KIND_AI_MINDMAP) {
-    if (summary.aiMindmap.remaining <= 0) {
-      throw quotaExceededError(KIND_AI_MINDMAP);
+  if (kind === KIND_AI) {
+    if (summary.ai.remainingTokens <= 0) {
+      throw quotaExceededError(KIND_AI);
     }
   }
 }
@@ -227,12 +229,18 @@ async function assertTranscriptQuota(userId) {
   return assertQuota(userId, KIND_TRANSCRIPT);
 }
 
-async function assertAiTagsQuota(userId) {
-  return assertQuota(userId, KIND_AI_TAGS);
+async function assertAiQuota(userId) {
+  return assertQuota(userId, KIND_AI);
 }
 
+/** @deprecated 使用 assertAiQuota */
+async function assertAiTagsQuota(userId) {
+  return assertAiQuota(userId);
+}
+
+/** @deprecated 使用 assertAiQuota */
 async function assertAiMindmapQuota(userId) {
-  return assertQuota(userId, KIND_AI_MINDMAP);
+  return assertAiQuota(userId);
 }
 
 /**
@@ -243,16 +251,15 @@ async function getUsageSummary(userId) {
   const { plan, subscription } = await subscriptionService.getPlanForUser(userId);
   const quotas = quotasForPlan(plan);
 
-  const [transcriptSeconds, aiTags, aiMindmap] = await Promise.all([
+  const [transcriptSeconds, aiTokens] = await Promise.all([
     sumAmount(userId, KIND_TRANSCRIPT, start, end),
-    sumAmount(userId, KIND_AI_TAGS, start, end),
-    sumAmount(userId, KIND_AI_MINDMAP, start, end),
+    sumAmount(userId, KIND_AI, start, end),
   ]);
 
   const usedMinutes = transcriptSeconds / 60;
   const limitMinutes = quotas.transcriptMinutesPerMonth;
-  const tagsLimit = quotas.aiTagsPerMonth;
-  const mindmapLimit = quotas.aiMindmapPerMonth;
+  const aiLimit = quotas.aiTokensPerMonth;
+  const aiUsed = Math.round(aiTokens);
 
   return {
     period: {
@@ -271,23 +278,18 @@ async function getUsageSummary(userId) {
       limitMinutes,
       remainingMinutes: round1(Math.max(0, limitMinutes - usedMinutes)),
     },
-    aiTags: {
-      used: Math.round(aiTags),
-      limit: tagsLimit,
-      remaining: Math.max(0, tagsLimit - Math.round(aiTags)),
-    },
-    aiMindmap: {
-      used: Math.round(aiMindmap),
-      limit: mindmapLimit,
-      remaining: Math.max(0, mindmapLimit - Math.round(aiMindmap)),
+    ai: {
+      usedTokens: aiUsed,
+      limitTokens: aiLimit,
+      remainingTokens: Math.max(0, aiLimit - aiUsed),
+      unit: 'tokens',
     },
   };
 }
 
 module.exports = {
   KIND_TRANSCRIPT,
-  KIND_AI_TAGS,
-  KIND_AI_MINDMAP,
+  KIND_AI,
   freeQuotas,
   quotasForPlan,
   planQuotasTable,
@@ -295,11 +297,11 @@ module.exports = {
   durationSecFromCues,
   recordEvent,
   recordTranscriptUsage,
-  recordAiTagsUsage,
-  recordAiMindmapUsage,
+  recordAiTokenUsage,
   getUsageSummary,
   assertQuota,
   assertTranscriptQuota,
+  assertAiQuota,
   assertAiTagsQuota,
   assertAiMindmapQuota,
   isEnforcing,

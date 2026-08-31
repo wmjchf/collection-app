@@ -165,16 +165,9 @@ class _SettingsPanelState extends State<SettingsPanel> {
                       ),
                     ),
                     _InfoRow(
-                      title: 'AI 标签',
+                      title: 'AI',
                       trailing: Text(
-                        '${_usage!.aiTagsUsed} / ${_usage!.aiTagsLimit} 次',
-                        style: const TextStyle(fontSize: 14, color: _muted),
-                      ),
-                    ),
-                    _InfoRow(
-                      title: '思维导图',
-                      trailing: Text(
-                        '${_usage!.aiMindmapUsed} / ${_usage!.aiMindmapLimit} 次',
+                        '${formatTokenCount(_usage!.aiUsedTokens)} / ${formatTokenCount(_usage!.aiLimitTokens)} token',
                         style: const TextStyle(fontSize: 14, color: _muted),
                       ),
                     ),

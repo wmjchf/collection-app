@@ -11,7 +11,6 @@ const {
 /** 根 + 最多 3 层子节点：大主题 → 核心板块 → 详细解释 →（可选）关键细节 */
 const MAX_DEPTH = 3;
 const MAX_CHILDREN_BY_DEPTH = [8, 6, 6];
-const MAX_TITLE_BY_DEPTH = [20, 24, 140, 220];
 
 const MINDMAP_SYSTEM_PROMPT = `你是专业的知识结构化助手。输入已是用户收藏的可读文本（标题、正文、音视频转写稿等），**不要假设还能打开链接、看视频或拉取字幕**。信息不足时在 JSON 根节点用短标题说明缺什么（如「内容不足需补充正文」），children 为空数组，禁止编造。
 
@@ -19,8 +18,8 @@ const MINDMAP_SYSTEM_PROMPT = `你是专业的知识结构化助手。输入已�
 把内容拆成可学习的思维导图 JSON 树。只拆解原文干货，不发挥、不编造；丢掉寒暄、广告、引流、情绪煽情。
 
 ## 结构（最多 4 层，按内容需要，不必凑满）
-1. 根：全文核心大主题（短标题，6～18 字）
-2. 第 1 层：按内容自动划分 3～8 个核心板块（精炼短标题，6～20 字）。**禁止**套固定栏目名；下面「内容形态」仅作拆解参考
+1. 根：全文核心大主题（宜短，一眼能懂）
+2. 第 1 层：按内容自动划分 3～8 个核心板块（精炼短标题）。**禁止**套固定栏目名；下面「内容形态」仅作拆解参考
 3. 第 2 层：展开要点，长短随内容（可短可长）；说清即可做叶子（children: []）
 4. 第 3 层（可选）：仅当有数据、步骤、案例、对比、风险等值得单独展开时再加
 
@@ -38,9 +37,7 @@ const MINDMAP_SYSTEM_PROMPT = `你是专业的知识结构化助手。输入已�
 - 自然区分（按需选用，非每层必全）：定义、底层逻辑、正确认知、误区、落地方法、案例、风险
 - 超长则保主干砍细节，勿灌水凑层
 - 用户若给了「期望方向」，在不破坏结构规则下调整侧重点
-
-## 节点长度（title，上限参考）
-根 6～18 字；第 1 层 6～20 字；第 2 层 8～140 字；第 3 层（若有）12～220 字。每层子节点约 2～6 个（末层可为 0）。
+- title 无字数上限：上层宜短便于扫读，下层按需写清；勿为凑字数灌水。每层子节点约 2～6 个（末层可为 0）
 
 ## 输出（严格）
 只输出一个 JSON 对象，不要 markdown、不要代码块、不要前后说明。
@@ -48,10 +45,9 @@ const MINDMAP_SYSTEM_PROMPT = `你是专业的知识结构化助手。输入已�
 {"title":"大主题","children":[{"title":"核心板块","children":[{"title":"详细解释","children":[{"title":"关键细节"}]},{"title":"已说清的要点","children":[]}]}]}`;
 
 function normalizeTree(raw, depth = 0) {
-  if (!raw || typeof raw !== 'object') return null;
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
   const title = String(raw.title || raw.name || '').trim();
-  const maxTitle = MAX_TITLE_BY_DEPTH[depth] ?? 80;
-  if (!title || title.length > maxTitle) return null;
+  if (!title) return null;
   const children = [];
   if (depth < MAX_DEPTH) {
     const maxChildren = MAX_CHILDREN_BY_DEPTH[depth] ?? 5;
@@ -181,7 +177,7 @@ async function requestMindmap(userId, itemId, { force = false, direction = null 
   }
 
   const usageService = require('./usageService');
-  await usageService.assertAiMindmapQuota(userId);
+  await usageService.assertAiQuota(userId);
 
   if (userDirection) {
     const aiPreference = require('./aiPreferenceService');
@@ -312,7 +308,7 @@ async function runMindmapJob(itemId) {
     }
     userContent += `\n\n${inputText}`;
 
-    const result = await aliyunDashScope.chatJson({
+    const { json: result, usage: modelUsage } = await aliyunDashScope.chatJson({
       messages: [
         {
           role: 'system',
@@ -344,16 +340,19 @@ async function runMindmapJob(itemId) {
     await saveAiMeta(itemId, meta);
     try {
       const usageService = require('./usageService');
-      await usageService.recordAiMindmapUsage({
+      await usageService.recordAiTokenUsage({
         userId: row.user_id,
         itemId,
+        feature: 'mindmap',
+        tokens: modelUsage.totalTokens,
         generatedAt,
+        meta: modelUsage,
       });
     } catch (usageErr) {
       console.warn(`[runMindmapJob] usage record failed item=${itemId}`, usageErr.message);
     }
     console.log(
-      `[runMindmapJob] ok item=${itemId} ms=${Date.now() - started}`,
+      `[runMindmapJob] ok item=${itemId} tokens=${modelUsage.totalTokens} ms=${Date.now() - started}`,
     );
   } catch (err) {
     meta = aiMeta.withMindmapState(meta, {

@@ -14,12 +14,9 @@ class UsageSummary {
     required this.transcriptUsedMinutes,
     required this.transcriptLimitMinutes,
     required this.transcriptRemainingMinutes,
-    required this.aiTagsUsed,
-    required this.aiTagsLimit,
-    required this.aiTagsRemaining,
-    required this.aiMindmapUsed,
-    required this.aiMindmapLimit,
-    required this.aiMindmapRemaining,
+    required this.aiUsedTokens,
+    required this.aiLimitTokens,
+    required this.aiRemainingTokens,
     this.planExpiresAt,
   });
 
@@ -31,20 +28,16 @@ class UsageSummary {
   final double transcriptUsedMinutes;
   final double transcriptLimitMinutes;
   final double transcriptRemainingMinutes;
-  final int aiTagsUsed;
-  final int aiTagsLimit;
-  final int aiTagsRemaining;
-  final int aiMindmapUsed;
-  final int aiMindmapLimit;
-  final int aiMindmapRemaining;
+  final int aiUsedTokens;
+  final int aiLimitTokens;
+  final int aiRemainingTokens;
 
   bool get isPro => plan == 'pro';
 
   factory UsageSummary.fromJson(Map<String, dynamic> json) {
     final period = json['period'] as Map<String, dynamic>? ?? {};
     final transcript = json['transcript'] as Map<String, dynamic>? ?? {};
-    final aiTags = json['aiTags'] as Map<String, dynamic>? ?? {};
-    final aiMindmap = json['aiMindmap'] as Map<String, dynamic>? ?? {};
+    final ai = json['ai'] as Map<String, dynamic>? ?? {};
     return UsageSummary(
       plan: (json['plan'] as String?)?.trim().toLowerCase() ?? 'free',
       enforcing: json['enforcing'] as bool? ?? false,
@@ -56,12 +49,9 @@ class UsageSummary {
           (transcript['limitMinutes'] as num?)?.toDouble() ?? 0,
       transcriptRemainingMinutes:
           (transcript['remainingMinutes'] as num?)?.toDouble() ?? 0,
-      aiTagsUsed: (aiTags['used'] as num?)?.toInt() ?? 0,
-      aiTagsLimit: (aiTags['limit'] as num?)?.toInt() ?? 0,
-      aiTagsRemaining: (aiTags['remaining'] as num?)?.toInt() ?? 0,
-      aiMindmapUsed: (aiMindmap['used'] as num?)?.toInt() ?? 0,
-      aiMindmapLimit: (aiMindmap['limit'] as num?)?.toInt() ?? 0,
-      aiMindmapRemaining: (aiMindmap['remaining'] as num?)?.toInt() ?? 0,
+      aiUsedTokens: (ai['usedTokens'] as num?)?.toInt() ?? 0,
+      aiLimitTokens: (ai['limitTokens'] as num?)?.toInt() ?? 0,
+      aiRemainingTokens: (ai['remainingTokens'] as num?)?.toInt() ?? 0,
     );
   }
 }
@@ -159,23 +149,32 @@ class UsageRepository {
   }
 }
 
+/// 展示 token：≥1 万用「万」，否则原数。
+String formatTokenCount(int n) {
+  if (n >= 10000) {
+    final w = n / 10000;
+    if ((w * 10).round() % 10 == 0) {
+      return '${w.round()}万';
+    }
+    return '${w.toStringAsFixed(1)}万';
+  }
+  return '$n';
+}
+
 class PlanQuota {
   const PlanQuota({
     required this.transcriptMinutes,
-    required this.aiTags,
-    required this.aiMindmap,
+    required this.aiTokens,
   });
 
   final int transcriptMinutes;
-  final int aiTags;
-  final int aiMindmap;
+  final int aiTokens;
 
   factory PlanQuota.fromJson(Map<String, dynamic> json) {
     return PlanQuota(
       transcriptMinutes:
           (json['transcriptMinutesPerMonth'] as num?)?.toInt() ?? 0,
-      aiTags: (json['aiTagsPerMonth'] as num?)?.toInt() ?? 0,
-      aiMindmap: (json['aiMindmapPerMonth'] as num?)?.toInt() ?? 0,
+      aiTokens: (json['aiTokensPerMonth'] as num?)?.toInt() ?? 0,
     );
   }
 }
@@ -187,8 +186,8 @@ class PlanQuotasTable {
   final PlanQuota pro;
 
   static const defaults = PlanQuotasTable(
-    free: PlanQuota(transcriptMinutes: 40, aiTags: 15, aiMindmap: 8),
-    pro: PlanQuota(transcriptMinutes: 200, aiTags: 90, aiMindmap: 35),
+    free: PlanQuota(transcriptMinutes: 40, aiTokens: 200000),
+    pro: PlanQuota(transcriptMinutes: 200, aiTokens: 1000000),
   );
 
   factory PlanQuotasTable.fromJson(Map<String, dynamic> json) {
