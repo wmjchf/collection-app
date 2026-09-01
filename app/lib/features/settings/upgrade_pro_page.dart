@@ -445,7 +445,7 @@ class _HeroCard extends StatelessWidget {
                 ),
                 SizedBox(height: 10),
                 Text(
-                  '基础收藏与解析永远免费。\nPro 提高转写与 AI 的月额度。',
+                  '基础收藏与解析免费。\nPro 提高转写与 AI 的月额度。',
                   style: TextStyle(
                     fontSize: 14,
                     color: Color(0xC7FFFFFF),
@@ -502,9 +502,9 @@ class _QuotaTable extends StatelessWidget {
       ),
       (
         'AI',
-        '每月 · token',
-        formatTokenCount(quotas.free.aiTokens),
-        formatTokenCount(quotas.pro.aiTokens),
+        '每月 · 积分',
+        formatAiCredits(quotas.free.aiTokens),
+        formatAiCredits(quotas.pro.aiTokens),
       ),
     ];
 

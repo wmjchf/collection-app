@@ -149,17 +149,16 @@ class UsageRepository {
   }
 }
 
-/// 展示 token：≥1 万用「万」，否则原数。
-String formatTokenCount(int n) {
-  if (n >= 10000) {
-    final w = n / 10000;
-    if ((w * 10).round() % 10 == 0) {
-      return '${w.round()}万';
-    }
-    return '${w.toStringAsFixed(1)}万';
-  }
-  return '$n';
+/// App 展示用：token → 积分（100 token = 1 积分）。仅前端换算，后端仍按 token。
+const kAiTokensPerCredit = 100;
+
+int tokensToCredits(int tokens) {
+  if (tokens <= 0) return 0;
+  return tokens ~/ kAiTokensPerCredit;
 }
+
+/// 积分展示文案（整数）。
+String formatAiCredits(int tokens) => '${tokensToCredits(tokens)}';
 
 class PlanQuota {
   const PlanQuota({

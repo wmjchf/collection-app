@@ -1,11 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:super_collection/core/network/api_client.dart';
-import 'package:super_collection/core/ui/app_toast.dart';
 import 'package:super_collection/features/auth/auth_repository.dart';
 import 'package:super_collection/features/auth/login_page.dart';
-import 'package:super_collection/features/onboarding/onboarding_prefs.dart';
 import 'package:super_collection/features/onboarding/shortcuts_help_page.dart';
-import 'package:super_collection/features/settings/delete_account_confirm_dialog.dart';
+import 'package:super_collection/features/settings/account_security_page.dart';
 import 'package:super_collection/features/settings/how_to_add_link_page.dart';
 import 'package:super_collection/features/settings/legal_docs.dart';
 import 'package:super_collection/features/settings/logout_confirm_dialog.dart';
@@ -30,7 +27,6 @@ class _SettingsPanelState extends State<SettingsPanel> {
   AuthSession? _session;
   UsageSummary? _usage;
   bool _loading = true;
-  bool _deleting = false;
 
   @override
   void initState() {
@@ -91,33 +87,6 @@ class _SettingsPanelState extends State<SettingsPanel> {
     );
   }
 
-  Future<void> _deleteAccount() async {
-    if (_deleting) return;
-    final ok = await showDeleteAccountConfirmDialog(context);
-    if (ok != true || !mounted) return;
-    setState(() => _deleting = true);
-    final userId = _session?.userId;
-    try {
-      await _auth.deleteAccount();
-      if (userId != null) {
-        await OnboardingPrefs.clear(userId: userId);
-      }
-      if (!mounted) return;
-      Navigator.of(context).pushAndRemoveUntil(
-        MaterialPageRoute<void>(builder: (_) => const LoginPage()),
-        (_) => false,
-      );
-    } on ApiException catch (e) {
-      if (!mounted) return;
-      setState(() => _deleting = false);
-      AppToast.show(context, e.message);
-    } catch (_) {
-      if (!mounted) return;
-      setState(() => _deleting = false);
-      AppToast.show(context, '注销失败，请稍后重试');
-    }
-  }
-
   void _open(Widget page) {
     Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => page));
   }
@@ -167,7 +136,7 @@ class _SettingsPanelState extends State<SettingsPanel> {
                     _InfoRow(
                       title: 'AI',
                       trailing: Text(
-                        '${formatTokenCount(_usage!.aiUsedTokens)} / ${formatTokenCount(_usage!.aiLimitTokens)} token',
+                        '${formatAiCredits(_usage!.aiUsedTokens)} / ${formatAiCredits(_usage!.aiLimitTokens)} 积分',
                         style: const TextStyle(fontSize: 14, color: _muted),
                       ),
                     ),
@@ -216,6 +185,11 @@ class _SettingsPanelState extends State<SettingsPanel> {
                       ),
                     ),
                   ),
+                  _InfoRow(
+                    title: '账号安全',
+                    showChevron: true,
+                    onTap: () => _open(const AccountSecurityPage()),
+                  ),
                   const _InfoRow(
                     title: '关于 Conflux',
                     trailing: Text(
@@ -232,42 +206,27 @@ class _SettingsPanelState extends State<SettingsPanel> {
           top: false,
           child: Padding(
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-            child: Column(
-              children: [
-                SizedBox(
-                  width: double.infinity,
-                  height: 48,
-                  child: TextButton(
-                    onPressed: _logout,
-                    style: TextButton.styleFrom(
-                      backgroundColor: Colors.white,
-                      foregroundColor: const Color(0xFFD14343),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                    child: const Text(
-                      '退出账户',
-                      style: TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w600,
-                        color: Color(0xFFD14343),
-                      ),
-                    ),
+            child: SizedBox(
+              width: double.infinity,
+              height: 48,
+              child: TextButton(
+                onPressed: _logout,
+                style: TextButton.styleFrom(
+                  backgroundColor: Colors.white,
+                  foregroundColor: const Color(0xFFD14343),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
                   ),
                 ),
-                TextButton(
-                  onPressed: _deleting ? null : _deleteAccount,
-                  style: TextButton.styleFrom(
-                    foregroundColor: _muted,
-                    minimumSize: const Size(double.infinity, 36),
-                  ),
-                  child: Text(
-                    _deleting ? '注销中…' : '注销账户',
-                    style: const TextStyle(fontSize: 14),
+                child: const Text(
+                  '退出账户',
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFFD14343),
                   ),
                 ),
-              ],
+              ),
             ),
           ),
         ),
