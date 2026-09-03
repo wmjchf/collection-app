@@ -221,7 +221,7 @@ class _SearchPageState extends State<SearchPage> with ScreenDwellMixin {
                           prefixIcon: const Icon(
                             Icons.search_rounded,
                             color: _muted,
-                            size: 22,
+                            size: 24,
                           ),
                           suffixIcon: _controller.text.isEmpty
                               ? null
@@ -229,7 +229,7 @@ class _SearchPageState extends State<SearchPage> with ScreenDwellMixin {
                                   icon: const Icon(
                                     Icons.close_rounded,
                                     color: _muted,
-                                    size: 20,
+                                    size: 22,
                                   ),
                                   onPressed: () {
                                     _controller.clear();

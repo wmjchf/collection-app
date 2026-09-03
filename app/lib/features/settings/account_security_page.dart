@@ -72,7 +72,7 @@ class _AccountSecurityPageState extends State<AccountSecurityPage>
             foregroundColor: _text,
             padding: const EdgeInsets.only(left: 8),
           ),
-          icon: const Icon(Icons.chevron_left, size: 28),
+          icon: const Icon(Icons.chevron_left, size: 30),
           label: const Text('返回', style: TextStyle(fontSize: 15)),
         ),
         title: const Text(

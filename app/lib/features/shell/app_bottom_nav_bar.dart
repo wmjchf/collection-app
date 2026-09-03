@@ -84,8 +84,8 @@ class _TabItem extends StatelessWidget {
         children: [
           SvgPicture.asset(
             selected ? activeAsset : inactiveAsset,
-            width: 22,
-            height: 22,
+            width: 24,
+            height: 24,
           ),
           const SizedBox(height: 4),
           Text(

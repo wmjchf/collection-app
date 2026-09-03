@@ -1,9 +1,9 @@
 ---
-description: Conflux / 收藏家 visual language from the collector splash reference
+description: 奏折 visual language from the collector splash reference
 alwaysApply: true
 ---
 
-# Visual style（收藏家）
+# Visual style（奏折）
 
 Reference: `docs/design/style-reference-collector.png`
 
@@ -13,7 +13,7 @@ Quiet, atmospheric collector — not a dashboard, not purple SaaS, not cream-ser
 
 Splash / onboarding / App Store / about: dark black-green field, soft out-of-focus botanical glow, brand as the hero.
 
-- Brand 「收藏家」 large, pale mint-green, centered
+- Brand 「奏折」 large, pale mint-green, centered
 - One short supporting thought, two lines max, white, secondary to the brand
 - One dominant product shot (phone mockup). No stats, chips, or overlay badges
 

@@ -269,7 +269,7 @@ class _ImagePreviewPageState extends State<_ImagePreviewPage> {
                       errorBuilder: (_, __, ___) => const Icon(
                         Icons.broken_image_outlined,
                         color: Colors.white54,
-                        size: 48,
+                        size: 50,
                       ),
                     ),
                   ),

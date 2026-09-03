@@ -1,7 +1,7 @@
 {
   "name": "collection-backend",
   "version": "1.0.0",
-  "description": "Conflux API（Express + MySQL）",
+  "description": "奏折 API（Express + MySQL）",
   "main": "src/index.js",
   "engines": {
     "node": "23.6.0"

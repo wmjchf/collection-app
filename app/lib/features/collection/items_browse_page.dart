@@ -237,7 +237,7 @@ class _ItemsBrowsePageState extends State<ItemsBrowsePage> with ScreenDwellMixin
         ],
         child: const Padding(
           padding: EdgeInsets.symmetric(horizontal: 12),
-          child: Icon(Icons.more_horiz, size: 24, color: _text),
+          child: Icon(Icons.more_horiz, size: 26, color: _text),
         ),
       ),
     ];

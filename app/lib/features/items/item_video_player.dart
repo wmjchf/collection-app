@@ -579,7 +579,7 @@ try{
           alignment: Alignment.center,
           child: Row(
             children: [
-              const Icon(Icons.error_outline_rounded, color: _muted, size: 22),
+              const Icon(Icons.error_outline_rounded, color: _muted, size: 24),
               const SizedBox(width: 10),
               Expanded(
                 child: Text(
@@ -706,7 +706,7 @@ try{
                       icon: const Icon(
                         Icons.fullscreen_rounded,
                         color: Colors.white,
-                        size: 22,
+                        size: 24,
                       ),
                     ),
                   ),
@@ -1085,7 +1085,7 @@ class _VideoBottomBar extends StatelessWidget {
                       ? Icons.fullscreen_exit_rounded
                       : Icons.fullscreen_rounded,
                   color: Colors.white,
-                  size: 22,
+                  size: 24,
                 ),
               ),
             ],

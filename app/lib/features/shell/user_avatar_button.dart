@@ -29,7 +29,7 @@ class UserAvatarButton extends StatelessWidget {
         alignment: Alignment.center,
         child: const Icon(
           Icons.person_rounded,
-          size: 20,
+          size: 22,
           color: _icon,
         ),
       ),

@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:app_links/app_links.dart';
 import 'package:flutter/material.dart';
 import 'package:super_collection/core/network/api_client.dart';
+import 'package:super_collection/core/config/app_brand.dart';
+import 'package:super_collection/core/ui/app_icon_sizes.dart';
 import 'package:super_collection/features/auth/auth_repository.dart';
 import 'package:super_collection/features/auth/login_page.dart';
 import 'package:super_collection/features/onboarding/onboarding_page.dart';
@@ -51,7 +53,7 @@ class _SuperCollectionAppState extends State<SuperCollectionApp> {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Conflux',
+      title: AppBrand.name,
       debugShowCheckedModeBanner: false,
       navigatorKey: AppNavigator.key,
       theme: ThemeData(
@@ -61,6 +63,10 @@ class _SuperCollectionAppState extends State<SuperCollectionApp> {
         ),
         useMaterial3: true,
         scaffoldBackgroundColor: const Color(0xFFF7F7FA),
+        iconTheme: const IconThemeData(size: AppIconSizes.theme),
+        iconButtonTheme: IconButtonThemeData(
+          style: IconButton.styleFrom(iconSize: AppIconSizes.theme),
+        ),
         appBarTheme: const AppBarTheme(centerTitle: false),
       ),
       home: const _AuthGate(),

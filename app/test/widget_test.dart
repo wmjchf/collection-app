@@ -13,7 +13,7 @@ void main() {
     tester.binding.deferFirstFrame();
     await tester.pumpWidget(const SuperCollectionApp());
     await tester.pumpAndSettle();
-    expect(find.text('Conflux'), findsOneWidget);
+    expect(find.text('奏折'), findsOneWidget);
     expect(find.text('登录'), findsOneWidget);
     expect(find.text('获取验证码'), findsOneWidget);
   });

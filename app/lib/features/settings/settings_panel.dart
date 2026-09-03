@@ -1,3 +1,4 @@
+import 'package:super_collection/core/config/app_brand.dart';
 import 'package:flutter/material.dart';
 import 'package:super_collection/features/auth/auth_repository.dart';
 import 'package:super_collection/features/auth/login_page.dart';
@@ -191,7 +192,7 @@ class _SettingsPanelState extends State<SettingsPanel> {
                     onTap: () => _open(const AccountSecurityPage()),
                   ),
                   const _InfoRow(
-                    title: '关于 Conflux',
+                    title: '关于 ${AppBrand.name}',
                     trailing: Text(
                       _version,
                       style: TextStyle(fontSize: 14, color: _muted),
@@ -308,7 +309,7 @@ class _InfoRow extends StatelessWidget {
                 padding: EdgeInsets.only(left: 4),
                 child: Icon(
                   Icons.chevron_right,
-                  size: 20,
+                  size: 22,
                   color: Color(0xFF737A85),
                 ),
               ),

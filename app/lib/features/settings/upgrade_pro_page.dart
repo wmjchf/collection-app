@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:super_collection/core/config/app_brand.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:in_app_purchase/in_app_purchase.dart';
@@ -269,7 +270,7 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
             foregroundColor: _text,
             padding: const EdgeInsets.only(left: 8),
           ),
-          icon: const Icon(Icons.chevron_left, size: 28),
+          icon: const Icon(Icons.chevron_left, size: 30),
           label: const Text('返回', style: TextStyle(fontSize: 15)),
         ),
         title: const Text(
@@ -455,7 +456,7 @@ class _HeroCard extends StatelessWidget {
                 _ProBadge(),
                 SizedBox(height: 10),
                 Text(
-                  'Conflux Pro',
+                  AppBrand.proName,
                   style: TextStyle(
                     fontSize: 32,
                     fontWeight: FontWeight.w700,

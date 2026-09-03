@@ -659,8 +659,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
             },
             icon: SvgPicture.asset(
               'assets/icons/search.svg',
-              width: 22,
-              height: 22,
+              width: 24,
+              height: 24,
             ),
           ),
           Padding(
@@ -673,8 +673,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
               onPressed: _pasting ? null : _onAddPressed,
               icon: SvgPicture.asset(
                 'assets/icons/add.svg',
-                width: 22,
-                height: 22,
+                width: 24,
+                height: 24,
               ),
             ),
           ),
@@ -830,7 +830,7 @@ class _HomeSection extends StatelessWidget {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(emptyIcon, size: 40, color: _iconMuted),
+                Icon(emptyIcon, size: 42, color: _iconMuted),
                 const SizedBox(height: 10),
                 Text(
                   emptyText,

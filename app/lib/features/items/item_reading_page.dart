@@ -36,7 +36,7 @@ import 'package:super_collection/features/items/transcript_models.dart';
 import 'package:super_collection/features/items/transcript_picker_sheet.dart';
 import 'package:super_collection/features/items/transcript_segment_panel.dart';
 
-/// 本地阅读页：标题 + 可读正文（含标注高亮）；顶栏更多；底栏 星标 / 标签 / 思维导图 / 更多。
+/// 本地阅读页：标题 + 可读正文（含标注高亮）；顶栏更多；底栏 星标 / 标签 / 思维导图 / 感想（或转写条目下的「更多」）。
 class ItemReadingPage extends StatefulWidget {
   const ItemReadingPage({
     super.key,
@@ -620,7 +620,7 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
                                     top: 4,
                                     child: Icon(
                                       Icons.sticky_note_2_outlined,
-                                      size: 14,
+                                      size: 16,
                                       color: _blue,
                                     ),
                                   ),
@@ -685,14 +685,19 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
     if (updated != null && mounted) setState(() => _item = updated);
   }
 
+  bool get _hasTranscriptEntry =>
+      _item.canRequestTranscript ||
+      _item.hasAnyTranscriptPending ||
+      _item.hasAnyTranscript;
+
+  bool get _hasNote => _item.note != null && _item.note!.trim().isNotEmpty;
+
+  /// 更多操作 sheet（转写 / 感想）。有转写能力时底栏显示「更多」；否则直接「感想」。
   Future<void> _onMore() async {
     final action = await showReadingMoreSheet(
       context,
-      showTranscript:
-          _item.canRequestTranscript ||
-          _item.hasAnyTranscriptPending ||
-          _item.hasAnyTranscript,
-      hasNote: _item.note != null && _item.note!.trim().isNotEmpty,
+      showTranscript: _hasTranscriptEntry,
+      hasNote: _hasNote,
     );
     if (!mounted || action == null) return;
     switch (action) {
@@ -700,8 +705,6 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
         await _onTranscript();
       case ReadingMoreAction.note:
         await _onNote();
-      case ReadingMoreAction.delete:
-        await _confirmDelete();
     }
   }
 
@@ -1563,7 +1566,7 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
                               ),
                               _ActionItem(
                                 icon: Icons.account_tree_outlined,
-                                iconSize: 18,
+                                iconSize: 20,
                                 label: _item.hasMindmapPending
                                     ? '生成中…'
                                     : '思维导图',
@@ -1573,11 +1576,19 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
                                     : _muted,
                                 onTap: _onMindmap,
                               ),
-                              _ActionItem(
-                                icon: Icons.more_vert,
-                                label: '更多',
-                                onTap: _onMore,
-                              ),
+                              if (_hasTranscriptEntry)
+                                _ActionItem(
+                                  icon: Icons.more_vert,
+                                  label: '更多',
+                                  onTap: _onMore,
+                                )
+                              else
+                                _ActionItem(
+                                  icon: Icons.edit_note_outlined,
+                                  label: '感想',
+                                  iconColor: _hasNote ? _blue : _text,
+                                  onTap: _onNote,
+                                ),
                             ],
                           ),
                         ),
@@ -2001,7 +2012,7 @@ class _ReadingInlineImageState extends State<_ReadingInlineImage> {
               child: Icon(
                 Icons.broken_image_outlined,
                 color: Color(0xFFB2B8BF),
-                size: 28,
+                size: 30,
               ),
             ),
           ),
@@ -2239,7 +2250,7 @@ class _AnnotatedBodyStackState extends State<_AnnotatedBodyStack> {
                   child: const IgnorePointer(
                     child: Icon(
                       Icons.sticky_note_2_outlined,
-                      size: 12,
+                      size: 16,
                       color: _AnnotatedBodyStack._blue,
                     ),
                   ),
@@ -2340,7 +2351,7 @@ class _ReadingTopBar extends StatelessWidget {
                     foregroundColor: _text,
                     padding: const EdgeInsets.symmetric(horizontal: 8),
                   ),
-                  icon: const Icon(Icons.chevron_left, size: 26),
+                  icon: const Icon(Icons.chevron_left, size: 28),
                   label: const Text(
                     '返回',
                     style: TextStyle(fontSize: 15, fontWeight: FontWeight.w400),
@@ -2584,7 +2595,7 @@ class _ActionItem extends StatelessWidget {
     required this.label,
     required this.onTap,
     this.iconColor,
-    this.iconSize = 22,
+    this.iconSize = 24,
   });
 
   final IconData icon;
@@ -2605,8 +2616,8 @@ class _ActionItem extends StatelessWidget {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             SizedBox(
-              width: 22,
-              height: 22,
+              width: 24,
+              height: 24,
               child: Center(
                 child: Icon(
                   icon,

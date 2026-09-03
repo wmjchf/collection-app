@@ -1122,7 +1122,7 @@ async function openSettings() {
       onClick: () =>
         window.open('https://conflux.wobufang.com/support', '_blank'),
     }),
-    setRow({ title: '关于 Conflux', meta: `v${version}` }),
+    setRow({ title: '关于 奏折', meta: `v${version}` }),
   );
 
   const hint = document.createElement('p');

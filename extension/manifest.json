@@ -1,10 +1,10 @@
 {
   "manifest_version": 3,
-  "name": "Conflux",
+  "name": "奏折",
   "description": "在浏览器里收藏、查找和整理。阅读与标注请在手机 App 完成。",
   "version": "1.2.0",
   "action": {
-    "default_title": "打开 Conflux",
+    "default_title": "打开 奏折",
     "default_icon": {
       "16": "icons/icon16.png",
       "48": "icons/icon48.png",
@@ -38,7 +38,7 @@
         "default": "Alt+S",
         "mac": "Alt+S"
       },
-      "description": "收藏当前页到 Conflux"
+      "description": "收藏当前页到 奏折"
     }
   }
 }

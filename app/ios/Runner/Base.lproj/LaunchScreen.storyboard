@@ -24,7 +24,7 @@
                                             <constraint firstAttribute="height" constant="96" id="icon-h"/>
                                         </constraints>
                                     </imageView>
-                                    <label opaque="NO" userInteractionEnabled="NO" contentMode="left" horizontalHuggingPriority="251" verticalHuggingPriority="251" text="Conflux" textAlignment="center" lineBreakMode="tailTruncation" translatesAutoresizingMaskIntoConstraints="NO" id="title">
+                                    <label opaque="NO" userInteractionEnabled="NO" contentMode="left" horizontalHuggingPriority="251" verticalHuggingPriority="251" text="奏折" textAlignment="center" lineBreakMode="tailTruncation" translatesAutoresizingMaskIntoConstraints="NO" id="title">
                                         <rect key="frame" x="0.0" y="116" width="96" height="28"/>
                                         <fontDescription key="fontDescription" type="boldSystem" pointSize="28"/>
                                         <color key="textColor" red="0.12156862745098039" green="0.14117647058823529" blue="0.1803921568627451" alpha="1" colorSpace="custom" customColorSpace="sRGB"/>

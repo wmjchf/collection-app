@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:super_collection/core/config/app_brand.dart';
 import 'package:super_collection/core/analytics/screen_dwell_tracker.dart';
 
 /// 如何添加链接（设置 → 使用帮助）
@@ -27,7 +28,7 @@ class HowToAddLinkPage extends StatelessWidget {
             foregroundColor: _text,
             padding: const EdgeInsets.only(left: 8),
           ),
-          icon: const Icon(Icons.chevron_left, size: 28),
+          icon: const Icon(Icons.chevron_left, size: 30),
           label: const Text('返回', style: TextStyle(fontSize: 15)),
         ),
         title: const Text(
@@ -41,25 +42,25 @@ class HowToAddLinkPage extends StatelessWidget {
       ),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
-        children: const [
+        children: [
           Text(
-            '任选一种方式即可把链接存进 Conflux。',
-            style: TextStyle(fontSize: 14, color: _muted, height: 1.4),
+            '任选一种方式即可把链接存进 ${AppBrand.name}。',
+            style: const TextStyle(fontSize: 14, color: _muted, height: 1.4),
           ),
-          SizedBox(height: 16),
+          const SizedBox(height: 16),
           _HelpCard(
             title: '系统分享',
             desc:
-                '在微信、Safari、B站、抖音等 App 里点「分享」，选择「Conflux」即可入库。图标行可左右滑动；若没有，点「编辑」打开开关。',
+                '在微信、Safari、B站、抖音等 App 里点「分享」，选择「${AppBrand.name}」即可入库。图标行可左右滑动；若没有，点「编辑」打开开关。',
           ),
-          SizedBox(height: 12),
+          const SizedBox(height: 12),
           _HelpCard(
             title: '复制链接自动保存',
             desc:
-                '先在其他 App 复制可用链接，再打开 Conflux（或从后台切回），会自动读取剪贴板并保存。',
+                '先在其他 App 复制可用链接，再打开 ${AppBrand.name}（或从后台切回），会自动读取剪贴板并保存。',
           ),
-          SizedBox(height: 12),
-          _HelpCard(
+          const SizedBox(height: 12),
+          const _HelpCard(
             title: '快捷指令（iOS）',
             desc:
                 '复制链接后，可用主屏幕图标、控制中心或「轻点背面」（互不影响，任选）。不必打开 App。设置 → iOS 快捷指令说明里可安装。',

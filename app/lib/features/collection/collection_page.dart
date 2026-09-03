@@ -315,8 +315,8 @@ class _CollectionPageState extends State<CollectionPage>
                                       t > 0.01 ? null : _openTagSearch,
                                   icon: SvgPicture.asset(
                                     'assets/icons/tags_inactive.svg',
-                                    width: 24,
-                                    height: 24,
+                                    width: 26,
+                                    height: 26,
                                   ),
                                 ),
                               ],
@@ -405,11 +405,11 @@ class _CollectionPageState extends State<CollectionPage>
         hintText: '搜索标签',
         hintStyle: const TextStyle(fontSize: 15, color: _muted),
         prefixIcon:
-            const Icon(Icons.search_rounded, color: _muted, size: 22),
+            const Icon(Icons.search_rounded, color: _muted, size: 24),
         suffixIcon: _searchController.text.isEmpty
             ? null
             : IconButton(
-                icon: const Icon(Icons.close_rounded, color: _muted, size: 20),
+                icon: const Icon(Icons.close_rounded, color: _muted, size: 22),
                 onPressed: () {
                   _searchController.clear();
                   _onSearchChanged('');
@@ -830,8 +830,8 @@ class _NavRow extends StatelessWidget {
           child: Row(
             children: [
               Container(
-                width: 24,
-                height: 24,
+                width: 26,
+                height: 26,
                 decoration: BoxDecoration(
                   color: icon.background,
                   borderRadius: BorderRadius.circular(7),
@@ -839,7 +839,7 @@ class _NavRow extends StatelessWidget {
                 alignment: Alignment.center,
                 child: Icon(
                   icon.icon,
-                  size: 14,
+                  size: 16,
                   color: Colors.white,
                 ),
               ),

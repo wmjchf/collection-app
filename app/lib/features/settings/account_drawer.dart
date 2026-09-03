@@ -176,7 +176,7 @@ class _PlanBanner extends StatelessWidget {
                 ],
               ),
             ),
-            Icon(Icons.verified_rounded, color: _blue, size: 22),
+            Icon(Icons.verified_rounded, color: _blue, size: 24),
           ],
         ),
       );
@@ -236,7 +236,7 @@ class _PlanBanner extends StatelessWidget {
                       ),
                     ),
                     SizedBox(width: 2),
-                    Icon(Icons.chevron_right, size: 18, color: _blue),
+                    Icon(Icons.chevron_right, size: 22, color: _blue),
                   ],
                 ),
               ),

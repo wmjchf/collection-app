@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:super_collection/core/config/app_brand.dart';
 import 'package:super_collection/core/network/api_client.dart';
 import 'package:super_collection/core/ui/app_toast.dart';
 import 'package:super_collection/features/auth/auth_repository.dart';
@@ -167,7 +168,7 @@ class _LoginPageState extends State<LoginPage> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               const Text(
-                'Conflux',
+                AppBrand.name,
                 style: TextStyle(
                   fontSize: 32,
                   fontWeight: FontWeight.w700,

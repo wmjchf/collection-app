@@ -7,7 +7,7 @@ chrome.runtime.onInstalled.addListener(() => {
   chrome.contextMenus.removeAll(() => {
     chrome.contextMenus.create({
       id: 'conflux-save',
-      title: '收藏到 Conflux',
+      title: '收藏到 奏折',
       contexts: ['page', 'link', 'selection'],
     });
   });
