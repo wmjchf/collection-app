@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="robots" content="noindex,nofollow" />
+  <title>Conflux · 埋点看板</title>
+  <style>
+    :root {
+      --text: #1f242e;
+      --muted: #737a85;
+      --bg: #f4f5f7;
+      --card: #ffffff;
+      --line: #e5e5eb;
+      --blue: #2f6fed;
+      --ok: #1a7f4b;
+      --bad: #c0392b;
+      --font: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+        "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: var(--font);
+      color: var(--text);
+      background: var(--bg);
+      line-height: 1.45;
+    }
+    .wrap { max-width: 1080px; margin: 0 auto; padding: 28px 20px 64px; }
+    header { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; justify-content: space-between; margin-bottom: 24px; }
+    h1 { margin: 0; font-size: 22px; font-weight: 700; }
+    .sub { color: var(--muted); font-size: 13px; margin-top: 4px; }
+    .controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+    input, select, button {
+      font: inherit; font-size: 14px; border-radius: 10px; border: 1px solid var(--line);
+      padding: 8px 12px; background: #fff; color: var(--text);
+    }
+    input[type="password"] { min-width: 180px; }
+    button {
+      background: var(--blue); color: #fff; border-color: var(--blue); cursor: pointer;
+      font-weight: 500;
+    }
+    button.ghost { background: #fff; color: var(--text); border-color: var(--line); }
+    button:disabled { opacity: 0.55; cursor: default; }
+    .err {
+      background: #fdecea; color: var(--bad); padding: 12px 14px; border-radius: 12px;
+      margin-bottom: 16px; font-size: 14px;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+      gap: 12px;
+      margin-bottom: 20px;
+    }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 14px 16px;
+    }
+    .card .label { font-size: 12px; color: var(--muted); }
+    .card .value { font-size: 28px; font-weight: 700; margin-top: 4px; letter-spacing: -0.02em; }
+    .card .hint { font-size: 12px; color: var(--muted); margin-top: 2px; }
+    .section { margin-top: 22px; }
+    .section h2 { font-size: 15px; margin: 0 0 10px; font-weight: 600; }
+    .panels { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    @media (max-width: 760px) { .panels { grid-template-columns: 1fr; } }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--line); }
+    th { color: var(--muted); font-weight: 500; font-size: 12px; }
+    .bar-row { display: flex; align-items: center; gap: 10px; margin: 6px 0; font-size: 13px; }
+    .bar-label { width: 88px; flex-shrink: 0; color: var(--muted); }
+    .screen-dwell .bar-label { width: 120px; }
+    .bar-track { flex: 1; height: 8px; background: #eef0f4; border-radius: 99px; overflow: hidden; }
+    .bar-fill { height: 100%; background: var(--blue); border-radius: 99px; }
+    .bar-n { width: 40px; text-align: right; font-variant-numeric: tabular-nums; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
+    .muted { color: var(--muted); }
+    .ok { color: var(--ok); }
+    .bad { color: var(--bad); }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <div>
+        <h1>埋点看板</h1>
+        <div class="sub" id="range">Conflux 内部 · P0</div>
+      </div>
+      <div class="controls">
+        <input id="token" type="password" placeholder="看板 Token" autocomplete="off" />
+        <select id="days">
+          <option value="1">近 1 天</option>
+          <option value="7" selected>近 7 天</option>
+          <option value="14">近 14 天</option>
+          <option value="30">近 30 天</option>
+        </select>
+        <button type="button" class="ghost" id="saveToken">记住 Token</button>
+        <button type="button" id="reload">刷新</button>
+      </div>
+    </header>
+
+    <div id="error" class="err" hidden></div>
+    <div id="content" hidden>
+      <div class="grid" id="kpis"></div>
+
+      <div class="card section">
+        <h2>DAU（app_open）</h2>
+        <div id="dau"></div>
+      </div>
+
+      <div class="card section" style="margin-top:12px">
+        <h2>解析</h2>
+        <div id="parse"></div>
+      </div>
+
+      <div class="card section screen-dwell" style="margin-top:12px">
+        <h2>页面停留</h2>
+        <div id="screenDwellPages"></div>
+      </div>
+
+      <div class="card section" style="margin-top:12px">
+        <h2>事件总量</h2>
+        <div id="byName"></div>
+      </div>
+
+      <div class="card section">
+        <h2>最近事件</h2>
+        <div style="overflow-x:auto">
+          <table>
+            <thead>
+              <tr>
+                <th>时间</th>
+                <th>用户</th>
+                <th>事件</th>
+                <th>属性</th>
+                <th>端</th>
+              </tr>
+            </thead>
+            <tbody id="recent"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const TOKEN_KEY = 'conflux_analytics_token';
+    const $ = (id) => document.getElementById(id);
+
+    function bars(items, maxKey = 'count') {
+      const max = Math.max(1, ...items.map((i) => Number(i[maxKey]) || 0));
+      return items.map((i) => {
+        const n = Number(i[maxKey]) || 0;
+        const label = i.label || i.source || i.bucket || i.from || i.name || '—';
+        const pct = Math.round((n / max) * 100);
+        return `<div class="bar-row"><span class="bar-label">${esc(label)}</span>
+          <div class="bar-track"><div class="bar-fill" style="width:${pct}%"></div></div>
+          <span class="bar-n">${n}</span></div>`;
+      }).join('') || '<p class="muted">暂无数据</p>';
+    }
+
+    function esc(s) {
+      return String(s ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+
+    function fmtTime(v) {
+      if (!v) return '—';
+      const d = new Date(v);
+      if (Number.isNaN(d.getTime())) return esc(v);
+      return d.toLocaleString('zh-CN', { hour12: false });
+    }
+
+    function kpi(label, value, hint) {
+      return `<div class="card"><div class="label">${esc(label)}</div>
+        <div class="value">${esc(value)}</div>
+        ${hint ? `<div class="hint">${esc(hint)}</div>` : ''}</div>`;
+    }
+
+    async function load() {
+      const token = $('token').value.trim();
+      const days = $('days').value;
+      $('error').hidden = true;
+      $('content').hidden = true;
+      $('reload').disabled = true;
+      try {
+        if (!token) throw new Error('请填写看板 Token（环境变量 ANALYTICS_DASHBOARD_TOKEN）');
+        const res = await fetch(`/api/analytics/summary?days=${encodeURIComponent(days)}`, {
+          headers: { 'X-Analytics-Token': token },
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.message || `HTTP ${res.status}`);
+
+        $('range').textContent =
+          `近 ${data.days} 天 · ${fmtTime(data.from)} → ${fmtTime(data.to)}`;
+
+        const p = data.parse || {};
+        const r = data.reading || {};
+        const screens = data.screens || {};
+
+        $('kpis').innerHTML = [
+          kpi('DAU（末日）', data.dau?.length ? data.dau[data.dau.length - 1].users : 0, '按 app_open 去重用户'),
+          kpi('解析成功', p.ready ?? 0, p.successRate != null ? `成功率 ${p.successRate}%` : ''),
+          kpi('打开阅读', r.opens ?? 0, null),
+          kpi('页面停留', screens.dwells ?? 0, 'screen_dwell 事件数'),
+        ].join('');
+
+        const dau = (data.dau || []).map((x) => ({ label: String(x.date).slice(5), count: x.users }));
+        $('dau').innerHTML = bars(dau);
+
+        $('parse').innerHTML =
+          `<p>ready <b class="ok">${p.ready ?? 0}</b> · fail <b class="bad">${p.fail ?? 0}</b>` +
+          (p.successRate != null ? ` · ${p.successRate}%` : '') + `</p>`;
+
+        const screenRows = (screens.byScreen || []).map((x) => ({
+          label: x.avgSeconds != null ? `${x.screen} · ${x.avgSeconds}s` : x.screen,
+          count: x.visits,
+        }));
+        $('screenDwellPages').innerHTML =
+          screenRows.length
+            ? `<p style="margin:0 0 8px">共 ${screens.dwells ?? 0} 次离开上报</p>` +
+              bars(screenRows)
+            : '<p class="muted">暂无数据</p>';
+
+        const byName = Object.entries(data.byName || {})
+          .map(([name, count]) => ({ label: name, count }))
+          .sort((a, b) => b.count - a.count);
+        $('byName').innerHTML = bars(byName);
+
+        $('recent').innerHTML = (data.recent || []).map((e) => {
+          const props = e.props ? JSON.stringify(e.props) : '';
+          return `<tr>
+            <td class="mono">${fmtTime(e.createdAt)}</td>
+            <td>${e.userId}</td>
+            <td>${esc(e.name)}</td>
+            <td class="mono muted">${esc(props)}</td>
+            <td>${esc(e.platformOs || '')} ${esc(e.appVersion || '')}</td>
+          </tr>`;
+        }).join('') || '<tr><td colspan="5" class="muted">暂无</td></tr>';
+
+        $('content').hidden = false;
+      } catch (err) {
+        $('error').hidden = false;
+        $('error').textContent = err.message || String(err);
+      } finally {
+        $('reload').disabled = false;
+      }
+    }
+
+    $('token').value = sessionStorage.getItem(TOKEN_KEY) ||
+      new URLSearchParams(location.search).get('token') || '';
+    $('saveToken').onclick = () => {
+      sessionStorage.setItem(TOKEN_KEY, $('token').value.trim());
+      $('saveToken').textContent = '已记住';
+      setTimeout(() => { $('saveToken').textContent = '记住 Token'; }, 1200);
+    };
+    $('reload').onclick = load;
+    $('days').onchange = load;
+    if ($('token').value) load();
+  </script>
+</body>
+</html>

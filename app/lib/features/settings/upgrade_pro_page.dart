@@ -3,6 +3,8 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:in_app_purchase/in_app_purchase.dart';
+import 'package:super_collection/core/analytics/analytics.dart';
+import 'package:super_collection/core/analytics/screen_dwell_tracker.dart';
 import 'package:super_collection/core/network/api_client.dart';
 import 'package:super_collection/core/ui/app_toast.dart';
 import 'package:super_collection/features/settings/apple_iap_service.dart';
@@ -12,13 +14,16 @@ import 'package:super_collection/features/settings/usage_repository.dart';
 
 /// 升级 Pro（对齐 Figma `42. 升级 Pro`；iOS StoreKit）
 class UpgradeProPage extends StatefulWidget {
-  const UpgradeProPage({super.key});
+  const UpgradeProPage({super.key, this.from = 'settings'});
+
+  /// settings | quota | feature_gate
+  final String from;
 
   @override
   State<UpgradeProPage> createState() => _UpgradeProPageState();
 }
 
-class _UpgradeProPageState extends State<UpgradeProPage> {
+class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
   static const _bg = Color(0xFFF7F7FA);
   static const _text = Color(0xFF1F242E);
   static const _muted = Color(0xFF737A85);
@@ -54,8 +59,15 @@ class _UpgradeProPageState extends State<UpgradeProPage> {
   }
 
   @override
+  String get dwellScreen => AnalyticsScreens.pro;
+
+  @override
+  Map<String, Object?> get dwellProps => {'from': widget.from};
+
+  @override
   void initState() {
     super.initState();
+    Analytics.instance.proPageView(from: widget.from);
     _load();
   }
 
@@ -183,6 +195,10 @@ class _UpgradeProPageState extends State<UpgradeProPage> {
       Navigator.of(context).maybePop(true);
     } on ApiException catch (e) {
       if (!mounted) return;
+      Analytics.instance.iapPurchaseFail(
+        productId: product.id,
+        errorCode: e.code ?? e.message,
+      );
       if (e.message.contains('取消')) {
         AppToast.show(context, '已取消');
       } else {
@@ -190,6 +206,10 @@ class _UpgradeProPageState extends State<UpgradeProPage> {
       }
     } catch (e) {
       if (!mounted) return;
+      Analytics.instance.iapPurchaseFail(
+        productId: product.id,
+        errorCode: e.toString(),
+      );
       AppToast.show(context, '购买失败，请稍后重试');
     } finally {
       if (mounted) {

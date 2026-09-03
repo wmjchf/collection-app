@@ -92,4 +92,6 @@ module.exports = {
     /** auto | production | sandbox */
     env: process.env.APPLE_IAP_ENV || 'auto',
   },
+  /** 内部埋点看板；未配置则 summary API / 页面拒绝访问 */
+  analyticsDashboardToken: process.env.ANALYTICS_DASHBOARD_TOKEN || '',
 };

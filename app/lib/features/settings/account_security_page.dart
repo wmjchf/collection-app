@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:super_collection/core/analytics/screen_dwell_tracker.dart';
 import 'package:super_collection/core/network/api_client.dart';
 import 'package:super_collection/core/ui/app_toast.dart';
 import 'package:super_collection/features/auth/auth_repository.dart';
@@ -14,7 +15,8 @@ class AccountSecurityPage extends StatefulWidget {
   State<AccountSecurityPage> createState() => _AccountSecurityPageState();
 }
 
-class _AccountSecurityPageState extends State<AccountSecurityPage> {
+class _AccountSecurityPageState extends State<AccountSecurityPage>
+    with ScreenDwellMixin {
   static const _bg = Color(0xFFF7F7FA);
   static const _text = Color(0xFF1F242E);
   static const _muted = Color(0xFF737A85);
@@ -22,6 +24,9 @@ class _AccountSecurityPageState extends State<AccountSecurityPage> {
 
   final _auth = AuthRepository();
   bool _deleting = false;
+
+  @override
+  String get dwellScreen => AnalyticsScreens.accountSecurity;
 
   Future<void> _deleteAccount() async {
     if (_deleting) return;

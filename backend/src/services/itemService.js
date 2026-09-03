@@ -279,6 +279,10 @@ async function runContentParse(itemId) {
           canonicalUrl: bilibiliCanonical,
         },
       );
+      require('./analyticsService').trackParseOutcome(row, {
+        ok: true,
+        via: 'server',
+      });
       return;
     }
 
@@ -344,6 +348,11 @@ async function runContentParse(itemId) {
         errorMessage: parsed.errorMessage || '解析失败',
       },
     );
+    require('./analyticsService').trackParseOutcome(row, {
+      ok: false,
+      errorMessage: parsed.errorMessage || '解析失败',
+      via: 'server',
+    });
   } catch (err) {
     await pool.execute(
       `UPDATE items SET status = 'failed', error_message = :errorMessage
@@ -353,6 +362,11 @@ async function runContentParse(itemId) {
         errorMessage: (err.message || '解析失败').slice(0, 500),
       },
     );
+    require('./analyticsService').trackParseOutcome(row, {
+      ok: false,
+      errorMessage: err.message || '解析失败',
+      via: 'server',
+    });
   }
 }
 
@@ -405,6 +419,15 @@ async function parseWithClientHtml(userId, itemId, html) {
         content: parsed.content,
       },
     );
+    require('./analyticsService').trackParseOutcome(
+      {
+        id: itemId,
+        user_id: userId,
+        platform: item.platform,
+        created_at: item.createdAt,
+      },
+      { ok: true, via: 'client_html' },
+    );
     return getByIdForUser(userId, itemId);
   }
 
@@ -423,6 +446,19 @@ async function parseWithClientHtml(userId, itemId, html) {
       summary: parsed.summary || null,
       coverImageUrl: parsed.coverImageUrl || null,
       errorMessage: parsed.errorMessage || '解析失败',
+    },
+  );
+  require('./analyticsService').trackParseOutcome(
+    {
+      id: itemId,
+      user_id: userId,
+      platform: item.platform,
+      created_at: item.createdAt,
+    },
+    {
+      ok: false,
+      errorMessage: parsed.errorMessage || '解析失败',
+      via: 'client_html',
     },
   );
   return getByIdForUser(userId, itemId);

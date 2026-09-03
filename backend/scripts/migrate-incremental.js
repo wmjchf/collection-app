@@ -23,6 +23,7 @@ const MIGRATION_FILES = [
   '013_usage_events.sql',
   '014_home_roam_cache.sql',
   '015_subscriptions.sql',
+  '016_analytics_events.sql',
 ];
 
 async function getConnection() {

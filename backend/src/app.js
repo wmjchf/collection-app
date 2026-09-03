@@ -9,6 +9,7 @@ const systemFiltersRouter = require('./routes/systemFilters');
 const homeRouter = require('./routes/home');
 const usageRouter = require('./routes/usage');
 const billingRouter = require('./routes/billing');
+const analyticsRouter = require('./routes/analytics');
 
 const app = express();
 const publicDir = path.join(__dirname, '..', 'public');
@@ -38,6 +39,14 @@ function sendSupport(_req, res) {
 app.get('/support', sendSupport);
 app.get('/support.html', sendSupport);
 
+/** 内部埋点看板（需 ANALYTICS_DASHBOARD_TOKEN；不链到官网） */
+function sendAnalyticsDashboard(_req, res) {
+  res.setHeader('X-Robots-Tag', 'noindex, nofollow');
+  res.sendFile(path.join(publicDir, 'analytics.html'));
+}
+app.get('/internal/analytics', sendAnalyticsDashboard);
+app.get('/analytics.html', sendAnalyticsDashboard);
+
 app.use('/api', healthRouter);
 app.use('/api/auth', authRouter);
 app.use('/api/items', itemsRouter);
@@ -46,6 +55,7 @@ app.use('/api/system-filters', systemFiltersRouter);
 app.use('/api/home', homeRouter);
 app.use('/api/usage', usageRouter);
 app.use('/api/billing', billingRouter);
+app.use('/api/analytics', analyticsRouter);
 
 app.use((err, _req, res, _next) => {
   console.error(err);

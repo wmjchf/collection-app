@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:super_collection/core/analytics/screen_dwell_tracker.dart';
 import 'package:super_collection/features/shortcuts/shortcut_config.dart';
 import 'package:super_collection/features/shortcuts/shortcut_install.dart';
 
@@ -15,7 +16,9 @@ class ShortcutsHelpPage extends StatelessWidget {
   Widget build(BuildContext context) {
     final hasOneTap = ShortcutConfig.installIcloudUrl.trim().isNotEmpty;
 
-    return Scaffold(
+    return ScreenDwellScope(
+      screen: AnalyticsScreens.shortcutsHelp,
+      child: Scaffold(
       backgroundColor: _bg,
       appBar: AppBar(
         backgroundColor: Colors.white,
@@ -119,6 +122,7 @@ class ShortcutsHelpPage extends StatelessWidget {
           ),
         ],
       ),
+    ),
     );
   }
 }

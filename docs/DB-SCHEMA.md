@@ -56,6 +56,7 @@
 | `item_tags` | 条目 ↔ 标签 |
 | `annotations` | 阅读标注 |
 | `usage_events` | 用量事件（转写秒 / AI token） |
+| `analytics_events` | 产品行为埋点（P0：入库/阅读/搜索/Pro） |
 | `subscriptions` | 订阅（Pro；支付前可有 `source=dev`） |
 | `ai_preference_events` | AI 偏好方向 |
 | `home_roam_cache` | 首页漫游缓存 |

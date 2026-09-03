@@ -13,6 +13,8 @@ Future<void> handleApiException(
   if (!offerUpgrade || !e.isQuotaExceeded) return;
   if (!context.mounted) return;
   await Navigator.of(context).push(
-    MaterialPageRoute<void>(builder: (_) => const UpgradeProPage()),
+    MaterialPageRoute<void>(
+      builder: (_) => const UpgradeProPage(from: 'quota'),
+    ),
   );
 }

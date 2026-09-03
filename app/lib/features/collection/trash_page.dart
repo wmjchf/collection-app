@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:super_collection/core/analytics/screen_dwell_tracker.dart';
 import 'package:super_collection/core/network/api_client.dart';
 import 'package:super_collection/core/ui/app_subpage_app_bar.dart';
 import 'package:super_collection/core/ui/app_confirm_dialog.dart';
@@ -18,7 +19,7 @@ class TrashPage extends StatefulWidget {
   State<TrashPage> createState() => _TrashPageState();
 }
 
-class _TrashPageState extends State<TrashPage> {
+class _TrashPageState extends State<TrashPage> with ScreenDwellMixin {
   static const _bg = Color(0xFFF7F7FA);
   static const _text = Color(0xFF1F242E);
   static const _muted = Color(0xFF737A85);
@@ -36,6 +37,9 @@ class _TrashPageState extends State<TrashPage> {
   final Set<int> _busyIds = {};
 
   bool get _hasMore => _items.length < _total;
+
+  @override
+  String get dwellScreen => AnalyticsScreens.trash;
 
   @override
   void initState() {

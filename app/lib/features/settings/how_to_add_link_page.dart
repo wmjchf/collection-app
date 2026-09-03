@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:super_collection/core/analytics/screen_dwell_tracker.dart';
 
 /// 如何添加链接（设置 → 使用帮助）
 class HowToAddLinkPage extends StatelessWidget {
@@ -10,7 +11,9 @@ class HowToAddLinkPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return ScreenDwellScope(
+      screen: AnalyticsScreens.howToAddLink,
+      child: Scaffold(
       backgroundColor: _bg,
       appBar: AppBar(
         backgroundColor: Colors.white,
@@ -63,6 +66,7 @@ class HowToAddLinkPage extends StatelessWidget {
           ),
         ],
       ),
+    ),
     );
   }
 }

@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
+import 'package:super_collection/core/analytics/analytics.dart';
 import 'package:super_collection/core/network/api_client.dart';
 import 'package:super_collection/core/ui/app_toast.dart';
 import 'package:super_collection/core/ui/client_fetch_backfill.dart';
@@ -534,9 +535,16 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     _lastClipboardHandledUrl = url;
     setState(() => _pasting = true);
     ParseProgressTracker.begin();
+    Analytics.instance.itemSaveStart(source: 'clipboard');
     try {
       final result = await _items.createItem(url);
       if (!mounted) return;
+      Analytics.instance.itemSaveSuccess(
+        source: 'clipboard',
+        itemId: result.item.id,
+        platform: result.item.platform,
+        existed: result.existed,
+      );
       await clearClipboard();
       if (result.existed && result.item.isSuccess) {
         ParseProgressTracker.cancel();
@@ -555,10 +563,18 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       await _load(quiet: true);
     } on ApiException catch (e) {
       ParseProgressTracker.cancel();
+      Analytics.instance.itemSaveFail(
+        source: 'clipboard',
+        errorCode: e.code ?? e.message,
+      );
       if (!mounted) return;
       AppToast.show(context, e.message);
     } catch (_) {
       ParseProgressTracker.cancel();
+      Analytics.instance.itemSaveFail(
+        source: 'clipboard',
+        errorCode: 'unknown',
+      );
       if (!mounted) return;
       AppToast.show(context, '保存失败，请检查网络或后端是否启动');
     } finally {
@@ -576,12 +592,13 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     });
   }
 
-  void _openItem(CollectionItem item) async {
+  void _openItem(CollectionItem item, {String entry = 'home'}) async {
     final deleted = await Navigator.of(context).push<bool>(
       MaterialPageRoute(
         builder: (_) => ItemReadingPage(
           itemId: item.id,
           initialItem: item,
+          openEntry: entry,
         ),
       ),
     );
@@ -713,7 +730,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                             onItemTap: (preview) {
                               final item = unread
                                   .firstWhere((e) => e.id == preview.id);
-                              _openItem(item);
+                              _openItem(item, entry: 'unread');
                             },
                           ),
                           const SizedBox(height: sectionGap),
@@ -732,7 +749,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                             onItemTap: (preview) {
                               final item = random
                                   .firstWhere((e) => e.id == preview.id);
-                              _openItem(item);
+                              _openItem(item, entry: 'home');
                             },
                           ),
                         ],

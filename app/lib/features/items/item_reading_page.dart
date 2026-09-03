@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
+import 'package:super_collection/core/analytics/analytics.dart';
+import 'package:super_collection/core/analytics/screen_dwell_tracker.dart';
 import 'package:super_collection/core/network/api_client.dart';
 import 'package:super_collection/core/network/media_http_headers.dart';
 import 'package:super_collection/core/ui/app_confirm_dialog.dart';
@@ -40,10 +42,14 @@ class ItemReadingPage extends StatefulWidget {
     super.key,
     required this.itemId,
     this.initialItem,
+    this.openEntry = 'unknown',
   });
 
   final int itemId;
   final CollectionItem? initialItem;
+
+  /// 打开来源：home / unread / library / search / star / tag / paste / unknown
+  final String openEntry;
 
   @override
   State<ItemReadingPage> createState() => _ItemReadingPageState();
@@ -76,10 +82,12 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
   bool _pageLoading = false;
   String? _pageError;
   bool _markedRead = false;
+  late final DateTime _openedAt;
 
   @override
   void initState() {
     super.initState();
+    _openedAt = DateTime.now();
     final initial = widget.initialItem;
     _item = initial ??
         CollectionItem(
@@ -87,6 +95,11 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
           url: '',
           status: 'pending',
         );
+    Analytics.instance.itemOpen(
+      itemId: widget.itemId,
+      entry: widget.openEntry,
+      platform: initial?.platform,
+    );
     _pageLoading = initial == null;
     if (initial != null) {
       _syncItemPolling(initial);
@@ -100,6 +113,19 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
 
   @override
   void dispose() {
+    final seconds = DateTime.now().difference(_openedAt).inSeconds;
+    if (seconds >= 1) {
+      Analytics.instance.readingDwell(
+        itemId: widget.itemId,
+        seconds: seconds,
+      );
+      Analytics.instance.screenDwell(
+        screen: AnalyticsScreens.reading,
+        seconds: seconds,
+        props: {'item_id': widget.itemId},
+      );
+    }
+    unawaited(Analytics.instance.flush());
     _itemPollTimer?.cancel();
     _scrollController.dispose();
     _pageAudio.dispose();

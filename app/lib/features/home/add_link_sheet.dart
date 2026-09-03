@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:super_collection/core/analytics/analytics.dart';
 import 'package:super_collection/core/network/api_client.dart';
 import 'package:super_collection/core/ui/app_toast.dart';
 import 'package:super_collection/core/ui/parse_progress_tracker.dart';
@@ -91,8 +92,15 @@ class _AddLinkSheetState extends State<AddLinkSheet> {
     try {
       final navigator = Navigator.of(context);
       ParseProgressTracker.begin();
+      Analytics.instance.itemSaveStart(source: 'paste');
       final result = await _items.createItem(url);
       if (!mounted) return;
+      Analytics.instance.itemSaveSuccess(
+        source: 'paste',
+        itemId: result.item.id,
+        platform: result.item.platform,
+        existed: result.existed,
+      );
       navigator.pop();
       if (result.existed && result.item.isSuccess) {
         ParseProgressTracker.cancel();
@@ -115,11 +123,16 @@ class _AddLinkSheetState extends State<AddLinkSheet> {
           builder: (_) => ItemReadingPage(
             itemId: result.item.id,
             initialItem: result.item,
+            openEntry: 'paste',
           ),
         ),
       );
     } on ApiException catch (e) {
       ParseProgressTracker.cancel();
+      Analytics.instance.itemSaveFail(
+        source: 'paste',
+        errorCode: e.code ?? e.message,
+      );
       if (!mounted) return;
       setState(() {
         _saving = false;
@@ -127,6 +140,7 @@ class _AddLinkSheetState extends State<AddLinkSheet> {
       });
     } catch (_) {
       ParseProgressTracker.cancel();
+      Analytics.instance.itemSaveFail(source: 'paste', errorCode: 'unknown');
       if (!mounted) return;
       setState(() {
         _saving = false;

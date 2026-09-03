@@ -59,6 +59,10 @@ router.post('/apple/verify', async (req, res, next) => {
       productId,
       jws: jws || verificationData || null,
     });
+    const analyticsService = require('../services/analyticsService');
+    analyticsService.trackSafe(req.auth.userId, 'iap_purchase_success', {
+      product_id: productId || result?.productId || null,
+    });
     const summary = await usageService.getUsageSummary(req.auth.userId);
     return res.json({
       message: '订阅已生效',
@@ -67,6 +71,15 @@ router.post('/apple/verify', async (req, res, next) => {
       usage: summary,
     });
   } catch (err) {
+    try {
+      const analyticsService = require('../services/analyticsService');
+      analyticsService.trackSafe(req.auth.userId, 'iap_purchase_fail', {
+        product_id: req.body?.productId || null,
+        error_code: String(err.code || err.message || 'verify_fail').slice(0, 80),
+      });
+    } catch (_) {
+      /* ignore */
+    }
     return next(err);
   }
 });
