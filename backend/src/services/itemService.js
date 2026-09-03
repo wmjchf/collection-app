@@ -720,64 +720,9 @@ async function moveToFolder(userId, itemId, folderId) {
   return getByIdForUser(userId, itemId);
 }
 
-/** 软删除 → 回收站 */
-async function softDelete(userId, itemId) {
+/** 永久删除条目 */
+async function deleteItem(userId, itemId) {
   const existing = await getByIdForUser(userId, itemId);
-  if (!existing) {
-    throw Object.assign(new Error('条目不存在'), { status: 404 });
-  }
-  await pool.execute(
-    `UPDATE items SET deleted_at = CURRENT_TIMESTAMP(3)
-     WHERE id = :itemId AND user_id = :userId AND deleted_at IS NULL`,
-    { itemId, userId },
-  );
-  return { id: itemId, deleted: true };
-}
-
-/** 从回收站恢复 */
-async function restoreFromTrash(userId, itemId) {
-  const existing = await getByIdForUser(userId, itemId, {
-    includeDeleted: true,
-  });
-  if (!existing || !existing.deletedAt) {
-    throw Object.assign(new Error('回收站中不存在该条目'), { status: 404 });
-  }
-
-  if (existing.canonicalUrl) {
-    const [dup] = await pool.execute(
-      `SELECT id FROM items
-       WHERE user_id = :userId
-         AND canonical_url = :canonicalUrl
-         AND deleted_at IS NULL
-         AND id <> :itemId
-       LIMIT 1`,
-      {
-        userId,
-        canonicalUrl: existing.canonicalUrl,
-        itemId,
-      },
-    );
-    if (dup[0]) {
-      throw Object.assign(
-        new Error('已有相同链接的收藏，无法恢复'),
-        { status: 409 },
-      );
-    }
-  }
-
-  await pool.execute(
-    `UPDATE items SET deleted_at = NULL
-     WHERE id = :itemId AND user_id = :userId AND deleted_at IS NOT NULL`,
-    { itemId, userId },
-  );
-  return getByIdForUser(userId, itemId);
-}
-
-/** 彻底删除（详情页 / 回收站均可） */
-async function purgeFromTrash(userId, itemId) {
-  const existing = await getByIdForUser(userId, itemId, {
-    includeDeleted: true,
-  });
   if (!existing) {
     throw Object.assign(new Error('条目不存在'), { status: 404 });
   }
@@ -786,17 +731,7 @@ async function purgeFromTrash(userId, itemId) {
      WHERE id = :itemId AND user_id = :userId`,
     { itemId, userId },
   );
-  return { id: itemId, purged: true };
-}
-
-/** 清空回收站 */
-async function emptyTrash(userId) {
-  const [result] = await pool.execute(
-    `DELETE FROM items
-     WHERE user_id = :userId AND deleted_at IS NOT NULL`,
-    { userId },
-  );
-  return { emptied: true, deletedCount: Number(result.affectedRows || 0) };
+  return { id: itemId, deleted: true };
 }
 
 /** 条目当前标签 */
@@ -1516,10 +1451,7 @@ module.exports = {
   setStarred,
   updateNote,
   updateContent,
-  softDelete,
-  restoreFromTrash,
-  purgeFromTrash,
-  emptyTrash,
+  deleteItem,
   listItemTags,
   setItemTags,
   searchItems,

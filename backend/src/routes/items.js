@@ -25,7 +25,7 @@ router.post('/', async (req, res, next) => {
 });
 
 /**
- * GET /api/items?filter=unread|all|today|starred|parsed|annotated|recent_read|archived|trash
+ * GET /api/items?filter=unread|all|today|parsed|annotated|recent_read|archived
  * Query: tzOffsetMinutes, limit, offset
  */
 router.get('/', async (req, res, next) => {
@@ -34,7 +34,7 @@ router.get('/', async (req, res, next) => {
     if (!filter) {
       return res.status(400).json({
         message:
-          '请指定 filter（unread/all/today/starred/parsed/annotated/recent_read/archived/trash）',
+          '请指定 filter（unread/all/today/parsed/annotated/recent_read/archived）',
       });
     }
     const result = await itemService.listBySystemFilter(req.auth.userId, filter, {
@@ -371,46 +371,10 @@ router.patch('/:id', async (req, res, next) => {
   }
 });
 
-/** DELETE /api/items/trash — 清空回收站 */
-router.delete('/trash', async (req, res, next) => {
-  try {
-    const result = await itemService.emptyTrash(req.auth.userId);
-    return res.json(result);
-  } catch (err) {
-    return next(err);
-  }
-});
-
-/** POST /api/items/:id/restore — 从回收站恢复 */
-router.post('/:id/restore', async (req, res, next) => {
-  try {
-    const item = await itemService.restoreFromTrash(
-      req.auth.userId,
-      Number(req.params.id),
-    );
-    return res.json({ item });
-  } catch (err) {
-    return next(err);
-  }
-});
-
-/** DELETE /api/items/:id/permanent — 彻底删除（不可恢复） */
-router.delete('/:id/permanent', async (req, res, next) => {
-  try {
-    const result = await itemService.purgeFromTrash(
-      req.auth.userId,
-      Number(req.params.id),
-    );
-    return res.json(result);
-  } catch (err) {
-    return next(err);
-  }
-});
-
-/** DELETE /api/items/:id — 软删除 */
+/** DELETE /api/items/:id — 永久删除 */
 router.delete('/:id', async (req, res, next) => {
   try {
-    const result = await itemService.softDelete(
+    const result = await itemService.deleteItem(
       req.auth.userId,
       Number(req.params.id),
     );

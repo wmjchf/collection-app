@@ -4,7 +4,6 @@ import 'package:super_collection/core/network/api_client.dart';
 import 'package:super_collection/core/ui/app_subpage_app_bar.dart';
 import 'package:super_collection/core/ui/paged_list.dart';
 import 'package:super_collection/features/collection/system_filters_repository.dart';
-import 'package:super_collection/features/home/home_format.dart';
 import 'package:super_collection/features/items/cover_image.dart';
 import 'package:super_collection/features/items/item_reading_page.dart';
 import 'package:super_collection/features/items/item_models.dart';
@@ -125,10 +124,6 @@ class _SystemFilterListPageState extends State<SystemFilterListPage>
   }
 
   String _subtitle(CollectionItem item) {
-    if (widget.code == 'trash') {
-      final day = formatRelativeDay(item.deletedAt);
-      return day.isEmpty ? '已删除' : '删除于 $day';
-    }
     final platform = item.platform ?? 'web';
     final status = switch (item.status) {
       'pending' => '解析中',
@@ -211,11 +206,9 @@ class _SystemFilterListPageState extends State<SystemFilterListPage>
                                   builder: (_) => ItemReadingPage(
                                     itemId: item.id,
                                     initialItem: item,
-                                    openEntry: widget.code == 'starred'
-                                        ? 'star'
-                                        : (widget.code == 'unread'
-                                            ? 'unread'
-                                            : 'library'),
+                                    openEntry: widget.code == 'unread'
+                                        ? 'unread'
+                                        : 'library',
                                   ),
                                 ),
                               );

@@ -203,16 +203,8 @@ export function setItemTags(id, tagIds) {
   return authRequest('PUT', `/api/items/${id}/tags`, { body: { tagIds } });
 }
 
-export function restoreItem(id) {
-  return authRequest('POST', `/api/items/${id}/restore`);
-}
-
-export function purgeItem(id) {
-  return authRequest('DELETE', `/api/items/${id}/permanent`);
-}
-
-export function emptyTrash() {
-  return authRequest('DELETE', '/api/items/trash');
+export function deleteItem(id) {
+  return authRequest('DELETE', `/api/items/${id}`);
 }
 
 export function canSaveUrl(url) {

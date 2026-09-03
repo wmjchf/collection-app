@@ -5,8 +5,8 @@ import 'package:super_collection/core/ui/app_confirm_dialog.dart';
 Future<bool?> showReadingDeleteConfirmDialog(BuildContext context) {
   return showAppConfirmDialog(
     context,
-    title: '移入最近删除？',
-    message: '可在「我的收藏 → 回收站」中恢复。',
+    title: '删除这条收藏？',
+    message: '删除后无法恢复。',
     confirmLabel: '删除',
   );
 }

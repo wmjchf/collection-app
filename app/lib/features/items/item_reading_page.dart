@@ -278,18 +278,13 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
     AppToast.show(context, '链接已复制');
   }
 
-  Future<void> _confirmPurgeDelete() async {
-    final ok = await showAppConfirmDialog(
-      context,
-      title: '彻底删除？',
-      message: '删除后不可恢复。',
-      confirmLabel: '删除',
-    );
+  Future<void> _confirmDelete() async {
+    final ok = await showReadingDeleteConfirmDialog(context);
     if (ok != true || !mounted) return;
     try {
-      await _repo.purgeFromTrash(_item.id);
+      await _repo.deleteItem(_item.id);
       if (!mounted) return;
-      AppToast.show(context, '已彻底删除');
+      AppToast.show(context, '已删除');
       Navigator.of(context).pop(true);
     } on ApiException catch (e) {
       if (!mounted) return;
@@ -1141,19 +1136,6 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
     }
   }
 
-  Future<void> _confirmDelete() async {
-    final ok = await showReadingDeleteConfirmDialog(context);
-    if (ok != true || !mounted) return;
-    try {
-      await _repo.softDelete(_item.id);
-      if (!mounted) return;
-      Navigator.of(context).pop(true);
-    } on ApiException catch (e) {
-      if (!mounted) return;
-      AppToast.show(context, e.message);
-    }
-  }
-
   List<({int start, int end, ItemAnnotation ann})> _annotationRanges(
     String text,
   ) {
@@ -1307,7 +1289,7 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
               onEditContent: _onEditContent,
               onCopyLink: _copyLink,
               onReparse: _reparseItem,
-              onDelete: _confirmPurgeDelete,
+              onDelete: _confirmDelete,
             ),
             const Expanded(
               child: Center(child: CircularProgressIndicator()),
@@ -1329,7 +1311,7 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
               onEditContent: _onEditContent,
               onCopyLink: _copyLink,
               onReparse: _reparseItem,
-              onDelete: _confirmPurgeDelete,
+              onDelete: _confirmDelete,
             ),
             Expanded(
               child: Center(
@@ -1514,7 +1496,7 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
                     onEditContent: _onEditContent,
                     onCopyLink: _copyLink,
                     onReparse: _reparseItem,
-                    onDelete: _confirmPurgeDelete,
+                    onDelete: _confirmDelete,
                   ),
                 ),
               ),

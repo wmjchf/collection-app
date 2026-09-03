@@ -2,8 +2,8 @@ import {
   canSaveUrl,
   clearSession,
   createTag,
+  deleteItem,
   deleteTag,
-  emptyTrash,
   fetchHome,
   fetchItem,
   fetchSystemFilters,
@@ -14,9 +14,7 @@ import {
   login,
   listItemTags,
   patchItem,
-  purgeItem,
   reparseItem,
-  restoreItem,
   saveUrl,
   searchItems,
   sendCode,
@@ -415,40 +413,6 @@ function cardEl(item, kind) {
   return card;
 }
 
-function trashCardEl(item) {
-  const card = document.createElement('div');
-  card.className = 'card trash-card';
-  const main = document.createElement('div');
-  main.className = 'trash-main';
-  main.append(coverEl(item.coverImageUrl));
-  const body = document.createElement('div');
-  body.className = 'card-body';
-  const title = document.createElement('p');
-  title.className = 'card-title';
-  title.textContent = itemTitle(item);
-  const sub = document.createElement('p');
-  sub.className = 'card-sub';
-  const day = formatDay(item.deletedAt);
-  sub.textContent = day ? `删除于 ${day}` : '已删除';
-  body.append(title, sub);
-  main.append(body);
-  const actions = document.createElement('div');
-  actions.className = 'trash-actions';
-  const restore = document.createElement('button');
-  restore.type = 'button';
-  restore.className = 'trash-restore';
-  restore.textContent = '恢复';
-  restore.addEventListener('click', () => restoreTrashItem(item));
-  const purge = document.createElement('button');
-  purge.type = 'button';
-  purge.className = 'trash-purge';
-  purge.textContent = '彻底删除';
-  purge.addEventListener('click', () => purgeTrashItem(item));
-  actions.append(restore, purge);
-  card.append(main, actions);
-  return card;
-}
-
 function emptyCard(text) {
   const el = document.createElement('div');
   el.className = 'empty-card';
@@ -550,9 +514,8 @@ async function showHome() {
 
 function fillList(container, items, kind) {
   container.replaceChildren();
-  const trash = more.source === 'filter' && more.key === 'trash' && container === moreList;
   for (const item of items) {
-    container.append(trash ? trashCardEl(item) : cardEl(item, kind));
+    container.append(cardEl(item, kind));
   }
 }
 
@@ -586,7 +549,7 @@ async function openMore({ source, key, title, kind }) {
   moreList.replaceChildren();
   moreStatus.hidden = false;
   moreStatus.textContent = '加载中…';
-  setMoreAction(source === 'filter' && key === 'trash' ? '清空' : '');
+  setMoreAction('');
   pushView('more');
   await loadMorePage({ reset: true });
 }
@@ -1450,45 +1413,16 @@ async function deleteCurrentItem() {
   const item = detailState.item;
   if (!item) return;
   const ok = await confirmDialog({
-    title: '彻底删除？',
-    message: '删除后不可恢复。',
+    title: '删除这条收藏？',
+    message: '删除后无法恢复。',
     confirmLabel: '删除',
     danger: true,
   });
   if (!ok) return;
   try {
-    await purgeItem(item.id);
-    toast('已彻底删除');
+    await deleteItem(item.id);
+    toast('已删除');
     popView();
-  } catch (err) {
-    if (await handleAuthError(err)) return;
-    toast(err.message || '删除失败');
-  }
-}
-
-async function restoreTrashItem(item) {
-  try {
-    await restoreItem(item.id);
-    toast('已恢复');
-    await loadMorePage({ reset: true });
-  } catch (err) {
-    if (await handleAuthError(err)) return;
-    toast(err.message || '恢复失败');
-  }
-}
-
-async function purgeTrashItem(item) {
-  const ok = await confirmDialog({
-    title: '彻底删除？',
-    message: '删除后不可恢复。',
-    confirmLabel: '删除',
-    danger: true,
-  });
-  if (!ok) return;
-  try {
-    await purgeItem(item.id);
-    toast('已彻底删除');
-    await loadMorePage({ reset: true });
   } catch (err) {
     if (await handleAuthError(err)) return;
     toast(err.message || '删除失败');
@@ -1596,25 +1530,6 @@ $('detail-tags').addEventListener('click', openTagPicker);
 $('detail-delete').addEventListener('click', deleteCurrentItem);
 $('detail-menu').addEventListener('click', (e) => e.stopPropagation());
 document.addEventListener('click', () => hideDetailMenu());
-
-moreAction.addEventListener('click', async () => {
-  if (more.source !== 'filter' || more.key !== 'trash') return;
-  const ok = await confirmDialog({
-    title: '清空回收站',
-    message: '将彻底删除回收站中的全部条目，无法恢复。',
-    confirmLabel: '清空',
-    danger: true,
-  });
-  if (!ok) return;
-  try {
-    await emptyTrash();
-    toast('回收站已清空');
-    await loadMorePage({ reset: true });
-  } catch (err) {
-    if (await handleAuthError(err)) return;
-    toast(err.message || '清空失败');
-  }
-});
 
 searchInput.addEventListener('input', () => {
   clearTimeout(searchTimer);

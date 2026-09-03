@@ -7,7 +7,6 @@ import 'package:super_collection/features/collection/system_filter_models.dart';
 import 'package:super_collection/features/collection/system_filters_repository.dart';
 import 'package:super_collection/features/collection/tag_models.dart';
 import 'package:super_collection/features/collection/tags_repository.dart';
-import 'package:super_collection/features/collection/trash_page.dart';
 import 'package:super_collection/features/shell/user_avatar_button.dart';
 
 /// 我的收藏（系统分类 + 标签）
@@ -218,16 +217,13 @@ class _CollectionPageState extends State<CollectionPage>
   }
 
   void _openSystemFilter(SystemFilter filter) {
-    final page = filter.code == 'trash'
-        ? const TrashPage()
-        : SystemFilterListPage(
-            code: filter.code,
-            title: filter.name,
-          );
     Navigator.of(context)
         .push(
       MaterialPageRoute<void>(
-        builder: (_) => page,
+        builder: (_) => SystemFilterListPage(
+          code: filter.code,
+          title: filter.name,
+        ),
       ),
     )
         .then((_) {
@@ -670,11 +666,6 @@ class _CollectionNavIcon {
           icon: Icons.calendar_today_rounded,
           background: Color(0xFFFF9F43),
         );
-      case 'starred':
-        return const _CollectionNavIcon(
-          icon: Icons.star_rounded,
-          background: Color(0xFFFFC43D),
-        );
       case 'parsed':
         return const _CollectionNavIcon(
           icon: Icons.article_rounded,
@@ -694,11 +685,6 @@ class _CollectionNavIcon {
         return const _CollectionNavIcon(
           icon: Icons.inventory_2_rounded,
           background: Color(0xFF96A0AF),
-        );
-      case 'trash':
-        return const _CollectionNavIcon(
-          icon: Icons.delete_outline_rounded,
-          background: Color(0xFFF56C6C),
         );
       default:
         return const _CollectionNavIcon(

@@ -137,11 +137,9 @@ INSERT INTO `categories` (`user_id`, `section`, `code`, `name`, `is_system`, `so
   (0, 'system', 'unread',    '未读', 1, 10),
   (0, 'system', 'all',       '所有', 1, 20),
   (0, 'system', 'today',     '今天', 1, 30),
-  (0, 'system', 'starred',   '星标', 1, 40),
   (0, 'system', 'parsed',    '解析', 1, 50),
   (0, 'system', 'annotated', '标注', 1, 60),
   (0, 'system', 'recent_read', '最近阅读', 1, 70),
-  (0, 'system', 'trash',    '回收站', 1, 80),
   (0, 'folder', 'uncategorized', '未分类', 1, 10),
   (0, 'other',  'archived', '已归档', 1, 10);
 

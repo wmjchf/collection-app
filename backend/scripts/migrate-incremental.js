@@ -24,6 +24,8 @@ const MIGRATION_FILES = [
   '014_home_roam_cache.sql',
   '015_subscriptions.sql',
   '016_analytics_events.sql',
+  '017_remove_trash.sql',
+  '018_remove_starred_filter.sql',
 ];
 
 async function getConnection() {
