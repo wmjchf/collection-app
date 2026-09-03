@@ -3,6 +3,7 @@ const { normalizeUserDirection } = require('./aiMeta');
 
 const KIND_TAGS = 'tags';
 const KIND_MINDMAP = 'mindmap';
+const KIND_SUMMARY = 'summary';
 
 /**
  * 记录用户显式期望方向（异步可 fire-and-forget，失败只打日志）
@@ -10,7 +11,7 @@ const KIND_MINDMAP = 'mindmap';
 async function recordDirection(userId, { kind, itemId = null, direction }) {
   const text = normalizeUserDirection(direction);
   if (!text) return null;
-  if (kind !== KIND_TAGS && kind !== KIND_MINDMAP) return null;
+  if (kind !== KIND_TAGS && kind !== KIND_MINDMAP && kind !== KIND_SUMMARY) return null;
 
   try {
     const [result] = await pool.execute(
@@ -107,6 +108,7 @@ function recordDirectionSafe(userId, args) {
 module.exports = {
   KIND_TAGS,
   KIND_MINDMAP,
+  KIND_SUMMARY,
   recordDirection,
   recordDirectionSafe,
   markLatestTagsApplied,

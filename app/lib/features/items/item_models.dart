@@ -88,10 +88,18 @@ class CollectionItem {
       !hasAiTagsPending &&
       !(hasAnyTranscriptPending && !aiMeta.tags.awaitTranscript);
 
-  /// AI 功能触发的自动转写进行中（标签或思维导图）
+  /// AI 功能触发的自动转写进行中（标签、思维导图或 AI 总结）
   bool get isAiAwaitingTranscript =>
       (aiMeta.tags.awaitTranscript && aiMeta.tags.isPending) ||
-      (aiMeta.mindmap.awaitTranscript && aiMeta.mindmap.isPending);
+      (aiMeta.mindmap.awaitTranscript && aiMeta.mindmap.isPending) ||
+      (aiMeta.summary.awaitTranscript && aiMeta.summary.isPending);
+
+  bool get hasSummaryPending => aiMeta.summary.isPending;
+
+  bool get canTriggerSummary =>
+      (canRequestAiSuggest || shouldAutoTranscribeBeforeMindmap) &&
+      !hasSummaryPending &&
+      !(hasAnyTranscriptPending && !aiMeta.summary.awaitTranscript);
 
   /// 转写成功后是否适合弹出「生成标签建议」提示
   bool get shouldPromptAiSuggestAfterTranscript {

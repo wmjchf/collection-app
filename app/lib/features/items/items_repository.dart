@@ -434,6 +434,46 @@ class ItemsRepository {
     return CollectionItem.fromJson(itemJson);
   }
 
+  Future<({
+    AiSummaryMeta summary,
+    String? model,
+  })> getSummaryStatus(int id) async {
+    final token = await _token();
+    final json = await _api.get(
+      '/api/items/$id/summary-status',
+      accessToken: token,
+    );
+    final raw = json['summary'];
+    AiSummaryMeta summary = const AiSummaryMeta();
+    if (raw is Map<String, dynamic>) {
+      summary = AiSummaryMeta.fromJson(raw);
+    } else if (raw is Map) {
+      summary = AiSummaryMeta.fromJson(
+        raw.map((k, v) => MapEntry(k.toString(), v)),
+      );
+    }
+    return (summary: summary, model: json['model'] as String?);
+  }
+
+  Future<CollectionItem> requestSummary(
+    int id, {
+    bool force = false,
+    String? direction,
+  }) async {
+    final token = await _token();
+    final trimmed = direction?.trim();
+    final json = await _api.post(
+      '/api/items/$id/summary',
+      body: {
+        'force': force,
+        if (trimmed != null && trimmed.isNotEmpty) 'direction': trimmed,
+      },
+      accessToken: token,
+    );
+    final itemJson = json['item'] as Map<String, dynamic>? ?? {};
+    return CollectionItem.fromJson(itemJson);
+  }
+
   Future<List<ItemAnnotation>> listAnnotations(int id) async {
     final token = await _token();
     final json =

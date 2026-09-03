@@ -11,10 +11,11 @@ const QUOTA_MESSAGES = {
   ai: '本月 AI 额度已用完，订阅后可继续',
 };
 
-/** 标签 / 脑图 completion 预留（偏保守，避免打穿） */
+/** 标签 / 脑图 / AI 总结 completion 预留（偏保守，避免打穿） */
 const AI_COMPLETION_RESERVE = {
   tags: 800,
   mindmap: 2500,
+  summary: 1200,
 };
 
 function isEnforcing() {
@@ -23,7 +24,7 @@ function isEnforcing() {
 
 /**
  * 按消息字符粗估 token（对齐 DashScope 中文约 2 字/token）+ completion 预留。
- * @param {{ messages?: Array<{content?: string}>, feature?: 'tags'|'mindmap', extraChars?: number }} opts
+ * @param {{ messages?: Array<{content?: string}>, feature?: 'tags'|'mindmap'|'summary', extraChars?: number }} opts
  */
 function estimateAiTokens({ messages = [], feature = 'tags', extraChars = 0 } = {}) {
   const chars =
@@ -33,7 +34,9 @@ function estimateAiTokens({ messages = [], feature = 'tags', extraChars = 0 } = 
   const reserve =
     feature === 'mindmap'
       ? AI_COMPLETION_RESERVE.mindmap
-      : AI_COMPLETION_RESERVE.tags;
+      : feature === 'summary'
+        ? AI_COMPLETION_RESERVE.summary
+        : AI_COMPLETION_RESERVE.tags;
   return Math.max(1, promptEst + reserve);
 }
 
@@ -167,7 +170,7 @@ async function recordTranscriptUsage({
 
 /**
  * AI 标签 / 思维导图共用 token 池。
- * @param {{ userId: number, itemId: number, feature: 'tags'|'mindmap', tokens: number, generatedAt?: string, meta?: object }} args
+ * @param {{ userId: number, itemId: number, feature: 'tags'|'mindmap'|'summary', tokens: number, generatedAt?: string, meta?: object }} args
  */
 async function recordAiTokenUsage({
   userId,
@@ -184,7 +187,12 @@ async function recordAiTokenUsage({
     );
     return { recorded: false, reason: 'no_tokens' };
   }
-  const feat = feature === 'mindmap' ? 'mindmap' : 'tags';
+  const feat =
+    feature === 'mindmap'
+      ? 'mindmap'
+      : feature === 'summary'
+        ? 'summary'
+        : 'tags';
   const key = `ai:${feat}:${userId}:${itemId}:${generatedAt || Date.now()}`;
   return recordEvent({
     userId,

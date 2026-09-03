@@ -14,6 +14,7 @@ import 'package:super_collection/features/collection/tag_models.dart';
 import 'package:super_collection/features/home/home_format.dart';
 import 'package:super_collection/features/items/ai_meta_models.dart';
 import 'package:super_collection/features/items/ai_mindmap_panel.dart';
+import 'package:super_collection/features/items/ai_summary_panel.dart';
 import 'package:super_collection/features/items/ai_tag_suggest_panel.dart';
 import 'package:super_collection/features/items/article_body_text.dart';
 import 'package:super_collection/features/items/article_content_blocks.dart';
@@ -36,7 +37,7 @@ import 'package:super_collection/features/items/transcript_models.dart';
 import 'package:super_collection/features/items/transcript_picker_sheet.dart';
 import 'package:super_collection/features/items/transcript_segment_panel.dart';
 
-/// 本地阅读页：标题 + 可读正文（含标注高亮）；顶栏更多；底栏 星标 / 标签 / 思维导图 / 感想（或转写条目下的「更多」）。
+/// 本地阅读页：标题 + 可读正文（含标注高亮）；顶栏更多；底栏 AI 总结 / 标签 / 思维导图 / 感想（或转写条目下的「更多」）。
 class ItemReadingPage extends StatefulWidget {
   const ItemReadingPage({
     super.key,
@@ -59,7 +60,6 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
   static const _text = Color(0xFF1F242E);
   static const _muted = Color(0xFF737A85);
   static const _border = Color(0xFFE5E5EB);
-  static const _starActive = Color(0xFFE6A817);
   static const _blue = Color(0xFF2F6FED);
   static const _highlight = Color(0xFFFFF2C7);
 
@@ -72,7 +72,6 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
   late CollectionItem _item;
   List<Tag> _itemTags = const [];
   List<ItemAnnotation> _annotations = const [];
-  bool _starring = false;
   bool _loadingAnns = true;
   bool _chromeVisible = true;
   bool _bodyHasSelection = false;
@@ -200,6 +199,9 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
     }
     if (item.hasMindmapPending) {
       _pollMindmap();
+    }
+    if (item.hasSummaryPending) {
+      _pollSummary();
     }
   }
 
@@ -427,24 +429,121 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
     }
   }
 
-  Future<void> _toggleStar() async {
-    if (_starring) return;
-    setState(() => _starring = true);
-    final next = !_item.isStarred;
+  Future<void> _onSummary({bool force = false}) async {
+    if (_item.hasAnyTranscriptPending && !_item.aiMeta.summary.awaitTranscript) {
+      AppToast.show(context, '转写进行中，请稍候再生成 AI 总结');
+      return;
+    }
+    if (!_item.canRequestAiSuggest && !_item.shouldAutoTranscribeBeforeMindmap) {
+      AppToast.show(context, '内容不足，无法生成 AI 总结');
+      return;
+    }
+    if (_item.hasSummaryPending) {
+      AppToast.show(context, 'AI 总结生成中，请稍候');
+      return;
+    }
+
+    String? direction;
+    final isRegen = force ||
+        (_item.aiMeta.summary.isSuccess && _item.aiMeta.summary.hasText);
+    if (isRegen) {
+      final result = await showReadingRegenerateConfirmDialog(
+        context,
+        ReadingRegenerateKind.summary,
+      );
+      if (result == null || !mounted) return;
+      force = true;
+      direction = result;
+    }
+
     try {
-      final updated = await _repo.setStarred(_item.id, starred: next);
+      final updated = await _repo.requestSummary(
+        _item.id,
+        force: force,
+        direction: direction,
+      );
       if (!mounted) return;
-      setState(() {
-        _item = updated;
-        _starring = false;
-      });
+      setState(() => _item = updated);
+      _scrollToArticleEnd();
+      _pollSummary();
     } on ApiException catch (e) {
       if (!mounted) return;
-      setState(() => _starring = false);
-      AppToast.show(context, e.message);
-    } catch (_) {
+      await handleApiException(context, e);
+    }
+  }
+
+  Future<void> _pollSummary() async {
+    final awaitingTranscript = _item.aiMeta.summary.awaitTranscript;
+    final maxAttempts = awaitingTranscript ? 90 : 45;
+    final interval = awaitingTranscript
+        ? const Duration(seconds: 4)
+        : const Duration(seconds: 2);
+    String? lastPhaseFingerprint;
+    for (var i = 0; i < maxAttempts; i++) {
+      await Future<void>.delayed(interval);
       if (!mounted) return;
-      setState(() => _starring = false);
+      try {
+        final st = await _repo.getSummaryStatus(_item.id);
+        if (st.summary.isPending) {
+          if (st.summary.awaitTranscript) {
+            final ts = await _repo.getTranscriptStatus(_item.id);
+            final merged = Map<String, TranscriptSegment>.from(
+              _item.transcriptSegments,
+            );
+            ts.segments.forEach((key, seg) {
+              merged[key] = seg;
+            });
+            final fp = ts.segments.entries
+                .map((e) => '${e.key}:${e.value.phase}:${e.value.phaseLabel}')
+                .join('|');
+            if (!mounted) return;
+            if (fp != lastPhaseFingerprint ||
+                _item.aiMeta.summary.status != 'pending') {
+              lastPhaseFingerprint = fp;
+              final item = await _repo.getItem(_item.id);
+              if (!mounted) return;
+              setState(
+                () => _item = item
+                    .withAiMeta(
+                      AiMeta(
+                        tags: item.aiMeta.tags,
+                        mindmap: item.aiMeta.mindmap,
+                        summary: st.summary,
+                        model: st.model ?? item.aiMeta.model,
+                      ),
+                    )
+                    .withTranscriptSegments(merged),
+              );
+              _scrollToArticleEnd();
+            }
+          } else if (_item.aiMeta.summary.status != 'pending') {
+            setState(
+              () => _item = _item.withAiMeta(
+                AiMeta(
+                  tags: _item.aiMeta.tags,
+                  mindmap: _item.aiMeta.mindmap,
+                  summary: st.summary,
+                  model: st.model,
+                ),
+              ),
+            );
+            _scrollToArticleEnd();
+          }
+          continue;
+        }
+        final item = await _repo.getItem(_item.id);
+        if (!mounted) return;
+        setState(() => _item = item);
+        _scrollToArticleEnd();
+        if (st.summary.isSuccess) {
+          AppToast.show(context, 'AI 总结已生成');
+        } else if (st.summary.isFailed) {
+          AppToast.show(context, st.summary.error ?? 'AI 总结生成失败');
+        }
+        return;
+      } catch (_) {
+        // ignore poll errors
+      }
     }
   }
 
@@ -787,6 +886,7 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
                       AiMeta(
                         tags: st.tags,
                         mindmap: item.aiMeta.mindmap,
+                        summary: item.aiMeta.summary,
                         model: st.model ?? item.aiMeta.model,
                       ),
                     )
@@ -800,6 +900,7 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
                 AiMeta(
                   tags: st.tags,
                   mindmap: _item.aiMeta.mindmap,
+                  summary: _item.aiMeta.summary,
                   model: st.model ?? _item.aiMeta.model,
                 ),
               ),
@@ -904,6 +1005,7 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
                   AiMeta(
                     tags: item.aiMeta.tags,
                     mindmap: st.mindmap,
+                    summary: item.aiMeta.summary,
                     model: st.model ?? item.aiMeta.model,
                   ),
                 ).withTranscriptSegments(merged),
@@ -916,6 +1018,7 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
                 AiMeta(
                   tags: _item.aiMeta.tags,
                   mindmap: st.mindmap,
+                  summary: _item.aiMeta.summary,
                   model: st.model,
                 ),
               ),
@@ -1466,6 +1569,10 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
                   ],
                   if (_itemTags.isNotEmpty)
                     _ArticleTagHashtags(tags: _itemTags),
+                  AiSummaryPanel(
+                    summaryMeta: _item.aiMeta.summary,
+                    onRetry: () => _onSummary(force: true),
+                  ),
                   AiTagSuggestPanel(
                     tagsMeta: _item.aiMeta.tags,
                     onApply: _applyAiSuggest,
@@ -1533,14 +1640,17 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
                           child: Row(
                             children: [
                               _ActionItem(
-                                icon: _item.isStarred
-                                    ? Icons.star_rounded
-                                    : Icons.star_outline_rounded,
-                                label: '星标',
-                                iconColor: _item.isStarred
-                                    ? _starActive
-                                    : _text,
-                                onTap: _toggleStar,
+                                icon: Icons.auto_awesome_outlined,
+                                label: _item.hasSummaryPending
+                                    ? '生成中…'
+                                    : 'AI总结',
+                                iconColor: _item.canTriggerSummary &&
+                                        !_item.hasSummaryPending
+                                    ? (_item.aiMeta.summary.hasText
+                                        ? _blue
+                                        : _text)
+                                    : _muted,
+                                onTap: _onSummary,
                               ),
                               _ActionItem(
                                 icon: Icons.tag_outlined,

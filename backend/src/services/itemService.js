@@ -1292,6 +1292,15 @@ async function runTranscriptJob(itemId) {
       );
     }
     try {
+      const aiSummaryService = require('./aiSummaryService');
+      await aiSummaryService.onTranscriptSettledForSummary(itemId);
+    } catch (err) {
+      console.error(
+        `[runTranscriptJob] summary resume failed item=${itemId}`,
+        err.message,
+      );
+    }
+    try {
       const aiSuggestService = require('./aiSuggestService');
       await aiSuggestService.onTranscriptSettledForAiSuggest(itemId);
     } catch (err) {
@@ -1527,4 +1536,7 @@ module.exports = {
   requestMindmap: require('./aiMindmapService').requestMindmap,
   getMindmapStatus: require('./aiMindmapService').getMindmapStatus,
   runMindmapJob: require('./aiMindmapService').runMindmapJob,
+  requestSummary: require('./aiSummaryService').requestSummary,
+  getSummaryStatus: require('./aiSummaryService').getSummaryStatus,
+  runSummaryJob: require('./aiSummaryService').runSummaryJob,
 };

@@ -256,6 +256,36 @@ router.post('/:id/mindmap', async (req, res, next) => {
   }
 });
 
+/** GET /api/items/:id/summary-status — AI 总结轮询 */
+router.get('/:id/summary-status', async (req, res, next) => {
+  try {
+    const status = await itemService.getSummaryStatus(
+      req.auth.userId,
+      Number(req.params.id),
+    );
+    return res.json(status);
+  } catch (err) {
+    return next(err);
+  }
+});
+
+/** POST /api/items/:id/summary — 手动触发 AI 总结 */
+router.post('/:id/summary', async (req, res, next) => {
+  try {
+    const item = await itemService.requestSummary(
+      req.auth.userId,
+      Number(req.params.id),
+      {
+        force: !!req.body?.force,
+        direction: req.body?.direction ?? req.body?.hint ?? null,
+      },
+    );
+    return res.json({ item, message: '正在生成 AI 总结…' });
+  } catch (err) {
+    return next(err);
+  }
+});
+
 /** GET /api/items/:id/transcript-status — 转写状态轮询 */
 router.get('/:id/transcript-status', async (req, res, next) => {
   try {
