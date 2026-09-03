@@ -15,7 +15,6 @@ import 'package:super_collection/features/home/home_format.dart';
 import 'package:super_collection/features/items/ai_meta_models.dart';
 import 'package:super_collection/features/items/ai_mindmap_panel.dart';
 import 'package:super_collection/features/items/ai_summary_panel.dart';
-import 'package:super_collection/features/items/ai_tag_suggest_panel.dart';
 import 'package:super_collection/features/items/article_body_text.dart';
 import 'package:super_collection/features/items/article_content_blocks.dart';
 import 'package:super_collection/features/items/article_markdown.dart';
@@ -195,7 +194,7 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
       _pollTranscript();
     }
     if (item.hasAiTagsPending) {
-      _pollAiSuggest();
+      unawaited(_pollAiSuggestInBackground());
     }
     if (item.hasMindmapPending) {
       _pollMindmap();
@@ -807,124 +806,61 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
     }
   }
 
-  Future<void> _onAiSuggest({bool force = false}) async {
-    if (_item.hasAnyTranscriptPending && !_item.aiMeta.tags.awaitTranscript) {
-      AppToast.show(context, '转写进行中，请稍候再生成标签建议');
-      return;
-    }
-    if (!_item.canRequestAiSuggest && !_item.shouldAutoTranscribeBeforeMindmap) {
-      AppToast.show(context, '内容不足，无法生成标签建议');
-      return;
-    }
-    if (_item.hasAiTagsPending) {
-      AppToast.show(context, '标签建议生成中，请稍候');
-      return;
-    }
-
-    String? direction;
-    final isRegen = force ||
-        (_item.aiMeta.tags.isSuccess && _item.aiMeta.tags.hasSuggestions);
-    if (isRegen) {
-      final result = await showReadingRegenerateConfirmDialog(
-        context,
-        ReadingRegenerateKind.tags,
-      );
-      if (result == null || !mounted) return;
-      force = true;
-      direction = result;
-    }
-
-    try {
-      final updated = await _repo.requestAiSuggest(
-        _item.id,
-        force: force,
-        direction: direction,
-      );
-      if (!mounted) return;
-      setState(() => _item = updated);
-      _scrollToArticleEnd();
-      _pollAiSuggest();
-    } on ApiException catch (e) {
-      if (!mounted) return;
-      await handleApiException(context, e);
-    }
+  void _syncItemTagsMeta(AiTagsMeta meta) {
+    if (!mounted) return;
+    setState(
+      () => _item = _item.withAiMeta(
+        AiMeta(
+          tags: meta,
+          mindmap: _item.aiMeta.mindmap,
+          summary: _item.aiMeta.summary,
+          model: _item.aiMeta.model,
+        ),
+      ),
+    );
   }
 
-  Future<void> _pollAiSuggest() async {
+  Future<void> _pollAiSuggestInBackground() async {
     final awaitingTranscript = _item.aiMeta.tags.awaitTranscript;
     final maxAttempts = awaitingTranscript ? 90 : 45;
     final interval = awaitingTranscript
         ? const Duration(seconds: 4)
         : const Duration(seconds: 2);
-    String? lastPhaseFingerprint;
     for (var i = 0; i < maxAttempts; i++) {
       await Future<void>.delayed(interval);
       if (!mounted) return;
       try {
         final st = await _repo.getAiSuggestStatus(_item.id);
         if (st.tags.isPending) {
-          if (st.tags.awaitTranscript) {
-            final ts = await _repo.getTranscriptStatus(_item.id);
-            final merged = Map<String, TranscriptSegment>.from(
-              _item.transcriptSegments,
-            );
-            ts.segments.forEach((key, seg) {
-              merged[key] = seg;
-            });
-            final fp = ts.segments.entries
-                .map((e) => '${e.key}:${e.value.phase}:${e.value.phaseLabel}')
-                .join('|');
-            if (!mounted) return;
-            if (fp != lastPhaseFingerprint ||
-                _item.aiMeta.tags.status != 'pending') {
-              lastPhaseFingerprint = fp;
-              final item = await _repo.getItem(_item.id);
-              if (!mounted) return;
-              setState(
-                () => _item = item
-                    .withAiMeta(
-                      AiMeta(
-                        tags: st.tags,
-                        mindmap: item.aiMeta.mindmap,
-                        summary: item.aiMeta.summary,
-                        model: st.model ?? item.aiMeta.model,
-                      ),
-                    )
-                    .withTranscriptSegments(merged),
-              );
-              _scrollToArticleEnd();
-            }
-          } else if (_item.aiMeta.tags.status != 'pending') {
-            setState(
-              () => _item = _item.withAiMeta(
-                AiMeta(
-                  tags: st.tags,
-                  mindmap: _item.aiMeta.mindmap,
-                  summary: _item.aiMeta.summary,
-                  model: st.model ?? _item.aiMeta.model,
-                ),
-              ),
-            );
-            _scrollToArticleEnd();
+          if (_item.aiMeta.tags.status != st.tags.status ||
+              _item.aiMeta.tags.awaitTranscript != st.tags.awaitTranscript) {
+            _syncItemTagsMeta(st.tags);
           }
           continue;
         }
         final item = await _repo.getItem(_item.id);
         if (!mounted) return;
         setState(() => _item = item);
-        _scrollToArticleEnd();
-        if (st.tags.isSuccess) {
-          AppToast.show(context, '标签建议已生成');
-        } else if (st.tags.isEmpty) {
-          AppToast.show(context, '暂无新的标签建议');
-        } else if (st.tags.isFailed) {
-          AppToast.show(context, st.tags.error ?? '标签建议生成失败');
-        }
         return;
       } catch (_) {
         // ignore poll errors
       }
     }
+  }
+
+  Future<void> _openTagsSheet({bool autoStartAiSuggest = false}) async {
+    await showReadingTagsSheet(
+      context,
+      itemId: _item.id,
+      tagsMeta: _item.aiMeta.tags,
+      aiSuggestEnabled: _item.canTriggerAiSuggest,
+      transcriptPending: _item.hasAnyTranscriptPending &&
+          !_item.aiMeta.tags.awaitTranscript,
+      autoStartAiSuggest: autoStartAiSuggest,
+      onTagsMetaChanged: _syncItemTagsMeta,
+    );
+    if (!mounted) return;
+    await _loadItemTags();
   }
 
   Future<void> _onMindmap({bool force = false}) async {
@@ -1040,30 +976,6 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
       } catch (_) {
         // ignore poll errors
       }
-    }
-  }
-
-  Future<void> _applyAiSuggest(List<String> names) async {
-    try {
-      final updated = await _repo.applyAiSuggest(_item.id, names);
-      if (!mounted) return;
-      setState(() => _item = updated);
-      await _loadItemTags();
-      AppToast.show(context, '已采纳标签');
-    } on ApiException catch (e) {
-      if (!mounted) return;
-      AppToast.show(context, e.message);
-    }
-  }
-
-  Future<void> _dismissAiSuggest() async {
-    try {
-      final updated = await _repo.dismissAiSuggest(_item.id);
-      if (!mounted) return;
-      setState(() => _item = updated);
-    } on ApiException catch (e) {
-      if (!mounted) return;
-      AppToast.show(context, e.message);
     }
   }
 
@@ -1225,7 +1137,7 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
       ),
     );
     if (go == true && mounted) {
-      await _onAiSuggest();
+      await _openTagsSheet(autoStartAiSuggest: true);
     }
   }
 
@@ -1573,12 +1485,6 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
                     summaryMeta: _item.aiMeta.summary,
                     onRetry: () => _onSummary(force: true),
                   ),
-                  AiTagSuggestPanel(
-                    tagsMeta: _item.aiMeta.tags,
-                    onApply: _applyAiSuggest,
-                    onDismiss: _dismissAiSuggest,
-                    onRetry: () => _onAiSuggest(force: true),
-                  ),
                   AiMindmapPanel(
                     mindmapMeta: _item.aiMeta.mindmap,
                     sourceTitle: title,
@@ -1655,24 +1561,7 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
                               _ActionItem(
                                 icon: Icons.tag_outlined,
                                 label: '标签',
-                                onTap: () async {
-                                  final result = await showReadingTagsSheet(
-                                    context,
-                                    itemId: _item.id,
-                                    aiSuggestEnabled:
-                                        _item.canTriggerAiSuggest,
-                                    aiSuggestPending: _item.hasAiTagsPending,
-                                    transcriptPending:
-                                        _item.hasAnyTranscriptPending &&
-                                        !_item.aiMeta.tags.awaitTranscript,
-                                  );
-                                  if (!mounted) return;
-                                  await _loadItemTags();
-                                  if (result ==
-                                      ReadingTagsSheetResult.aiSuggest) {
-                                    await _onAiSuggest();
-                                  }
-                                },
+                                onTap: _openTagsSheet,
                               ),
                               _ActionItem(
                                 icon: Icons.account_tree_outlined,
