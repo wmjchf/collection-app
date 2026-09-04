@@ -11,355 +11,231 @@
   <link rel="icon" href="/assets/apple-touch-icon.png" type="image/png" />
   <style>
     :root {
-      --bg: #f7f7fa;
-      --card: #ffffff;
       --text: #1f242e;
       --muted: #737a85;
-      --accent: #2a6b52;
-      --accent-soft: #e8f3ee;
-      --blue: #2f6fed;
       --line: #e5e5eb;
+      --tip-bg: #fff2c7;
+      --link: #2f6fed;
     }
     * { box-sizing: border-box; }
+    html {
+      -webkit-text-size-adjust: 100%;
+      background: #ffffff;
+    }
     body {
       margin: 0;
+      background: #ffffff;
+      color: var(--text);
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
         "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
-      background: var(--bg);
-      color: var(--text);
-      line-height: 1.7;
       font-size: 15px;
+      line-height: 1.85;
+      letter-spacing: 0.2px;
     }
-    .wrap {
-      max-width: 720px;
-      margin: 0 auto;
-      padding: 28px 20px 64px;
+    /* 对齐 App 阅读页：左右 22，上 18，下 28 */
+    .page {
+      max-width: none;
+      margin: 0;
+      padding: calc(18px + env(safe-area-inset-top, 0px)) 22px
+        calc(28px + env(safe-area-inset-bottom, 0px));
     }
-    header {
-      margin-bottom: 24px;
-      padding-bottom: 20px;
-      border-bottom: 1px solid var(--line);
-    }
-    .brand {
-      color: var(--accent);
-      font-size: 13px;
-      font-weight: 600;
-      letter-spacing: 0.02em;
+    .back {
+      display: inline-flex;
+      align-items: center;
       margin: 0 0 8px;
+      color: var(--text);
+      text-decoration: none;
+      font-size: 15px;
+      line-height: 1.4;
     }
     h1 {
-      margin: 0 0 10px;
-      font-size: 26px;
+      margin: 0 0 12px;
+      font-size: 20px;
       font-weight: 700;
-      line-height: 1.3;
+      line-height: 1.4;
+      letter-spacing: 0.2px;
     }
     .meta {
-      margin: 0;
+      margin: 0 0 22px;
+      font-size: 12px;
+      line-height: 1.4;
       color: var(--muted);
-      font-size: 13px;
     }
-    .toc {
-      background: var(--card);
-      border-radius: 14px;
-      padding: 18px 20px;
-      margin-bottom: 16px;
-    }
-    .toc-title {
-      margin: 0 0 10px;
-      font-size: 13px;
-      font-weight: 600;
-      color: var(--muted);
-      letter-spacing: 0.02em;
-    }
-    .toc ol {
-      margin: 0;
-      padding-left: 1.25em;
-    }
-    .toc li { margin: 0 0 4px; }
-    .toc a {
+    .lead {
+      margin: 0 0 14px;
       color: var(--text);
-      text-decoration: none;
-      font-size: 14px;
-    }
-    .toc a:hover { color: var(--accent); }
-    article {
-      background: var(--card);
-      border-radius: 14px;
-      padding: 22px 20px;
     }
     h2 {
-      margin: 32px 0 12px;
-      font-size: 17px;
+      margin: 28px 0 12px;
+      font-size: 19px;
       font-weight: 700;
-      scroll-margin-top: 16px;
+      line-height: 1.35;
+      letter-spacing: 0.2px;
     }
-    h2:first-child { margin-top: 0; }
+    h2:first-of-type { margin-top: 0; }
     h3 {
       margin: 20px 0 8px;
-      font-size: 15px;
+      font-size: 17px;
       font-weight: 700;
-      color: var(--text);
+      line-height: 1.35;
+      letter-spacing: 0.2px;
     }
-    p, li { color: #3a4150; }
-    p { margin: 0 0 12px; }
+    p { margin: 0 0 14px; }
     ul, ol {
-      margin: 0 0 12px;
-      padding-left: 1.2em;
+      margin: 0 0 14px;
+      padding-left: 1.25em;
     }
     li { margin: 0 0 6px; }
-    a {
-      color: var(--blue);
-      text-decoration: none;
-    }
+    a { color: var(--link); text-decoration: none; }
     a:hover { text-decoration: underline; }
-    .lead {
-      font-size: 15px;
-      color: #3a4150;
-      margin-bottom: 4px;
-    }
-    .step {
-      display: flex;
-      gap: 14px;
-      margin: 0 0 14px;
-      padding: 14px 16px;
-      background: var(--bg);
-      border-radius: 12px;
-    }
-    .step-num {
-      flex-shrink: 0;
-      width: 28px;
-      height: 28px;
-      border-radius: 50%;
-      background: var(--accent-soft);
-      color: var(--accent);
-      font-size: 13px;
-      font-weight: 700;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      line-height: 1;
-      margin-top: 2px;
-    }
-    .step-body { min-width: 0; }
-    .step-body strong {
-      display: block;
-      margin-bottom: 4px;
-      color: var(--text);
-    }
-    .step-body p {
-      margin: 0;
-      font-size: 14px;
-      line-height: 1.55;
-    }
     .tip {
       margin: 14px 0;
-      padding: 12px 14px 12px 14px;
-      border-left: 3px solid var(--accent);
-      background: var(--accent-soft);
-      border-radius: 0 10px 10px 0;
-      font-size: 14px;
-      color: #2d4a3f;
-    }
-    .tip strong { color: var(--accent); }
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      font-size: 13px;
-      margin: 12px 0 16px;
-    }
-    th, td {
-      border: 1px solid var(--line);
       padding: 10px 12px;
-      text-align: left;
-      vertical-align: top;
+      background: var(--tip-bg);
+      border-radius: 4px;
+      font-size: 15px;
+      line-height: 1.85;
+      letter-spacing: 0.2px;
     }
-    th {
-      background: var(--bg);
-      font-weight: 600;
-      color: var(--text);
+    .tip strong { font-weight: 700; }
+    .plan-block {
+      margin: 0 0 14px;
     }
-    td { color: #3a4150; }
-    .yes { color: var(--accent); font-weight: 600; }
-    .no { color: var(--muted); }
-    .links {
-      margin-top: 28px;
+    .plan-block > strong {
+      display: block;
+      margin-bottom: 6px;
+      font-size: 15px;
+      font-weight: 700;
+    }
+    .plan-block ul {
+      margin-top: 0;
+    }
+    .footer-links {
+      margin-top: 32px;
       padding-top: 16px;
       border-top: 1px solid var(--line);
-    }
-    .note {
-      margin-top: 20px;
-      color: var(--muted);
       font-size: 13px;
+      line-height: 1.45;
+      color: var(--muted);
+    }
+    .footer-links ul {
+      list-style: none;
+      padding: 0;
+      margin: 8px 0 0;
+    }
+    .footer-links li { margin: 0 0 6px; }
+    @media (min-width: 680px) {
+      .page {
+        max-width: 680px;
+        margin: 0 auto;
+      }
     }
   </style>
 </head>
 <body>
-  <div class="wrap">
-    <header>
-      <p class="brand">奏折</p>
-      <h1>使用指引与技巧</h1>
-      <p class="meta">从收藏到整理、阅读与 AI · 更新日期：2026年9月5日</p>
-    </header>
+  <main class="page">
+    <a class="back" href="/">‹ 返回</a>
+    <h1>使用指引与技巧</h1>
+    <p class="meta">奏折 · 更新于 2026年9月5日</p>
 
-    <nav class="toc" aria-label="目录">
-      <p class="toc-title">目录</p>
-      <ol>
-        <li><a href="#start">快速上手</a></li>
-        <li><a href="#workflow">推荐工作流</a></li>
-        <li><a href="#organize">整理与找回</a></li>
-        <li><a href="#reading">阅读与标注</a></li>
-        <li><a href="#ai">AI 与转写</a></li>
-        <li><a href="#plans">订阅档位</a></li>
-        <li><a href="#shortcuts">iOS 快捷指令</a></li>
-      </ol>
-    </nav>
+    <p class="lead">奏折帮你把抖音、微信、小红书、B 站等刷到的好内容收到一处。下面是从「怎么收」到「怎么用好」的简明指引。</p>
 
-    <article>
-      <p class="lead">奏折帮你把抖音、微信、小红书、B 站等刷到的好内容收到一处。下面是从「怎么收」到「怎么用好」的简明指引。</p>
+    <h2 id="start">一、快速上手：三种收藏方式</h2>
+    <p>任选一种即可，也可以组合使用。</p>
+    <p><strong>1. 系统分享</strong><br />在微信、Safari、抖音等 App 点「分享」，选择「奏折」。适合刷到立刻想收的场景。</p>
+    <p><strong>2. 复制链接</strong><br />在其他 App 复制可用链接后打开奏折，会自动读取剪贴板并保存。适合没有分享入口的页面。</p>
+    <p><strong>3. iOS 快捷指令</strong><br />在 App「设置 → iOS 快捷指令说明」一键安装。装好后可加到主屏幕、控制中心或「轻点背面」，复制链接后触发即可后台保存。详见<a href="#shortcuts">下文</a>。</p>
+    <p class="tip"><strong>技巧：</strong>收藏不必当下读完。先收进奏折，首页「未读」会帮你记着，有空再翻。</p>
 
-      <h2 id="start">一、快速上手：三种收藏方式</h2>
-      <p>任选一种即可，也可以组合使用。</p>
+    <h2 id="workflow">二、推荐工作流</h2>
+    <h3>刷到 → 一键收</h3>
+    <p>看到值得留的内容，用分享或复制链接立刻保存，不要打断当前浏览节奏。</p>
+    <h3>有空 → 从未读开始</h3>
+    <p>打开 App 先看首页未读，或「最近阅读」接着上次的进度。读完后可标记已读，未读列表会自动变短。</p>
+    <h3>值得留 → 加星标 / 进收藏夹</h3>
+    <p>精读过的、以后要反复查的，加星标或拖进收藏夹。临时性的可以只保留未读/已读状态，不必过度整理。</p>
+    <h3>主题归档 → 打标签</h3>
+    <p>同一主题的内容（如「产品」「旅行」「育儿」）打上相同标签，之后按标签筛选比翻历史快得多。</p>
+    <p class="tip"><strong>技巧：</strong>整理宜轻不宜重。先保证「收得到、找得到」，标签和收藏夹可以慢慢补，不必每条都分类。</p>
 
-      <div class="step">
-        <span class="step-num">1</span>
-        <div class="step-body">
-          <strong>系统分享</strong>
-          <p>在微信、Safari、抖音等 App 点「分享」，选择「奏折」。适合刷到立刻想收的场景。</p>
-        </div>
-      </div>
-      <div class="step">
-        <span class="step-num">2</span>
-        <div class="step-body">
-          <strong>复制链接</strong>
-          <p>在其他 App 复制可用链接后打开奏折，会自动读取剪贴板并保存。适合没有分享入口的页面。</p>
-        </div>
-      </div>
-      <div class="step">
-        <span class="step-num">3</span>
-        <div class="step-body">
-          <strong>iOS 快捷指令</strong>
-          <p>在 App「设置 → iOS 快捷指令说明」一键安装。装好后可加到主屏幕、控制中心或「轻点背面」，复制链接后触发即可后台保存。详见<a href="#shortcuts">下文</a>。</p>
-        </div>
-      </div>
+    <h2 id="organize">三、整理与找回</h2>
+    <ul>
+      <li><strong>我的收藏</strong>：按系统分类（文章、视频等）、收藏夹、标签浏览全部条目。</li>
+      <li><strong>搜索</strong>：可检索标题、正文、备注、转写文稿等；记几个关键词比记链接靠谱。</li>
+      <li><strong>星标</strong>：精读清单，适合「以后要再看」的内容。</li>
+      <li><strong>删除</strong>：删除后无法恢复；普通用户删除条目后，在库条数配额才会释放。</li>
+    </ul>
+    <p class="tip"><strong>技巧：</strong>给重要条目写一句备注（如「给 XX 项目参考」），搜索时更容易命中。</p>
 
-      <div class="tip"><strong>技巧：</strong>收藏不必当下读完。先收进奏折，首页「未读」会帮你记着，有空再翻。</div>
+    <h2 id="reading">四、阅读与标注</h2>
+    <ul>
+      <li>阅读页会尽量按原文排开正文与插图，长文可慢慢读。</li>
+      <li>选中文字可高亮标注，适合摘录观点、做读书笔记。</li>
+      <li>部分平台因登录态或反爬限制，封面/正文可能不完整；可点「打开原文」跳转查看，或稍后重试解析。</li>
+      <li>视频类内容可在阅读页发起转写（帝王档），文稿生成后可搜索、配合 AI 使用。</li>
+    </ul>
+    <p class="tip"><strong>技巧：</strong>标注过的段落会在阅读页集中展示，复习时比重新通读全文省时间。</p>
 
-      <h2 id="workflow">二、推荐工作流</h2>
-      <h3>刷到 → 一键收</h3>
-      <p>看到值得留的内容，用分享或复制链接立刻保存，不要打断当前浏览节奏。</p>
-      <h3>有空 → 从未读开始</h3>
-      <p>打开 App 先看首页未读，或「最近阅读」接着上次的进度。读完后可标记已读，未读列表会自动变短。</p>
-      <h3>值得留 → 加星标 / 进收藏夹</h3>
-      <p>精读过的、以后要反复查的，加星标或拖进收藏夹。临时性的可以只保留未读/已读状态，不必过度整理。</p>
-      <h3>主题归档 → 打标签</h3>
-      <p>同一主题的内容（如「产品」「旅行」「育儿」）打上相同标签，之后按标签筛选比翻历史快得多。</p>
+    <h2 id="ai">五、AI 与转写</h2>
+    <p>AI 功能需在对应档位下使用；结果仅供参考，不采纳则不会改动你的标签。</p>
+    <ul>
+      <li><strong>AI 标签</strong>（太子及以上）：阅读页发起，根据正文推荐标签，你可勾选采纳。</li>
+      <li><strong>AI 解读</strong>（太子及以上）：生成内容摘要，快速判断值不值得精读。</li>
+      <li><strong>AI 思维导图</strong>（帝王）：把长文结构化成脑图，适合教程、长分析类文章。</li>
+      <li><strong>音视频转写</strong>（帝王）：把视频/音频转成可搜索的文字稿；部分平台可能无法拉取媒体。</li>
+    </ul>
+    <p>AI 标签、解读、思维导图共用每月 AI 额度（按 token 计）；转写单独按分钟计。用量可在「账户和用量」查看，自然月重置。</p>
+    <p class="tip"><strong>技巧：</strong>长视频想先知道讲什么，可先转写再让 AI 解读；短视频或纯文字可直接解读，省额度。</p>
 
-      <div class="tip"><strong>技巧：</strong>整理宜轻不宜重。先保证「收得到、找得到」，标签和收藏夹可以慢慢补，不必每条都分类。</div>
-
-      <h2 id="organize">三、整理与找回</h2>
+    <h2 id="plans">六、订阅档位</h2>
+    <div class="plan-block">
+      <strong>普通</strong>
       <ul>
-        <li><strong>我的收藏</strong>：按系统分类（文章、视频等）、收藏夹、标签浏览全部条目。</li>
-        <li><strong>搜索</strong>：可检索标题、正文、备注、转写文稿等；记几个关键词比记链接靠谱。</li>
-        <li><strong>星标</strong>：精读清单，适合「以后要再看」的内容。</li>
-        <li><strong>回收站</strong>：误删可先恢复；彻底删除后条数配额才会释放（普通用户有在库条数上限）。</li>
+        <li>在库收藏：有上限（默认 300 条，不含已删除）</li>
+        <li>AI / 转写：不可用</li>
+        <li>阅读、搜索、手动标签：可用</li>
       </ul>
-
-      <div class="tip"><strong>技巧：</strong>给重要条目写一句备注（如「给 XX 项目参考」），搜索时更容易命中。</div>
-
-      <h2 id="reading">四、阅读与标注</h2>
+    </div>
+    <div class="plan-block">
+      <strong>太子</strong>
       <ul>
-        <li>阅读页会尽量按原文排开正文与插图，长文可慢慢读。</li>
-        <li>选中文字可高亮标注，适合摘录观点、做读书笔记。</li>
-        <li>部分平台因登录态或反爬限制，封面/正文可能不完整；可点「打开原文」跳转查看，或稍后重试解析。</li>
-        <li>视频类内容可在阅读页发起转写（帝王档），文稿生成后可搜索、配合 AI 使用。</li>
+        <li>在库收藏：不限</li>
+        <li>AI 标签、AI 解读：可用（月 token 池）</li>
+        <li>思维导图、转写：不可用</li>
       </ul>
-
-      <div class="tip"><strong>技巧：</strong>标注过的段落会在阅读页集中展示，复习时比重新通读全文省时间。</div>
-
-      <h2 id="ai">五、AI 与转写</h2>
-      <p>AI 功能需在对应档位下使用；结果仅供参考，不采纳则不会改动你的标签。</p>
+    </div>
+    <div class="plan-block">
+      <strong>帝王</strong>
       <ul>
-        <li><strong>AI 标签</strong>（太子及以上）：阅读页发起，根据正文推荐标签，你可勾选采纳。</li>
-        <li><strong>AI 解读</strong>（太子及以上）：生成内容摘要，快速判断值不值得精读。</li>
-        <li><strong>AI 思维导图</strong>（帝王）：把长文结构化成脑图，适合教程、长分析类文章。</li>
-        <li><strong>音视频转写</strong>（帝王）：把视频/音频转成可搜索的文字稿；部分平台可能无法拉取媒体。</li>
+        <li>含太子全部能力</li>
+        <li>另解锁 AI 思维导图、音视频转写（转写单独按月分钟池）</li>
       </ul>
-      <p>AI 标签、解读、思维导图共用每月 AI 额度（按 token 计）；转写单独按分钟计。用量可在「账户和用量」查看，自然月重置。</p>
+    </div>
+    <p>在 iPhone 上打开「订阅会员」选择太子或帝王、月付或年付；管理续费请前往 iOS「设置 → Apple ID → 订阅」。换机或重装后可用「恢复购买」。</p>
+    <p>若在 App 内暂时看不到帝王月付/年付按钮，多为 App Store 新商品同步延迟，稍后再试或先订阅太子；详见<a href="/support">用户支持</a>。</p>
 
-      <div class="tip"><strong>技巧：</strong>长视频想先知道讲什么，可先转写再让 AI 解读；短视频或纯文字可直接解读，省额度。</div>
-
-      <h2 id="plans">六、订阅档位</h2>
-      <table>
-        <thead>
-          <tr>
-            <th>能力</th>
-            <th>普通</th>
-            <th>太子</th>
-            <th>帝王</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr>
-            <td>在库收藏条数</td>
-            <td>有上限（默认 300）</td>
-            <td class="yes">不限</td>
-            <td class="yes">不限</td>
-          </tr>
-          <tr>
-            <td>AI 标签 / 解读</td>
-            <td class="no">—</td>
-            <td class="yes">✓</td>
-            <td class="yes">✓</td>
-          </tr>
-          <tr>
-            <td>AI 思维导图</td>
-            <td class="no">—</td>
-            <td class="no">—</td>
-            <td class="yes">✓</td>
-          </tr>
-          <tr>
-            <td>音视频转写</td>
-            <td class="no">—</td>
-            <td class="no">—</td>
-            <td class="yes">✓</td>
-          </tr>
-          <tr>
-            <td>阅读 / 搜索 / 手动标签</td>
-            <td class="yes">✓</td>
-            <td class="yes">✓</td>
-            <td class="yes">✓</td>
-          </tr>
-        </tbody>
-      </table>
-      <p>帝王包含太子全部能力。在 iPhone 上打开「订阅会员」选择太子或帝王、月付或年付；管理续费请前往 iOS「设置 → Apple ID → 订阅」。换机或重装后可用「恢复购买」。</p>
-      <p>若在 App 内暂时看不到帝王月付/年付按钮，多为 App Store 新商品同步延迟，稍后再试或先订阅太子；详见<a href="/support">用户支持</a>。</p>
-
-      <h2 id="shortcuts">七、iOS 快捷指令（进阶）</h2>
-      <p>适合「复制链接 → 立刻收、不打开 App 界面」的高频用户。</p>
-      <ol>
-        <li>在奏折 App 登录后，打开「设置 → iOS 快捷指令说明」，点「添加快捷指令」完成安装（只需一次）。</li>
-        <li>任选或组合以下触发方式：
-          <ul>
-            <li><strong>主屏幕</strong>：快捷指令 → 分享 → 加到主屏幕；之后复制链接点图标。</li>
-            <li><strong>控制中心</strong>（iOS 18+）：控制中心 →「+」→ 添加「保存链接到奏折」控件。</li>
-            <li><strong>轻点背面</strong>：设置 → 辅助功能 → 触控 → 轻点背面 → 选该快捷指令。</li>
-          </ul>
-        </li>
-        <li>三种用法互不影响，装好后任选，也可一起开。</li>
-      </ol>
-
-      <div class="tip"><strong>技巧：</strong>把快捷指令绑到「轻点背面」后，刷抖音/小红书时复制链接、连点两下背面就能收，几乎不打断浏览。</div>
-
-      <div class="links">
-        <h2 style="margin-top:0">相关链接</h2>
+    <h2 id="shortcuts">七、iOS 快捷指令（进阶）</h2>
+    <p>适合「复制链接 → 立刻收、不打开 App 界面」的高频用户。</p>
+    <ol>
+      <li>在奏折 App 登录后，打开「设置 → iOS 快捷指令说明」，点「添加快捷指令」完成安装（只需一次）。</li>
+      <li>任选或组合以下触发方式：
         <ul>
-          <li><a href="/">奏折官网</a></li>
-          <li><a href="/support">用户支持与常见问题</a></li>
-          <li><a href="/privacy">隐私政策</a></li>
+          <li><strong>主屏幕</strong>：快捷指令 → 分享 → 加到主屏幕；之后复制链接点图标。</li>
+          <li><strong>控制中心</strong>（iOS 18+）：控制中心 →「+」→ 添加「保存链接到奏折」控件。</li>
+          <li><strong>轻点背面</strong>：设置 → 辅助功能 → 触控 → 轻点背面 → 选该快捷指令。</li>
         </ul>
-        <p class="note">更多问题请发邮件至 <a href="mailto:partner01@126.com">partner01@126.com</a>，注明设备与 App 版本。</p>
-      </div>
-    </article>
-  </div>
+      </li>
+      <li>三种用法互不影响，装好后任选，也可一起开。</li>
+    </ol>
+    <p class="tip"><strong>技巧：</strong>把快捷指令绑到「轻点背面」后，刷抖音/小红书时复制链接、连点两下背面就能收，几乎不打断浏览。</p>
+
+    <div class="footer-links">
+      <ul>
+        <li><a href="/support">用户支持与常见问题</a></li>
+        <li><a href="/privacy">隐私政策</a></li>
+        <li><a href="mailto:partner01@126.com">partner01@126.com</a></li>
+      </ul>
+    </div>
+  </main>
 </body>
 </html>

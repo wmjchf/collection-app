@@ -14,6 +14,7 @@
     "db:migrate": "node scripts/migrate-incremental.js",
     "db:migrate:007": "node scripts/migrate-incremental.js 007",
     "db:migrate:full": "node scripts/migrate-full.js",
+    "db:seed-guide": "node scripts/seed-guide.js",
     "fix:bilibili-canonical": "node scripts/fix-bilibili-canonical.js"
   },
   "keywords": [],

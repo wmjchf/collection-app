@@ -8,6 +8,7 @@ const {
 } = require('./parser/adapters/registry');
 const transcriptSegments = require('./transcriptSegments');
 const aiMeta = require('./aiMeta');
+const guideItemService = require('./guideItemService');
 
 /** 服务端抓取被拦时，等待客户端上报 HTML */
 const NEED_CLIENT_FETCH = 'NEED_CLIENT_FETCH';
@@ -111,7 +112,16 @@ async function getByIdForUser(userId, itemId, opts = {}) {
  */
 async function createItem(userId, rawUrl) {
   const url = String(rawUrl || '').trim();
-  let canonicalUrl = normalizeUrl(url);
+  const canonicalUrl = normalizeUrl(url);
+
+  if (guideItemService.isGuideItem({ canonicalUrl })) {
+    const seeded = await guideItemService.ensureForUser(userId);
+    if (seeded?.id) {
+      const item = await getByIdForUser(userId, seeded.id);
+      return { item, existed: !seeded.created };
+    }
+  }
+
   let meta = null;
 
   if (detectPlatform(canonicalUrl) === 'bilibili') {
@@ -728,6 +738,9 @@ async function deleteItem(userId, itemId) {
   const existing = await getByIdForUser(userId, itemId);
   if (!existing) {
     throw Object.assign(new Error('条目不存在'), { status: 404 });
+  }
+  if (guideItemService.isGuideItem(existing)) {
+    throw Object.assign(new Error('使用指引不可删除'), { status: 403 });
   }
   await pool.execute(
     `DELETE FROM items

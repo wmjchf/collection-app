@@ -26,6 +26,7 @@ const MIGRATION_FILES = [
   '016_analytics_events.sql',
   '017_remove_trash.sql',
   '018_remove_starred_filter.sql',
+  '019_seed_guide_items.sql',
 ];
 
 async function getConnection() {
@@ -207,6 +208,15 @@ async function runSqlFile(conn, file) {
   await conn.query(sql);
 }
 
+async function apply019(conn) {
+  void conn;
+  const guideItemService = require('../src/services/guideItemService');
+  const result = await guideItemService.ensureAllUsers();
+  console.log(
+    `[db:migrate] 019: guide items created=${result.created} skipped=${result.skipped}`,
+  );
+}
+
 async function applyMigration(conn, dbName, file) {
   if (file === '002_last_read_at.sql') {
     await apply002(conn, dbName);
@@ -230,6 +240,10 @@ async function applyMigration(conn, dbName, file) {
   }
   if (file === '010_content_edited_at.sql') {
     await apply010(conn, dbName);
+    return;
+  }
+  if (file === '019_seed_guide_items.sql') {
+    await apply019(conn);
     return;
   }
   await runSqlFile(conn, file);

@@ -1,0 +1,2 @@
+-- 019：为全部用户补种「使用指引」收藏条目（正文由 guideItemService + guide.md 写入）
+-- 实际数据写入见 scripts/migrate-incremental.js apply019

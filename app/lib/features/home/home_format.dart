@@ -4,6 +4,7 @@ import 'package:super_collection/features/items/item_models.dart';
 /// 来源标签：直接展示平台 id，避免每加一个站都要发版改映射。
 String platformLabel(String? platform) {
   final p = (platform ?? '').trim();
+  if (p == 'guide') return '奏折';
   return p.isEmpty ? 'web' : p;
 }
 

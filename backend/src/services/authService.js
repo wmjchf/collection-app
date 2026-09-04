@@ -4,6 +4,7 @@ const { pool } = require('../db');
 const config = require('../config');
 const { normalizePhone } = require('../utils/phone');
 const aliyunSms = require('./aliyunSms');
+const guideItemService = require('./guideItemService');
 
 function isReviewWhitelistPhone(phone) {
   const reviewPhone = config.auth.smsReviewPhone;
@@ -163,6 +164,12 @@ async function loginWithSms(phone, code) {
     throw err;
   } else {
     await touchLogin(user.id);
+  }
+
+  try {
+    await guideItemService.ensureForUser(user.id);
+  } catch (err) {
+    console.error('[auth] guide item seed failed:', err.message);
   }
 
   const accessToken = issueAccessToken(user);
