@@ -27,6 +27,17 @@ class IapProductIds {
   };
 }
 
+/// StoreKit 商品查询结果（含未同步到沙盒/商店的 id）
+class IapProductLoadResult {
+  const IapProductLoadResult({
+    required this.products,
+    required this.notFoundIds,
+  });
+
+  final Map<String, ProductDetails> products;
+  final List<String> notFoundIds;
+}
+
 /// StoreKit 购买阶段（供 UI 展示细分文案）
 enum AppleIapPhase {
   /// 系统支付弹窗 / 等待用户确认
@@ -90,7 +101,7 @@ class AppleIapService {
   }
 
   /// 从 App Store 拉商品详情。
-  Future<Map<String, ProductDetails>> loadProducts({
+  Future<IapProductLoadResult> loadProducts({
     Set<String>? productIds,
     String? monthlyId,
     String? yearlyId,
@@ -140,17 +151,18 @@ class AppleIapService {
       ids = {monthly, if (yearly != monthly) yearly};
     }
 
-    final result = await _queryProducts(ids, allowPartial: true);
-    if (result.isEmpty) {
+    final queried = await _queryProducts(ids, allowPartial: true);
+    if (queried.products.isEmpty) {
       throw ApiException(
-        '未从 App Store 拉到商品（已查: ${ids.join(", ")}）',
+        '未从 App Store 拉到商品（已查: ${ids.join(", ")}）'
+        '${queried.notFoundIds.isEmpty ? '' : '；未找到: ${queried.notFoundIds.join(", ")}'}',
         statusCode: 404,
       );
     }
-    return result;
+    return queried;
   }
 
-  Future<Map<String, ProductDetails>> _queryProducts(
+  Future<IapProductLoadResult> _queryProducts(
     Set<String> ids, {
     bool allowPartial = false,
   }) async {
@@ -171,7 +183,12 @@ class AppleIapService {
       throw ApiException(msg, statusCode: 502);
     }
     if (resp.productDetails.isEmpty) {
-      if (allowPartial) return {};
+      if (allowPartial) {
+        return IapProductLoadResult(
+          products: const {},
+          notFoundIds: List<String>.from(resp.notFoundIDs),
+        );
+      }
       final missing = resp.notFoundIDs.join(', ');
       throw ApiException(
         '未从 App Store 拉到商品'
@@ -180,9 +197,12 @@ class AppleIapService {
         statusCode: 404,
       );
     }
-    return {
-      for (final p in resp.productDetails) p.id: p,
-    };
+    return IapProductLoadResult(
+      products: {
+        for (final p in resp.productDetails) p.id: p,
+      },
+      notFoundIds: List<String>.from(resp.notFoundIDs),
+    );
   }
 
   /// 发起购买并等结果；成功后服务端 verify，再 completePurchase。

@@ -39,6 +39,13 @@ function sendSupport(_req, res) {
 app.get('/support', sendSupport);
 app.get('/support.html', sendSupport);
 
+/** 使用指引与技巧 */
+function sendGuide(_req, res) {
+  res.sendFile(path.join(publicDir, 'guide.html'));
+}
+app.get('/guide', sendGuide);
+app.get('/guide.html', sendGuide);
+
 /** 内部埋点看板（需 ANALYTICS_DASHBOARD_TOKEN；不链到官网） */
 function sendAnalyticsDashboard(_req, res) {
   res.setHeader('X-Robots-Tag', 'noindex, nofollow');
