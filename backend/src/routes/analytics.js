@@ -50,14 +50,28 @@ router.post('/events', requireAuth, async (req, res, next) => {
 });
 
 /**
- * GET /api/analytics/summary?days=7
+ * GET /api/analytics/summary?days=7&userId=
  * Header: X-Analytics-Token 或 ?token=
  */
 router.get('/summary', requireDashboardToken, async (req, res, next) => {
   try {
     const days = Number(req.query.days) || 7;
-    const summary = await analyticsService.getSummary(days);
+    const userId = req.query.userId ?? req.query.user_id ?? null;
+    const summary = await analyticsService.getSummary(days, userId);
     return res.json(summary);
+  } catch (err) {
+    return next(err);
+  }
+});
+
+/**
+ * GET /api/analytics/users?days=7
+ */
+router.get('/users', requireDashboardToken, async (req, res, next) => {
+  try {
+    const days = Number(req.query.days) || 7;
+    const users = await analyticsService.listActiveUsers(days);
+    return res.json({ days, users });
   } catch (err) {
     return next(err);
   }

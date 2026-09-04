@@ -189,10 +189,67 @@ class Analytics {
     track('pro_page_view', {'from': from});
   }
 
+  void iapPurchaseStart({String? productId, String? from}) {
+    track('iap_purchase_start', {
+      if (productId != null) 'product_id': productId,
+      if (from != null && from.isNotEmpty) 'from': from,
+    });
+  }
+
   void iapPurchaseFail({String? productId, String? errorCode}) {
     track('iap_purchase_fail', {
       if (productId != null) 'product_id': productId,
       if (errorCode != null) 'error_code': errorCode,
+    });
+  }
+
+  void transcriptRequest({
+    required int itemId,
+    required String segmentKey,
+  }) {
+    track('transcript_request', {
+      'item_id': itemId,
+      'segment_key': segmentKey,
+    });
+  }
+
+  void aiSummaryRequest({
+    required int itemId,
+    bool force = false,
+  }) {
+    track('ai_summary_request', {
+      'item_id': itemId,
+      'force': force,
+    });
+  }
+
+  void aiTagsRequest({
+    required int itemId,
+    bool force = false,
+  }) {
+    track('ai_tags_request', {
+      'item_id': itemId,
+      'force': force,
+    });
+  }
+
+  void aiTagsApply({
+    required int itemId,
+    required int count,
+  }) {
+    track('ai_tags_apply', {
+      'item_id': itemId,
+      'count': count,
+    });
+  }
+
+  void aiMindmapRequest({
+    required int itemId,
+    bool force = false,
+  }) {
+    track('ai_mindmap_request', {
+      'item_id': itemId,
+      'force': force,
     });
   }
 

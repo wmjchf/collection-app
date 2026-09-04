@@ -971,6 +971,7 @@ async function saveTranscriptSegments(itemId, segments) {
 async function runTranscriptJob(itemId) {
   const aliyunAsr = require('./aliyunAsr');
   const transcriptMediaOss = require('./transcriptMediaOss');
+  const analyticsService = require('./analyticsService');
   const jobT0 = Date.now();
   const [rows] = await pool.execute(
     `SELECT * FROM items WHERE id = :itemId AND deleted_at IS NULL LIMIT 1`,
@@ -993,6 +994,10 @@ async function runTranscriptJob(itemId) {
       phaseLabel: null,
     });
     await saveTranscriptSegments(itemId, segments);
+    analyticsService.trackTranscriptOutcome(row, segmentKey, {
+      ok: false,
+      errorMessage: '没有可转写的音视频直链',
+    });
     return;
   }
 
@@ -1071,6 +1076,10 @@ async function runTranscriptJob(itemId) {
               phaseLabel: null,
             });
             await saveTranscriptSegments(itemId, segments);
+            analyticsService.trackTranscriptOutcome(row, segmentKey, {
+              ok: false,
+              errorMessage: quotaErr.message,
+            });
             return;
           }
           throw quotaErr;
@@ -1136,6 +1145,10 @@ async function runTranscriptJob(itemId) {
           phaseLabel: null,
         });
         await saveTranscriptSegments(itemId, segments);
+        analyticsService.trackTranscriptOutcome(row, segmentKey, {
+          ok: false,
+          errorMessage: result.errorMessage || '转写失败',
+        });
         return;
       }
       console.log(
@@ -1158,6 +1171,8 @@ async function runTranscriptJob(itemId) {
         phaseLabel: null,
       });
       await saveTranscriptSegments(itemId, segments);
+
+      analyticsService.trackTranscriptOutcome(row, segmentKey, { ok: true });
 
       try {
         const usageService = require('./usageService');
@@ -1196,6 +1211,10 @@ async function runTranscriptJob(itemId) {
       phaseLabel: null,
     });
     await saveTranscriptSegments(itemId, segments);
+    analyticsService.trackTranscriptOutcome(row, segmentKey, {
+      ok: false,
+      errorMessage: '转写超时，请稍后重试',
+    });
   } catch (err) {
     console.error(
       `[runTranscriptJob] error item=${itemId} segment=${segmentKey} ` +
@@ -1211,6 +1230,10 @@ async function runTranscriptJob(itemId) {
       phaseLabel: null,
     });
     await saveTranscriptSegments(itemId, segments);
+    analyticsService.trackTranscriptOutcome(row, segmentKey, {
+      ok: false,
+      errorMessage: err.message,
+    });
   } finally {
     if (ossKeyToDelete) {
       transcriptMediaOss.deleteOssObject(ossKeyToDelete).catch((err) => {

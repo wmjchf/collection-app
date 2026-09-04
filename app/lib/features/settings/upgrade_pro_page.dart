@@ -185,6 +185,10 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
       _restoreFlow = false;
       _phase = AppleIapPhase.paying;
     });
+    Analytics.instance.iapPurchaseStart(
+      productId: product.id,
+      from: widget.from,
+    );
     try {
       await _iap.buy(
         product,

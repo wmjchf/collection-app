@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:super_collection/core/analytics/analytics.dart';
 import 'package:super_collection/core/network/api_client.dart';
 import 'package:super_collection/features/collection/create_tag_sheet.dart';
 import 'package:super_collection/features/collection/tag_models.dart';
@@ -171,6 +172,10 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
     }
 
     try {
+      Analytics.instance.aiTagsRequest(
+        itemId: widget.itemId,
+        force: force,
+      );
       final updated = await _itemsRepo.requestAiSuggest(
         widget.itemId,
         force: force,
@@ -192,6 +197,10 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
       final updated = await _itemsRepo.applyAiSuggest(
         widget.itemId,
         _aiSelected.toList(),
+      );
+      Analytics.instance.aiTagsApply(
+        itemId: widget.itemId,
+        count: _aiSelected.length,
       );
       if (!mounted) return;
       _syncTagsMeta(updated.aiMeta.tags);

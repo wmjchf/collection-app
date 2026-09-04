@@ -327,6 +327,7 @@ async function runSummaryJob(itemId) {
       direction: null,
     });
     await saveAiMeta(itemId, meta);
+    require('./analyticsService').trackAiJobOutcome(row, 'summary', { ok: true });
     try {
       await usageService.recordAiTokenUsage({
         userId: row.user_id,
@@ -352,6 +353,10 @@ async function runSummaryJob(itemId) {
       direction: null,
     });
     await saveAiMeta(itemId, meta);
+    require('./analyticsService').trackAiJobOutcome(row, 'summary', {
+      ok: false,
+      errorMessage: err.message,
+    });
     console.error(
       `[runSummaryJob] failed item=${itemId} ms=${Date.now() - started}`,
       err.message,

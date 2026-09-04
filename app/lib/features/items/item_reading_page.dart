@@ -451,6 +451,10 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
     }
 
     try {
+      Analytics.instance.aiSummaryRequest(
+        itemId: _item.id,
+        force: force,
+      );
       final updated = await _repo.requestSummary(
         _item.id,
         force: force,
@@ -886,6 +890,10 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
     }
 
     try {
+      Analytics.instance.aiMindmapRequest(
+        itemId: _item.id,
+        force: force,
+      );
       final updated = await _repo.requestMindmap(
         _item.id,
         force: force,
@@ -1048,6 +1056,10 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
         mediaUrl: mediaUrl,
       );
       if (!mounted) return;
+      Analytics.instance.transcriptRequest(
+        itemId: _item.id,
+        segmentKey: chosen.segmentKey,
+      );
       setState(() => _item = updated);
       AppToast.show(context, '已开始转写，请稍候');
       _pollTranscript();

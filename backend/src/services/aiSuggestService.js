@@ -348,6 +348,10 @@ async function runAiSuggestJob(itemId) {
         direction: null,
       });
       await saveAiMeta(itemId, meta);
+      require('./analyticsService').trackAiJobOutcome(row, 'tags', {
+        ok: true,
+        extra: { count: 0 },
+      });
       try {
         const usageService = require('./usageService');
         await usageService.recordAiTokenUsage({
@@ -377,6 +381,10 @@ async function runAiSuggestJob(itemId) {
       direction: null,
     });
     await saveAiMeta(itemId, meta);
+    require('./analyticsService').trackAiJobOutcome(row, 'tags', {
+      ok: true,
+      extra: { count: items.length },
+    });
     try {
       const usageService = require('./usageService');
       await usageService.recordAiTokenUsage({
@@ -403,6 +411,10 @@ async function runAiSuggestJob(itemId) {
       direction: null,
     });
     await saveAiMeta(itemId, meta);
+    require('./analyticsService').trackAiJobOutcome(row, 'tags', {
+      ok: false,
+      errorMessage: err.message,
+    });
     console.error(
       `[runAiSuggestJob] failed item=${itemId} ms=${Date.now() - started}`,
       err.message,
