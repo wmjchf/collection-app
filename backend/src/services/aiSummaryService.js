@@ -147,6 +147,7 @@ async function requestSummary(userId, itemId, { force = false, direction = null 
   }
 
   const usageService = require('./usageService');
+  await usageService.assertPlanFeatureForUser(userId, 'ai_summary');
   await usageService.assertAiQuota(userId);
 
   if (userDirection) {

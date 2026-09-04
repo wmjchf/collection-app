@@ -1,41 +1,56 @@
 const { pool } = require('../db');
+const planService = require('./planService');
 
-const PLAN_PRO = 'pro';
 const STATUS_ACTIVE = 'active';
 const STATUS_EXPIRED = 'expired';
 const STATUS_CANCELLED = 'cancelled';
 
+const PAID_PLANS = planService.paidPlans();
+
 /**
- * 当前有效 Pro：status=active 且 (expires_at IS NULL 或未过期)
+ * 当前有效付费订阅（含 legacy pro）
  */
-async function getActiveSubscription(userId) {
-  if (!userId) return null;
+async function getActiveSubscriptions(userId) {
+  if (!userId) return [];
+  const placeholders = PAID_PLANS.map((_, i) => `:p${i}`).join(', ');
+  const params = { userId, status: STATUS_ACTIVE };
+  PAID_PLANS.forEach((p, i) => {
+    params[`p${i}`] = p;
+  });
   const [rows] = await pool.execute(
     `SELECT id, user_id, plan, status, source, external_id,
             started_at, expires_at, cancelled_at, meta, created_at, updated_at
      FROM subscriptions
      WHERE user_id = :userId
        AND status = :status
-       AND plan = :plan
+       AND plan IN (${placeholders})
        AND (expires_at IS NULL OR expires_at > UTC_TIMESTAMP(3))
-     ORDER BY expires_at IS NULL DESC, expires_at DESC, id DESC
-     LIMIT 1`,
-    { userId, status: STATUS_ACTIVE, plan: PLAN_PRO },
+     ORDER BY id DESC`,
+    params,
   );
-  return rows[0] || null;
+  return rows;
+}
+
+/** @deprecated 取最高档那条 */
+async function getActiveSubscription(userId) {
+  const subs = await getActiveSubscriptions(userId);
+  if (!subs.length) return null;
+  return subs.reduce((best, row) =>
+    planService.planRank(row.plan) > planService.planRank(best.plan) ? row : best,
+  );
 }
 
 async function getPlanForUser(userId) {
-  const sub = await getActiveSubscription(userId);
-  if (!sub) {
-    return {
-      plan: 'free',
-      subscription: null,
-    };
+  const subs = await getActiveSubscriptions(userId);
+  if (!subs.length) {
+    return { plan: planService.PLAN_FREE, subscription: null };
   }
+  const best = subs.reduce((a, b) =>
+    planService.planRank(a.plan) > planService.planRank(b.plan) ? a : b,
+  );
   return {
-    plan: 'pro',
-    subscription: mapSub(sub),
+    plan: planService.normalizePlan(best.plan),
+    subscription: mapSub(best),
   };
 }
 
@@ -43,7 +58,7 @@ function mapSub(row) {
   if (!row) return null;
   return {
     id: Number(row.id),
-    plan: row.plan,
+    plan: planService.normalizePlan(row.plan),
     status: row.status,
     source: row.source,
     externalId: row.external_id || null,
@@ -57,12 +72,13 @@ function mapSub(row) {
 }
 
 /**
- * 激活 / 续期 Pro（支付成功或内部 grant 共用）
- * - 若已有未过期 active：把 expires_at 延长到 max(现有, 新到期)
- * - 否则插入新行
+ * 激活 / 续期订阅（支付成功或内部 grant）
+ * - 同一 externalId 的 active 行：延长 expires_at
+ * - 否则插入新行（高档可与低档并存，生效取最高档）
  */
-async function activatePro({
+async function activateSubscription({
   userId,
+  plan = planService.PLAN_PRINCE,
   source = 'manual',
   externalId = null,
   expiresAt = null,
@@ -73,6 +89,18 @@ async function activatePro({
     throw Object.assign(new Error('缺少用户'), { status: 400 });
   }
 
+  const normalizedPlan = planService.normalizePlan(plan);
+  if (
+    normalizedPlan !== planService.PLAN_PRINCE &&
+    normalizedPlan !== planService.PLAN_EMPEROR
+  ) {
+    throw Object.assign(new Error('无效的订阅档位'), { status: 400 });
+  }
+  const storePlan =
+    String(plan).trim().toLowerCase() === planService.PLAN_PRO
+      ? planService.PLAN_PRO
+      : normalizedPlan;
+
   let expires = expiresAt ? new Date(expiresAt) : null;
   if (!expires && days != null) {
     const d = Number(days);
@@ -82,39 +110,56 @@ async function activatePro({
     expires = new Date(Date.now() + d * 24 * 60 * 60 * 1000);
   }
 
-  const existing = await getActiveSubscription(userId);
-  if (existing) {
-    let nextExpires = expires;
-    if (existing.expires_at && expires) {
-      const cur = new Date(existing.expires_at);
-      nextExpires = expires > cur ? expires : cur;
-    } else if (!expires && existing.expires_at) {
-      nextExpires = new Date(existing.expires_at);
-    } else if (!expires) {
-      nextExpires = null;
-    }
-
-    await pool.execute(
-      `UPDATE subscriptions
-       SET expires_at = :expiresAt,
-           source = :source,
-           external_id = COALESCE(:externalId, external_id),
-           meta = COALESCE(:meta, meta),
-           updated_at = CURRENT_TIMESTAMP(3)
-       WHERE id = :id`,
+  if (externalId) {
+    const [existingRows] = await pool.execute(
+      `SELECT * FROM subscriptions
+       WHERE user_id = :userId
+         AND source = :source
+         AND external_id = :externalId
+         AND status = :status
+       ORDER BY id DESC
+       LIMIT 1`,
       {
-        id: existing.id,
-        expiresAt: nextExpires,
+        userId,
         source: String(source).slice(0, 32),
-        externalId: externalId != null ? String(externalId).slice(0, 191) : null,
-        meta: meta == null ? null : JSON.stringify(meta),
+        externalId: String(externalId).slice(0, 191),
+        status: STATUS_ACTIVE,
       },
     );
-    const [rows] = await pool.execute(
-      `SELECT * FROM subscriptions WHERE id = :id LIMIT 1`,
-      { id: existing.id },
-    );
-    return mapSub(rows[0]);
+    const existing = existingRows[0];
+    if (existing) {
+      let nextExpires = expires;
+      if (existing.expires_at && expires) {
+        const cur = new Date(existing.expires_at);
+        nextExpires = expires > cur ? expires : cur;
+      } else if (!expires && existing.expires_at) {
+        nextExpires = new Date(existing.expires_at);
+      } else if (!expires) {
+        nextExpires = null;
+      }
+
+      await pool.execute(
+        `UPDATE subscriptions
+         SET plan = :plan,
+             expires_at = :expiresAt,
+             source = :source,
+             meta = COALESCE(:meta, meta),
+             updated_at = CURRENT_TIMESTAMP(3)
+         WHERE id = :id`,
+        {
+          id: existing.id,
+          plan: storePlan,
+          expiresAt: nextExpires,
+          source: String(source).slice(0, 32),
+          meta: meta == null ? null : JSON.stringify(meta),
+        },
+      );
+      const [rows] = await pool.execute(
+        `SELECT * FROM subscriptions WHERE id = :id LIMIT 1`,
+        { id: existing.id },
+      );
+      return mapSub(rows[0]);
+    }
   }
 
   const [result] = await pool.execute(
@@ -124,7 +169,7 @@ async function activatePro({
        (:userId, :plan, :status, :source, :externalId, :expiresAt, :meta)`,
     {
       userId,
-      plan: PLAN_PRO,
+      plan: storePlan,
       status: STATUS_ACTIVE,
       source: String(source).slice(0, 32),
       externalId: externalId != null ? String(externalId).slice(0, 191) : null,
@@ -140,44 +185,55 @@ async function activatePro({
   return mapSub(rows[0]);
 }
 
-/** 取消当前有效订阅（立刻失效） */
-async function cancelActivePro(userId, { reason = null } = {}) {
-  const existing = await getActiveSubscription(userId);
-  if (!existing) return { cancelled: false };
-
-  let metaJson = existing.meta;
-  if (reason != null) {
-    let meta = {};
-    if (typeof existing.meta === 'string') {
-      try {
-        meta = JSON.parse(existing.meta) || {};
-      } catch (_) {
-        meta = {};
-      }
-    } else if (existing.meta && typeof existing.meta === 'object') {
-      meta = { ...existing.meta };
-    }
-    meta.cancelReason = String(reason).slice(0, 200);
-    metaJson = JSON.stringify(meta);
-  }
-
-  await pool.execute(
-    `UPDATE subscriptions
-     SET status = :status,
-         cancelled_at = UTC_TIMESTAMP(3),
-         meta = COALESCE(:meta, meta),
-         updated_at = CURRENT_TIMESTAMP(3)
-     WHERE id = :id`,
-    {
-      id: existing.id,
-      status: STATUS_CANCELLED,
-      meta: metaJson != null && typeof metaJson === 'string' ? metaJson : null,
-    },
-  );
-  return { cancelled: true };
+/** @deprecated 使用 activateSubscription */
+async function activatePro(opts) {
+  return activateSubscription({ ...opts, plan: planService.PLAN_PRINCE });
 }
 
-/** 把已过期但仍标 active 的行标成 expired（可选维护） */
+/** 取消当前用户全部有效付费订阅 */
+async function cancelActiveSubscriptions(userId, { reason = null } = {}) {
+  const subs = await getActiveSubscriptions(userId);
+  if (!subs.length) return { cancelled: false, count: 0 };
+
+  for (const existing of subs) {
+    let metaJson = existing.meta;
+    if (reason != null) {
+      let meta = {};
+      if (typeof existing.meta === 'string') {
+        try {
+          meta = JSON.parse(existing.meta) || {};
+        } catch (_) {
+          meta = {};
+        }
+      } else if (existing.meta && typeof existing.meta === 'object') {
+        meta = { ...existing.meta };
+      }
+      meta.cancelReason = String(reason).slice(0, 200);
+      metaJson = JSON.stringify(meta);
+    }
+
+    await pool.execute(
+      `UPDATE subscriptions
+       SET status = :status,
+           cancelled_at = UTC_TIMESTAMP(3),
+           meta = COALESCE(:meta, meta),
+           updated_at = CURRENT_TIMESTAMP(3)
+       WHERE id = :id`,
+      {
+        id: existing.id,
+        status: STATUS_CANCELLED,
+        meta: metaJson != null && typeof metaJson === 'string' ? metaJson : null,
+      },
+    );
+  }
+  return { cancelled: true, count: subs.length };
+}
+
+/** @deprecated */
+async function cancelActivePro(userId, opts = {}) {
+  return cancelActiveSubscriptions(userId, opts);
+}
+
 async function markExpiredSubscriptions() {
   await pool.execute(
     `UPDATE subscriptions
@@ -190,11 +246,11 @@ async function markExpiredSubscriptions() {
   );
 }
 
-/** 按商店 originalTransactionId 延长有效期（续订通知） */
 async function extendByExternalId({
   source,
   externalId,
   expiresAt,
+  plan = null,
   metaPatch = null,
 }) {
   if (!externalId) return { updated: false };
@@ -222,6 +278,11 @@ async function extendByExternalId({
     Object.assign(meta, metaPatch);
   }
 
+  let nextPlan = plan;
+  if (!nextPlan && metaPatch?.productId) {
+    nextPlan = planService.planFromProductId(metaPatch.productId);
+  }
+
   const nextExpires = expiresAt ? new Date(expiresAt) : null;
   let expires = nextExpires;
   if (row.expires_at && nextExpires) {
@@ -232,6 +293,7 @@ async function extendByExternalId({
   await pool.execute(
     `UPDATE subscriptions
      SET status = :status,
+         plan = COALESCE(:plan, plan),
          expires_at = :expiresAt,
          cancelled_at = NULL,
          meta = :meta,
@@ -240,6 +302,7 @@ async function extendByExternalId({
     {
       id: row.id,
       status: STATUS_ACTIVE,
+      plan: nextPlan || null,
       expiresAt: expires,
       meta: JSON.stringify(meta),
     },
@@ -251,7 +314,6 @@ async function extendByExternalId({
   return { updated: true, subscription: mapSub(fresh[0]) };
 }
 
-/** 按 originalTransactionId 标过期/取消（退款、到期通知） */
 async function expireByExternalId({ source, externalId, reason = null }) {
   if (!externalId) return { updated: false };
   const [rows] = await pool.execute(
@@ -299,13 +361,16 @@ async function expireByExternalId({ source, externalId, reason = null }) {
 }
 
 module.exports = {
-  PLAN_PRO,
+  PLAN_PRO: planService.PLAN_PRO,
   STATUS_ACTIVE,
   STATUS_EXPIRED,
   STATUS_CANCELLED,
   getActiveSubscription,
+  getActiveSubscriptions,
   getPlanForUser,
+  activateSubscription,
   activatePro,
+  cancelActiveSubscriptions,
   cancelActivePro,
   markExpiredSubscriptions,
   extendByExternalId,

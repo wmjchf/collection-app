@@ -58,18 +58,31 @@ module.exports = {
     aiModel: process.env.ALIYUN_AI_MODEL || 'qwen3.8-max',
   },
   /**
-   * 月额度：free / pro 分档；USAGE_ENFORCING 控制触顶是否拦截（默认 true）
+   * 月额度：free / prince / emperor；USAGE_ENFORCING 控制触顶（默认 true）
    */
   usage: {
     enforcing: process.env.USAGE_ENFORCING !== 'false',
+    freeItemLimit: Number(process.env.FREE_ITEM_LIMIT) || 300,
+    /** 普通用户 AI/转写均为 0（不可用） */
+    freeAiTokensPerMonth: Number(process.env.FREE_AI_TOKENS_PER_MONTH) || 0,
     freeTranscriptMinutesPerMonth:
-      Number(process.env.FREE_TRANSCRIPT_MINUTES_PER_MONTH) || 40,
-    freeAiTokensPerMonth:
-      Number(process.env.FREE_AI_TOKENS_PER_MONTH) || 200000,
-    proTranscriptMinutesPerMonth:
-      Number(process.env.PRO_TRANSCRIPT_MINUTES_PER_MONTH) || 200,
+      Number(process.env.FREE_TRANSCRIPT_MINUTES_PER_MONTH) || 0,
+    princeAiTokensPerMonth:
+      Number(process.env.PRINCE_AI_TOKENS_PER_MONTH) || 500000,
+    emperorAiTokensPerMonth:
+      Number(process.env.EMPEROR_AI_TOKENS_PER_MONTH) || 1000000,
+    emperorTranscriptMinutesPerMonth:
+      Number(process.env.EMPEROR_TRANSCRIPT_MINUTES_PER_MONTH) || 200,
+    /** @deprecated 等同太子 AI */
     proAiTokensPerMonth:
-      Number(process.env.PRO_AI_TOKENS_PER_MONTH) || 1000000,
+      Number(process.env.PRO_AI_TOKENS_PER_MONTH) ||
+      Number(process.env.PRINCE_AI_TOKENS_PER_MONTH) ||
+      500000,
+    /** @deprecated 等同帝王转写 */
+    proTranscriptMinutesPerMonth:
+      Number(process.env.PRO_TRANSCRIPT_MINUTES_PER_MONTH) ||
+      Number(process.env.EMPEROR_TRANSCRIPT_MINUTES_PER_MONTH) ||
+      200,
   },
   /**
    * Apple IAP（App Store Server API）
@@ -89,6 +102,20 @@ module.exports = {
     productYearly:
       process.env.APPLE_IAP_PRODUCT_YEARLY ||
       'com.bufang.supercollection.yearly',
+    productPrinceMonthly:
+      process.env.APPLE_IAP_PRODUCT_PRINCE_MONTHLY ||
+      process.env.APPLE_IAP_PRODUCT_MONTHLY ||
+      'com.bufang.supercollection.monthly',
+    productPrinceYearly:
+      process.env.APPLE_IAP_PRODUCT_PRINCE_YEARLY ||
+      process.env.APPLE_IAP_PRODUCT_YEARLY ||
+      'com.bufang.supercollection.yearly',
+    productEmperorMonthly:
+      process.env.APPLE_IAP_PRODUCT_EMPEROR_MONTHLY ||
+      'com.bufang.supercollection.emperor.monthly',
+    productEmperorYearly:
+      process.env.APPLE_IAP_PRODUCT_EMPEROR_YEARLY ||
+      'com.bufang.supercollection.emperor.yearly',
     /** auto | production | sandbox */
     env: process.env.APPLE_IAP_ENV || 'auto',
   },

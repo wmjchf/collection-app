@@ -3,79 +3,29 @@ import 'package:flutter/material.dart';
 import 'package:super_collection/features/auth/auth_repository.dart';
 import 'package:super_collection/features/auth/login_page.dart';
 import 'package:super_collection/features/onboarding/shortcuts_help_page.dart';
+import 'package:super_collection/features/settings/account_page.dart';
 import 'package:super_collection/features/settings/account_security_page.dart';
 import 'package:super_collection/features/settings/how_to_add_link_page.dart';
 import 'package:super_collection/features/settings/legal_docs.dart';
 import 'package:super_collection/features/settings/logout_confirm_dialog.dart';
 import 'package:super_collection/features/settings/simple_doc_page.dart';
-import 'package:super_collection/features/settings/usage_repository.dart';
 
 /// 设置内容（设置页 / 账户抽屉共用）
 class SettingsPanel extends StatefulWidget {
-  const SettingsPanel({super.key});
+  const SettingsPanel({super.key, this.showAccountEntry = true});
+
+  /// 账户抽屉内方案卡已含入口时设为 false
+  final bool showAccountEntry;
 
   @override
   State<SettingsPanel> createState() => _SettingsPanelState();
 }
 
 class _SettingsPanelState extends State<SettingsPanel> {
-  static const _text = Color(0xFF1F242E);
   static const _muted = Color(0xFF737A85);
   static const _version = 'v1.3.0';
 
   final _auth = AuthRepository();
-  final _usageRepo = UsageRepository();
-  AuthSession? _session;
-  UsageSummary? _usage;
-  bool _loading = true;
-
-  @override
-  void initState() {
-    super.initState();
-    UsageRefresh.version.addListener(_onUsageRefresh);
-    _load();
-  }
-
-  @override
-  void dispose() {
-    UsageRefresh.version.removeListener(_onUsageRefresh);
-    super.dispose();
-  }
-
-  void _onUsageRefresh() => _load();
-
-  Future<void> _load() async {
-    final session = await _auth.readSession();
-    UsageSummary? usage;
-    try {
-      usage = await _usageRepo.fetchUsage();
-    } catch (_) {
-      usage = null;
-    }
-    if (!mounted) return;
-    setState(() {
-      _session = session;
-      _usage = usage;
-      _loading = false;
-    });
-  }
-
-  String _fmtMinutes(double m) {
-    if (m == m.roundToDouble()) return m.toInt().toString();
-    return m.toStringAsFixed(1);
-  }
-
-  String _maskedPhone(String? phone) {
-    if (phone == null || phone.isEmpty) return '—';
-    final digits = phone.split('').where((c) {
-      final code = c.codeUnitAt(0);
-      return code >= 48 && code <= 57;
-    }).join();
-    if (digits.length >= 7) {
-      return '${digits.substring(0, 3)}****${digits.substring(digits.length - 4)}';
-    }
-    return phone;
-  }
 
   Future<void> _logout() async {
     final ok = await showLogoutConfirmDialog(context);
@@ -94,57 +44,24 @@ class _SettingsPanelState extends State<SettingsPanel> {
 
   @override
   Widget build(BuildContext context) {
-    if (_loading) {
-      return const Center(child: CircularProgressIndicator());
-    }
-
     return Column(
       children: [
         Expanded(
           child: ListView(
             padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
             children: [
-              const _SectionLabel('账号'),
-              const SizedBox(height: 8),
-              _CardGroup(
-                children: [
-                  _InfoRow(
-                    title: '手机号',
-                    trailing: Text(
-                      _maskedPhone(_session?.phone),
-                      style: const TextStyle(fontSize: 14, color: _muted),
-                    ),
-                  ),
-                ],
-              ),
-              if (_usage != null) ...[
-                const SizedBox(height: 16),
-                _SectionLabel(
-                  _usage!.yearMonth.isEmpty
-                      ? '本月用量'
-                      : '本月用量（${_usage!.yearMonth}）',
-                ),
-                const SizedBox(height: 8),
+              if (widget.showAccountEntry) ...[
                 _CardGroup(
                   children: [
                     _InfoRow(
-                      title: '转写',
-                      trailing: Text(
-                        '${_fmtMinutes(_usage!.transcriptUsedMinutes)} / ${_fmtMinutes(_usage!.transcriptLimitMinutes)} 分钟',
-                        style: const TextStyle(fontSize: 14, color: _muted),
-                      ),
-                    ),
-                    _InfoRow(
-                      title: 'AI',
-                      trailing: Text(
-                        '${formatAiCredits(_usage!.aiUsedTokens)} / ${formatAiCredits(_usage!.aiLimitTokens)} 积分',
-                        style: const TextStyle(fontSize: 14, color: _muted),
-                      ),
+                      title: '账户和用量',
+                      showChevron: true,
+                      onTap: () => _open(const AccountPage()),
                     ),
                   ],
                 ),
+                const SizedBox(height: 16),
               ],
-              const SizedBox(height: 16),
               const _SectionLabel('使用帮助'),
               const SizedBox(height: 8),
               _CardGroup(

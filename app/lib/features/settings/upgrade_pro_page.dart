@@ -1,6 +1,5 @@
 import 'dart:io';
 
-import 'package:super_collection/core/config/app_brand.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:in_app_purchase/in_app_purchase.dart';
@@ -13,12 +12,19 @@ import 'package:super_collection/features/settings/legal_docs.dart';
 import 'package:super_collection/features/settings/simple_doc_page.dart';
 import 'package:super_collection/features/settings/usage_repository.dart';
 
-/// 升级 Pro（对齐 Figma `42. 升级 Pro`；iOS StoreKit）
+/// 订阅升级页（太子 / 帝王；iOS StoreKit）
 class UpgradeProPage extends StatefulWidget {
-  const UpgradeProPage({super.key, this.from = 'settings'});
+  const UpgradeProPage({
+    super.key,
+    this.from = 'settings',
+    this.initialTier,
+  });
 
   /// settings | quota | feature_gate
   final String from;
+
+  /// 引导订阅时预选档位：`prince` | `emperor`
+  final String? initialTier;
 
   @override
   State<UpgradeProPage> createState() => _UpgradeProPageState();
@@ -37,6 +43,8 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
 
   Map<String, ProductDetails> _products = {};
   PlanQuotasTable _quotas = PlanQuotasTable.defaults;
+  BillingProductsConfig? _billing;
+  String _selectedTier = UsagePlan.prince;
   bool _productsLoading = true;
   AppleIapPhase? _phase;
   bool _restoreFlow = false;
@@ -68,6 +76,8 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
   @override
   void initState() {
     super.initState();
+    final t = UsagePlan.normalize(widget.initialTier);
+    if (t == UsagePlan.emperor) _selectedTier = UsagePlan.emperor;
     Analytics.instance.proPageView(from: widget.from);
     _load();
   }
@@ -87,25 +97,22 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
     // 1) 先拉额度（快），立刻上屏；商品 id 一并拿到
     final billing = await _usageRepo.fetchBillingProducts();
     if (!mounted) return;
-    setState(() => _quotas = billing.quotas);
+    setState(() {
+      _quotas = billing.quotas;
+      _billing = billing;
+    });
 
     if (!_isIos) {
       setState(() => _productsLoading = false);
       return;
     }
 
-    // 2) 再查 StoreKit（慢）；不再重复打 /api/billing/products
     try {
-      final map = await _iap.loadProducts(
-        monthlyId: billing.monthlyId,
-        yearlyId: billing.yearlyId,
-      );
+      final map = await _iap.loadProducts(productIds: billing.allIds);
       if (!mounted) return;
-      final yearly = _findProduct(map, yearly: true);
-      final monthly = _findProduct(map, yearly: false);
       setState(() {
         _products = map;
-        _selectedId = yearly?.id ?? monthly?.id ?? map.keys.firstOrNull;
+        _selectedId = _defaultProductId(map);
         _productsLoading = false;
         _error = null;
       });
@@ -124,14 +131,50 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
     }
   }
 
+  TierProductIds get _tierIds {
+    final billing = _billing;
+    if (billing == null) {
+      return const TierProductIds(
+        monthly: IapProductIds.princeMonthly,
+        yearly: IapProductIds.princeYearly,
+      );
+    }
+    return _selectedTier == UsagePlan.emperor
+        ? billing.emperor
+        : billing.prince;
+  }
+
+  String? _defaultProductId(Map<String, ProductDetails> map) {
+    final ids = _tierIds;
+    if (map.containsKey(ids.yearly)) return ids.yearly;
+    if (map.containsKey(ids.monthly)) return ids.monthly;
+    for (final p in map.values) {
+      final id = p.id.toLowerCase();
+      final tier = _selectedTier;
+      if (tier == UsagePlan.emperor && id.contains('emperor')) {
+        if (id.contains('year')) return p.id;
+      }
+      if (tier == UsagePlan.prince &&
+          !id.contains('emperor') &&
+          id.contains('year')) {
+        return p.id;
+      }
+    }
+    return map.keys.firstOrNull;
+  }
+
   ProductDetails? _findProduct(
     Map<String, ProductDetails> map, {
     required bool yearly,
   }) {
-    final prefer = yearly ? IapProductIds.yearly : IapProductIds.monthly;
+    final ids = _tierIds;
+    final prefer = yearly ? ids.yearly : ids.monthly;
     if (map.containsKey(prefer)) return map[prefer];
     for (final p in map.values) {
       final id = p.id.toLowerCase();
+      final isEmperor = id.contains('emperor');
+      if (_selectedTier == UsagePlan.prince && isEmperor) continue;
+      if (_selectedTier == UsagePlan.emperor && !isEmperor) continue;
       if (yearly && (id.contains('year') || id.contains('annual'))) {
         return p;
       }
@@ -196,7 +239,7 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
       );
       if (!mounted) return;
       UsageRefresh.bump();
-      AppToast.show(context, 'Pro 已开通');
+      AppToast.show(context, '${UsagePlan.label(_selectedTier)} 已开通');
       Navigator.of(context).maybePop(true);
     } on ApiException catch (e) {
       if (!mounted) return;
@@ -239,7 +282,7 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
         AppToast.show(context, '未找到可恢复的订阅');
       } else {
         UsageRefresh.bump();
-        AppToast.show(context, '已恢复 Pro');
+        AppToast.show(context, '已恢复 ${usage.displayPlan}');
         Navigator.of(context).maybePop(true);
       }
     } on ApiException catch (e) {
@@ -278,7 +321,7 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
           label: const Text('返回', style: TextStyle(fontSize: 15)),
         ),
         title: const Text(
-          '升级 Pro',
+          '订阅会员',
           style: TextStyle(
             fontSize: 17,
             fontWeight: FontWeight.w700,
@@ -292,7 +335,7 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
             child: ListView(
               padding: const EdgeInsets.fromLTRB(16, 14, 16, 20),
               children: [
-                const _HeroCard(),
+                _HeroCard(tier: _selectedTier),
                 const SizedBox(height: 14),
                 _QuotaTable(quotas: _quotas),
                 const SizedBox(height: 14),
@@ -327,8 +370,19 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
                     onPressed: _busy ? null : _load,
                     child: const Text('重试'),
                   ),
-                ] else
+                ]                 else ...[
+                  _TierPicker(
+                    selected: _selectedTier,
+                    onChanged: (tier) {
+                      setState(() {
+                        _selectedTier = tier;
+                        _selectedId = _defaultProductId(_products);
+                      });
+                    },
+                  ),
+                  const SizedBox(height: 12),
                   ..._planTiles(),
+                ],
               ],
             ),
           ),
@@ -411,7 +465,9 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
 }
 
 class _HeroCard extends StatelessWidget {
-  const _HeroCard();
+  const _HeroCard({required this.tier});
+
+  final String tier;
 
   @override
   Widget build(BuildContext context) {
@@ -454,24 +510,26 @@ class _HeroCard extends StatelessWidget {
                 ),
               ),
             ),
-            const Column(
+            Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _ProBadge(),
-                SizedBox(height: 10),
+                const _ProBadge(),
+                const SizedBox(height: 10),
                 Text(
-                  AppBrand.proName,
-                  style: TextStyle(
+                  tier == UsagePlan.emperor ? '帝王' : '太子',
+                  style: const TextStyle(
                     fontSize: 32,
                     fontWeight: FontWeight.w700,
                     color: Color(0xFFC7EDDB),
                     height: 38 / 32,
                   ),
                 ),
-                SizedBox(height: 10),
+                const SizedBox(height: 10),
                 Text(
-                  '基础收藏与解析免费。\nPro 提高转写与 AI 的月额度。',
-                  style: TextStyle(
+                  tier == UsagePlan.emperor
+                      ? '含太子全部能力，另解锁思维导图与视频转写。'
+                      : '收藏不限条数，解锁 AI 标签与 AI 解读。',
+                  style: const TextStyle(
                     fontSize: 14,
                     color: Color(0xC7FFFFFF),
                     height: 21 / 14,
@@ -511,6 +569,105 @@ class _ProBadge extends StatelessWidget {
   }
 }
 
+class _TierPicker extends StatelessWidget {
+  const _TierPicker({
+    required this.selected,
+    required this.onChanged,
+  });
+
+  final String selected;
+  final ValueChanged<String> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Expanded(
+          child: _TierChip(
+            label: '太子',
+            subtitle: 'AI 标签 · 解读',
+            selected: selected == UsagePlan.prince,
+            onTap: () => onChanged(UsagePlan.prince),
+          ),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: _TierChip(
+            label: '帝王',
+            subtitle: '含太子 + 脑图 · 转写',
+            selected: selected == UsagePlan.emperor,
+            onTap: () => onChanged(UsagePlan.emperor),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _TierChip extends StatelessWidget {
+  const _TierChip({
+    required this.label,
+    required this.subtitle,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String label;
+  final String subtitle;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: selected
+          ? _UpgradeProPageState._blueSoft
+          : Colors.white,
+      borderRadius: BorderRadius.circular(12),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: selected
+                  ? _UpgradeProPageState._blue
+                  : _UpgradeProPageState._border,
+            ),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                  color: selected
+                      ? _UpgradeProPageState._blue
+                      : _UpgradeProPageState._text,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                subtitle,
+                style: const TextStyle(
+                  fontSize: 11,
+                  color: _UpgradeProPageState._muted,
+                  height: 1.3,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _QuotaTable extends StatelessWidget {
   const _QuotaTable({required this.quotas});
 
@@ -518,18 +675,22 @@ class _QuotaTable extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final itemFree = quotas.free.itemLimit?.toString() ?? '300';
     final rows = [
-      (
-        '转写',
-        '每月 · 分钟',
-        '${quotas.free.transcriptMinutes}',
-        '${quotas.pro.transcriptMinutes}',
-      ),
+      ('收藏', '在库条数', itemFree, '不限', '不限'),
       (
         'AI',
         '每月 · 积分',
         formatAiCredits(quotas.free.aiTokens),
-        formatAiCredits(quotas.pro.aiTokens),
+        formatAiCredits(quotas.prince.aiTokens),
+        formatAiCredits(quotas.emperor.aiTokens),
+      ),
+      (
+        '转写',
+        '每月 · 分钟',
+        '${quotas.free.transcriptMinutes}',
+        '${quotas.prince.transcriptMinutes}',
+        '${quotas.emperor.transcriptMinutes}',
       ),
     ];
 
@@ -547,8 +708,9 @@ class _QuotaTable extends StatelessWidget {
           const Row(
             children: [
               Expanded(
+                flex: 2,
                 child: Text(
-                  '本月额度',
+                  '权益对照',
                   style: TextStyle(
                     fontSize: 13,
                     fontWeight: FontWeight.w500,
@@ -556,22 +718,29 @@ class _QuotaTable extends StatelessWidget {
                   ),
                 ),
               ),
-              SizedBox(
-                width: 72,
+              Expanded(
                 child: Text(
                   '普通',
                   textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w500,
-                    color: _UpgradeProPageState._muted,
-                  ),
+                  style: TextStyle(fontSize: 11, color: _UpgradeProPageState._muted),
                 ),
               ),
-              SizedBox(
-                width: 88,
-                child: Center(
-                  child: _ProColumnHeader(),
+              Expanded(
+                child: Text(
+                  '太子',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 11, color: _UpgradeProPageState._muted),
+                ),
+              ),
+              Expanded(
+                child: Text(
+                  '帝王',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: _UpgradeProPageState._blue,
+                  ),
                 ),
               ),
             ],
@@ -580,11 +749,12 @@ class _QuotaTable extends StatelessWidget {
           for (var i = 0; i < rows.length; i++) ...[
             if (i > 0)
               const Divider(height: 1, thickness: 1, color: Color(0xFFF0F1F4)),
-            _QuotaRow(
+            _QuotaRow3(
               label: rows[i].$1,
               unit: rows[i].$2,
-              freeValue: rows[i].$3,
-              proValue: rows[i].$4,
+              free: rows[i].$3,
+              prince: rows[i].$4,
+              emperor: rows[i].$5,
             ),
           ],
           const SizedBox(height: 8),
@@ -602,92 +772,78 @@ class _QuotaTable extends StatelessWidget {
   }
 }
 
-class _ProColumnHeader extends StatelessWidget {
-  const _ProColumnHeader();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 88,
-      height: 24,
-      alignment: Alignment.center,
-      decoration: BoxDecoration(
-        color: _UpgradeProPageState._blueSoft,
-        borderRadius: BorderRadius.circular(6),
-      ),
-      child: const Text(
-        'Pro',
-        style: TextStyle(
-          fontSize: 12,
-          fontWeight: FontWeight.w700,
-          color: _UpgradeProPageState._blue,
-        ),
-      ),
-    );
-  }
-}
-
-class _QuotaRow extends StatelessWidget {
-  const _QuotaRow({
+class _QuotaRow3 extends StatelessWidget {
+  const _QuotaRow3({
     required this.label,
     required this.unit,
-    required this.freeValue,
-    required this.proValue,
+    required this.free,
+    required this.prince,
+    required this.emperor,
   });
 
   final String label;
   final String unit;
-  final String freeValue;
-  final String proValue;
+  final String free;
+  final String prince;
+  final String emperor;
 
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 14),
+      padding: const EdgeInsets.symmetric(vertical: 10),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Expanded(
+            flex: 2,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
                   label,
                   style: const TextStyle(
-                    fontSize: 15,
+                    fontSize: 14,
                     fontWeight: FontWeight.w500,
                     color: _UpgradeProPageState._text,
                   ),
                 ),
-                const SizedBox(height: 2),
                 Text(
                   unit,
                   style: const TextStyle(
-                    fontSize: 12,
+                    fontSize: 11,
                     color: _UpgradeProPageState._muted,
                   ),
                 ),
               ],
             ),
           ),
-          SizedBox(
-            width: 72,
+          Expanded(
             child: Text(
-              freeValue,
+              free,
               textAlign: TextAlign.center,
               style: const TextStyle(
-                fontSize: 16,
+                fontSize: 13,
                 color: _UpgradeProPageState._muted,
               ),
             ),
           ),
-          SizedBox(
-            width: 88,
+          Expanded(
             child: Text(
-              proValue,
+              prince,
               textAlign: TextAlign.center,
               style: const TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.w700,
+                fontSize: 13,
+                color: _UpgradeProPageState._text,
+              ),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              emperor,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
                 color: _UpgradeProPageState._blue,
               ),
             ),

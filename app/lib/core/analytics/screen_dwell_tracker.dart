@@ -12,6 +12,7 @@ abstract final class AnalyticsScreens {
   static const filterList = 'filter_list';
   static const tagList = 'tag_list';
   static const trash = 'trash';
+  static const account = 'account';
   static const accountSecurity = 'account_security';
   static const howToAddLink = 'how_to_add_link';
   static const shortcutsHelp = 'shortcuts_help';

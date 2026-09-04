@@ -2,15 +2,13 @@ const fs = require('fs');
 const jwt = require('jsonwebtoken');
 const config = require('../config');
 const subscriptionService = require('./subscriptionService');
+const planService = require('./planService');
 
 const PROD_BASE = 'https://api.storekit.itunes.apple.com';
 const SANDBOX_BASE = 'https://api.storekit-sandbox.itunes.apple.com';
 
 function productIds() {
-  const a = config.appleIap || {};
-  return new Set(
-    [a.productMonthly, a.productYearly].filter(Boolean).map(String),
-  );
+  return planService.allPaidProductIds();
 }
 
 function isConfigured() {
@@ -192,8 +190,14 @@ async function verifyAndActivate({ userId, transactionId, productId, jws }) {
     });
   }
 
-  const sub = await subscriptionService.activatePro({
+  const plan = planService.planFromProductId(tx.productId);
+  if (!plan) {
+    throw Object.assign(new Error('未知的订阅商品'), { status: 400 });
+  }
+
+  const sub = await subscriptionService.activateSubscription({
     userId,
+    plan,
     source: 'apple',
     externalId: originalId,
     expiresAt,
@@ -331,14 +335,24 @@ async function handleServerNotification(signedPayload) {
 function publicProductConfig() {
   const a = config.appleIap || {};
   const usageService = require('./usageService');
+  const princeMonthly = a.productPrinceMonthly || a.productMonthly;
+  const princeYearly = a.productPrinceYearly || a.productYearly;
   return {
     configured: isConfigured(),
     bundleId: a.bundleId,
     products: {
-      monthly: a.productMonthly,
-      yearly: a.productYearly,
+      prince: {
+        monthly: princeMonthly,
+        yearly: princeYearly,
+      },
+      emperor: {
+        monthly: a.productEmperorMonthly,
+        yearly: a.productEmperorYearly,
+      },
+      /** @deprecated 等同太子 */
+      monthly: princeMonthly,
+      yearly: princeYearly,
     },
-    /** 普通 / Pro 月额度（与 env 一致，供升级页展示） */
     quotas: usageService.planQuotasTable(),
   };
 }

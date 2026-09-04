@@ -105,7 +105,7 @@ router.post('/checkout', async (req, res) => {
 });
 
 /**
- * POST /api/billing/dev/grant-pro — 开发环境授予 Pro（仅 SMS_DEV_MODE）
+ * POST /api/billing/dev/grant-pro — 开发环境授予太子（仅 SMS_DEV_MODE）
  * body: { days?: number } 默认 30；传 0 表示不限期
  */
 router.post('/dev/grant-pro', async (req, res, next) => {
@@ -121,8 +121,9 @@ router.post('/dev/grant-pro', async (req, res, next) => {
     if (!unlimited && (!Number.isFinite(days) || days <= 0)) {
       return res.status(400).json({ message: 'days 无效' });
     }
-    const sub = await subscriptionService.activatePro({
+    const sub = await subscriptionService.activateSubscription({
       userId: req.auth.userId,
+      plan: 'prince',
       source: 'dev',
       days: unlimited ? null : days,
       expiresAt: unlimited ? null : undefined,
@@ -130,7 +131,7 @@ router.post('/dev/grant-pro', async (req, res, next) => {
     });
     const summary = await usageService.getUsageSummary(req.auth.userId);
     return res.json({
-      message: '已授予 Pro',
+      message: '已授予太子',
       subscription: sub,
       plan: summary.plan,
       usage: summary,
@@ -140,18 +141,53 @@ router.post('/dev/grant-pro', async (req, res, next) => {
   }
 });
 
-/** POST /api/billing/dev/revoke-pro — 开发环境取消 Pro */
+/** POST /api/billing/dev/grant-emperor — 开发环境授予帝王 */
+router.post('/dev/grant-emperor', async (req, res, next) => {
+  try {
+    if (!config.auth?.smsDevMode) {
+      return res.status(403).json({ message: '仅开发模式可用' });
+    }
+    const rawDays = req.body?.days;
+    const unlimited = rawDays === 0 || rawDays === '0';
+    const days = unlimited
+      ? null
+      : Number(rawDays != null ? rawDays : 30);
+    if (!unlimited && (!Number.isFinite(days) || days <= 0)) {
+      return res.status(400).json({ message: 'days 无效' });
+    }
+    const sub = await subscriptionService.activateSubscription({
+      userId: req.auth.userId,
+      plan: 'emperor',
+      source: 'dev',
+      days: unlimited ? null : days,
+      expiresAt: unlimited ? null : undefined,
+      meta: { grantedVia: 'dev/grant-emperor' },
+    });
+    const summary = await usageService.getUsageSummary(req.auth.userId);
+    return res.json({
+      message: '已授予帝王',
+      subscription: sub,
+      plan: summary.plan,
+      usage: summary,
+    });
+  } catch (err) {
+    return next(err);
+  }
+});
+
+/** POST /api/billing/dev/revoke-pro — 开发环境取消全部付费订阅 */
 router.post('/dev/revoke-pro', async (req, res, next) => {
   try {
     if (!config.auth?.smsDevMode) {
       return res.status(403).json({ message: '仅开发模式可用' });
     }
-    const result = await subscriptionService.cancelActivePro(req.auth.userId, {
-      reason: 'dev/revoke-pro',
-    });
+    const result = await subscriptionService.cancelActiveSubscriptions(
+      req.auth.userId,
+      { reason: 'dev/revoke-pro' },
+    );
     const summary = await usageService.getUsageSummary(req.auth.userId);
     return res.json({
-      message: result.cancelled ? '已取消 Pro' : '当前无有效 Pro',
+      message: result.cancelled ? '已取消订阅' : '当前无有效订阅',
       ...result,
       plan: summary.plan,
       usage: summary,

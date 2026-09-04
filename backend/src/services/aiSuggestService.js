@@ -166,6 +166,7 @@ async function requestAiSuggest(userId, itemId, { force = false, direction = nul
   }
 
   const usageService = require('./usageService');
+  await usageService.assertPlanFeatureForUser(userId, 'ai_tags');
   await usageService.assertAiQuota(userId);
 
   if (userDirection) {

@@ -138,6 +138,9 @@ async function createItem(userId, rawUrl) {
     return { item: mapItem(existing), existed: true };
   }
 
+  const usageService = require('./usageService');
+  await usageService.assertItemQuota(userId);
+
   if (!meta) {
     try {
       meta = await fetchQuickMeta(canonicalUrl);
@@ -850,6 +853,7 @@ async function beginTranscriptSegment(
   }
 
   const usageService = require('./usageService');
+  await usageService.assertPlanFeatureForUser(userId, 'transcript');
   await usageService.assertTranscriptQuota(userId);
 
   const key = String(segmentKey || '').trim();

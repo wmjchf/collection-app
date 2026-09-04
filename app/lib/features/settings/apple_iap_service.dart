@@ -9,10 +9,22 @@ import 'package:super_collection/features/settings/usage_repository.dart';
 
 /// App Store 商品 id（须与 ASC / 后端 env 一致）
 class IapProductIds {
-  static const monthly = 'com.bufang.supercollection.monthly';
-  static const yearly = 'com.bufang.supercollection.yearly';
+  static const princeMonthly = 'com.bufang.supercollection.monthly';
+  static const princeYearly = 'com.bufang.supercollection.yearly';
+  static const emperorMonthly = 'com.bufang.supercollection.emperor.monthly';
+  static const emperorYearly = 'com.bufang.supercollection.emperor.yearly';
 
-  static const all = <String>{monthly, yearly};
+  /** @deprecated */
+  static const monthly = princeMonthly;
+  /** @deprecated */
+  static const yearly = princeYearly;
+
+  static const all = <String>{
+    princeMonthly,
+    princeYearly,
+    emperorMonthly,
+    emperorYearly,
+  };
 }
 
 /// StoreKit 购买阶段（供 UI 展示细分文案）
@@ -78,8 +90,8 @@ class AppleIapService {
   }
 
   /// 从 App Store 拉商品详情。
-  /// [monthlyId]/[yearlyId] 可由升级页一次 `/api/billing/products` 传入，避免重复打后端。
   Future<Map<String, ProductDetails>> loadProducts({
+    Set<String>? productIds,
     String? monthlyId,
     String? yearlyId,
   }) async {
@@ -89,34 +101,45 @@ class AppleIapService {
       throw ApiException('当前设备不支持应用内购买', statusCode: 400);
     }
 
-    var monthly = monthlyId?.trim();
-    var yearly = yearlyId?.trim();
-    if (monthly == null ||
-        monthly.isEmpty ||
-        yearly == null ||
-        yearly.isEmpty) {
-      try {
-        final token = await _token();
-        final json = await _api.get('/api/billing/products', accessToken: token);
-        final products = json['products'];
-        if (products is Map) {
-          final m = (products['monthly'] as String?)?.trim();
-          final y = (products['yearly'] as String?)?.trim();
-          if (m != null && m.isNotEmpty) monthly ??= m;
-          if (y != null && y.isNotEmpty) yearly ??= y;
-        }
-      } catch (_) {
-        // 后端不可达时用本地默认 id
+    Set<String> ids;
+    if (productIds != null && productIds.isNotEmpty) {
+      ids = productIds;
+    } else {
+      var monthly = monthlyId?.trim();
+      var yearly = yearlyId?.trim();
+      if (monthly == null ||
+          monthly.isEmpty ||
+          yearly == null ||
+          yearly.isEmpty) {
+        try {
+          final token = await _token();
+          final json =
+              await _api.get('/api/billing/products', accessToken: token);
+          final products = json['products'];
+          if (products is Map) {
+            final prince = products['prince'];
+            if (prince is Map) {
+              final m = (prince['monthly'] as String?)?.trim();
+              final y = (prince['yearly'] as String?)?.trim();
+              if (m != null && m.isNotEmpty) monthly ??= m;
+              if (y != null && y.isNotEmpty) yearly ??= y;
+            }
+            final m = (products['monthly'] as String?)?.trim();
+            final y = (products['yearly'] as String?)?.trim();
+            if (m != null && m.isNotEmpty) monthly ??= m;
+            if (y != null && y.isNotEmpty) yearly ??= y;
+          }
+        } catch (_) {}
       }
+      monthly = (monthly == null || monthly.isEmpty)
+          ? IapProductIds.princeMonthly
+          : monthly;
+      yearly = (yearly == null || yearly.isEmpty)
+          ? IapProductIds.princeYearly
+          : yearly;
+      ids = {monthly, if (yearly != monthly) yearly};
     }
-    monthly = (monthly == null || monthly.isEmpty)
-        ? IapProductIds.monthly
-        : monthly;
-    yearly =
-        (yearly == null || yearly.isEmpty) ? IapProductIds.yearly : yearly;
 
-    // 一次查询月+年：未就绪的 id 进 notFoundIDs，不拖垮已就绪商品
-    final ids = <String>{monthly, if (yearly != monthly) yearly};
     final result = await _queryProducts(ids, allowPartial: true);
     if (result.isEmpty) {
       throw ApiException(
@@ -169,7 +192,7 @@ class AppleIapService {
     void Function(AppleIapPhase phase)? onPhase,
   }) async {
     if (!isIos) {
-      throw ApiException('请在 iPhone 上订阅 Pro', statusCode: 400);
+      throw ApiException('请在 iPhone 上订阅', statusCode: 400);
     }
     await ensureListening();
 
