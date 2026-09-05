@@ -10,6 +10,7 @@ import 'package:super_collection/features/items/ai_meta_models.dart';
 import 'package:super_collection/features/items/items_repository.dart';
 import 'package:super_collection/features/items/reading_regenerate_confirm_dialog.dart';
 import 'package:super_collection/core/ui/app_toast.dart';
+import 'package:super_collection/features/settings/quota_gate.dart';
 
 enum ReadingTagsSheetResult { createTag }
 
@@ -186,7 +187,7 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
       _startAiPoll();
     } on ApiException catch (e) {
       if (!mounted) return;
-      AppToast.show(context, e.message);
+      await handleApiException(context, e);
     }
   }
 
