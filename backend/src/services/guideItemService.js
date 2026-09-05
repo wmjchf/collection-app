@@ -2,6 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const { pool } = require('../db');
 const { normalizeUrl } = require('../utils/url');
+const { extractMeta } = require('./parser/extractMeta');
 
 const GUIDE_URL = 'https://conflux.wobufang.com/guide';
 const GUIDE_TITLE = '使用指引与技巧';
@@ -9,7 +10,11 @@ const GUIDE_SUMMARY =
   '三种收藏方式、整理与搜索技巧、阅读标注、AI 与转写、订阅档位说明。';
 const GUIDE_PLATFORM = 'guide';
 
-let _contentCache = null;
+let _snapshotCache = null;
+
+function guideHtmlPath() {
+  return path.join(__dirname, '../../public/guide.html');
+}
 
 function guideCanonicalUrl() {
   return normalizeUrl(GUIDE_URL);
@@ -42,6 +47,7 @@ function guideHtmlToMarkdown(html) {
   let body = mainMatch ? mainMatch[1] : html;
 
   body = body
+    .replace(/<img[^>]*class=["'][^"']*\bcover\b[^"']*["'][^>]*>/gi, '')
     .replace(/<a class="back"[\s\S]*?<\/a>/gi, '')
     .replace(/<h1[\s\S]*?<\/h1>/i, '')
     .replace(/<p class="meta"[\s\S]*?<\/p>/i, '')
@@ -82,16 +88,22 @@ function guideHtmlToMarkdown(html) {
   return chunks.join('\n').replace(/\n{3,}/g, '\n\n').trim();
 }
 
-function loadGuideContent() {
-  if (_contentCache) return _contentCache;
-  const htmlPath = path.join(__dirname, '../../public/guide.html');
-  const html = fs.readFileSync(htmlPath, 'utf8');
-  _contentCache = guideHtmlToMarkdown(html);
-  return _contentCache;
+/** 从 guide.html 读取标题 / 摘要 / 封面 / 正文（封面走通用 og:image 解析） */
+function loadGuideSnapshot() {
+  if (_snapshotCache) return _snapshotCache;
+  const html = fs.readFileSync(guideHtmlPath(), 'utf8');
+  const meta = extractMeta(html, { platform: 'web', baseUrl: GUIDE_URL });
+  _snapshotCache = {
+    title: GUIDE_TITLE,
+    summary: meta.summary || GUIDE_SUMMARY,
+    coverImageUrl: meta.coverImageUrl || null,
+    content: guideHtmlToMarkdown(html),
+  };
+  return _snapshotCache;
 }
 
 function clearGuideContentCache() {
-  _contentCache = null;
+  _snapshotCache = null;
 }
 
 async function getUncategorizedFolderId(conn) {
@@ -140,12 +152,13 @@ async function ensureForUser(userId) {
     { userId: uid, canonicalUrl },
   );
   if (existingRows[0]) {
+    await syncGuideItemFields(existingRows[0].id);
     return { id: existingRows[0].id, created: false };
   }
 
   const folderId = await getUncategorizedFolderId();
   clearGuideContentCache();
-  const content = loadGuideContent();
+  const snap = loadGuideSnapshot();
 
   const [result] = await pool.execute(
     `INSERT INTO items (
@@ -159,10 +172,10 @@ async function ensureForUser(userId) {
       userId: uid,
       url: GUIDE_URL,
       canonicalUrl,
-      title: GUIDE_TITLE,
-      content,
-      summary: GUIDE_SUMMARY,
-      coverImageUrl: 'https://conflux.wobufang.com/assets/icon.png',
+      title: snap.title,
+      content: snap.content,
+      summary: snap.summary,
+      coverImageUrl: snap.coverImageUrl,
       platform: GUIDE_PLATFORM,
       folderId,
     },
@@ -171,16 +184,53 @@ async function ensureForUser(userId) {
   return { id: result.insertId, created: true };
 }
 
-/** 按 guide.html 刷新已种子的正文 */
+/** 按 guide.html 刷新标题、摘要、正文、封面 */
+async function syncGuideItemFields(itemId) {
+  clearGuideContentCache();
+  const snap = loadGuideSnapshot();
+  await pool.execute(
+    `UPDATE items
+     SET title = :title,
+         summary = :summary,
+         content = :content,
+         cover_image_url = :coverImageUrl,
+         platform = :platform,
+         status = 'success',
+         updated_at = CURRENT_TIMESTAMP(3)
+     WHERE id = :itemId AND deleted_at IS NULL`,
+    {
+      itemId,
+      title: snap.title,
+      summary: snap.summary,
+      content: snap.content,
+      coverImageUrl: snap.coverImageUrl,
+      platform: GUIDE_PLATFORM,
+    },
+  );
+}
+
+/** 按 guide.html 刷新已种子的全部字段 */
 async function syncContentFromHtml() {
   clearGuideContentCache();
-  const content = loadGuideContent();
+  const snap = loadGuideSnapshot();
   const canonicalUrl = guideCanonicalUrl();
   const [result] = await pool.execute(
     `UPDATE items
-     SET content = :content, updated_at = CURRENT_TIMESTAMP(3)
+     SET content = :content,
+         cover_image_url = :coverImageUrl,
+         platform = :platform,
+         title = :title,
+         summary = :summary,
+         updated_at = CURRENT_TIMESTAMP(3)
      WHERE canonical_url = :canonicalUrl AND deleted_at IS NULL`,
-    { content, canonicalUrl },
+    {
+      content: snap.content,
+      coverImageUrl: snap.coverImageUrl,
+      platform: GUIDE_PLATFORM,
+      title: snap.title,
+      summary: snap.summary,
+      canonicalUrl,
+    },
   );
   return result.affectedRows || 0;
 }
@@ -205,10 +255,11 @@ module.exports = {
   GUIDE_PLATFORM,
   guideCanonicalUrl,
   guideHtmlToMarkdown,
-  loadGuideContent,
+  loadGuideSnapshot,
   clearGuideContentCache,
   isGuideItem,
   ensureForUser,
+  syncGuideItemFields,
   syncContentFromHtml,
   ensureAllUsers,
 };
