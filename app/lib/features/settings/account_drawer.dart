@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:super_collection/features/settings/account_page.dart';
 import 'package:super_collection/features/settings/settings_panel.dart';
 import 'package:super_collection/features/settings/upgrade_pro_page.dart';
 import 'package:super_collection/features/settings/usage_repository.dart';
@@ -16,7 +17,8 @@ class _AccountDrawerState extends State<AccountDrawer> {
   static const _text = Color(0xFF1F242E);
 
   final _usageRepo = UsageRepository();
-  bool _isPro = false;
+  bool _isPaid = false;
+  String _planLabel = '普通';
   bool _planLoaded = false;
 
   @override
@@ -39,13 +41,15 @@ class _AccountDrawerState extends State<AccountDrawer> {
       final usage = await _usageRepo.fetchUsage();
       if (!mounted) return;
       setState(() {
-        _isPro = usage.isPro;
+        _isPaid = usage.isPrince;
+        _planLabel = usage.displayPlan;
         _planLoaded = true;
       });
     } catch (_) {
       if (!mounted) return;
       setState(() {
-        _isPro = false;
+        _isPaid = false;
+        _planLabel = '普通';
         _planLoaded = true;
       });
     }
@@ -53,7 +57,15 @@ class _AccountDrawerState extends State<AccountDrawer> {
 
   void _openUpgrade() {
     Navigator.of(context).push(
-      MaterialPageRoute<bool?>(builder: (_) => const UpgradeProPage()),
+      MaterialPageRoute<bool?>(
+        builder: (_) => const UpgradeProPage(from: 'settings'),
+      ),
+    );
+  }
+
+  void _openAccount() {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(builder: (_) => const AccountPage()),
     );
   }
 
@@ -91,13 +103,15 @@ class _AccountDrawerState extends State<AccountDrawer> {
             ),
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-              child: _PlanBanner(
+              child: _AccountPlanCard(
                 loaded: _planLoaded,
-                isPro: _isPro,
+                planLabel: _planLabel,
+                isPaid: _isPaid,
                 onUpgrade: _openUpgrade,
+                onOpenAccount: _openAccount,
               ),
             ),
-            const Expanded(child: SettingsPanel()),
+            const Expanded(child: SettingsPanel(showAccountEntry: false)),
           ],
         ),
       ),
@@ -105,142 +119,177 @@ class _AccountDrawerState extends State<AccountDrawer> {
   }
 }
 
-class _PlanBanner extends StatelessWidget {
-  const _PlanBanner({
+class _AccountPlanCard extends StatelessWidget {
+  const _AccountPlanCard({
     required this.loaded,
-    required this.isPro,
+    required this.planLabel,
+    required this.isPaid,
     required this.onUpgrade,
+    required this.onOpenAccount,
   });
 
   final bool loaded;
-  final bool isPro;
+  final String planLabel;
+  final bool isPaid;
   final VoidCallback onUpgrade;
+  final VoidCallback onOpenAccount;
 
   static const _text = Color(0xFF1F242E);
   static const _muted = Color(0xFF737A85);
   static const _blue = Color(0xFF2F6FED);
   static const _blueSoft = Color(0xFFE8F0FF);
+  static const _divider = Color(0xFFECEEF2);
 
   @override
   Widget build(BuildContext context) {
-    if (!loaded) {
-      return Container(
-        height: 64,
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: const SizedBox(
-          width: 18,
-          height: 18,
-          child: CircularProgressIndicator(strokeWidth: 2),
-        ),
-      );
-    }
-
-    if (isPro) {
-      return Container(
-        width: double.infinity,
-        padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
-        decoration: BoxDecoration(
-          color: _blueSoft,
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: const Row(
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Pro',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w700,
-                      color: _blue,
-                      height: 1.2,
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (!loaded)
+            const SizedBox(
+              height: 64,
+              child: Center(
+                child: SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+              ),
+            )
+          else if (isPaid)
+            ColoredBox(
+              color: _blueSoft,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            planLabel,
+                            style: const TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w700,
+                              color: _blue,
+                              height: 1.2,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          const Text(
+                            '当前方案 · 会员权益已生效',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: _muted,
+                              height: 1.3,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
-                  SizedBox(height: 2),
-                  Text(
-                    '当前方案 · 更高月额度',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: _muted,
-                      height: 1.3,
+                    const Icon(Icons.verified_rounded, color: _blue, size: 24),
+                  ],
+                ),
+              ),
+            )
+          else
+            InkWell(
+              onTap: onUpgrade,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 14, 12, 14),
+                child: Row(
+                  children: [
+                    const Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            '普通',
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w700,
+                              color: _text,
+                              height: 1.2,
+                            ),
+                          ),
+                          SizedBox(height: 2),
+                          Text(
+                            '免费额度 · 收藏有上限',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: _muted,
+                              height: 1.3,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
-                ],
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 6,
+                      ),
+                      decoration: BoxDecoration(
+                        color: _blueSoft,
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            '订阅会员',
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              color: _blue,
+                            ),
+                          ),
+                          SizedBox(width: 2),
+                          Icon(Icons.chevron_right, size: 22, color: _blue),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
-            Icon(Icons.verified_rounded, color: _blue, size: 22),
-          ],
-        ),
-      );
-    }
-
-    return Material(
-      color: Colors.white,
-      borderRadius: BorderRadius.circular(12),
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: onUpgrade,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 14, 12, 14),
-          child: Row(
-            children: [
-              const Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      '普通',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w700,
-                        color: _text,
-                        height: 1.2,
-                      ),
-                    ),
-                    SizedBox(height: 2),
-                    Text(
-                      '免费额度 · 解析不限次',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: _muted,
-                        height: 1.3,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              Container(
+          if (loaded) ...[
+            const Divider(height: 1, thickness: 1, color: _divider),
+            InkWell(
+              onTap: onOpenAccount,
+              child: Padding(
                 padding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                decoration: BoxDecoration(
-                  color: _blueSoft,
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: const Row(
-                  mainAxisSize: MainAxisSize.min,
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                child: Row(
                   children: [
-                    Text(
-                      '升级 Pro',
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                        color: _blue,
+                    const Expanded(
+                      child: Text(
+                        '账户和用量',
+                        style: TextStyle(
+                          fontSize: 15,
+                          color: _text,
+                        ),
                       ),
                     ),
-                    SizedBox(width: 2),
-                    Icon(Icons.chevron_right, size: 18, color: _blue),
+                    Icon(
+                      Icons.chevron_right,
+                      size: 22,
+                      color: _muted.withValues(alpha: 0.9),
+                    ),
                   ],
                 ),
               ),
-            ],
-          ),
-        ),
+            ),
+          ],
+        ],
       ),
     );
   }

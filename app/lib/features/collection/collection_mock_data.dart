@@ -22,7 +22,6 @@ class CollectionMockData {
   static const systemFilters = [
     CollectionNavItem(title: '所有', countLabel: '4', code: 'all'),
     CollectionNavItem(title: '今天', countLabel: '4', code: 'today'),
-    CollectionNavItem(title: '星标', countLabel: '0', code: 'starred'),
     CollectionNavItem(title: '解析', countLabel: '3', code: 'parsed'),
     CollectionNavItem(title: '标注', countLabel: '1', code: 'annotated'),
     CollectionNavItem(title: '最近阅读', countLabel: '0', code: 'recent_read'),

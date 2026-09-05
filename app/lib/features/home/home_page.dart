@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
+import 'package:super_collection/core/analytics/analytics.dart';
 import 'package:super_collection/core/network/api_client.dart';
 import 'package:super_collection/core/ui/app_toast.dart';
 import 'package:super_collection/core/ui/client_fetch_backfill.dart';
@@ -24,7 +25,7 @@ import 'package:super_collection/features/onboarding/shortcuts_help_page.dart';
 import 'package:super_collection/features/search/search_page.dart';
 import 'package:super_collection/features/shell/user_avatar_button.dart';
 
-/// 一级页：首页 — 未读 / 漫游
+/// 一级页：首页 — 未读 / 最近阅读
 class HomePage extends StatefulWidget {
   const HomePage({
     super.key,
@@ -116,7 +117,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     }
   }
 
-  Future<void> _load({bool quiet = false, bool refreshRandom = false}) async {
+  Future<void> _load({bool quiet = false}) async {
     final showSpinner = !quiet || _data == null;
     if (showSpinner) {
       setState(() {
@@ -125,7 +126,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       });
     }
     try {
-      final data = await _repo.fetchHome(refreshRandom: refreshRandom);
+      final data = await _repo.fetchHome();
       if (!mounted) return;
       setState(() {
         _data = data;
@@ -534,9 +535,16 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     _lastClipboardHandledUrl = url;
     setState(() => _pasting = true);
     ParseProgressTracker.begin();
+    Analytics.instance.itemSaveStart(source: 'clipboard');
     try {
       final result = await _items.createItem(url);
       if (!mounted) return;
+      Analytics.instance.itemSaveSuccess(
+        source: 'clipboard',
+        itemId: result.item.id,
+        platform: result.item.platform,
+        existed: result.existed,
+      );
       await clearClipboard();
       if (result.existed && result.item.isSuccess) {
         ParseProgressTracker.cancel();
@@ -555,10 +563,18 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       await _load(quiet: true);
     } on ApiException catch (e) {
       ParseProgressTracker.cancel();
+      Analytics.instance.itemSaveFail(
+        source: 'clipboard',
+        errorCode: e.code ?? e.message,
+      );
       if (!mounted) return;
       AppToast.show(context, e.message);
     } catch (_) {
       ParseProgressTracker.cancel();
+      Analytics.instance.itemSaveFail(
+        source: 'clipboard',
+        errorCode: 'unknown',
+      );
       if (!mounted) return;
       AppToast.show(context, '保存失败，请检查网络或后端是否启动');
     } finally {
@@ -576,12 +592,13 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     });
   }
 
-  void _openItem(CollectionItem item) async {
+  void _openItem(CollectionItem item, {String entry = 'home'}) async {
     final deleted = await Navigator.of(context).push<bool>(
       MaterialPageRoute(
         builder: (_) => ItemReadingPage(
           itemId: item.id,
           initialItem: item,
+          openEntry: entry,
         ),
       ),
     );
@@ -600,7 +617,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       setState(() {
         _data = HomeData(
           unread: strip(data.unread),
-          randomPick: strip(data.randomPick),
+          recentRead: strip(data.recentRead),
         );
       });
     }
@@ -609,7 +626,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   @override
   Widget build(BuildContext context) {
     final unread = _data?.unread.items ?? const <CollectionItem>[];
-    final random = _data?.randomPick.items ?? const <CollectionItem>[];
+    final recentRead = _data?.recentRead.items ?? const <CollectionItem>[];
 
     return Scaffold(
       backgroundColor: _bg,
@@ -642,8 +659,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
             },
             icon: SvgPicture.asset(
               'assets/icons/search.svg',
-              width: 22,
-              height: 22,
+              width: 24,
+              height: 24,
             ),
           ),
           Padding(
@@ -656,8 +673,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
               onPressed: _pasting ? null : _onAddPressed,
               icon: SvgPicture.asset(
                 'assets/icons/add.svg',
-                width: 22,
-                height: 22,
+                width: 24,
+                height: 24,
               ),
             ),
           ),
@@ -713,26 +730,25 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                             onItemTap: (preview) {
                               final item = unread
                                   .firstWhere((e) => e.id == preview.id);
-                              _openItem(item);
+                              _openItem(item, entry: 'unread');
                             },
                           ),
                           const SizedBox(height: sectionGap),
                           _HomeSection(
-                            title: '漫游',
-                            emptyText: '暂无内容',
-                            emptyIcon: Icons.auto_stories_outlined,
+                            title: '最近阅读',
+                            emptyText: '暂无最近阅读',
+                            emptyIcon: Icons.schedule_rounded,
                             emptyHeight: emptyCardH,
-                            moreLabel: '换一批 ›',
                             items: [
-                              for (final item in random)
-                                previewForRandom(item),
+                              for (final item in recentRead)
+                                previewForRecentRead(item),
                             ],
                             onMore: () =>
-                                _load(quiet: true, refreshRandom: true),
+                                _openFilter('recent_read', '最近阅读'),
                             onItemTap: (preview) {
-                              final item = random
+                              final item = recentRead
                                   .firstWhere((e) => e.id == preview.id);
-                              _openItem(item);
+                              _openItem(item, entry: 'recent_read');
                             },
                           ),
                         ],
@@ -813,7 +829,7 @@ class _HomeSection extends StatelessWidget {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(emptyIcon, size: 40, color: _iconMuted),
+                Icon(emptyIcon, size: 42, color: _iconMuted),
                 const SizedBox(height: 10),
                 Text(
                   emptyText,

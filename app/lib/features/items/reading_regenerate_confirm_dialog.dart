@@ -5,6 +5,7 @@ import 'package:super_collection/core/ui/app_confirm_dialog.dart';
 enum ReadingRegenerateKind {
   tags,
   mindmap,
+  summary,
   transcript,
 }
 
@@ -60,12 +61,14 @@ class _RegenerateWithDirectionDialogState
   String get _title => switch (widget.kind) {
         ReadingRegenerateKind.tags => '重新生成标签建议？',
         ReadingRegenerateKind.mindmap => '重新生成思维导图？',
+        ReadingRegenerateKind.summary => '重新生成 AI 总结？',
         ReadingRegenerateKind.transcript => '重新转写文稿？',
       };
 
   String get _hint => switch (widget.kind) {
         ReadingRegenerateKind.tags => '期望方向（可选），如：偏工作方法论…',
         ReadingRegenerateKind.mindmap => '期望方向（可选），如：突出步骤与方法…',
+        ReadingRegenerateKind.summary => '期望方向（可选），如：突出实操要点…',
         ReadingRegenerateKind.transcript => '',
       };
 

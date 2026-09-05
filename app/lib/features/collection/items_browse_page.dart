@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:super_collection/core/analytics/screen_dwell_tracker.dart';
 import 'package:super_collection/core/network/api_client.dart';
 import 'package:super_collection/core/ui/app_confirm_dialog.dart';
 import 'package:super_collection/core/ui/app_subpage_app_bar.dart';
@@ -33,7 +34,7 @@ class ItemsBrowsePage extends StatefulWidget {
   State<ItemsBrowsePage> createState() => _ItemsBrowsePageState();
 }
 
-class _ItemsBrowsePageState extends State<ItemsBrowsePage> {
+class _ItemsBrowsePageState extends State<ItemsBrowsePage> with ScreenDwellMixin {
   static const _bg = Color(0xFFF7F7FA);
   static const _text = Color(0xFF1F242E);
   static const _muted = Color(0xFF737A85);
@@ -51,6 +52,13 @@ class _ItemsBrowsePageState extends State<ItemsBrowsePage> {
 
   bool get _hasMore => _items.length < _total;
   bool get _canManageTag => widget.tagId != null;
+
+  @override
+  String get dwellScreen => AnalyticsScreens.tagList;
+
+  @override
+  Map<String, Object?> get dwellProps =>
+      widget.tagId == null ? const {} : {'tag_id': widget.tagId!};
 
   @override
   void initState() {
@@ -229,7 +237,7 @@ class _ItemsBrowsePageState extends State<ItemsBrowsePage> {
         ],
         child: const Padding(
           padding: EdgeInsets.symmetric(horizontal: 12),
-          child: Icon(Icons.more_horiz, size: 24, color: _text),
+          child: Icon(Icons.more_horiz, size: 26, color: _text),
         ),
       ),
     ];
@@ -314,6 +322,8 @@ class _ItemsBrowsePageState extends State<ItemsBrowsePage> {
                                   builder: (_) => ItemReadingPage(
                                     itemId: item.id,
                                     initialItem: item,
+                                    openEntry:
+                                        widget.tagId != null ? 'tag' : 'library',
                                   ),
                                 ),
                               );

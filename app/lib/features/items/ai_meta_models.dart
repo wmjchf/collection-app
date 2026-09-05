@@ -146,15 +146,52 @@ class AiTagsMeta {
   }
 }
 
+class AiSummaryMeta {
+  const AiSummaryMeta({
+    this.status = 'none',
+    this.text,
+    this.contentHash,
+    this.error,
+    this.generatedAt,
+    this.awaitTranscript = false,
+  });
+
+  final String status;
+  final String? text;
+  final String? contentHash;
+  final String? error;
+  final DateTime? generatedAt;
+  final bool awaitTranscript;
+
+  bool get isPending => status == 'pending';
+  bool get isSuccess => status == 'success';
+  bool get isFailed => status == 'failed';
+  bool get hasText => text != null && text!.trim().isNotEmpty;
+
+  factory AiSummaryMeta.fromJson(Map<String, dynamic>? json) {
+    if (json == null) return const AiSummaryMeta();
+    return AiSummaryMeta(
+      status: json['status'] as String? ?? 'none',
+      text: json['text'] as String?,
+      contentHash: json['contentHash'] as String?,
+      error: json['error'] as String?,
+      generatedAt: AiTagsMeta._parseTime(json['generatedAt']),
+      awaitTranscript: json['awaitTranscript'] == true,
+    );
+  }
+}
+
 class AiMeta {
   const AiMeta({
     this.tags = const AiTagsMeta(),
     this.mindmap = const AiMindmapMeta(),
+    this.summary = const AiSummaryMeta(),
     this.model,
   });
 
   final AiTagsMeta tags;
   final AiMindmapMeta mindmap;
+  final AiSummaryMeta summary;
   final String? model;
 
   factory AiMeta.fromJson(Map<String, dynamic>? json) {
@@ -174,6 +211,15 @@ class AiMeta {
             ? json['mindmap'] as Map<String, dynamic>
             : json['mindmap'] is Map
                 ? (json['mindmap'] as Map).map(
+                    (k, v) => MapEntry(k.toString(), v),
+                  )
+                : null,
+      ),
+      summary: AiSummaryMeta.fromJson(
+        json['summary'] is Map<String, dynamic>
+            ? json['summary'] as Map<String, dynamic>
+            : json['summary'] is Map
+                ? (json['summary'] as Map).map(
                     (k, v) => MapEntry(k.toString(), v),
                   )
                 : null,

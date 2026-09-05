@@ -4,11 +4,9 @@ const SYSTEM_CODES = [
   'unread',
   'all',
   'today',
-  'starred',
   'parsed',
   'annotated',
   'recent_read',
-  'trash',
 ];
 
 /** 「其他」分区（一期已不在导航展示；保留 archived 等 DB 行供 API） */
@@ -33,8 +31,6 @@ function filterClause(code, range = {}) {
       return baseWhere();
     case 'today':
       return `${baseWhere()} AND i.created_at >= :dayStart AND i.created_at < :dayEnd`;
-    case 'starred':
-      return `${baseWhere()} AND i.is_starred = 1`;
     case 'parsed':
       return `${baseWhere()} AND i.status = 'success'`;
     case 'annotated':
@@ -45,8 +41,6 @@ function filterClause(code, range = {}) {
       return `${baseWhere()} AND i.last_read_at IS NOT NULL`;
     case 'archived':
       return `i.user_id = :userId AND i.deleted_at IS NULL AND i.is_archived = 1`;
-    case 'trash':
-      return `i.user_id = :userId AND i.deleted_at IS NOT NULL`;
     default:
       throw Object.assign(new Error('未知的系统筛选'), { status: 400 });
   }
@@ -58,9 +52,6 @@ function orderClause(code) {
   }
   if (code === 'annotated') {
     return `(SELECT MAX(a.created_at) FROM annotations a WHERE a.item_id = i.id) DESC, i.id DESC`;
-  }
-  if (code === 'trash') {
-    return 'i.deleted_at DESC, i.id DESC';
   }
   return 'i.created_at DESC, i.id DESC';
 }
@@ -131,7 +122,7 @@ async function listSystemFilters(userId, tzOffsetMinutes = 480) {
 }
 
 /**
- * 「其他」导航（已归档 / 回收站 + 数量）
+ * 「其他」导航（已归档 + 数量）
  */
 async function listOtherFilters(userId) {
   const [defs] = await pool.execute(
@@ -148,7 +139,7 @@ async function listOtherFilters(userId) {
     if (!def) continue;
     const itemCount = await countByFilter(userId, code, {});
     // 兼容旧库文案「最近删除」
-    const name = code === 'trash' ? '回收站' : def.name;
+    const name = def.name;
     filters.push({
       id: def.id,
       code: def.code,

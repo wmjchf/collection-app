@@ -32,7 +32,7 @@ class AppSubpageAppBar extends StatelessWidget implements PreferredSizeWidget {
           foregroundColor: _text,
           padding: const EdgeInsets.symmetric(horizontal: 8),
         ),
-        icon: const Icon(Icons.chevron_left, size: 26),
+        icon: const Icon(Icons.chevron_left, size: 28),
         label: const Text(
           '返回',
           style: TextStyle(fontSize: 15, fontWeight: FontWeight.w400),

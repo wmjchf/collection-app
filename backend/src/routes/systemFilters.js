@@ -9,7 +9,7 @@ router.use(requireAuth);
 /**
  * GET /api/system-filters
  * Query: tzOffsetMinutes（可选，默认 480=UTC+8）
- * 返回 system 筛选 + other（已归档 / 回收站）
+ * 返回 system 筛选 + other（已归档）
  */
 router.get('/', async (req, res, next) => {
   try {

@@ -122,7 +122,7 @@ class _TargetRow extends StatelessWidget {
                 ),
                 child: const Icon(
                   Icons.play_arrow_rounded,
-                  size: 18,
+                  size: 22,
                   color: Color(0xFF2F6FED),
                 ),
               ),
@@ -139,7 +139,7 @@ class _TargetRow extends StatelessWidget {
               ),
               const Icon(
                 Icons.chevron_right_rounded,
-                size: 20,
+                size: 22,
                 color: _TranscriptPickerSheet._muted,
               ),
             ],

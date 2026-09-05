@@ -4,12 +4,13 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:super_collection/core/config/app_brand.dart';
 import 'package:super_collection/features/items/ai_meta_models.dart';
 import 'package:super_collection/features/items/mindmap_render.dart';
 
 /// 分享 PNG 页脚品牌行；平铺水印仅用短名 [_shareBrandShort]。
-const _shareBrandShort = 'Conflux';
-const _shareBrandLine = 'Conflux不再吃灰的收藏夹';
+const _shareBrandShort = AppBrand.name;
+const _shareBrandLine = AppBrand.mindmapShareLine;
 
 /// 微信等对体积/尺寸敏感：长边与文件大小上限。
 const _shareMaxLongSide = 3072.0;
@@ -51,7 +52,7 @@ Future<Uint8List> renderMindmapPngBytes({
   canvas.save();
   canvas.translate(hPad, vPad);
   MindmapPainter(layout: layout).paint(canvas, Size(layout.width, layout.height));
-  _paintConfluxWatermark(
+  _paintBrandWatermark(
     canvas,
     Size(layout.width, layout.height),
   );
@@ -138,8 +139,8 @@ Future<Uint8List> renderMindmapPngBytesForShare({
   return bytes;
 }
 
-/// 脑图区域斜向平铺半透明 Conflux 水印（不遮挡阅读）。
-void _paintConfluxWatermark(Canvas canvas, Size size) {
+/// 脑图区域斜向平铺半透明品牌水印（不遮挡阅读）。
+void _paintBrandWatermark(Canvas canvas, Size size) {
   const text = _shareBrandShort;
   const style = TextStyle(
     fontSize: 24,

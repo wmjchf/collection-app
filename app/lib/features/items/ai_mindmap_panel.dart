@@ -599,7 +599,7 @@ class _MindmapShareButton extends StatelessWidget {
             else
               const Icon(
                 Icons.ios_share_rounded,
-                size: 16,
+                size: 18,
                 color: AiMindmapPanel._brand,
               ),
             const SizedBox(width: 4),
@@ -628,7 +628,7 @@ class _MindmapActionIcon extends StatelessWidget {
   final IconData icon;
   final VoidCallback? onTap;
 
-  static const _iconSize = 18.0;
+  static const _iconSize = 20.0;
   static const _hitSize = 26.0;
 
   @override

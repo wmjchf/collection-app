@@ -80,7 +80,7 @@ class _DefaultCover extends StatelessWidget {
               )
             : const Icon(
                 Icons.auto_stories_outlined,
-                size: 36,
+                size: 38,
                 color: Color(0xFF8FA3BF),
               ),
       ),

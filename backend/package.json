@@ -1,7 +1,7 @@
 {
   "name": "collection-backend",
   "version": "1.0.0",
-  "description": "Conflux API（Express + MySQL）",
+  "description": "奏折 API（Express + MySQL）",
   "main": "src/index.js",
   "engines": {
     "node": "23.6.0"
@@ -14,6 +14,7 @@
     "db:migrate": "node scripts/migrate-incremental.js",
     "db:migrate:007": "node scripts/migrate-incremental.js 007",
     "db:migrate:full": "node scripts/migrate-full.js",
+    "db:seed-guide": "node scripts/seed-guide.js",
     "fix:bilibili-canonical": "node scripts/fix-bilibili-canonical.js"
   },
   "keywords": [],

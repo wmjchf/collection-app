@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:super_collection/core/config/app_brand.dart';
+import 'package:super_collection/core/analytics/screen_dwell_tracker.dart';
 import 'package:super_collection/features/shortcuts/shortcut_config.dart';
 import 'package:super_collection/features/shortcuts/shortcut_install.dart';
 
@@ -15,7 +17,9 @@ class ShortcutsHelpPage extends StatelessWidget {
   Widget build(BuildContext context) {
     final hasOneTap = ShortcutConfig.installIcloudUrl.trim().isNotEmpty;
 
-    return Scaffold(
+    return ScreenDwellScope(
+      screen: AnalyticsScreens.shortcutsHelp,
+      child: Scaffold(
       backgroundColor: _bg,
       appBar: AppBar(
         backgroundColor: Colors.white,
@@ -29,7 +33,7 @@ class ShortcutsHelpPage extends StatelessWidget {
             foregroundColor: _text,
             padding: const EdgeInsets.only(left: 8),
           ),
-          icon: const Icon(Icons.chevron_left, size: 28),
+          icon: const Icon(Icons.chevron_left, size: 30),
           label: const Text('返回', style: TextStyle(fontSize: 15)),
         ),
         title: const Text(
@@ -46,7 +50,7 @@ class ShortcutsHelpPage extends StatelessWidget {
         children: [
           Text(
             hasOneTap
-                ? '先安装「保存链接到Conflux」。主屏幕、控制中心、轻点背面互不影响，装好后任选，也可一起开。'
+                ? '先安装「${AppBrand.shortcutInstallName}」。主屏幕、控制中心、轻点背面互不影响，装好后任选，也可一起开。'
                 : '预置安装链接配置后，用户只需点「添加快捷指令」一键安装，无需自己搜索拼接。',
             style: const TextStyle(
               fontSize: 14,
@@ -100,25 +104,26 @@ class ShortcutsHelpPage extends StatelessWidget {
           const _HelpCard(
             title: '加到主屏幕',
             desc:
-                '打开「保存链接到Conflux」→ 分享 →「加到主屏幕」。\n'
+                '打开「${AppBrand.shortcutInstallName}」→ 分享 →「加到主屏幕」。\n'
                 '之后：复制链接 → 点主屏幕图标。',
           ),
           const SizedBox(height: 10),
           const _HelpCard(
             title: '加到控制中心',
             desc:
-                'iOS 18 及更新：打开控制中心 → 点左上角「+」→「添加控件」→ 搜「快捷指令」→ 选「保存链接到Conflux」。\n'
+                'iOS 18 及更新：打开控制中心 → 点左上角「+」→「添加控件」→ 搜「快捷指令」→ 选「${AppBrand.shortcutInstallName}」。\n'
                 '之后：复制链接 → 从右上角下滑，点该控件。',
           ),
           const SizedBox(height: 10),
           const _HelpCard(
             title: '轻点背面',
             desc:
-                'iPhone 8 及更新：设置 → 辅助功能 → 触控 → 轻点背面 → 轻点两下，选「保存链接到Conflux」。\n'
+                'iPhone 8 及更新：设置 → 辅助功能 → 触控 → 轻点背面 → 轻点两下，选「${AppBrand.shortcutInstallName}」。\n'
                 '之后：复制链接 → 在手机背面连点两下。',
           ),
         ],
       ),
+    ),
     );
   }
 }

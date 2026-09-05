@@ -7,7 +7,6 @@ import 'package:super_collection/features/collection/system_filter_models.dart';
 import 'package:super_collection/features/collection/system_filters_repository.dart';
 import 'package:super_collection/features/collection/tag_models.dart';
 import 'package:super_collection/features/collection/tags_repository.dart';
-import 'package:super_collection/features/collection/trash_page.dart';
 import 'package:super_collection/features/shell/user_avatar_button.dart';
 
 /// 我的收藏（系统分类 + 标签）
@@ -218,16 +217,13 @@ class _CollectionPageState extends State<CollectionPage>
   }
 
   void _openSystemFilter(SystemFilter filter) {
-    final page = filter.code == 'trash'
-        ? const TrashPage()
-        : SystemFilterListPage(
-            code: filter.code,
-            title: filter.name,
-          );
     Navigator.of(context)
         .push(
       MaterialPageRoute<void>(
-        builder: (_) => page,
+        builder: (_) => SystemFilterListPage(
+          code: filter.code,
+          title: filter.name,
+        ),
       ),
     )
         .then((_) {
@@ -315,8 +311,8 @@ class _CollectionPageState extends State<CollectionPage>
                                       t > 0.01 ? null : _openTagSearch,
                                   icon: SvgPicture.asset(
                                     'assets/icons/tags_inactive.svg',
-                                    width: 24,
-                                    height: 24,
+                                    width: 26,
+                                    height: 26,
                                   ),
                                 ),
                               ],
@@ -405,11 +401,11 @@ class _CollectionPageState extends State<CollectionPage>
         hintText: '搜索标签',
         hintStyle: const TextStyle(fontSize: 15, color: _muted),
         prefixIcon:
-            const Icon(Icons.search_rounded, color: _muted, size: 22),
+            const Icon(Icons.search_rounded, color: _muted, size: 24),
         suffixIcon: _searchController.text.isEmpty
             ? null
             : IconButton(
-                icon: const Icon(Icons.close_rounded, color: _muted, size: 20),
+                icon: const Icon(Icons.close_rounded, color: _muted, size: 22),
                 onPressed: () {
                   _searchController.clear();
                   _onSearchChanged('');
@@ -670,11 +666,6 @@ class _CollectionNavIcon {
           icon: Icons.calendar_today_rounded,
           background: Color(0xFFFF9F43),
         );
-      case 'starred':
-        return const _CollectionNavIcon(
-          icon: Icons.star_rounded,
-          background: Color(0xFFFFC43D),
-        );
       case 'parsed':
         return const _CollectionNavIcon(
           icon: Icons.article_rounded,
@@ -694,11 +685,6 @@ class _CollectionNavIcon {
         return const _CollectionNavIcon(
           icon: Icons.inventory_2_rounded,
           background: Color(0xFF96A0AF),
-        );
-      case 'trash':
-        return const _CollectionNavIcon(
-          icon: Icons.delete_outline_rounded,
-          background: Color(0xFFF56C6C),
         );
       default:
         return const _CollectionNavIcon(
@@ -830,8 +816,8 @@ class _NavRow extends StatelessWidget {
           child: Row(
             children: [
               Container(
-                width: 24,
-                height: 24,
+                width: 26,
+                height: 26,
                 decoration: BoxDecoration(
                   color: icon.background,
                   borderRadius: BorderRadius.circular(7),
@@ -839,7 +825,7 @@ class _NavRow extends StatelessWidget {
                 alignment: Alignment.center,
                 child: Icon(
                   icon.icon,
-                  size: 14,
+                  size: 16,
                   color: Colors.white,
                 ),
               ),

@@ -1,20 +1,23 @@
 const { pool } = require('../db');
 const config = require('../config');
 const subscriptionService = require('./subscriptionService');
+const planService = require('./planService');
 
 const KIND_TRANSCRIPT = 'transcript';
-/** 标签 + 思维导图共用 AI token 池 */
 const KIND_AI = 'ai';
+const KIND_STORAGE = 'storage';
 
 const QUOTA_MESSAGES = {
-  transcript: '本月转写分钟已用完，订阅后可继续',
-  ai: '本月 AI 额度已用完，订阅后可继续',
+  transcript: '本月转写分钟已用完，请下月再试或联系支持',
+  ai: '本月 AI 额度已用完，请下月再试',
+  storage: '收藏已达上限，订阅太子后可继续',
 };
 
-/** 标签 / 脑图 completion 预留（偏保守，避免打穿） */
+/** 标签 / 脑图 / AI 总结 completion 预留（偏保守，避免打穿） */
 const AI_COMPLETION_RESERVE = {
   tags: 800,
   mindmap: 2500,
+  summary: 1200,
 };
 
 function isEnforcing() {
@@ -23,7 +26,7 @@ function isEnforcing() {
 
 /**
  * 按消息字符粗估 token（对齐 DashScope 中文约 2 字/token）+ completion 预留。
- * @param {{ messages?: Array<{content?: string}>, feature?: 'tags'|'mindmap', extraChars?: number }} opts
+ * @param {{ messages?: Array<{content?: string}>, feature?: 'tags'|'mindmap'|'summary', extraChars?: number }} opts
  */
 function estimateAiTokens({ messages = [], feature = 'tags', extraChars = 0 } = {}) {
   const chars =
@@ -33,29 +36,51 @@ function estimateAiTokens({ messages = [], feature = 'tags', extraChars = 0 } = 
   const reserve =
     feature === 'mindmap'
       ? AI_COMPLETION_RESERVE.mindmap
-      : AI_COMPLETION_RESERVE.tags;
+      : feature === 'summary'
+        ? AI_COMPLETION_RESERVE.summary
+        : AI_COMPLETION_RESERVE.tags;
   return Math.max(1, promptEst + reserve);
 }
 
 function quotasForPlan(plan) {
   const u = config.usage || {};
-  if (plan === 'pro') {
+  const p = planService.normalizePlan(plan);
+  if (p === planService.PLAN_EMPEROR) {
     return {
-      transcriptMinutesPerMonth: Number(u.proTranscriptMinutesPerMonth ?? 200),
-      aiTokensPerMonth: Number(u.proAiTokensPerMonth ?? 1000000),
+      transcriptMinutesPerMonth: Number(
+        u.emperorTranscriptMinutesPerMonth ??
+          u.proTranscriptMinutesPerMonth ??
+          200,
+      ),
+      aiTokensPerMonth: Number(
+        u.emperorAiTokensPerMonth ?? u.proAiTokensPerMonth ?? 1000000,
+      ),
+      itemLimit: null,
+    };
+  }
+  if (p === planService.PLAN_PRINCE) {
+    return {
+      transcriptMinutesPerMonth: 0,
+      aiTokensPerMonth: Number(
+        u.princeAiTokensPerMonth ?? u.proAiTokensPerMonth ?? 500000,
+      ),
+      itemLimit: null,
     };
   }
   return {
-    transcriptMinutesPerMonth: Number(u.freeTranscriptMinutesPerMonth ?? 40),
-    aiTokensPerMonth: Number(u.freeAiTokensPerMonth ?? 200000),
+    transcriptMinutesPerMonth: Number(u.freeTranscriptMinutesPerMonth ?? 0),
+    aiTokensPerMonth: Number(u.freeAiTokensPerMonth ?? 0),
+    itemLimit: Number(u.freeItemLimit ?? 300),
   };
 }
 
-/** 升级页对照表：free + pro */
+/** 升级页对照表：free + prince + emperor（pro 别名太子） */
 function planQuotasTable() {
   return {
     free: quotasForPlan('free'),
-    pro: quotasForPlan('pro'),
+    prince: quotasForPlan('prince'),
+    emperor: quotasForPlan('emperor'),
+    pro: quotasForPlan('prince'),
   };
 }
 
@@ -167,7 +192,7 @@ async function recordTranscriptUsage({
 
 /**
  * AI 标签 / 思维导图共用 token 池。
- * @param {{ userId: number, itemId: number, feature: 'tags'|'mindmap', tokens: number, generatedAt?: string, meta?: object }} args
+ * @param {{ userId: number, itemId: number, feature: 'tags'|'mindmap'|'summary', tokens: number, generatedAt?: string, meta?: object }} args
  */
 async function recordAiTokenUsage({
   userId,
@@ -184,7 +209,12 @@ async function recordAiTokenUsage({
     );
     return { recorded: false, reason: 'no_tokens' };
   }
-  const feat = feature === 'mindmap' ? 'mindmap' : 'tags';
+  const feat =
+    feature === 'mindmap'
+      ? 'mindmap'
+      : feature === 'summary'
+        ? 'summary'
+        : 'tags';
   const key = `ai:${feat}:${userId}:${itemId}:${generatedAt || Date.now()}`;
   return recordEvent({
     userId,
@@ -198,6 +228,43 @@ async function recordAiTokenUsage({
       ...(meta && typeof meta === 'object' ? meta : {}),
     },
   });
+}
+
+async function countActiveItems(userId) {
+  const [rows] = await pool.execute(
+    `SELECT COUNT(*) AS cnt
+     FROM items i
+     WHERE i.user_id = :userId
+       AND i.deleted_at IS NULL`,
+    { userId },
+  );
+  return Number(rows[0]?.cnt || 0);
+}
+
+async function assertPlanFeatureForUser(userId, feature) {
+  const { plan } = await subscriptionService.getPlanForUser(userId);
+  planService.assertFeature(plan, feature);
+}
+
+async function assertItemQuota(userId) {
+  if (!isEnforcing()) return;
+  const { plan } = await subscriptionService.getPlanForUser(userId);
+  const quotas = quotasForPlan(plan);
+  if (quotas.itemLimit == null) return;
+  const itemCount = await countActiveItems(userId);
+  if (itemCount >= quotas.itemLimit) {
+    throw Object.assign(
+      new Error(
+        `收藏已达 ${quotas.itemLimit} 条上限，订阅太子后可继续`,
+      ),
+      {
+        status: 402,
+        code: 'QUOTA_EXCEEDED',
+        quotaKind: KIND_STORAGE,
+        requiredPlan: planService.PLAN_PRINCE,
+      },
+    );
+  }
 }
 
 async function sumAmount(userId, kind, start, end) {
@@ -234,6 +301,7 @@ async function assertQuota(userId, kind, { estimatedSeconds, estimatedTokens } =
   if (!isEnforcing()) return;
   const summary = await getUsageSummary(userId);
   if (kind === KIND_TRANSCRIPT) {
+    planService.assertFeature(summary.plan, 'transcript');
     const remainingSec = Number(summary.transcript.remainingMinutes) * 60;
     const est = Number(estimatedSeconds);
     if (Number.isFinite(est) && est > 0) {
@@ -253,6 +321,9 @@ async function assertQuota(userId, kind, { estimatedSeconds, estimatedTokens } =
     return;
   }
   if (kind === KIND_AI) {
+    if (Number(summary.ai.limitTokens) <= 0) {
+      planService.assertFeature(summary.plan, 'ai_tags');
+    }
     const remaining = Number(summary.ai.remainingTokens);
     const est = Math.round(Number(estimatedTokens));
     if (Number.isFinite(est) && est > 0) {
@@ -294,11 +365,13 @@ async function assertAiMindmapQuota(userId) {
 async function getUsageSummary(userId) {
   const { yearMonth, start, end } = periodBounds();
   const { plan, subscription } = await subscriptionService.getPlanForUser(userId);
-  const quotas = quotasForPlan(plan);
+  const normalizedPlan = planService.normalizePlan(plan);
+  const quotas = quotasForPlan(normalizedPlan);
 
-  const [transcriptSeconds, aiTokens] = await Promise.all([
+  const [transcriptSeconds, aiTokens, itemCount] = await Promise.all([
     sumAmount(userId, KIND_TRANSCRIPT, start, end),
     sumAmount(userId, KIND_AI, start, end),
+    countActiveItems(userId),
   ]);
 
   const usedMinutes = transcriptSeconds / 60;
@@ -313,7 +386,8 @@ async function getUsageSummary(userId) {
       end: end.toISOString(),
       timeZone: 'Asia/Shanghai',
     },
-    plan,
+    plan: normalizedPlan,
+    planLabel: planService.planLabel(normalizedPlan),
     planExpiresAt: subscription?.expiresAt || null,
     subscription,
     enforcing: isEnforcing(),
@@ -329,12 +403,28 @@ async function getUsageSummary(userId) {
       remainingTokens: Math.max(0, aiLimit - aiUsed),
       unit: 'tokens',
     },
+    storage: {
+      itemCount,
+      limitItems: quotas.itemLimit,
+      remainingItems:
+        quotas.itemLimit != null
+          ? Math.max(0, quotas.itemLimit - itemCount)
+          : null,
+    },
+    features: {
+      aiTags: planService.hasPrince(normalizedPlan),
+      aiSummary: planService.hasPrince(normalizedPlan),
+      aiMindmap: planService.hasEmperor(normalizedPlan),
+      transcript: planService.hasEmperor(normalizedPlan),
+      unlimitedItems: planService.hasPrince(normalizedPlan),
+    },
   };
 }
 
 module.exports = {
   KIND_TRANSCRIPT,
   KIND_AI,
+  KIND_STORAGE,
   freeQuotas,
   quotasForPlan,
   planQuotasTable,
@@ -350,5 +440,8 @@ module.exports = {
   assertAiQuota,
   assertAiTagsQuota,
   assertAiMindmapQuota,
+  assertPlanFeatureForUser,
+  assertItemQuota,
+  countActiveItems,
   isEnforcing,
 };

@@ -8,6 +8,7 @@ const {
 } = require('./parser/adapters/registry');
 const transcriptSegments = require('./transcriptSegments');
 const aiMeta = require('./aiMeta');
+const guideItemService = require('./guideItemService');
 
 /** 服务端抓取被拦时，等待客户端上报 HTML */
 const NEED_CLIENT_FETCH = 'NEED_CLIENT_FETCH';
@@ -111,7 +112,16 @@ async function getByIdForUser(userId, itemId, opts = {}) {
  */
 async function createItem(userId, rawUrl) {
   const url = String(rawUrl || '').trim();
-  let canonicalUrl = normalizeUrl(url);
+  const canonicalUrl = normalizeUrl(url);
+
+  if (guideItemService.isGuideItem({ canonicalUrl })) {
+    const seeded = await guideItemService.ensureForUser(userId);
+    if (seeded?.id) {
+      const item = await getByIdForUser(userId, seeded.id);
+      return { item, existed: !seeded.created };
+    }
+  }
+
   let meta = null;
 
   if (detectPlatform(canonicalUrl) === 'bilibili') {
@@ -137,6 +147,9 @@ async function createItem(userId, rawUrl) {
   if (existing) {
     return { item: mapItem(existing), existed: true };
   }
+
+  const usageService = require('./usageService');
+  await usageService.assertItemQuota(userId);
 
   if (!meta) {
     try {
@@ -279,6 +292,10 @@ async function runContentParse(itemId) {
           canonicalUrl: bilibiliCanonical,
         },
       );
+      require('./analyticsService').trackParseOutcome(row, {
+        ok: true,
+        via: 'server',
+      });
       return;
     }
 
@@ -344,6 +361,11 @@ async function runContentParse(itemId) {
         errorMessage: parsed.errorMessage || '解析失败',
       },
     );
+    require('./analyticsService').trackParseOutcome(row, {
+      ok: false,
+      errorMessage: parsed.errorMessage || '解析失败',
+      via: 'server',
+    });
   } catch (err) {
     await pool.execute(
       `UPDATE items SET status = 'failed', error_message = :errorMessage
@@ -353,6 +375,11 @@ async function runContentParse(itemId) {
         errorMessage: (err.message || '解析失败').slice(0, 500),
       },
     );
+    require('./analyticsService').trackParseOutcome(row, {
+      ok: false,
+      errorMessage: err.message || '解析失败',
+      via: 'server',
+    });
   }
 }
 
@@ -405,6 +432,15 @@ async function parseWithClientHtml(userId, itemId, html) {
         content: parsed.content,
       },
     );
+    require('./analyticsService').trackParseOutcome(
+      {
+        id: itemId,
+        user_id: userId,
+        platform: item.platform,
+        created_at: item.createdAt,
+      },
+      { ok: true, via: 'client_html' },
+    );
     return getByIdForUser(userId, itemId);
   }
 
@@ -425,10 +461,38 @@ async function parseWithClientHtml(userId, itemId, html) {
       errorMessage: parsed.errorMessage || '解析失败',
     },
   );
+  require('./analyticsService').trackParseOutcome(
+    {
+      id: itemId,
+      user_id: userId,
+      platform: item.platform,
+      created_at: item.createdAt,
+    },
+    {
+      ok: false,
+      errorMessage: parsed.errorMessage || '解析失败',
+      via: 'client_html',
+    },
+  );
   return getByIdForUser(userId, itemId);
 }
 
 async function reparseItem(userId, itemId, { forceOverwrite = false } = {}) {
+  const existing = await getByIdForUser(userId, itemId);
+  if (!existing) {
+    throw Object.assign(new Error('条目不存在'), { status: 404 });
+  }
+  if (guideItemService.isGuideItem(existing)) {
+    if (existing.contentEditedAt && !forceOverwrite) {
+      throw Object.assign(
+        new Error('正文已手工修改，重新解析将覆盖您的编辑'),
+        { status: 409, code: 'CONTENT_USER_EDITED' },
+      );
+    }
+    await guideItemService.syncGuideItemFields(itemId);
+    return getByIdForUser(userId, itemId);
+  }
+
   const [rows] = await pool.execute(
     `SELECT content_edited_at FROM items
      WHERE id = :itemId AND user_id = :userId AND deleted_at IS NULL
@@ -684,83 +748,21 @@ async function moveToFolder(userId, itemId, folderId) {
   return getByIdForUser(userId, itemId);
 }
 
-/** 软删除 → 回收站 */
-async function softDelete(userId, itemId) {
+/** 永久删除条目 */
+async function deleteItem(userId, itemId) {
   const existing = await getByIdForUser(userId, itemId);
   if (!existing) {
     throw Object.assign(new Error('条目不存在'), { status: 404 });
   }
-  await pool.execute(
-    `UPDATE items SET deleted_at = CURRENT_TIMESTAMP(3)
-     WHERE id = :itemId AND user_id = :userId AND deleted_at IS NULL`,
-    { itemId, userId },
-  );
-  return { id: itemId, deleted: true };
-}
-
-/** 从回收站恢复 */
-async function restoreFromTrash(userId, itemId) {
-  const existing = await getByIdForUser(userId, itemId, {
-    includeDeleted: true,
-  });
-  if (!existing || !existing.deletedAt) {
-    throw Object.assign(new Error('回收站中不存在该条目'), { status: 404 });
-  }
-
-  if (existing.canonicalUrl) {
-    const [dup] = await pool.execute(
-      `SELECT id FROM items
-       WHERE user_id = :userId
-         AND canonical_url = :canonicalUrl
-         AND deleted_at IS NULL
-         AND id <> :itemId
-       LIMIT 1`,
-      {
-        userId,
-        canonicalUrl: existing.canonicalUrl,
-        itemId,
-      },
-    );
-    if (dup[0]) {
-      throw Object.assign(
-        new Error('已有相同链接的收藏，无法恢复'),
-        { status: 409 },
-      );
-    }
-  }
-
-  await pool.execute(
-    `UPDATE items SET deleted_at = NULL
-     WHERE id = :itemId AND user_id = :userId AND deleted_at IS NOT NULL`,
-    { itemId, userId },
-  );
-  return getByIdForUser(userId, itemId);
-}
-
-/** 彻底删除（详情页 / 回收站均可） */
-async function purgeFromTrash(userId, itemId) {
-  const existing = await getByIdForUser(userId, itemId, {
-    includeDeleted: true,
-  });
-  if (!existing) {
-    throw Object.assign(new Error('条目不存在'), { status: 404 });
+  if (guideItemService.isGuideItem(existing)) {
+    throw Object.assign(new Error('使用指引不可删除'), { status: 403 });
   }
   await pool.execute(
     `DELETE FROM items
      WHERE id = :itemId AND user_id = :userId`,
     { itemId, userId },
   );
-  return { id: itemId, purged: true };
-}
-
-/** 清空回收站 */
-async function emptyTrash(userId) {
-  const [result] = await pool.execute(
-    `DELETE FROM items
-     WHERE user_id = :userId AND deleted_at IS NOT NULL`,
-    { userId },
-  );
-  return { emptied: true, deletedCount: Number(result.affectedRows || 0) };
+  return { id: itemId, deleted: true };
 }
 
 /** 条目当前标签 */
@@ -879,6 +881,7 @@ async function beginTranscriptSegment(
   }
 
   const usageService = require('./usageService');
+  await usageService.assertPlanFeatureForUser(userId, 'transcript');
   await usageService.assertTranscriptQuota(userId);
 
   const key = String(segmentKey || '').trim();
@@ -1000,6 +1003,7 @@ async function saveTranscriptSegments(itemId, segments) {
 async function runTranscriptJob(itemId) {
   const aliyunAsr = require('./aliyunAsr');
   const transcriptMediaOss = require('./transcriptMediaOss');
+  const analyticsService = require('./analyticsService');
   const jobT0 = Date.now();
   const [rows] = await pool.execute(
     `SELECT * FROM items WHERE id = :itemId AND deleted_at IS NULL LIMIT 1`,
@@ -1022,6 +1026,10 @@ async function runTranscriptJob(itemId) {
       phaseLabel: null,
     });
     await saveTranscriptSegments(itemId, segments);
+    analyticsService.trackTranscriptOutcome(row, segmentKey, {
+      ok: false,
+      errorMessage: '没有可转写的音视频直链',
+    });
     return;
   }
 
@@ -1100,6 +1108,10 @@ async function runTranscriptJob(itemId) {
               phaseLabel: null,
             });
             await saveTranscriptSegments(itemId, segments);
+            analyticsService.trackTranscriptOutcome(row, segmentKey, {
+              ok: false,
+              errorMessage: quotaErr.message,
+            });
             return;
           }
           throw quotaErr;
@@ -1165,6 +1177,10 @@ async function runTranscriptJob(itemId) {
           phaseLabel: null,
         });
         await saveTranscriptSegments(itemId, segments);
+        analyticsService.trackTranscriptOutcome(row, segmentKey, {
+          ok: false,
+          errorMessage: result.errorMessage || '转写失败',
+        });
         return;
       }
       console.log(
@@ -1187,6 +1203,8 @@ async function runTranscriptJob(itemId) {
         phaseLabel: null,
       });
       await saveTranscriptSegments(itemId, segments);
+
+      analyticsService.trackTranscriptOutcome(row, segmentKey, { ok: true });
 
       try {
         const usageService = require('./usageService');
@@ -1225,6 +1243,10 @@ async function runTranscriptJob(itemId) {
       phaseLabel: null,
     });
     await saveTranscriptSegments(itemId, segments);
+    analyticsService.trackTranscriptOutcome(row, segmentKey, {
+      ok: false,
+      errorMessage: '转写超时，请稍后重试',
+    });
   } catch (err) {
     console.error(
       `[runTranscriptJob] error item=${itemId} segment=${segmentKey} ` +
@@ -1240,6 +1262,10 @@ async function runTranscriptJob(itemId) {
       phaseLabel: null,
     });
     await saveTranscriptSegments(itemId, segments);
+    analyticsService.trackTranscriptOutcome(row, segmentKey, {
+      ok: false,
+      errorMessage: err.message,
+    });
   } finally {
     if (ossKeyToDelete) {
       transcriptMediaOss.deleteOssObject(ossKeyToDelete).catch((err) => {
@@ -1252,6 +1278,15 @@ async function runTranscriptJob(itemId) {
     } catch (err) {
       console.error(
         `[runTranscriptJob] mindmap resume failed item=${itemId}`,
+        err.message,
+      );
+    }
+    try {
+      const aiSummaryService = require('./aiSummaryService');
+      await aiSummaryService.onTranscriptSettledForSummary(itemId);
+    } catch (err) {
+      console.error(
+        `[runTranscriptJob] summary resume failed item=${itemId}`,
         err.message,
       );
     }
@@ -1471,10 +1506,7 @@ module.exports = {
   setStarred,
   updateNote,
   updateContent,
-  softDelete,
-  restoreFromTrash,
-  purgeFromTrash,
-  emptyTrash,
+  deleteItem,
   listItemTags,
   setItemTags,
   searchItems,
@@ -1491,4 +1523,7 @@ module.exports = {
   requestMindmap: require('./aiMindmapService').requestMindmap,
   getMindmapStatus: require('./aiMindmapService').getMindmapStatus,
   runMindmapJob: require('./aiMindmapService').runMindmapJob,
+  requestSummary: require('./aiSummaryService').requestSummary,
+  getSummaryStatus: require('./aiSummaryService').getSummaryStatus,
+  runSummaryJob: require('./aiSummaryService').runSummaryJob,
 };

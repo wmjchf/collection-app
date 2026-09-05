@@ -56,6 +56,7 @@
 | `item_tags` | 条目 ↔ 标签 |
 | `annotations` | 阅读标注 |
 | `usage_events` | 用量事件（转写秒 / AI token） |
+| `analytics_events` | 产品行为埋点（P0：入库/阅读/搜索/Pro） |
 | `subscriptions` | 订阅（Pro；支付前可有 `source=dev`） |
 | `ai_preference_events` | AI 偏好方向 |
 | `home_roam_cache` | 首页漫游缓存 |
@@ -197,7 +198,7 @@ API：`GET …/transcript-targets`、`POST …/transcript`（body.segmentKey）�
 | --- | --- |
 | `GET /api/system-filters` | 未读/所有/今天/星标/解析/标注/最近阅读 + 数量；`tzOffsetMinutes` 可选（默认 480） |
 | `GET /api/items?filter=` | 按系统筛选列条目；`filter` 同上；支持 `limit`/`offset`/`tzOffsetMinutes` |
-| `GET /api/home` | 首页两板块：未读 / 漫游（`randomPick`），各最多 3 条；漫游默认缓存 4h，`refreshRandom=1` 强制换一批 |
+| `GET /api/home` | 首页两板块：未读 / 最近阅读（`recentRead`），各最多 3 条 |
 
 未读无数据时 `countLabel` 为「无」；列表默认排除已删除与已归档。
 

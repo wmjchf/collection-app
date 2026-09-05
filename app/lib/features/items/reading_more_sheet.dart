@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-enum ReadingMoreAction { transcript, note, delete }
+enum ReadingMoreAction { transcript, note }
 
 Future<ReadingMoreAction?> showReadingMoreSheet(
   BuildContext context, {
@@ -32,7 +32,6 @@ class _ReadingMoreSheet extends StatelessWidget {
   static const _blue = Color(0xFF2F6FED);
   static const _handle = Color(0xFFD9DBE0);
   static const _iconBg = Color(0xFFF5F7FA);
-  static const _danger = Color(0xFFBF3333);
 
   @override
   Widget build(BuildContext context) {
@@ -90,17 +89,10 @@ class _ReadingMoreSheet extends StatelessWidget {
                     ),
                   _GridItem(
                     icon: Icons.edit_note_outlined,
-                    label: '备注',
+                    label: '感想',
                     color: hasNote ? _blue : _text,
                     onTap: () =>
                         Navigator.pop(context, ReadingMoreAction.note),
-                  ),
-                  _GridItem(
-                    icon: Icons.delete_outline,
-                    label: '删除',
-                    color: _danger,
-                    onTap: () =>
-                        Navigator.pop(context, ReadingMoreAction.delete),
                   ),
                   ],
                 ),
@@ -147,7 +139,7 @@ class _GridItem extends StatelessWidget {
                 color: _ReadingMoreSheet._iconBg,
                 borderRadius: BorderRadius.circular(14),
               ),
-              child: Icon(icon, size: 24, color: effectiveColor),
+              child: Icon(icon, size: 26, color: effectiveColor),
             ),
             const SizedBox(height: 8),
             Text(

@@ -139,11 +139,10 @@ export async function listItems({
   return authRequest('GET', `/api/items?${qs}`);
 }
 
-export async function fetchHome({ refreshRandom = false } = {}) {
-  const refresh = refreshRandom ? '&refreshRandom=1' : '';
+export async function fetchHome() {
   return authRequest(
     'GET',
-    `/api/home?tzOffsetMinutes=${tzOffsetMinutes()}${refresh}`,
+    `/api/home?tzOffsetMinutes=${tzOffsetMinutes()}`,
   );
 }
 
@@ -203,16 +202,8 @@ export function setItemTags(id, tagIds) {
   return authRequest('PUT', `/api/items/${id}/tags`, { body: { tagIds } });
 }
 
-export function restoreItem(id) {
-  return authRequest('POST', `/api/items/${id}/restore`);
-}
-
-export function purgeItem(id) {
-  return authRequest('DELETE', `/api/items/${id}/permanent`);
-}
-
-export function emptyTrash() {
-  return authRequest('DELETE', '/api/items/trash');
+export function deleteItem(id) {
+  return authRequest('DELETE', `/api/items/${id}`);
 }
 
 export function canSaveUrl(url) {

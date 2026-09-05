@@ -1,0 +1,481 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="robots" content="noindex,nofollow" />
+  <title>奏折 · 埋点看板</title>
+  <style>
+    :root {
+      --text: #1f242e;
+      --muted: #737a85;
+      --bg: #f4f5f7;
+      --card: #ffffff;
+      --line: #e5e5eb;
+      --blue: #2f6fed;
+      --ok: #1a7f4b;
+      --bad: #c0392b;
+      --font: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+        "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: var(--font);
+      color: var(--text);
+      background: var(--bg);
+      line-height: 1.45;
+    }
+    .wrap { max-width: 1080px; margin: 0 auto; padding: 28px 20px 64px; }
+    header { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; justify-content: space-between; margin-bottom: 24px; }
+    h1 { margin: 0; font-size: 22px; font-weight: 700; }
+    .sub { color: var(--muted); font-size: 13px; margin-top: 4px; }
+    .controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+    input, select, button {
+      font: inherit; font-size: 14px; border-radius: 10px; border: 1px solid var(--line);
+      padding: 8px 12px; background: #fff; color: var(--text);
+    }
+    input[type="password"] { min-width: 180px; }
+    input[type="number"] { width: 100px; }
+    #userSelect { min-width: 220px; max-width: 280px; }
+    button {
+      background: var(--blue); color: #fff; border-color: var(--blue); cursor: pointer;
+      font-weight: 500;
+    }
+    button.ghost { background: #fff; color: var(--text); border-color: var(--line); }
+    button:disabled { opacity: 0.55; cursor: default; }
+    .err {
+      background: #fdecea; color: var(--bad); padding: 12px 14px; border-radius: 12px;
+      margin-bottom: 16px; font-size: 14px;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+      gap: 12px;
+      margin-bottom: 20px;
+    }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 14px 16px;
+    }
+    .card .label { font-size: 12px; color: var(--muted); }
+    .card .value { font-size: 28px; font-weight: 700; margin-top: 4px; letter-spacing: -0.02em; }
+    .card .hint { font-size: 12px; color: var(--muted); margin-top: 2px; }
+    .section { margin-top: 22px; }
+    .section h2 { font-size: 15px; margin: 0 0 10px; font-weight: 600; }
+    .panels { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    @media (max-width: 760px) { .panels { grid-template-columns: 1fr; } }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--line); }
+    th { color: var(--muted); font-weight: 500; font-size: 12px; }
+    .bar-row { display: flex; align-items: center; gap: 10px; margin: 6px 0; font-size: 13px; }
+    .bar-label { width: 88px; flex-shrink: 0; color: var(--muted); }
+    .screen-dwell .bar-label { width: 120px; }
+    .bar-track { flex: 1; height: 8px; background: #eef0f4; border-radius: 99px; overflow: hidden; }
+    .bar-fill { height: 100%; background: var(--blue); border-radius: 99px; }
+    .bar-n { width: 40px; text-align: right; font-variant-numeric: tabular-nums; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
+    .muted { color: var(--muted); }
+    .ok { color: var(--ok); }
+    .bad { color: var(--bad); }
+    .funnel-step { display: flex; align-items: center; gap: 10px; margin: 8px 0; font-size: 13px; }
+    .funnel-step .idx { width: 22px; height: 22px; border-radius: 99px; background: #eef0f4; color: var(--muted); font-size: 11px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+    .funnel-step .name { width: 72px; flex-shrink: 0; }
+    .funnel-step .track { flex: 1; height: 10px; background: #eef0f4; border-radius: 99px; overflow: hidden; }
+    .funnel-step .fill { height: 100%; background: linear-gradient(90deg, #2f6fed, #5b8ff9); border-radius: 99px; }
+    .funnel-step .meta { width: 120px; text-align: right; font-variant-numeric: tabular-nums; color: var(--muted); font-size: 12px; }
+    .path-line { font-size: 13px; padding: 8px 0; border-bottom: 1px solid var(--line); line-height: 1.5; }
+    .timeline { border-left: 2px solid var(--line); margin-left: 6px; padding-left: 12px; }
+    .timeline-item { margin: 6px 0 10px; font-size: 12px; }
+    .timeline-item .t { color: var(--muted); font-variant-numeric: tabular-nums; }
+    .timeline-item .e { font-weight: 500; }
+    .user-pick { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 16px; }
+    .user-badge { font-size: 13px; padding: 6px 10px; background: #eef3ff; border-radius: 8px; color: var(--blue); }
+    tr.click-user { cursor: pointer; }
+    tr.click-user:hover td { background: #f8f9fc; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <div>
+        <h1>埋点看板</h1>
+        <div class="sub" id="range">奏折 内部 · P0</div>
+      </div>
+      <div class="controls">
+        <input id="token" type="password" placeholder="看板 Token" autocomplete="off" />
+        <select id="days">
+          <option value="1">近 1 天</option>
+          <option value="7" selected>近 7 天</option>
+          <option value="14">近 14 天</option>
+          <option value="30">近 30 天</option>
+        </select>
+        <select id="userSelect" title="选择用户">
+          <option value="">全部用户</option>
+        </select>
+        <input id="userIdInput" type="number" min="1" step="1" placeholder="用户 ID" />
+        <button type="button" class="ghost" id="applyUser">查看用户</button>
+        <button type="button" class="ghost" id="saveToken">记住 Token</button>
+        <button type="button" id="reload">刷新</button>
+      </div>
+    </header>
+
+    <div id="error" class="err" hidden></div>
+    <div id="content" hidden>
+      <div id="userBadge" class="user-badge" hidden></div>
+      <div class="grid" id="kpis"></div>
+
+      <div class="card section">
+        <h2>DAU（app_open）</h2>
+        <div id="dau"></div>
+      </div>
+
+      <div class="card section" style="margin-top:12px">
+        <h2>主链路 · 入库 → 阅读 → 付费</h2>
+        <p class="muted" style="margin:0 0 10px;font-size:13px">
+          用户漏斗：周期内有过入库的用户，后续步骤按时间顺序发生（可跨会话）。同会话统计见下方。
+        </p>
+        <div id="journeyFunnel"></div>
+        <div id="journeySession" style="margin-top:14px"></div>
+      </div>
+
+      <div class="panels" style="margin-top:12px">
+        <div class="card section">
+          <h2>Top 操作路径（同会话）</h2>
+          <div id="journeyPaths"></div>
+        </div>
+        <div class="card section">
+          <h2>最近会话时间线</h2>
+          <div id="journeyTimelines"></div>
+        </div>
+      </div>
+
+      <div class="card section" style="margin-top:12px" id="userFlatSection" hidden>
+        <h2>用户全量事件时间线</h2>
+        <div id="userFlatTimeline"></div>
+      </div>
+
+      <div class="card section" style="margin-top:12px">
+        <h2>解析</h2>
+        <div id="parse"></div>
+      </div>
+
+      <div class="card section screen-dwell" style="margin-top:12px">
+        <h2>页面停留</h2>
+        <div id="screenDwellPages"></div>
+      </div>
+
+      <div class="card section" style="margin-top:12px">
+        <h2>事件总量</h2>
+        <div id="byName"></div>
+      </div>
+
+      <div class="card section">
+        <h2>最近事件</h2>
+        <div style="overflow-x:auto">
+          <table>
+            <thead>
+              <tr>
+                <th>时间</th>
+                <th>用户</th>
+                <th>事件</th>
+                <th>属性</th>
+                <th>端</th>
+              </tr>
+            </thead>
+            <tbody id="recent"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const TOKEN_KEY = 'conflux_analytics_token';
+    const USER_KEY = 'conflux_analytics_user';
+    const $ = (id) => document.getElementById(id);
+
+    function selectedUserId() {
+      const fromSelect = $('userSelect').value;
+      if (fromSelect) return fromSelect;
+      const raw = $('userIdInput').value.trim();
+      return raw || '';
+    }
+
+    function setSelectedUserId(id) {
+      const v = id ? String(id) : '';
+      $('userIdInput').value = v;
+      const sel = $('userSelect');
+      const has = [...sel.options].some((o) => o.value === v);
+      sel.value = has ? v : '';
+      sessionStorage.setItem(USER_KEY, v);
+    }
+
+    async function loadUsers(token, days) {
+      const res = await fetch(`/api/analytics/users?days=${encodeURIComponent(days)}`, {
+        headers: { 'X-Analytics-Token': token },
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.message || `users HTTP ${res.status}`);
+      const sel = $('userSelect');
+      const cur = selectedUserId();
+      sel.innerHTML = '<option value="">全部用户</option>';
+      for (const u of data.users || []) {
+        const label = `#${u.userId} ${u.phoneMasked || ''}${u.nickname ? ` · ${u.nickname}` : ''} (${u.eventCount})`;
+        const opt = document.createElement('option');
+        opt.value = String(u.userId);
+        opt.textContent = label;
+        sel.append(opt);
+      }
+      if (cur && [...sel.options].some((o) => o.value === cur)) sel.value = cur;
+    }
+
+    function eventExtras(e) {
+      const extra = [];
+      if (e.props?.entry) extra.push(`entry=${e.props.entry}`);
+      if (e.props?.from) extra.push(`from=${e.props.from}`);
+      if (e.props?.seconds != null) extra.push(`${e.props.seconds}s`);
+      if (e.props?.source) extra.push(`src=${e.props.source}`);
+      if (e.props?.item_id != null) extra.push(`item=${e.props.item_id}`);
+      if (e.props?.segment_key) extra.push(`seg=${e.props.segment_key}`);
+      if (e.props?.count != null) extra.push(`×${e.props.count}`);
+      return extra.length ? ` <span class="muted">${esc(extra.join(' · '))}</span>` : '';
+    }
+
+    function flatTimeline(events) {
+      if (!events?.length) return '<p class="muted">暂无</p>';
+      return `<div class="timeline">${events.map((e) => {
+        const label = e.label || e.name;
+        const sess = e.sessionId ? ` <span class="muted">· ${esc(String(e.sessionId).slice(0, 12))}…</span>` : '';
+        return `<div class="timeline-item">
+          <div class="t">${fmtTime(e.at)}${sess}</div>
+          <div class="e">${esc(label)}${eventExtras(e)}</div>
+        </div>`;
+      }).join('')}</div>`;
+    }
+
+    function bars(items, maxKey = 'count') {
+      const max = Math.max(1, ...items.map((i) => Number(i[maxKey]) || 0));
+      return items.map((i) => {
+        const n = Number(i[maxKey]) || 0;
+        const label = i.label || i.source || i.bucket || i.from || i.name || '—';
+        const pct = Math.round((n / max) * 100);
+        return `<div class="bar-row"><span class="bar-label">${esc(label)}</span>
+          <div class="bar-track"><div class="bar-fill" style="width:${pct}%"></div></div>
+          <span class="bar-n">${n}</span></div>`;
+      }).join('') || '<p class="muted">暂无数据</p>';
+    }
+
+    function esc(s) {
+      return String(s ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+
+    function fmtTime(v) {
+      if (!v) return '—';
+      const d = new Date(v);
+      if (Number.isNaN(d.getTime())) return esc(v);
+      return d.toLocaleString('zh-CN', { hour12: false });
+    }
+
+    function kpi(label, value, hint) {
+      return `<div class="card"><div class="label">${esc(label)}</div>
+        <div class="value">${esc(value)}</div>
+        ${hint ? `<div class="hint">${esc(hint)}</div>` : ''}</div>`;
+    }
+
+    function funnelSteps(steps, singleUser) {
+      if (!steps?.length) return '<p class="muted">暂无数据</p>';
+      const base = Number(steps[0]?.users) || 1;
+      return steps.map((s, i) => {
+        const n = Number(s.users) || 0;
+        const pct = singleUser ? (s.reached || n > 0 ? 100 : 0) : Math.round((n / base) * 100);
+        const rate = singleUser
+          ? (s.reached ? '✓' : '—')
+          : (s.rateFromSave != null ? `${s.rateFromSave}%` : '—');
+        const meta = singleUser ? rate : `${n} 人 · ${rate}`;
+        return `<div class="funnel-step">
+          <span class="idx">${i + 1}</span>
+          <span class="name">${esc(s.label)}</span>
+          <div class="track"><div class="fill" style="width:${pct}%"></div></div>
+          <span class="meta">${meta}</span>
+        </div>`;
+      }).join('');
+    }
+
+    function journeyPaths(items) {
+      if (!items?.length) return '<p class="muted">暂无路径（需同会话 ≥2 步）</p>';
+      const max = Math.max(1, ...items.map((i) => i.count));
+      return items.map((i) => {
+        const pct = Math.round((i.count / max) * 100);
+        return `<div class="path-line">
+          <div class="bar-row" style="margin:0 0 4px">
+            <div class="bar-track"><div class="bar-fill" style="width:${pct}%"></div></div>
+            <span class="bar-n">${i.count}</span>
+          </div>
+          <div>${esc(i.path)}</div>
+        </div>`;
+      }).join('');
+    }
+
+    function journeyTimelines(sessions) {
+      if (!sessions?.length) return '<p class="muted">暂无</p>';
+      return sessions.map((s) => {
+        const items = (s.events || []).map((e) => {
+          const tail = eventExtras(e);
+          return `<div class="timeline-item">
+            <div class="t">${fmtTime(e.at)}</div>
+            <div class="e">${esc(e.label)}${tail}</div>
+          </div>`;
+        }).join('');
+        return `<div style="margin-bottom:16px">
+          <div class="mono muted" style="margin-bottom:6px">用户 ${s.userId} · ${esc(String(s.sessionId).slice(0, 18))}…</div>
+          <div class="timeline">${items}</div>
+        </div>`;
+      }).join('');
+    }
+
+    async function load() {
+      const token = $('token').value.trim();
+      const days = $('days').value;
+      const userId = selectedUserId();
+      $('error').hidden = true;
+      $('content').hidden = true;
+      $('reload').disabled = true;
+      try {
+        if (!token) throw new Error('请填写看板 Token（环境变量 ANALYTICS_DASHBOARD_TOKEN）');
+        await loadUsers(token, days);
+        const qs = new URLSearchParams({ days });
+        if (userId) qs.set('userId', userId);
+        const res = await fetch(`/api/analytics/summary?${qs}`, {
+          headers: { 'X-Analytics-Token': token },
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.message || `HTTP ${res.status}`);
+
+        const su = data.selectedUser;
+        if (su) {
+          $('userBadge').hidden = false;
+          $('userBadge').textContent =
+            `当前用户 #${su.userId} ${su.phoneMasked || ''}${su.nickname ? ` · ${su.nickname}` : ''} · ${su.eventCount} 条事件`;
+        } else {
+          $('userBadge').hidden = true;
+        }
+
+        $('range').textContent =
+          `${userId ? `用户 #${userId} · ` : ''}近 ${data.days} 天 · ${fmtTime(data.from)} → ${fmtTime(data.to)}`;
+
+        const p = data.parse || {};
+        const r = data.reading || {};
+        const screens = data.screens || {};
+        const journey = data.journey || {};
+        const singleUser = !!userId;
+
+        $('kpis').innerHTML = [
+          kpi(singleUser ? '事件数' : 'DAU（末日）', singleUser ? (su?.eventCount ?? 0) : (data.dau?.length ? data.dau[data.dau.length - 1].users : 0), singleUser ? '周期内埋点' : '按 app_open 去重'),
+          kpi('入库', journey.funnel?.[0]?.users ?? 0, singleUser ? '是否入库' : '周期内 item_save_success'),
+          kpi('打开阅读', journey.funnel?.find((x) => x.key === 'read_open')?.users ?? r.opens ?? 0, '主链路'),
+          kpi('付费成功', journey.funnel?.find((x) => x.key === 'iap_success')?.users ?? 0, '主链路'),
+        ].join('');
+
+        $('journeyFunnel').innerHTML = funnelSteps(journey.funnel || [], singleUser);
+
+        const ss = journey.sessionStats || {};
+        $('journeySession').innerHTML = ss.sessionsWithSave
+          ? `<p style="margin:0;font-size:13px">同会话含入库 <b>${ss.sessionsWithSave}</b> 次 → 继续阅读 <b>${ss.saveThenRead}</b>（${ss.readRate ?? '—'}%）→ Pro 页 <b>${ss.saveThenPro}</b>（${ss.proRate ?? '—'}%）→ 付费 <b>${ss.saveThenPay}</b>（${ss.payRate ?? '—'}%）</p>`
+          : '<p class="muted">暂无同会话入库数据</p>';
+
+        $('journeyPaths').innerHTML = journeyPaths(journey.topPaths || []);
+        $('journeyTimelines').innerHTML = journeyTimelines(journey.sessions || []);
+
+        if (journey.flatTimeline?.length) {
+          $('userFlatSection').hidden = false;
+          $('userFlatTimeline').innerHTML = flatTimeline(journey.flatTimeline);
+        } else {
+          $('userFlatSection').hidden = true;
+        }
+
+        const dau = (data.dau || []).map((x) => ({ label: String(x.date).slice(5), count: x.users }));
+        $('dau').innerHTML = bars(dau);
+
+        $('parse').innerHTML =
+          `<p>ready <b class="ok">${p.ready ?? 0}</b> · fail <b class="bad">${p.fail ?? 0}</b>` +
+          (p.successRate != null ? ` · ${p.successRate}%` : '') + `</p>`;
+
+        const screenRows = (screens.byScreen || []).map((x) => ({
+          label: x.avgSeconds != null ? `${x.screen} · ${x.avgSeconds}s` : x.screen,
+          count: x.visits,
+        }));
+        $('screenDwellPages').innerHTML =
+          screenRows.length
+            ? `<p style="margin:0 0 8px">共 ${screens.dwells ?? 0} 次离开上报</p>` +
+              bars(screenRows)
+            : '<p class="muted">暂无数据</p>';
+
+        const byName = Object.entries(data.byName || {})
+          .map(([name, count]) => ({ label: name, count }))
+          .sort((a, b) => b.count - a.count);
+        $('byName').innerHTML = bars(byName);
+
+        $('recent').innerHTML = (data.recent || []).map((e) => {
+          const props = e.props ? JSON.stringify(e.props) : '';
+          return `<tr class="click-user" data-user-id="${e.userId}">
+            <td class="mono">${fmtTime(e.createdAt)}</td>
+            <td>${e.userId}</td>
+            <td>${esc(e.name)}</td>
+            <td class="mono muted">${esc(props)}</td>
+            <td>${esc(e.platformOs || '')} ${esc(e.appVersion || '')}</td>
+          </tr>`;
+        }).join('') || '<tr><td colspan="5" class="muted">暂无</td></tr>';
+
+        $('recent').querySelectorAll('tr.click-user').forEach((tr) => {
+          tr.addEventListener('click', () => {
+            const id = tr.getAttribute('data-user-id');
+            if (!id) return;
+            setSelectedUserId(id);
+            load();
+          });
+        });
+
+        $('content').hidden = false;
+      } catch (err) {
+        $('error').hidden = false;
+        $('error').textContent = err.message || String(err);
+      } finally {
+        $('reload').disabled = false;
+      }
+    }
+
+    $('token').value = sessionStorage.getItem(TOKEN_KEY) ||
+      new URLSearchParams(location.search).get('token') || '';
+    $('saveToken').onclick = () => {
+      sessionStorage.setItem(TOKEN_KEY, $('token').value.trim());
+      $('saveToken').textContent = '已记住';
+      setTimeout(() => { $('saveToken').textContent = '记住 Token'; }, 1200);
+    };
+    $('reload').onclick = load;
+    $('days').onchange = load;
+    $('userSelect').onchange = () => {
+      $('userIdInput').value = $('userSelect').value;
+      setSelectedUserId($('userSelect').value);
+      load();
+    };
+    $('applyUser').onclick = () => {
+      setSelectedUserId($('userIdInput').value.trim());
+      load();
+    };
+    $('userIdInput').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') $('applyUser').click();
+    });
+    const savedUser = sessionStorage.getItem(USER_KEY) ||
+      new URLSearchParams(location.search).get('userId') || '';
+    if (savedUser) setSelectedUserId(savedUser);
+    if ($('token').value) load();
+  </script>
+</body>
+</html>

@@ -109,7 +109,7 @@ class _ReadingNoteSheetState extends State<_ReadingNoteSheet> {
                 Row(
                   children: [
                     const Text(
-                      '编辑备注',
+                      '编辑感想',
                       style: TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.w700,
@@ -134,7 +134,7 @@ class _ReadingNoteSheetState extends State<_ReadingNoteSheet> {
                   autofocus: true,
                   style: const TextStyle(fontSize: 15, color: _text, height: 1.5),
                   decoration: InputDecoration(
-                    hintText: '写一点备忘，方便以后找回…',
+                    hintText: '写下读后的感想，方便以后找回…',
                     hintStyle: const TextStyle(color: _muted, fontSize: 14),
                     filled: true,
                     fillColor: _fieldBg,

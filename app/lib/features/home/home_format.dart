@@ -4,6 +4,7 @@ import 'package:super_collection/features/items/item_models.dart';
 /// 来源标签：直接展示平台 id，避免每加一个站都要发版改映射。
 String platformLabel(String? platform) {
   final p = (platform ?? '').trim();
+  if (p == 'guide') return '奏折';
   return p.isEmpty ? 'web' : p;
 }
 
@@ -47,10 +48,10 @@ HomeItemPreview previewForUnread(CollectionItem item) {
   );
 }
 
-HomeItemPreview previewForRandom(CollectionItem item) {
+HomeItemPreview previewForRecentRead(CollectionItem item) {
   final title = item.title?.isNotEmpty == true ? item.title! : item.url;
   final subtitle =
-      '${platformLabel(item.platform)} · ${formatRelativeDay(item.createdAt)}';
+      '${platformLabel(item.platform)} · ${formatRelativeTime(item.lastReadAt)}';
   return HomeItemPreview(
     id: item.id,
     title: title,

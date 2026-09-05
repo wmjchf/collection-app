@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="color-scheme" content="light" />
+  <title>使用指引与技巧 - 奏折</title>
+  <meta name="description" content="奏折 使用指引：三种收藏方式、整理与搜索技巧、AI 与转写、太子/帝王订阅说明。" />
+  <meta name="robots" content="index,follow" />
+  <link rel="canonical" href="https://conflux.wobufang.com/guide" />
+  <link rel="icon" href="/assets/apple-touch-icon.png" type="image/png" />
+  <meta property="og:image" content="https://conflux.wobufang.com/assets/icon.png" />
+  <meta property="og:image:alt" content="奏折 App 图标" />
+  <style>
+    :root {
+      --text: #1f242e;
+      --muted: #737a85;
+      --line: #e5e5eb;
+      --tip-bg: #fff2c7;
+      --link: #2f6fed;
+    }
+    * { box-sizing: border-box; }
+    html {
+      -webkit-text-size-adjust: 100%;
+      background: #ffffff;
+    }
+    body {
+      margin: 0;
+      background: #ffffff;
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+        "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+      font-size: 15px;
+      line-height: 1.85;
+      letter-spacing: 0.2px;
+    }
+    /* 对齐 App 阅读页：左右 22，上 18，下 28 */
+    .page {
+      max-width: none;
+      margin: 0;
+      padding: calc(18px + env(safe-area-inset-top, 0px)) 22px
+        calc(28px + env(safe-area-inset-bottom, 0px));
+    }
+    h1 {
+      margin: 0 0 12px;
+      font-size: 20px;
+      font-weight: 700;
+      line-height: 1.4;
+      letter-spacing: 0.2px;
+    }
+    .cover {
+      display: block;
+      width: 128px;
+      height: 128px;
+      margin: 0 0 22px;
+      border-radius: 22.37%;
+      box-shadow: 0 10px 28px rgba(47, 111, 237, 0.12);
+    }
+    .meta {
+      margin: 0 0 22px;
+      font-size: 12px;
+      line-height: 1.4;
+      color: var(--muted);
+    }
+    .lead {
+      margin: 0 0 14px;
+      color: var(--text);
+    }
+    h2 {
+      margin: 28px 0 12px;
+      font-size: 19px;
+      font-weight: 700;
+      line-height: 1.35;
+      letter-spacing: 0.2px;
+    }
+    h2:first-of-type { margin-top: 0; }
+    h3 {
+      margin: 20px 0 8px;
+      font-size: 17px;
+      font-weight: 700;
+      line-height: 1.35;
+      letter-spacing: 0.2px;
+    }
+    p { margin: 0 0 14px; }
+    ul, ol {
+      margin: 0 0 14px;
+      padding-left: 1.25em;
+    }
+    li { margin: 0 0 6px; }
+    a { color: var(--link); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .tip {
+      margin: 14px 0;
+      padding: 10px 12px;
+      background: var(--tip-bg);
+      border-radius: 4px;
+      font-size: 15px;
+      line-height: 1.85;
+      letter-spacing: 0.2px;
+    }
+    .tip strong { font-weight: 700; }
+    .plan-block {
+      margin: 0 0 14px;
+    }
+    .plan-block > strong {
+      display: block;
+      margin-bottom: 6px;
+      font-size: 15px;
+      font-weight: 700;
+    }
+    .plan-block ul {
+      margin-top: 0;
+    }
+    @media (min-width: 680px) {
+      .page {
+        max-width: 680px;
+        margin: 0 auto;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <img
+      class="cover"
+      src="/assets/icon.png"
+      width="128"
+      height="128"
+      alt="奏折"
+    />
+    <main class="article">
+    <h1>使用指引与技巧</h1>
+    <p class="meta">奏折 · 更新于 2026年9月5日</p>
+
+    <p class="lead">奏折帮你把抖音、微信、小红书、B 站等刷到的好内容收到一处。下面是从「怎么收」到「怎么用好」的简明指引。</p>
+
+    <h2 id="start">一、快速上手：三种收藏方式</h2>
+    <p>任选一种即可，也可以组合使用。</p>
+    <p><strong>1. 系统分享</strong><br />在微信、Safari、抖音等 App 点「分享」，选择「奏折」。适合刷到立刻想收的场景。</p>
+    <p><strong>2. 复制链接</strong><br />在其他 App 复制可用链接后打开奏折，会自动读取剪贴板并保存。适合没有分享入口的页面。</p>
+    <p><strong>3. iOS 快捷指令</strong><br />在 App「设置 → iOS 快捷指令说明」一键安装。装好后可加到主屏幕、控制中心或「轻点背面」，复制链接后触发即可后台保存。详见<a href="#shortcuts">下文</a>。</p>
+    <p class="tip"><strong>技巧：</strong>收藏不必当下读完。先收进奏折，首页「未读」会帮你记着，有空再翻。</p>
+
+    <h2 id="workflow">二、推荐工作流</h2>
+    <h3>刷到 → 一键收</h3>
+    <p>看到值得留的内容，用分享或复制链接立刻保存，不要打断当前浏览节奏。</p>
+    <h3>有空 → 从未读开始</h3>
+    <p>打开 App 先看首页未读，或「最近阅读」接着上次的进度。读完后可标记已读，未读列表会自动变短。</p>
+    <h3>值得留 → 加星标 / 进收藏夹</h3>
+    <p>精读过的、以后要反复查的，加星标或拖进收藏夹。临时性的可以只保留未读/已读状态，不必过度整理。</p>
+    <h3>主题归档 → 打标签</h3>
+    <p>同一主题的内容（如「产品」「旅行」「育儿」）打上相同标签，之后按标签筛选比翻历史快得多。</p>
+    <p class="tip"><strong>技巧：</strong>整理宜轻不宜重。先保证「收得到、找得到」，标签和收藏夹可以慢慢补，不必每条都分类。</p>
+
+    <h2 id="organize">三、整理与找回</h2>
+    <ul>
+      <li><strong>我的收藏</strong>：按系统分类（文章、视频等）、收藏夹、标签浏览全部条目。</li>
+      <li><strong>搜索</strong>：可检索标题、正文、备注、转写文稿等；记几个关键词比记链接靠谱。</li>
+      <li><strong>星标</strong>：精读清单，适合「以后要再看」的内容。</li>
+      <li><strong>删除</strong>：删除后无法恢复；普通用户删除条目后，在库条数配额才会释放。</li>
+    </ul>
+    <p class="tip"><strong>技巧：</strong>给重要条目写一句备注（如「给 XX 项目参考」），搜索时更容易命中。</p>
+
+    <h2 id="reading">四、阅读与标注</h2>
+    <ul>
+      <li>阅读页会尽量按原文排开正文与插图，长文可慢慢读。</li>
+      <li>选中文字可高亮标注，适合摘录观点、做读书笔记。</li>
+      <li>部分平台因登录态或反爬限制，封面/正文可能不完整；可点「打开原文」跳转查看，或稍后重试解析。</li>
+      <li>视频类内容可在阅读页发起转写（帝王档），文稿生成后可搜索、配合 AI 使用。</li>
+    </ul>
+    <p class="tip"><strong>技巧：</strong>标注过的段落会在阅读页集中展示，复习时比重新通读全文省时间。</p>
+
+    <h2 id="ai">五、AI 与转写</h2>
+    <p>AI 功能需在对应档位下使用；结果仅供参考，不采纳则不会改动你的标签。</p>
+    <ul>
+      <li><strong>AI 标签</strong>（太子及以上）：阅读页发起，根据正文推荐标签，你可勾选采纳。</li>
+      <li><strong>AI 解读</strong>（太子及以上）：生成内容摘要，快速判断值不值得精读。</li>
+      <li><strong>AI 思维导图</strong>（帝王）：把长文结构化成脑图，适合教程、长分析类文章。</li>
+      <li><strong>音视频转写</strong>（帝王）：把视频/音频转成可搜索的文字稿；部分平台可能无法拉取媒体。</li>
+    </ul>
+    <p>AI 标签、解读、思维导图共用每月 AI 额度（按 token 计）；转写单独按分钟计。用量可在「账户和用量」查看，自然月重置。</p>
+    <p class="tip"><strong>技巧：</strong>长视频想先知道讲什么，可先转写再让 AI 解读；短视频或纯文字可直接解读，省额度。</p>
+
+    <h2 id="plans">六、订阅档位</h2>
+    <div class="plan-block">
+      <strong>普通</strong>
+      <ul>
+        <li>在库收藏：有上限（默认 300 条，不含已删除）</li>
+        <li>AI / 转写：不可用</li>
+        <li>阅读、搜索、手动标签：可用</li>
+      </ul>
+    </div>
+    <div class="plan-block">
+      <strong>太子</strong>
+      <ul>
+        <li>在库收藏：不限</li>
+        <li>AI 标签、AI 解读：可用（月 token 池）</li>
+        <li>思维导图、转写：不可用</li>
+      </ul>
+    </div>
+    <div class="plan-block">
+      <strong>帝王</strong>
+      <ul>
+        <li>含太子全部能力</li>
+        <li>另解锁 AI 思维导图、音视频转写（转写单独按月分钟池）</li>
+      </ul>
+    </div>
+    <p>在 iPhone 上打开「订阅会员」选择太子或帝王、月付或年付；管理续费请前往 iOS「设置 → Apple ID → 订阅」。换机或重装后可用「恢复购买」。</p>
+    <p>若在 App 内暂时看不到帝王月付/年付按钮，多为 App Store 新商品同步延迟，稍后再试或先订阅太子；详见<a href="/support">用户支持</a>。</p>
+
+    <h2 id="shortcuts">七、iOS 快捷指令（进阶）</h2>
+    <p>适合「复制链接 → 立刻收、不打开 App 界面」的高频用户。</p>
+    <ol>
+      <li>在奏折 App 登录后，打开「设置 → iOS 快捷指令说明」，点「添加快捷指令」完成安装（只需一次）。</li>
+      <li>任选或组合以下触发方式：
+        <ul>
+          <li><strong>主屏幕</strong>：快捷指令 → 分享 → 加到主屏幕；之后复制链接点图标。</li>
+          <li><strong>控制中心</strong>（iOS 18+）：控制中心 →「+」→ 添加「保存链接到奏折」控件。</li>
+          <li><strong>轻点背面</strong>：设置 → 辅助功能 → 触控 → 轻点背面 → 选该快捷指令。</li>
+        </ul>
+      </li>
+      <li>三种用法互不影响，装好后任选，也可一起开。</li>
+    </ol>
+    <p class="tip"><strong>技巧：</strong>把快捷指令绑到「轻点背面」后，刷抖音/小红书时复制链接、连点两下背面就能收，几乎不打断浏览。</p>
+    </main>
+  </div>
+</body>
+</html>

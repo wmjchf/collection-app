@@ -1,6 +1,6 @@
-# Conflux
+# 奏折
 
-多源平台内容收藏合一。产品说明见 [`docs/PRD-v1.md`](docs/PRD-v1.md)，技术实现与变更记录见 [`docs/技术实现.md`](docs/技术实现.md)，推广计划见 [`docs/Conflux-推广计划书.md`](docs/Conflux-推广计划书.md)，[`用户协议`](docs/用户协议.md) / [`隐私政策`](docs/隐私政策.md)。
+多源平台内容收藏合一。产品说明见 [`docs/PRD-v1.md`](docs/PRD-v1.md)，技术实现与变更记录见 [`docs/技术实现.md`](docs/技术实现.md)，推广计划见 [`docs/奏折-推广计划书.md`](docs/奏折-推广计划书.md)，[`用户协议`](docs/用户协议.md) / [`隐私政策`](docs/隐私政策.md)。
 
 > 改代码 / 修 bug / 加解析平台后，请在 [`docs/技术实现.md`](docs/技术实现.md) **§8 变更记录**追加条目。
 

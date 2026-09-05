@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:super_collection/core/config/app_brand.dart';
 import 'package:super_collection/features/onboarding/onboarding_prefs.dart';
 import 'package:super_collection/features/onboarding/shortcuts_help_page.dart';
 import 'package:super_collection/features/shell/main_shell.dart';
@@ -42,7 +43,7 @@ class OnboardingPage extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               const Text(
-                'Conflux',
+                AppBrand.name,
                 style: TextStyle(
                   fontSize: 28,
                   fontWeight: FontWeight.w700,
@@ -71,7 +72,7 @@ class OnboardingPage extends StatelessWidget {
               const _WayCard(
                 title: '系统分享',
                 desc:
-                    '在微信、Safari、抖音等 App 点「分享」，选择「Conflux」即可保存',
+                    '在微信、Safari、抖音等 App 点「分享」，选择「${AppBrand.name}」即可保存',
               ),
               const SizedBox(height: 10),
               const _WayCard(

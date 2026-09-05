@@ -1,6 +1,8 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:super_collection/core/analytics/analytics.dart';
+import 'package:super_collection/core/analytics/screen_dwell_tracker.dart';
 import 'package:super_collection/core/network/api_client.dart';
 import 'package:super_collection/core/ui/paged_list.dart';
 import 'package:super_collection/features/home/home_format.dart';
@@ -17,7 +19,7 @@ class SearchPage extends StatefulWidget {
   State<SearchPage> createState() => _SearchPageState();
 }
 
-class _SearchPageState extends State<SearchPage> {
+class _SearchPageState extends State<SearchPage> with ScreenDwellMixin {
   static const _bg = Color(0xFFF7F7FA);
   static const _text = Color(0xFF1F242E);
   static const _muted = Color(0xFF737A85);
@@ -39,6 +41,9 @@ class _SearchPageState extends State<SearchPage> {
   bool _searched = false;
 
   bool get _hasMore => _hits.length < _total;
+
+  @override
+  String get dwellScreen => AnalyticsScreens.search;
 
   @override
   void initState() {
@@ -108,6 +113,10 @@ class _SearchPageState extends State<SearchPage> {
         _total = result.total;
         _loading = false;
       });
+      Analytics.instance.searchSubmit(
+        hasResult: result.total > 0,
+        resultCount: result.total,
+      );
     } on ApiException catch (e) {
       if (!mounted || _controller.text.trim() != q) return;
       setState(() {
@@ -116,6 +125,7 @@ class _SearchPageState extends State<SearchPage> {
         _hits = const [];
         _total = 0;
       });
+      Analytics.instance.searchSubmit(hasResult: false, resultCount: 0);
     } catch (_) {
       if (!mounted || _controller.text.trim() != q) return;
       setState(() {
@@ -159,6 +169,7 @@ class _SearchPageState extends State<SearchPage> {
         builder: (_) => ItemReadingPage(
           itemId: hit.item.id,
           initialItem: hit.item,
+          openEntry: 'search',
         ),
       ),
     );
@@ -210,7 +221,7 @@ class _SearchPageState extends State<SearchPage> {
                           prefixIcon: const Icon(
                             Icons.search_rounded,
                             color: _muted,
-                            size: 22,
+                            size: 24,
                           ),
                           suffixIcon: _controller.text.isEmpty
                               ? null
@@ -218,7 +229,7 @@ class _SearchPageState extends State<SearchPage> {
                                   icon: const Icon(
                                     Icons.close_rounded,
                                     color: _muted,
-                                    size: 20,
+                                    size: 22,
                                   ),
                                   onPressed: () {
                                     _controller.clear();

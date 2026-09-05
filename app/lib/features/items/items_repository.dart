@@ -280,30 +280,9 @@ class ItemsRepository {
     return CollectionItem.fromJson(itemJson);
   }
 
-  Future<void> softDelete(int id) async {
+  Future<void> deleteItem(int id) async {
     final token = await _token();
     await _api.delete('/api/items/$id', accessToken: token);
-  }
-
-  Future<CollectionItem> restoreFromTrash(int id) async {
-    final token = await _token();
-    final json = await _api.post(
-      '/api/items/$id/restore',
-      accessToken: token,
-    );
-    final itemJson = json['item'] as Map<String, dynamic>? ?? {};
-    return CollectionItem.fromJson(itemJson);
-  }
-
-  Future<void> purgeFromTrash(int id) async {
-    final token = await _token();
-    await _api.delete('/api/items/$id/permanent', accessToken: token);
-  }
-
-  Future<int> emptyTrash() async {
-    final token = await _token();
-    final json = await _api.delete('/api/items/trash', accessToken: token);
-    return (json['deletedCount'] as num?)?.toInt() ?? 0;
   }
 
   Future<List<Tag>> listItemTags(int id) async {
@@ -424,6 +403,46 @@ class ItemsRepository {
     final trimmed = direction?.trim();
     final json = await _api.post(
       '/api/items/$id/mindmap',
+      body: {
+        'force': force,
+        if (trimmed != null && trimmed.isNotEmpty) 'direction': trimmed,
+      },
+      accessToken: token,
+    );
+    final itemJson = json['item'] as Map<String, dynamic>? ?? {};
+    return CollectionItem.fromJson(itemJson);
+  }
+
+  Future<({
+    AiSummaryMeta summary,
+    String? model,
+  })> getSummaryStatus(int id) async {
+    final token = await _token();
+    final json = await _api.get(
+      '/api/items/$id/summary-status',
+      accessToken: token,
+    );
+    final raw = json['summary'];
+    AiSummaryMeta summary = const AiSummaryMeta();
+    if (raw is Map<String, dynamic>) {
+      summary = AiSummaryMeta.fromJson(raw);
+    } else if (raw is Map) {
+      summary = AiSummaryMeta.fromJson(
+        raw.map((k, v) => MapEntry(k.toString(), v)),
+      );
+    }
+    return (summary: summary, model: json['model'] as String?);
+  }
+
+  Future<CollectionItem> requestSummary(
+    int id, {
+    bool force = false,
+    String? direction,
+  }) async {
+    final token = await _token();
+    final trimmed = direction?.trim();
+    final json = await _api.post(
+      '/api/items/$id/summary',
       body: {
         'force': force,
         if (trimmed != null && trimmed.isNotEmpty) 'direction': trimmed,

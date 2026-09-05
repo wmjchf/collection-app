@@ -158,7 +158,7 @@ class TranscriptSegmentPanel extends StatelessWidget {
                       padding: EdgeInsets.only(right: 10),
                       child: Icon(
                         Icons.chevron_right_rounded,
-                        size: 20,
+                        size: 22,
                         color: _muted,
                       ),
                     ),

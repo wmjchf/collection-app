@@ -11,15 +11,20 @@ class ApiException implements Exception {
     this.statusCode,
     this.code,
     this.quotaKind,
+    this.requiredPlan,
   });
 
   final String message;
   final int? statusCode;
   final String? code;
   final String? quotaKind;
+  final String? requiredPlan;
 
   bool get isQuotaExceeded =>
       statusCode == 402 || code == 'QUOTA_EXCEEDED';
+
+  bool get isPlanRequired =>
+      statusCode == 402 && code == 'PLAN_REQUIRED';
 
   bool get isPaymentNotReady =>
       statusCode == 501 || code == 'PAYMENT_NOT_READY';
@@ -229,6 +234,7 @@ class ApiClient {
       statusCode: res.statusCode,
       code: json['code'] as String?,
       quotaKind: json['quotaKind'] as String?,
+      requiredPlan: json['requiredPlan'] as String?,
     );
   }
 }

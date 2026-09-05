@@ -177,6 +177,7 @@ async function requestMindmap(userId, itemId, { force = false, direction = null 
   }
 
   const usageService = require('./usageService');
+  await usageService.assertPlanFeatureForUser(userId, 'ai_mindmap');
   await usageService.assertAiQuota(userId);
 
   if (userDirection) {
@@ -363,6 +364,7 @@ async function runMindmapJob(itemId) {
       direction: null,
     });
     await saveAiMeta(itemId, meta);
+    require('./analyticsService').trackAiJobOutcome(row, 'mindmap', { ok: true });
     try {
       const usageService = require('./usageService');
       await usageService.recordAiTokenUsage({
@@ -389,6 +391,10 @@ async function runMindmapJob(itemId) {
       direction: null,
     });
     await saveAiMeta(itemId, meta);
+    require('./analyticsService').trackAiJobOutcome(row, 'mindmap', {
+      ok: false,
+      errorMessage: err.message,
+    });
     console.error(
       `[runMindmapJob] failed item=${itemId} ms=${Date.now() - started}`,
       err.message,

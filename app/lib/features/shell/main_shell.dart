@@ -1,6 +1,8 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:super_collection/core/analytics/analytics.dart';
+import 'package:super_collection/core/analytics/screen_dwell_tracker.dart';
 import 'package:super_collection/core/network/client_page_fetch.dart';
 import 'package:super_collection/core/network/client_webview_fetch.dart';
 import 'package:super_collection/core/ui/client_fetch_backfill.dart';
@@ -25,6 +27,34 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
   final _parseProgress = ParseProgressController.instance;
   final _scaffoldKey = GlobalKey<ScaffoldState>();
   int _homeRefreshTick = 0;
+  ScreenDwellTracker? _tabDwell;
+  ScreenDwellTracker? _drawerDwell;
+
+  static String _tabScreen(int index) =>
+      index == 0 ? AnalyticsScreens.home : AnalyticsScreens.library;
+
+  void _startTabDwell(int index) {
+    _tabDwell?.stop();
+    _tabDwell = ScreenDwellTracker(_tabScreen(index))..start();
+  }
+
+  void _switchTab(int next) {
+    if (next == _index) return;
+    _startTabDwell(next);
+    setState(() => _index = next);
+  }
+
+  void _onDrawerChanged(bool opened) {
+    if (opened) {
+      _tabDwell?.pause();
+      _drawerDwell ??= ScreenDwellTracker(AnalyticsScreens.settings);
+      _drawerDwell!.resume();
+    } else {
+      _drawerDwell?.pause();
+      _drawerDwell = null;
+      _tabDwell?.resume();
+    }
+  }
 
   void _openAccountDrawer() {
     _scaffoldKey.currentState?.openDrawer();
@@ -34,6 +64,8 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    Analytics.instance.appOpen(coldStart: true);
+    _startTabDwell(_index);
     void bumpLists() {
       if (!mounted) return;
       setState(() => _homeRefreshTick++);
@@ -59,6 +91,8 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _drawerDwell?.stop();
+    _tabDwell?.stop();
     if (identical(ClientPageFetch.overlayContext, context)) {
       ClientPageFetch.overlayContext = null;
     }
@@ -70,6 +104,10 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
+      Analytics.instance.appOpen(coldStart: false);
+      if (_drawerDwell == null) {
+        _tabDwell?.resume();
+      }
       if (mounted) {
         ClientPageFetch.overlayContext = context;
       }
@@ -81,6 +119,11 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
           await ClientWebViewFetch.warmup(context);
         }),
       );
+    } else if (state == AppLifecycleState.paused) {
+      _drawerDwell?.pause();
+      _tabDwell?.pause();
+      Analytics.instance.appBackground();
+      unawaited(Analytics.instance.flush());
     }
   }
 
@@ -89,6 +132,7 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
     ClientPageFetch.overlayContext = context;
     return Scaffold(
       key: _scaffoldKey,
+      onDrawerChanged: _onDrawerChanged,
       drawer: const AccountDrawer(),
       body: Stack(
         children: [
@@ -117,7 +161,7 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
       ),
       bottomNavigationBar: AppBottomNavBar(
         currentIndex: _index,
-        onChanged: (value) => setState(() => _index = value),
+        onChanged: _switchTab,
       ),
     );
   }

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:super_collection/core/analytics/screen_dwell_tracker.dart';
 
 /// 简易说明文稿页（协议 / 隐私等）
 class SimpleDocPage extends StatelessWidget {
@@ -17,7 +18,10 @@ class SimpleDocPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return ScreenDwellScope(
+      screen: AnalyticsScreens.doc,
+      props: {'doc': title},
+      child: Scaffold(
       backgroundColor: _bg,
       appBar: AppBar(
         backgroundColor: Colors.white,
@@ -31,7 +35,7 @@ class SimpleDocPage extends StatelessWidget {
             foregroundColor: _text,
             padding: const EdgeInsets.only(left: 8),
           ),
-          icon: const Icon(Icons.chevron_left, size: 28),
+          icon: const Icon(Icons.chevron_left, size: 30),
           label: const Text('返回', style: TextStyle(fontSize: 15)),
         ),
         title: Text(
@@ -58,6 +62,7 @@ class SimpleDocPage extends StatelessWidget {
           ],
         ),
       ),
+    ),
     );
   }
 }

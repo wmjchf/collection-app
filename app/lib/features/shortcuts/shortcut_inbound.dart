@@ -1,4 +1,5 @@
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:super_collection/core/analytics/analytics.dart';
 import 'package:super_collection/core/network/api_client.dart';
 import 'package:super_collection/core/network/client_page_fetch.dart';
 import 'package:super_collection/core/ui/parse_progress_tracker.dart';
@@ -21,7 +22,7 @@ class ShortcutInbound {
     return ctx != null && ctx.mounted;
   }
 
-  static Future<void> handleUri(Uri uri) async {
+  static Future<void> handleUri(Uri uri, {String source = 'shortcut'}) async {
     if (uri.scheme != 'supercollection') return;
     final isSave = uri.host == 'save' ||
         uri.path == '/save' ||
@@ -30,7 +31,7 @@ class ShortcutInbound {
 
     final session = await AuthRepository().readSession();
     if (session == null) {
-      await _storePending(uri);
+      await _storePending(uri, source: source);
       AppNavigator.showSnackBar('请先登录，登录后将自动保存链接');
       return;
     }
@@ -38,15 +39,15 @@ class ShortcutInbound {
     // 冷启动时 deep link 往往早于 MainShell：此时无 Overlay，本机 WebView 抓页会失败，
     // 服务端又可能把短链图文误判成视频。先挂起，等主壳就绪再执行。
     if (!_overlayReady) {
-      await _storePending(uri);
+      await _storePending(uri, source: source);
       return;
     }
 
-    await _executeSave(uri);
+    await _executeSave(uri, source: source);
   }
 
   /// 系统分享等场景：直接保存 HTTP 链接（不读剪贴板、不清空剪贴板）。
-  static Future<void> saveHttpUrl(String url) async {
+  static Future<void> saveHttpUrl(String url, {String source = 'share'}) async {
     final trimmed = url.trim();
     if (!isValidHttpUrl(trimmed)) return;
     await handleUri(
@@ -55,6 +56,7 @@ class ShortcutInbound {
         host: 'save',
         queryParameters: {'url': trimmed},
       ),
+      source: source,
     );
   }
 
@@ -65,26 +67,35 @@ class ShortcutInbound {
     final raw = prefs.getString(_pendingKey);
     if (raw == null || raw.isEmpty) return;
     await prefs.remove(_pendingKey);
+    final source = prefs.getString('${_pendingKey}_source') ?? 'shortcut';
+    await prefs.remove('${_pendingKey}_source');
     final uri = Uri.tryParse(raw);
     if (uri == null) return;
-    await handleUri(uri);
+    await handleUri(uri, source: source);
   }
 
-  static Future<void> _storePending(Uri uri) async {
+  static Future<void> _storePending(Uri uri, {required String source}) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_pendingKey, uri.toString());
+    await prefs.setString('${_pendingKey}_source', source);
   }
 
-  static Future<void> _executeSave(Uri uri) async {
+  static Future<void> _executeSave(Uri uri, {required String source}) async {
     if (_handling) return;
     _handling = true;
+    var saveSource = source;
     try {
       var url = uri.queryParameters['url']?.trim() ?? '';
       final usedClipboard = url.isEmpty;
       if (usedClipboard) {
         url = await _readClipboardUrl() ?? '';
+        saveSource = 'shortcut';
       }
       if (!isValidHttpUrl(url)) {
+        Analytics.instance.itemSaveFail(
+          source: saveSource,
+          errorCode: url.isEmpty ? 'empty_url' : 'invalid_url',
+        );
         AppNavigator.showSnackBar(
           url.isEmpty
               ? (usedClipboard ? '剪贴板里没有链接' : '未识别到有效链接')
@@ -93,8 +104,15 @@ class ShortcutInbound {
         return;
       }
 
+      Analytics.instance.itemSaveStart(source: saveSource);
       ParseProgressTracker.begin();
       final result = await ItemsRepository().createItem(url);
+      Analytics.instance.itemSaveSuccess(
+        source: saveSource,
+        itemId: result.item.id,
+        platform: result.item.platform,
+        existed: result.existed,
+      );
       // 仅「从剪贴板保存」时清空，避免系统分享误清用户剪贴板
       if (usedClipboard) {
         await clearClipboard();
@@ -114,9 +132,17 @@ class ShortcutInbound {
       }
     } on ApiException catch (e) {
       ParseProgressTracker.cancel();
+      Analytics.instance.itemSaveFail(
+        source: saveSource,
+        errorCode: e.code ?? e.message,
+      );
       AppNavigator.showSnackBar(e.message);
     } catch (_) {
       ParseProgressTracker.cancel();
+      Analytics.instance.itemSaveFail(
+        source: saveSource,
+        errorCode: 'unknown',
+      );
       AppNavigator.showSnackBar('保存失败，请稍后重试');
     } finally {
       _handling = false;

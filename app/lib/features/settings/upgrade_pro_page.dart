@@ -3,6 +3,8 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:in_app_purchase/in_app_purchase.dart';
+import 'package:super_collection/core/analytics/analytics.dart';
+import 'package:super_collection/core/analytics/screen_dwell_tracker.dart';
 import 'package:super_collection/core/network/api_client.dart';
 import 'package:super_collection/core/ui/app_toast.dart';
 import 'package:super_collection/features/settings/apple_iap_service.dart';
@@ -10,20 +12,30 @@ import 'package:super_collection/features/settings/legal_docs.dart';
 import 'package:super_collection/features/settings/simple_doc_page.dart';
 import 'package:super_collection/features/settings/usage_repository.dart';
 
-/// 升级 Pro（对齐 Figma `42. 升级 Pro`；iOS StoreKit）
+/// 订阅升级页（太子 / 帝王；iOS StoreKit）
 class UpgradeProPage extends StatefulWidget {
-  const UpgradeProPage({super.key});
+  const UpgradeProPage({
+    super.key,
+    this.from = 'settings',
+    this.initialTier,
+  });
+
+  /// settings | quota | feature_gate
+  final String from;
+
+  /// 引导订阅时预选档位：`prince` | `emperor`
+  final String? initialTier;
 
   @override
   State<UpgradeProPage> createState() => _UpgradeProPageState();
 }
 
-class _UpgradeProPageState extends State<UpgradeProPage> {
+class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
   static const _bg = Color(0xFFF7F7FA);
   static const _text = Color(0xFF1F242E);
   static const _muted = Color(0xFF737A85);
-  static const _blue = Color(0xFF2F6FED);
-  static const _blueSoft = Color(0xFFE8F0FF);
+  static const _accent = Color(0xFF2A6B52);
+  static const _accentSoft = Color(0xFFE8F3EE);
   static const _border = Color(0xFFE8EBF0);
 
   final _iap = AppleIapService();
@@ -31,6 +43,8 @@ class _UpgradeProPageState extends State<UpgradeProPage> {
 
   Map<String, ProductDetails> _products = {};
   PlanQuotasTable _quotas = PlanQuotasTable.defaults;
+  BillingProductsConfig? _billing;
+  String _selectedTier = UsagePlan.prince;
   bool _productsLoading = true;
   AppleIapPhase? _phase;
   bool _restoreFlow = false;
@@ -54,8 +68,17 @@ class _UpgradeProPageState extends State<UpgradeProPage> {
   }
 
   @override
+  String get dwellScreen => AnalyticsScreens.pro;
+
+  @override
+  Map<String, Object?> get dwellProps => {'from': widget.from};
+
+  @override
   void initState() {
     super.initState();
+    final t = UsagePlan.normalize(widget.initialTier);
+    if (t == UsagePlan.emperor) _selectedTier = UsagePlan.emperor;
+    Analytics.instance.proPageView(from: widget.from);
     _load();
   }
 
@@ -74,25 +97,22 @@ class _UpgradeProPageState extends State<UpgradeProPage> {
     // 1) 先拉额度（快），立刻上屏；商品 id 一并拿到
     final billing = await _usageRepo.fetchBillingProducts();
     if (!mounted) return;
-    setState(() => _quotas = billing.quotas);
+    setState(() {
+      _quotas = billing.quotas;
+      _billing = billing;
+    });
 
     if (!_isIos) {
       setState(() => _productsLoading = false);
       return;
     }
 
-    // 2) 再查 StoreKit（慢）；不再重复打 /api/billing/products
     try {
-      final map = await _iap.loadProducts(
-        monthlyId: billing.monthlyId,
-        yearlyId: billing.yearlyId,
-      );
+      final result = await _iap.loadProducts(productIds: billing.allIds);
       if (!mounted) return;
-      final yearly = _findProduct(map, yearly: true);
-      final monthly = _findProduct(map, yearly: false);
       setState(() {
-        _products = map;
-        _selectedId = yearly?.id ?? monthly?.id ?? map.keys.firstOrNull;
+        _products = result.products;
+        _selectedId = _defaultProductId(result.products);
         _productsLoading = false;
         _error = null;
       });
@@ -111,45 +131,63 @@ class _UpgradeProPageState extends State<UpgradeProPage> {
     }
   }
 
-  ProductDetails? _findProduct(
-    Map<String, ProductDetails> map, {
-    required bool yearly,
-  }) {
-    final prefer = yearly ? IapProductIds.yearly : IapProductIds.monthly;
-    if (map.containsKey(prefer)) return map[prefer];
+  TierProductIds get _tierIds {
+    final billing = _billing;
+    if (billing == null) {
+      return const TierProductIds(
+        monthly: IapProductIds.princeMonthly,
+        yearly: IapProductIds.princeYearly,
+      );
+    }
+    return _selectedTier == UsagePlan.emperor
+        ? billing.emperor
+        : billing.prince;
+  }
+
+  String? _defaultProductId(Map<String, ProductDetails> map) {
+    final ids = _tierIds;
+    if (map.containsKey(ids.yearly)) return ids.yearly;
+    if (map.containsKey(ids.monthly)) return ids.monthly;
     for (final p in map.values) {
       final id = p.id.toLowerCase();
-      if (yearly && (id.contains('year') || id.contains('annual'))) {
-        return p;
+      final tier = _selectedTier;
+      if (tier == UsagePlan.emperor && id.contains('emperor')) {
+        if (id.contains('year')) return p.id;
       }
-      if (!yearly && id.contains('month')) return p;
+      if (tier == UsagePlan.prince &&
+          !id.contains('emperor') &&
+          id.contains('year')) {
+        return p.id;
+      }
     }
     return null;
   }
 
   ProductDetails? get _selected {
+    final tierProducts = _productsForSelectedTier();
+    if (tierProducts.isEmpty) return null;
     final id = _selectedId;
-    if (id == null) return null;
-    return _products[id];
+    if (id != null) {
+      for (final p in tierProducts) {
+        if (p.id == id) return p;
+      }
+    }
+    return tierProducts.first;
   }
+
+  List<String> _missingIdsForSelectedTier() {
+    final ids = _tierIds;
+    return [ids.monthly, ids.yearly]
+        .where((id) => !_products.containsKey(id))
+        .toList();
+  }
+
+  bool get _selectedTierProductsReady => _productsForSelectedTier().isNotEmpty;
 
   bool _isYearlyProduct(ProductDetails? p) {
     if (p == null) return false;
     final id = p.id.toLowerCase();
     return id.contains('year') || id.contains('annual');
-  }
-
-  String _yearlyPerMonthHint(ProductDetails yearly) {
-    final raw = yearly.rawPrice;
-    if (raw > 0) {
-      final perMonth = raw / 12;
-      final symbol = yearly.currencySymbol;
-      final n = perMonth >= 100
-          ? perMonth.toStringAsFixed(0)
-          : perMonth.toStringAsFixed(1);
-      return '约 $symbol$n / 月 · 自动续期';
-    }
-    return '自动续期';
   }
 
   String _subscribeLabel() {
@@ -172,6 +210,10 @@ class _UpgradeProPageState extends State<UpgradeProPage> {
       _restoreFlow = false;
       _phase = AppleIapPhase.paying;
     });
+    Analytics.instance.iapPurchaseStart(
+      productId: product.id,
+      from: widget.from,
+    );
     try {
       await _iap.buy(
         product,
@@ -179,10 +221,14 @@ class _UpgradeProPageState extends State<UpgradeProPage> {
       );
       if (!mounted) return;
       UsageRefresh.bump();
-      AppToast.show(context, 'Pro 已开通');
+      AppToast.show(context, '${UsagePlan.label(_selectedTier)} 已开通');
       Navigator.of(context).maybePop(true);
     } on ApiException catch (e) {
       if (!mounted) return;
+      Analytics.instance.iapPurchaseFail(
+        productId: product.id,
+        errorCode: e.code ?? e.message,
+      );
       if (e.message.contains('取消')) {
         AppToast.show(context, '已取消');
       } else {
@@ -190,6 +236,10 @@ class _UpgradeProPageState extends State<UpgradeProPage> {
       }
     } catch (e) {
       if (!mounted) return;
+      Analytics.instance.iapPurchaseFail(
+        productId: product.id,
+        errorCode: e.toString(),
+      );
       AppToast.show(context, '购买失败，请稍后重试');
     } finally {
       if (mounted) {
@@ -214,7 +264,7 @@ class _UpgradeProPageState extends State<UpgradeProPage> {
         AppToast.show(context, '未找到可恢复的订阅');
       } else {
         UsageRefresh.bump();
-        AppToast.show(context, '已恢复 Pro');
+        AppToast.show(context, '已恢复 ${usage.displayPlan}');
         Navigator.of(context).maybePop(true);
       }
     } on ApiException catch (e) {
@@ -249,11 +299,11 @@ class _UpgradeProPageState extends State<UpgradeProPage> {
             foregroundColor: _text,
             padding: const EdgeInsets.only(left: 8),
           ),
-          icon: const Icon(Icons.chevron_left, size: 28),
+          icon: const Icon(Icons.chevron_left, size: 30),
           label: const Text('返回', style: TextStyle(fontSize: 15)),
         ),
         title: const Text(
-          '升级 Pro',
+          '订阅会员',
           style: TextStyle(
             fontSize: 17,
             fontWeight: FontWeight.w700,
@@ -267,10 +317,32 @@ class _UpgradeProPageState extends State<UpgradeProPage> {
             child: ListView(
               padding: const EdgeInsets.fromLTRB(16, 14, 16, 20),
               children: [
-                const _HeroCard(),
-                const SizedBox(height: 14),
-                _QuotaTable(quotas: _quotas),
-                const SizedBox(height: 14),
+                const _MembershipIntro(),
+                const SizedBox(height: 16),
+                _TierPlanCard(
+                  title: '太子',
+                  tagline: '智能整理：不限收藏，解锁 AI',
+                  features: _princeFeatures(_quotas),
+                  selected: _selectedTier == UsagePlan.prince,
+                  onTap: () => _selectTier(UsagePlan.prince),
+                ),
+                const SizedBox(height: 10),
+                _TierPlanCard(
+                  title: '帝王',
+                  tagline: '深度加工：含太子，另解锁脑图与转写',
+                  features: _emperorFeatures(_quotas),
+                  selected: _selectedTier == UsagePlan.emperor,
+                  onTap: () => _selectTier(UsagePlan.emperor),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  '普通用户收藏上限 ${_quotas.free.itemLimit ?? 300} 条；额度按自然月重置',
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: _muted,
+                    height: 1.45,
+                  ),
+                ),
                 if (!_isIos)
                   const Padding(
                     padding: EdgeInsets.symmetric(vertical: 12),
@@ -302,18 +374,39 @@ class _UpgradeProPageState extends State<UpgradeProPage> {
                     onPressed: _busy ? null : _load,
                     child: const Text('重试'),
                   ),
-                ] else
-                  ..._planTiles(),
+                ] else ...[
+                  const SizedBox(height: 20),
+                  const Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      '选择周期',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w500,
+                        color: _muted,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  if (_selectedTierProductsReady) ..._planTiles()
+                  else
+                    _TierProductsSyncHint(
+                      tierLabel: UsagePlan.label(_selectedTier),
+                      missingIds: _missingIdsForSelectedTier(),
+                      onRetry: _busy ? null : _load,
+                    ),
+                ],
               ],
             ),
           ),
           _BottomActionBar(
-            showPurchaseActions: _isIos && !_productsLoading && _error == null,
+            showPurchaseActions:
+                _isIos && !_productsLoading && _error == null,
             subscribeLabel: _subscribeLabel(),
             restoreLabel: _busy && _restoreFlow ? _phaseLabel : '恢复购买',
             busy: _busy,
             restoreFlow: _restoreFlow,
-            subscribeEnabled: _selected != null,
+            subscribeEnabled: _selected != null && _selectedTierProductsReady,
             onSubscribe: _buy,
             onRestore: _restore,
             onUserAgreement: () => _openLegal(
@@ -330,6 +423,46 @@ class _UpgradeProPageState extends State<UpgradeProPage> {
     );
   }
 
+  void _selectTier(String tier) {
+    setState(() {
+      _selectedTier = tier;
+      _selectedId = _defaultProductId(_products);
+    });
+  }
+
+  List<_PlanFeature> _princeFeatures(PlanQuotasTable quotas) {
+    return [
+      const _PlanFeature('收藏不限条数', included: true),
+      const _PlanFeature('AI 标签', included: true),
+      const _PlanFeature('AI 解读', included: true),
+      const _PlanFeature('AI 思维导图', included: false),
+      const _PlanFeature('视频 / 音频转写', included: false),
+      _PlanFeature(
+        'AI 额度 ${formatAiCredits(quotas.prince.aiTokens)} 积分 / 月',
+        included: true,
+        isQuota: true,
+      ),
+    ];
+  }
+
+  List<_PlanFeature> _emperorFeatures(PlanQuotasTable quotas) {
+    return [
+      const _PlanFeature('含太子全部权益', included: true),
+      const _PlanFeature('AI 思维导图', included: true),
+      const _PlanFeature('视频 / 音频转写', included: true),
+      _PlanFeature(
+        'AI 额度 ${formatAiCredits(quotas.emperor.aiTokens)} 积分 / 月',
+        included: true,
+        isQuota: true,
+      ),
+      _PlanFeature(
+        '转写 ${quotas.emperor.transcriptMinutes} 分钟 / 月',
+        included: true,
+        isQuota: true,
+      ),
+    ];
+  }
+
   void _openLegal({required String title, required String body}) {
     Navigator.of(context).push(
       MaterialPageRoute<void>(
@@ -338,55 +471,137 @@ class _UpgradeProPageState extends State<UpgradeProPage> {
     );
   }
 
+  List<ProductDetails> _productsForSelectedTier() {
+    final tierIds = _tierIds;
+    final ids = {tierIds.monthly, tierIds.yearly};
+    final list = <ProductDetails>[];
+    for (final id in ids) {
+      final p = _products[id];
+      if (p != null) list.add(p);
+    }
+    if (list.isNotEmpty) return list;
+
+    // 兜底：按 id 过滤当前档位，仍用统一短文案，不用 StoreKit 标题/描述
+    for (final p in _products.values) {
+      final id = p.id.toLowerCase();
+      final isEmperor = id.contains('emperor');
+      if (_selectedTier == UsagePlan.prince && isEmperor) continue;
+      if (_selectedTier == UsagePlan.emperor && !isEmperor) continue;
+      list.add(p);
+    }
+    list.sort((a, b) {
+      final ay = _isYearlyProduct(a);
+      final by = _isYearlyProduct(b);
+      if (ay != by) return ay ? -1 : 1;
+      return a.id.compareTo(b.id);
+    });
+    return list;
+  }
+
+  String _periodTitle(ProductDetails p) =>
+      _isYearlyProduct(p) ? '年付' : '月付';
+
+  String _periodSubtitle(ProductDetails p) =>
+      _isYearlyProduct(p) ? '按年自动续期' : '按月自动续期';
+
   List<Widget> _planTiles() {
-    final monthly = _findProduct(_products, yearly: false);
-    final yearly = _findProduct(_products, yearly: true);
+    final products = _productsForSelectedTier();
     final tiles = <Widget>[];
 
-    if (yearly != null) {
-      tiles.add(
-        _PlanTile(
-          title: '年付',
-          subtitle: _yearlyPerMonthHint(yearly),
-          price: yearly.price,
-          selected: _selectedId == yearly.id,
-          badge: '更划算',
-          onTap: () => setState(() => _selectedId = yearly.id),
-        ),
-      );
-    }
-    if (monthly != null) {
+    for (final p in products) {
       if (tiles.isNotEmpty) tiles.add(const SizedBox(height: 10));
       tiles.add(
         _PlanTile(
-          title: '月付',
-          subtitle: '按月自动续期',
-          price: monthly.price,
-          selected: _selectedId == monthly.id,
-          onTap: () => setState(() => _selectedId = monthly.id),
+          title: _periodTitle(p),
+          subtitle: _periodSubtitle(p),
+          price: p.price,
+          selected: _selectedId == p.id,
+          badge: _isYearlyProduct(p) ? '更划算' : null,
+          onTap: () => setState(() => _selectedId = p.id),
         ),
       );
-    }
-    if (tiles.isEmpty) {
-      for (final p in _products.values) {
-        if (tiles.isNotEmpty) tiles.add(const SizedBox(height: 10));
-        tiles.add(
-          _PlanTile(
-            title: p.title,
-            subtitle: p.description.isNotEmpty ? p.description : p.price,
-            price: p.price,
-            selected: _selectedId == p.id,
-            onTap: () => setState(() => _selectedId = p.id),
-          ),
-        );
-      }
     }
     return tiles;
   }
 }
 
-class _HeroCard extends StatelessWidget {
-  const _HeroCard();
+class _TierProductsSyncHint extends StatelessWidget {
+  const _TierProductsSyncHint({
+    required this.tierLabel,
+    required this.missingIds,
+    this.onRetry,
+  });
+
+  final String tierLabel;
+  final List<String> missingIds;
+  final VoidCallback? onRetry;
+
+  static const _muted = Color(0xFF737A85);
+  static const _accent = Color(0xFF2A6B52);
+
+  @override
+  Widget build(BuildContext context) {
+    final ids = missingIds.isEmpty ? '（商品 id 未配置）' : missingIds.join('\n');
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF0F4F2),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFD8E4DE)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '$tierLabel 订阅商品尚未从 App Store 同步',
+            style: const TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              color: Color(0xFF1F242E),
+              height: 1.4,
+            ),
+          ),
+          const SizedBox(height: 6),
+          const Text(
+            'ASC 新建订阅后，沙盒通常需数小时才能查到。'
+            '请确认商品已「准备提交」、id 与后端一致，稍后点重试；'
+            '太子档不受影响，可先订阅太子。',
+            style: TextStyle(fontSize: 13, color: _muted, height: 1.45),
+          ),
+          if (missingIds.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Text(
+              ids,
+              style: const TextStyle(
+                fontSize: 11,
+                color: _muted,
+                height: 1.35,
+                fontFamily: 'Menlo',
+              ),
+            ),
+          ],
+          if (onRetry != null) ...[
+            const SizedBox(height: 10),
+            TextButton(
+              onPressed: onRetry,
+              style: TextButton.styleFrom(
+                foregroundColor: _accent,
+                padding: EdgeInsets.zero,
+                minimumSize: Size.zero,
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+              child: const Text('重新拉取商品'),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _MembershipIntro extends StatelessWidget {
+  const _MembershipIntro();
 
   @override
   Widget build(BuildContext context) {
@@ -394,7 +609,7 @@ class _HeroCard extends StatelessWidget {
       borderRadius: BorderRadius.circular(16),
       child: Container(
         width: double.infinity,
-        padding: const EdgeInsets.fromLTRB(20, 22, 20, 22),
+        padding: const EdgeInsets.fromLTRB(20, 20, 20, 20),
         decoration: const BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment(-0.85, -0.4),
@@ -411,45 +626,36 @@ class _HeroCard extends StatelessWidget {
           clipBehavior: Clip.none,
           children: [
             Positioned(
-              right: -24,
-              top: -36,
+              right: -20,
+              top: -28,
               child: Container(
-                width: 160,
-                height: 110,
+                width: 120,
+                height: 90,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: const Color(0xFF8CD9B8).withValues(alpha: 0.22),
-                  boxShadow: [
-                    BoxShadow(
-                      color: const Color(0xFF8CD9B8).withValues(alpha: 0.35),
-                      blurRadius: 48,
-                      spreadRadius: 8,
-                    ),
-                  ],
+                  color: const Color(0xFF8CD9B8).withValues(alpha: 0.2),
                 ),
               ),
             ),
             const Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _ProBadge(),
-                SizedBox(height: 10),
                 Text(
-                  'Conflux Pro',
+                  '订阅会员',
                   style: TextStyle(
-                    fontSize: 32,
+                    fontSize: 26,
                     fontWeight: FontWeight.w700,
                     color: Color(0xFFC7EDDB),
-                    height: 38 / 32,
+                    height: 1.2,
                   ),
                 ),
-                SizedBox(height: 10),
+                SizedBox(height: 8),
                 Text(
-                  '基础收藏与解析永远免费。\nPro 提高转写与 AI 的月额度。',
+                  '选一个适合你的档位，\n已生成的内容始终可查看。',
                   style: TextStyle(
                     fontSize: 14,
                     color: Color(0xC7FFFFFF),
-                    height: 21 / 14,
+                    height: 1.5,
                   ),
                 ),
               ],
@@ -461,214 +667,167 @@ class _HeroCard extends StatelessWidget {
   }
 }
 
-class _ProBadge extends StatelessWidget {
-  const _ProBadge();
+class _PlanFeature {
+  const _PlanFeature(this.label, {required this.included, this.isQuota = false});
 
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-      decoration: BoxDecoration(
-        color: const Color(0xFFB8E5D1).withValues(alpha: 0.18),
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: const Text(
-        'PRO',
-        style: TextStyle(
-          fontSize: 12,
-          fontWeight: FontWeight.w500,
-          color: Color(0xFFB8E5D1),
-          letterSpacing: 1.2,
-          height: 1.2,
-        ),
-      ),
-    );
-  }
+  final String label;
+  final bool included;
+  final bool isQuota;
 }
 
-class _QuotaTable extends StatelessWidget {
-  const _QuotaTable({required this.quotas});
+class _TierPlanCard extends StatelessWidget {
+  const _TierPlanCard({
+    required this.title,
+    required this.tagline,
+    required this.features,
+    required this.selected,
+    required this.onTap,
+  });
 
-  final PlanQuotasTable quotas;
+  final String title;
+  final String tagline;
+  final List<_PlanFeature> features;
+  final bool selected;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    final rows = [
-      (
-        '转写',
-        '每月 · 分钟',
-        '${quotas.free.transcriptMinutes}',
-        '${quotas.pro.transcriptMinutes}',
-      ),
-      (
-        'AI',
-        '每月 · token',
-        formatTokenCount(quotas.free.aiTokens),
-        formatTokenCount(quotas.pro.aiTokens),
-      ),
-    ];
-
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: _UpgradeProPageState._border),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Row(
+    return Material(
+      color: selected
+          ? _UpgradeProPageState._accentSoft
+          : Colors.white,
+      borderRadius: BorderRadius.circular(16),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 14),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: selected
+                  ? _UpgradeProPageState._accent
+                  : _UpgradeProPageState._border,
+              width: selected ? 2 : 1,
+            ),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Expanded(
-                child: Text(
-                  '本月额度',
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w500,
-                    color: _UpgradeProPageState._muted,
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          title,
+                          style: TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.w700,
+                            color: selected
+                                ? _UpgradeProPageState._accent
+                                : _UpgradeProPageState._text,
+                            height: 1.2,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          tagline,
+                          style: const TextStyle(
+                            fontSize: 13,
+                            color: _UpgradeProPageState._muted,
+                            height: 1.4,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                ),
+                  _TierRadioMark(selected: selected),
+                ],
               ),
-              SizedBox(
-                width: 72,
-                child: Text(
-                  '普通',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w500,
-                    color: _UpgradeProPageState._muted,
-                  ),
-                ),
-              ),
-              SizedBox(
-                width: 88,
-                child: Center(
-                  child: _ProColumnHeader(),
+              const SizedBox(height: 14),
+              ...features.map(
+                (f) => Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: _FeatureLine(feature: f),
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 4),
-          for (var i = 0; i < rows.length; i++) ...[
-            if (i > 0)
-              const Divider(height: 1, thickness: 1, color: Color(0xFFF0F1F4)),
-            _QuotaRow(
-              label: rows[i].$1,
-              unit: rows[i].$2,
-              freeValue: rows[i].$3,
-              proValue: rows[i].$4,
-            ),
-          ],
-          const SizedBox(height: 8),
-          const Text(
-            '额度按自然月重置；已生成内容始终可查看',
-            style: TextStyle(
-              fontSize: 11,
-              color: _UpgradeProPageState._muted,
-              height: 16 / 11,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _ProColumnHeader extends StatelessWidget {
-  const _ProColumnHeader();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 88,
-      height: 24,
-      alignment: Alignment.center,
-      decoration: BoxDecoration(
-        color: _UpgradeProPageState._blueSoft,
-        borderRadius: BorderRadius.circular(6),
-      ),
-      child: const Text(
-        'Pro',
-        style: TextStyle(
-          fontSize: 12,
-          fontWeight: FontWeight.w700,
-          color: _UpgradeProPageState._blue,
         ),
       ),
     );
   }
 }
 
-class _QuotaRow extends StatelessWidget {
-  const _QuotaRow({
-    required this.label,
-    required this.unit,
-    required this.freeValue,
-    required this.proValue,
-  });
+class _FeatureLine extends StatelessWidget {
+  const _FeatureLine({required this.feature});
 
-  final String label;
-  final String unit;
-  final String freeValue;
-  final String proValue;
+  final _PlanFeature feature;
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 14),
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  label,
-                  style: const TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w500,
-                    color: _UpgradeProPageState._text,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  unit,
-                  style: const TextStyle(
-                    fontSize: 12,
-                    color: _UpgradeProPageState._muted,
-                  ),
-                ),
-              ],
+    final included = feature.included;
+    final icon = included
+        ? Icons.check_rounded
+        : Icons.remove_rounded;
+    final color = included
+        ? (feature.isQuota
+            ? _UpgradeProPageState._accent
+            : _UpgradeProPageState._text)
+        : _UpgradeProPageState._muted.withValues(alpha: 0.55);
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, size: 18, color: color),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            feature.label,
+            style: TextStyle(
+              fontSize: feature.isQuota ? 13 : 14,
+              fontWeight: feature.isQuota ? FontWeight.w500 : FontWeight.w400,
+              color: color,
+              height: 1.35,
             ),
           ),
-          SizedBox(
-            width: 72,
-            child: Text(
-              freeValue,
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                fontSize: 16,
-                color: _UpgradeProPageState._muted,
-              ),
-            ),
-          ),
-          SizedBox(
-            width: 88,
-            child: Text(
-              proValue,
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.w700,
-                color: _UpgradeProPageState._blue,
-              ),
-            ),
-          ),
-        ],
+        ),
+      ],
+    );
+  }
+}
+
+class _TierRadioMark extends StatelessWidget {
+  const _TierRadioMark({required this.selected});
+
+  final bool selected;
+
+  @override
+  Widget build(BuildContext context) {
+    const size = 22.0;
+    if (!selected) {
+      return Container(
+        width: size,
+        height: size,
+        margin: const EdgeInsets.only(top: 2),
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          border: Border.all(color: const Color(0xFFC7CCD4), width: 1.5),
+        ),
+      );
+    }
+    return Container(
+      width: size,
+      height: size,
+      margin: const EdgeInsets.only(top: 2),
+      decoration: const BoxDecoration(
+        shape: BoxShape.circle,
+        color: _UpgradeProPageState._accent,
       ),
+      child: const Icon(Icons.check_rounded, size: 14, color: Colors.white),
     );
   }
 }
@@ -693,7 +852,7 @@ class _PlanTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: selected ? _UpgradeProPageState._blueSoft : Colors.white,
+      color: selected ? _UpgradeProPageState._accentSoft : Colors.white,
       borderRadius: BorderRadius.circular(14),
       child: InkWell(
         onTap: onTap,
@@ -704,7 +863,7 @@ class _PlanTile extends StatelessWidget {
             borderRadius: BorderRadius.circular(14),
             border: Border.all(
               color: selected
-                  ? _UpgradeProPageState._blue
+                  ? _UpgradeProPageState._accent
                   : _UpgradeProPageState._border,
               width: selected ? 2 : 1,
             ),
@@ -735,7 +894,7 @@ class _PlanTile extends StatelessWidget {
                               vertical: 2,
                             ),
                             decoration: BoxDecoration(
-                              color: _UpgradeProPageState._blue,
+                              color: _UpgradeProPageState._accent,
                               borderRadius: BorderRadius.circular(6),
                             ),
                             child: Text(
@@ -767,7 +926,7 @@ class _PlanTile extends StatelessWidget {
                   fontSize: 18,
                   fontWeight: FontWeight.w700,
                   color: selected
-                      ? _UpgradeProPageState._blue
+                      ? _UpgradeProPageState._accent
                       : _UpgradeProPageState._text,
                 ),
               ),
@@ -809,11 +968,11 @@ class _SelectedRadioPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final stroke = Paint()
-      ..color = const Color(0xFF2F6FED)
+      ..color = const Color(0xFF2A6B52)
       ..style = PaintingStyle.stroke
       ..strokeWidth = 2;
     final fill = Paint()
-      ..color = const Color(0xFF2F6FED)
+      ..color = const Color(0xFF2A6B52)
       ..style = PaintingStyle.fill;
     final c = Offset(size.width / 2, size.height / 2);
     canvas.drawCircle(c, size.width / 2 - 1, stroke);
@@ -849,7 +1008,7 @@ class _SubscribeButton extends StatelessWidget {
           boxShadow: (canTap || busy)
               ? [
                   BoxShadow(
-                    color: const Color(0xFF2E59D9).withValues(alpha: 0.28),
+                    color: const Color(0xFF2A6B52).withValues(alpha: 0.22),
                     blurRadius: 16,
                     offset: const Offset(0, 6),
                   ),
@@ -859,11 +1018,11 @@ class _SubscribeButton extends StatelessWidget {
         child: FilledButton(
           onPressed: canTap ? onPressed : null,
           style: FilledButton.styleFrom(
-            backgroundColor: _UpgradeProPageState._blue,
+            backgroundColor: _UpgradeProPageState._accent,
             foregroundColor: Colors.white,
             disabledBackgroundColor: busy
-                ? _UpgradeProPageState._blue
-                : _UpgradeProPageState._blue.withValues(alpha: 0.5),
+                ? _UpgradeProPageState._accent
+                : _UpgradeProPageState._accent.withValues(alpha: 0.5),
             disabledForegroundColor: Colors.white,
             elevation: 0,
             shadowColor: Colors.transparent,
@@ -996,7 +1155,7 @@ class _SubscriptionLegalFooter extends StatelessWidget {
     const style = TextStyle(fontSize: 12, color: Color(0xFF737A85), height: 1.55);
     const linkStyle = TextStyle(
       fontSize: 12,
-      color: Color(0xFF2F6FED),
+      color: Color(0xFF2A6B52),
       height: 1.55,
     );
     return Text.rich(
