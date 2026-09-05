@@ -251,35 +251,29 @@ class _AccountPageState extends State<AccountPage> with ScreenDwellMixin {
                   _CardGroup(
                     children: [
                       _UsageRow(
+                        title: 'AI',
+                        usedLabel:
+                            '${formatAiCredits(_usage!.aiUsedTokens)} 积分',
+                        limitLabel:
+                            '${formatAiCredits(_usage!.aiLimitTokens)} 积分',
+                        progress: _usage!.aiLimitTokens > 0
+                            ? (_usage!.aiUsedTokens / _usage!.aiLimitTokens)
+                                .clamp(0.0, 1.0)
+                            : 0,
+                        showProgress: true,
+                      ),
+                      _UsageRow(
                         title: '转写',
                         usedLabel:
                             '${_fmtMinutes(_usage!.transcriptUsedMinutes)} 分钟',
-                        limitLabel: _usage!.features.transcript
-                            ? '${_fmtMinutes(_usage!.transcriptLimitMinutes)} 分钟'
-                            : '—',
-                        progress: _usage!.features.transcript &&
-                                _usage!.transcriptLimitMinutes > 0
+                        limitLabel:
+                            '${_fmtMinutes(_usage!.transcriptLimitMinutes)} 分钟',
+                        progress: _usage!.transcriptLimitMinutes > 0
                             ? (_usage!.transcriptUsedMinutes /
                                     _usage!.transcriptLimitMinutes)
                                 .clamp(0.0, 1.0)
                             : 0,
-                        showProgress: _usage!.features.transcript &&
-                            _usage!.transcriptLimitMinutes > 0,
-                      ),
-                      _UsageRow(
-                        title: 'AI',
-                        usedLabel:
-                            '${formatAiCredits(_usage!.aiUsedTokens)} 积分',
-                        limitLabel: _usage!.features.aiTags
-                            ? '${formatAiCredits(_usage!.aiLimitTokens)} 积分'
-                            : '—',
-                        progress: _usage!.features.aiTags &&
-                                _usage!.aiLimitTokens > 0
-                            ? (_usage!.aiUsedTokens / _usage!.aiLimitTokens)
-                                .clamp(0.0, 1.0)
-                            : 0,
-                        showProgress:
-                            _usage!.features.aiTags && _usage!.aiLimitTokens > 0,
+                        showProgress: true,
                       ),
                     ],
                   ),
