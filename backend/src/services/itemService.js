@@ -478,6 +478,21 @@ async function parseWithClientHtml(userId, itemId, html) {
 }
 
 async function reparseItem(userId, itemId, { forceOverwrite = false } = {}) {
+  const existing = await getByIdForUser(userId, itemId);
+  if (!existing) {
+    throw Object.assign(new Error('条目不存在'), { status: 404 });
+  }
+  if (guideItemService.isGuideItem(existing)) {
+    if (existing.contentEditedAt && !forceOverwrite) {
+      throw Object.assign(
+        new Error('正文已手工修改，重新解析将覆盖您的编辑'),
+        { status: 409, code: 'CONTENT_USER_EDITED' },
+      );
+    }
+    await guideItemService.syncGuideItemFields(itemId);
+    return getByIdForUser(userId, itemId);
+  }
+
   const [rows] = await pool.execute(
     `SELECT content_edited_at FROM items
      WHERE id = :itemId AND user_id = :userId AND deleted_at IS NULL
