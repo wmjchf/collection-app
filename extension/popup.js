@@ -475,19 +475,20 @@ function renderHome(data) {
       moreTitleText: '未读',
     }),
     sectionEl({
-      title: '漫游',
-      emptyText: '暂无内容',
-      items: data.randomPick?.items || [],
+      title: '最近阅读',
+      emptyText: '暂无最近阅读',
+      items: data.recentRead?.items || [],
       kind: 'unread',
-      onMore: () => loadHome({ refreshRandom: true }),
+      filter: 'recent_read',
+      moreTitleText: '最近阅读',
     }),
   );
 }
 
-async function loadHome({ refreshRandom = false } = {}) {
+async function loadHome() {
   renderHome(null);
   try {
-    const data = await fetchHome({ refreshRandom });
+    const data = await fetchHome();
     renderHome(data);
   } catch (err) {
     if (await handleAuthError(err)) return;

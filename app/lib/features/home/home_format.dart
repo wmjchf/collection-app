@@ -48,10 +48,10 @@ HomeItemPreview previewForUnread(CollectionItem item) {
   );
 }
 
-HomeItemPreview previewForRandom(CollectionItem item) {
+HomeItemPreview previewForRecentRead(CollectionItem item) {
   final title = item.title?.isNotEmpty == true ? item.title! : item.url;
   final subtitle =
-      '${platformLabel(item.platform)} · ${formatRelativeDay(item.createdAt)}';
+      '${platformLabel(item.platform)} · ${formatRelativeTime(item.lastReadAt)}';
   return HomeItemPreview(
     id: item.id,
     title: title,

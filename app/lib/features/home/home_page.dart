@@ -25,7 +25,7 @@ import 'package:super_collection/features/onboarding/shortcuts_help_page.dart';
 import 'package:super_collection/features/search/search_page.dart';
 import 'package:super_collection/features/shell/user_avatar_button.dart';
 
-/// 一级页：首页 — 未读 / 漫游
+/// 一级页：首页 — 未读 / 最近阅读
 class HomePage extends StatefulWidget {
   const HomePage({
     super.key,
@@ -117,7 +117,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     }
   }
 
-  Future<void> _load({bool quiet = false, bool refreshRandom = false}) async {
+  Future<void> _load({bool quiet = false}) async {
     final showSpinner = !quiet || _data == null;
     if (showSpinner) {
       setState(() {
@@ -126,7 +126,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       });
     }
     try {
-      final data = await _repo.fetchHome(refreshRandom: refreshRandom);
+      final data = await _repo.fetchHome();
       if (!mounted) return;
       setState(() {
         _data = data;
@@ -617,7 +617,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       setState(() {
         _data = HomeData(
           unread: strip(data.unread),
-          randomPick: strip(data.randomPick),
+          recentRead: strip(data.recentRead),
         );
       });
     }
@@ -626,7 +626,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   @override
   Widget build(BuildContext context) {
     final unread = _data?.unread.items ?? const <CollectionItem>[];
-    final random = _data?.randomPick.items ?? const <CollectionItem>[];
+    final recentRead = _data?.recentRead.items ?? const <CollectionItem>[];
 
     return Scaffold(
       backgroundColor: _bg,
@@ -735,21 +735,20 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                           ),
                           const SizedBox(height: sectionGap),
                           _HomeSection(
-                            title: '漫游',
-                            emptyText: '暂无内容',
-                            emptyIcon: Icons.auto_stories_outlined,
+                            title: '最近阅读',
+                            emptyText: '暂无最近阅读',
+                            emptyIcon: Icons.schedule_rounded,
                             emptyHeight: emptyCardH,
-                            moreLabel: '换一批 ›',
                             items: [
-                              for (final item in random)
-                                previewForRandom(item),
+                              for (final item in recentRead)
+                                previewForRecentRead(item),
                             ],
                             onMore: () =>
-                                _load(quiet: true, refreshRandom: true),
+                                _openFilter('recent_read', '最近阅读'),
                             onItemTap: (preview) {
-                              final item = random
+                              final item = recentRead
                                   .firstWhere((e) => e.id == preview.id);
-                              _openItem(item, entry: 'home');
+                              _openItem(item, entry: 'recent_read');
                             },
                           ),
                         ],

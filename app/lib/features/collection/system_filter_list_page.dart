@@ -4,6 +4,7 @@ import 'package:super_collection/core/network/api_client.dart';
 import 'package:super_collection/core/ui/app_subpage_app_bar.dart';
 import 'package:super_collection/core/ui/paged_list.dart';
 import 'package:super_collection/features/collection/system_filters_repository.dart';
+import 'package:super_collection/features/home/home_format.dart';
 import 'package:super_collection/features/items/cover_image.dart';
 import 'package:super_collection/features/items/item_reading_page.dart';
 import 'package:super_collection/features/items/item_models.dart';
@@ -124,7 +125,7 @@ class _SystemFilterListPageState extends State<SystemFilterListPage>
   }
 
   String _subtitle(CollectionItem item) {
-    final platform = item.platform ?? 'web';
+    final platform = platformLabel(item.platform);
     final status = switch (item.status) {
       'pending' => '解析中',
       'failed' => '解析失败',
