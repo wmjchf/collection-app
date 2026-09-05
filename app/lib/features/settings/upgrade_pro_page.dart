@@ -146,8 +146,20 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
 
   String? _defaultProductId(Map<String, ProductDetails> map) {
     final ids = _tierIds;
-    if (map.containsKey(ids.yearly)) return ids.yearly;
     if (map.containsKey(ids.monthly)) return ids.monthly;
+    if (map.containsKey(ids.yearly)) return ids.yearly;
+    for (final p in map.values) {
+      final id = p.id.toLowerCase();
+      final tier = _selectedTier;
+      if (tier == UsagePlan.emperor && id.contains('emperor')) {
+        if (id.contains('month')) return p.id;
+      }
+      if (tier == UsagePlan.prince &&
+          !id.contains('emperor') &&
+          id.contains('month')) {
+        return p.id;
+      }
+    }
     for (final p in map.values) {
       final id = p.id.toLowerCase();
       final tier = _selectedTier;
@@ -492,7 +504,7 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
     list.sort((a, b) {
       final ay = _isYearlyProduct(a);
       final by = _isYearlyProduct(b);
-      if (ay != by) return ay ? -1 : 1;
+      if (ay != by) return ay ? 1 : -1;
       return a.id.compareTo(b.id);
     });
     return list;
