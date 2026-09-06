@@ -168,11 +168,17 @@ class AiSummaryMeta {
   bool get isFailed => status == 'failed';
   bool get hasText => text != null && text!.trim().isNotEmpty;
 
+  static String? _normalizeText(Object? value) {
+    if (value is! String) return null;
+    final s = value.replaceAll(r'\n', '\n').trim();
+    return s.isEmpty ? null : s;
+  }
+
   factory AiSummaryMeta.fromJson(Map<String, dynamic>? json) {
     if (json == null) return const AiSummaryMeta();
     return AiSummaryMeta(
       status: json['status'] as String? ?? 'none',
-      text: json['text'] as String?,
+      text: _normalizeText(json['text']),
       contentHash: json['contentHash'] as String?,
       error: json['error'] as String?,
       generatedAt: AiTagsMeta._parseTime(json['generatedAt']),

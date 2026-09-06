@@ -30,13 +30,11 @@ const SUMMARY_SYSTEM_PROMPT = `你是内容提炼助手。输入已是用户收�
 
 ## 输出（严格）
 只输出一个 JSON 对象，不要 markdown、不要代码块、不要前后说明。
-示例：{"text":"· 核心观点…\\n· 关键结论…"}`;
+text 内多条要点用换行分隔（JSON 字符串里写 \\n），勿在正文里输出字面量「\\n」两个字符。`;
 
 function normalizeSummaryText(raw) {
   if (!raw || typeof raw !== 'object') return null;
-  const text = String(raw.text || raw.summary || '').trim();
-  if (!text) return null;
-  return text.slice(0, 4000);
+  return aiMeta.normalizeSummaryDisplayText(raw.text || raw.summary);
 }
 
 async function saveAiMeta(itemId, meta) {
