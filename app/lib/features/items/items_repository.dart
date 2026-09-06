@@ -3,6 +3,7 @@ import 'package:super_collection/features/auth/auth_repository.dart';
 import 'package:super_collection/features/collection/tag_models.dart';
 import 'package:super_collection/features/items/ai_meta_models.dart';
 import 'package:super_collection/features/items/item_models.dart';
+import 'package:super_collection/features/items/item_usage_models.dart';
 import 'package:super_collection/features/items/transcript_models.dart';
 
 class ItemsRepository {
@@ -42,6 +43,12 @@ class ItemsRepository {
     final json = await _api.get('/api/items/$id', accessToken: token);
     final itemJson = json['item'] as Map<String, dynamic>? ?? {};
     return CollectionItem.fromJson(itemJson);
+  }
+
+  Future<ItemUsageSnapshot> getItemUsage(int id) async {
+    final token = await _token();
+    final json = await _api.get('/api/items/$id/usage', accessToken: token);
+    return ItemUsageSnapshot.fromJson(json);
   }
 
   Future<({List<SearchHit> items, int total, String query})> search(

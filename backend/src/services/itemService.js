@@ -1491,6 +1491,21 @@ async function searchItems(userId, rawQuery, { limit = 50, offset = 0 } = {}) {
   };
 }
 
+async function getItemUsageForUser(userId, itemId) {
+  const [rows] = await pool.execute(
+    `SELECT * FROM items
+     WHERE id = :itemId AND user_id = :userId AND deleted_at IS NULL
+     LIMIT 1`,
+    { itemId, userId },
+  );
+  const row = rows[0];
+  if (!row) {
+    throw Object.assign(new Error('条目不存在'), { status: 404 });
+  }
+  const usageService = require('./usageService');
+  return usageService.getItemUsageForReading(userId, itemId, row);
+}
+
 module.exports = {
   createItem,
   getByIdForUser,
@@ -1514,6 +1529,7 @@ module.exports = {
   beginTranscriptSegment,
   requestTranscript,
   getTranscriptStatus,
+  getItemUsageForUser,
   runTranscriptJob,
   requestAiSuggest: require('./aiSuggestService').requestAiSuggest,
   getAiSuggestStatus: require('./aiSuggestService').getAiSuggestStatus,

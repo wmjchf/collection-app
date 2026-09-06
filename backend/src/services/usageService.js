@@ -380,6 +380,123 @@ async function assertAiMindmapQuota(userId) {
   return assertAiQuota(userId);
 }
 
+function tokensToCredits(tokens) {
+  const t = Math.round(Number(tokens) || 0);
+  if (t <= 0) return 0;
+  return Math.floor(t / 100);
+}
+
+/**
+ * 粗估本篇各 AI 功能首次生成所需 token（与 assertAiQuota 同口径，偏保守）。
+ * @param {object} row items 表行
+ */
+function estimateItemAiUsage(row) {
+  const {
+    hasAiInput,
+    buildInputText,
+    buildAiTaskMessages,
+  } = require('./aiInput');
+  if (!row || !hasAiInput(row)) return null;
+  const inputText = buildInputText(row);
+  const wrap = (feature, taskTail) => {
+    const tokens = estimateAiTokens({
+      messages: buildAiTaskMessages(inputText, [taskTail]),
+      feature,
+    });
+    return { tokens, credits: tokensToCredits(tokens) };
+  };
+  const summary = wrap('summary', '请输出 JSON 总结。');
+  const tags = wrap('tags', '请为以上内容建议标签。');
+  const mindmap = wrap('mindmap', '请输出思维导图 JSON。');
+  const fullStackTokens = summary.tokens + tags.tokens + mindmap.tokens;
+  return {
+    summary,
+    tags,
+    mindmap,
+    fullStack: {
+      tokens: fullStackTokens,
+      credits: tokensToCredits(fullStackTokens),
+    },
+  };
+}
+
+/**
+ * 阅读页：本篇本月已消耗 + 各功能预估积分。
+ */
+async function getItemUsageForReading(userId, itemId, row) {
+  const { yearMonth, start, end } = periodBounds();
+  const { plan } = await subscriptionService.getPlanForUser(userId);
+  const normalizedPlan = planService.normalizePlan(plan);
+  const show =
+    planService.hasPrince(normalizedPlan) ||
+    planService.hasEmperor(normalizedPlan);
+
+  const [events] = await pool.execute(
+    `SELECT kind, amount, meta
+     FROM usage_events
+     WHERE user_id = :userId
+       AND item_id = :itemId
+       AND created_at >= :start
+       AND created_at < :end`,
+    { userId, itemId, start, end },
+  );
+
+  let aiTokens = 0;
+  let transcriptSeconds = 0;
+  const byFeature = { summary: 0, tags: 0, mindmap: 0 };
+  for (const ev of events) {
+    const amt = Number(ev.amount) || 0;
+    if (ev.kind === KIND_AI) {
+      aiTokens += amt;
+      let meta = ev.meta;
+      if (typeof meta === 'string') {
+        try {
+          meta = JSON.parse(meta);
+        } catch {
+          meta = null;
+        }
+      }
+      const feat = meta?.feature;
+      if (feat === 'summary' || feat === 'tags' || feat === 'mindmap') {
+        byFeature[feat] += amt;
+      } else {
+        byFeature.tags += amt;
+      }
+    } else if (ev.kind === KIND_TRANSCRIPT) {
+      transcriptSeconds += amt;
+    }
+  }
+
+  const used = {
+    aiTokens: Math.round(aiTokens),
+    aiCredits: tokensToCredits(aiTokens),
+    transcriptMinutes: round1(transcriptSeconds / 60),
+    byFeature: {
+      summary: {
+        tokens: Math.round(byFeature.summary),
+        credits: tokensToCredits(byFeature.summary),
+      },
+      tags: {
+        tokens: Math.round(byFeature.tags),
+        credits: tokensToCredits(byFeature.tags),
+      },
+      mindmap: {
+        tokens: Math.round(byFeature.mindmap),
+        credits: tokensToCredits(byFeature.mindmap),
+      },
+    },
+  };
+
+  const estimate = show && row ? estimateItemAiUsage(row) : null;
+
+  return {
+    period: { yearMonth },
+    show,
+    used,
+    estimate,
+  };
+}
+
 /**
  * 当前用户本月用量摘要（按订阅档位返回额度）
  */
@@ -456,6 +573,9 @@ module.exports = {
   recordTranscriptUsage,
   recordAiTokenUsage,
   billableAiTokensFromUsage,
+  tokensToCredits,
+  estimateItemAiUsage,
+  getItemUsageForReading,
   getUsageSummary,
   assertQuota,
   assertTranscriptQuota,
