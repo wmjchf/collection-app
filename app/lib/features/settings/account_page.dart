@@ -93,10 +93,13 @@ class _AccountPageState extends State<AccountPage> with ScreenDwellMixin {
     return '有效期至 $y-$m-$d';
   }
 
-  void _openUpgrade() {
+  void _openUpgrade({String? initialTier}) {
     Navigator.of(context).push(
       MaterialPageRoute<bool?>(
-        builder: (_) => const UpgradeProPage(from: 'account'),
+        builder: (_) => UpgradeProPage(
+          from: 'account',
+          initialTier: initialTier,
+        ),
       ),
     );
   }
@@ -190,6 +193,33 @@ class _AccountPageState extends State<AccountPage> with ScreenDwellMixin {
                       ),
                       child: const Text(
                         '订阅会员',
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+                if (_usage != null &&
+                    _usage!.isPrince &&
+                    !_usage!.isEmperor) ...[
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 44,
+                    child: TextButton(
+                      onPressed: () =>
+                          _openUpgrade(initialTier: UsagePlan.emperor),
+                      style: TextButton.styleFrom(
+                        backgroundColor: const Color(0xFFE8F0FF),
+                        foregroundColor: _blue,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      child: const Text(
+                        '升级帝王',
                         style: TextStyle(
                           fontSize: 15,
                           fontWeight: FontWeight.w600,
