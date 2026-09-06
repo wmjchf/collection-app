@@ -18,6 +18,7 @@ class _AccountDrawerState extends State<AccountDrawer> {
 
   final _usageRepo = UsageRepository();
   bool _isPaid = false;
+  bool _canUpgradeToEmperor = false;
   String _planLabel = '普通';
   bool _planLoaded = false;
 
@@ -42,6 +43,7 @@ class _AccountDrawerState extends State<AccountDrawer> {
       if (!mounted) return;
       setState(() {
         _isPaid = usage.isPrince;
+        _canUpgradeToEmperor = usage.isPrince && !usage.isEmperor;
         _planLabel = usage.displayPlan;
         _planLoaded = true;
       });
@@ -49,19 +51,25 @@ class _AccountDrawerState extends State<AccountDrawer> {
       if (!mounted) return;
       setState(() {
         _isPaid = false;
+        _canUpgradeToEmperor = false;
         _planLabel = '普通';
         _planLoaded = true;
       });
     }
   }
 
-  void _openUpgrade() {
+  void _openUpgrade({String? initialTier}) {
     Navigator.of(context).push(
       MaterialPageRoute<bool?>(
-        builder: (_) => const UpgradeProPage(from: 'settings'),
+        builder: (_) => UpgradeProPage(
+          from: 'settings',
+          initialTier: initialTier,
+        ),
       ),
     );
   }
+
+  void _openUpgradeToEmperor() => _openUpgrade(initialTier: UsagePlan.emperor);
 
   void _openAccount() {
     Navigator.of(context).push(
@@ -107,7 +115,9 @@ class _AccountDrawerState extends State<AccountDrawer> {
                 loaded: _planLoaded,
                 planLabel: _planLabel,
                 isPaid: _isPaid,
+                canUpgradeToEmperor: _canUpgradeToEmperor,
                 onUpgrade: _openUpgrade,
+                onUpgradeToEmperor: _openUpgradeToEmperor,
                 onOpenAccount: _openAccount,
               ),
             ),
@@ -124,14 +134,18 @@ class _AccountPlanCard extends StatelessWidget {
     required this.loaded,
     required this.planLabel,
     required this.isPaid,
+    required this.canUpgradeToEmperor,
     required this.onUpgrade,
+    required this.onUpgradeToEmperor,
     required this.onOpenAccount,
   });
 
   final bool loaded;
   final String planLabel;
   final bool isPaid;
+  final bool canUpgradeToEmperor;
   final VoidCallback onUpgrade;
+  final VoidCallback onUpgradeToEmperor;
   final VoidCallback onOpenAccount;
 
   static const _text = Color(0xFF1F242E);
@@ -164,39 +178,71 @@ class _AccountPlanCard extends StatelessWidget {
               ),
             )
           else if (isPaid)
-            ColoredBox(
-              color: _blueSoft,
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            planLabel,
-                            style: const TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.w700,
-                              color: _blue,
-                              height: 1.2,
+            InkWell(
+              onTap: canUpgradeToEmperor ? onUpgradeToEmperor : null,
+              child: ColoredBox(
+                color: _blueSoft,
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 14, 12, 14),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              planLabel,
+                              style: const TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.w700,
+                                color: _blue,
+                                height: 1.2,
+                              ),
                             ),
-                          ),
-                          const SizedBox(height: 2),
-                          const Text(
-                            '当前方案 · 会员权益已生效',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: _muted,
-                              height: 1.3,
+                            const SizedBox(height: 2),
+                            Text(
+                              canUpgradeToEmperor
+                                  ? '可升级帝王 · 脑图与转写'
+                                  : '当前方案 · 会员权益已生效',
+                              style: const TextStyle(
+                                fontSize: 12,
+                                color: _muted,
+                                height: 1.3,
+                              ),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
-                    ),
-                    const Icon(Icons.verified_rounded, color: _blue, size: 24),
-                  ],
+                      if (canUpgradeToEmperor)
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 6,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: const Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                '升级帝王',
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600,
+                                  color: _blue,
+                                ),
+                              ),
+                              SizedBox(width: 2),
+                              Icon(Icons.chevron_right, size: 22, color: _blue),
+                            ],
+                          ),
+                        )
+                      else
+                        const Icon(Icons.verified_rounded, color: _blue, size: 24),
+                    ],
+                  ),
                 ),
               ),
             )
