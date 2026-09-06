@@ -29,16 +29,18 @@ function decodeHtmlEntities(text) {
     .replace(/&#39;/g, "'");
 }
 
-function stripTags(html) {
-  return decodeHtmlEntities(
-    String(html)
-      .replace(/<br\s*\/?>/gi, '\n')
-      .replace(/<\/p>/gi, '\n')
-      .replace(/<\/li>/gi, '\n')
-      .replace(/<[^>]+>/g, '')
-      .replace(/\n{3,}/g, '\n\n')
-      .trim(),
-  );
+/** 行内 HTML → 阅读页 Markdown（保留 strong / em，去掉其余标签） */
+function inlineHtmlToMarkdown(html) {
+  let s = String(html);
+  s = s.replace(/<br\s*\/?>/gi, '\n');
+  for (let i = 0; i < 4; i += 1) {
+    const next = s
+      .replace(/<(strong|b)[^>]*>([\s\S]*?)<\/\1>/gi, '**$2**')
+      .replace(/<(em|i)[^>]*>([\s\S]*?)<\/\1>/gi, '*$2*');
+    if (next === s) break;
+    s = next;
+  }
+  return decodeHtmlEntities(s.replace(/<[^>]+>/g, '').trim());
 }
 
 /** 从 public/guide.html 提取正文并转为阅读页 Markdown（HTML 为唯一内容源） */
@@ -55,31 +57,35 @@ function guideHtmlToMarkdown(html) {
 
   const chunks = [];
   const re =
-    /<h2[^>]*>([\s\S]*?)<\/h2>|<h3[^>]*>([\s\S]*?)<\/h3>|<p class="tip"[^>]*>([\s\S]*?)<\/p>|<p class="lead"[^>]*>([\s\S]*?)<\/p>|<div class="plan-block"[^>]*>([\s\S]*?)<\/div>|<p[^>]*>([\s\S]*?)<\/p>|<ul[^>]*>([\s\S]*?)<\/ul>|<ol[^>]*>([\s\S]*?)<\/ol>/gi;
+    /<h2[^>]*>([\s\S]*?)<\/h2>|<h3[^>]*>([\s\S]*?)<\/h3>|<p class="tip"[^>]*>([\s\S]*?)<\/p>|<p class="lead"[^>]*>([\s\S]*?)<\/p>|<p class="tagline"[^>]*>([\s\S]*?)<\/p>|<div class="plan-block"[^>]*>([\s\S]*?)<\/div>|<p[^>]*>([\s\S]*?)<\/p>|<ul[^>]*>([\s\S]*?)<\/ul>|<ol[^>]*>([\s\S]*?)<\/ol>/gi;
 
   let m;
   while ((m = re.exec(body)) !== null) {
-    if (m[1]) chunks.push(`\n## ${stripTags(m[1])}\n`);
-    else if (m[2]) chunks.push(`\n### ${stripTags(m[2])}\n`);
-    else if (m[3]) chunks.push(`\n**${stripTags(m[3]).replace(/^技巧：\s*/, '技巧：')}**\n`);
-    else if (m[4]) chunks.push(`\n${stripTags(m[4])}\n`);
+    if (m[1]) chunks.push(`\n## ${inlineHtmlToMarkdown(m[1])}\n`);
+    else if (m[2]) chunks.push(`\n### ${inlineHtmlToMarkdown(m[2])}\n`);
+    else if (m[3]) {
+      chunks.push(`\n**${inlineHtmlToMarkdown(m[3]).replace(/^技巧：\s*/, '技巧：')}**\n`);
+    } else if (m[4]) chunks.push(`\n${inlineHtmlToMarkdown(m[4])}\n`);
     else if (m[5]) {
-      const block = m[5];
+      const text = inlineHtmlToMarkdown(m[5]);
+      chunks.push(`\n{{17|**${text.replace(/^\*\*|\*\*$/g, '')}**}}\n`);
+    } else if (m[6]) {
+      const block = m[6];
       const title = block.match(/<strong>([\s\S]*?)<\/strong>/i);
-      if (title) chunks.push(`\n**${stripTags(title[1])}**`);
+      if (title) chunks.push(`\n**${inlineHtmlToMarkdown(title[1])}**`);
       const items = block.match(/<li[^>]*>([\s\S]*?)<\/li>/gi) || [];
       for (const li of items) {
         const inner = li.replace(/<\/?li[^>]*>/gi, '');
-        chunks.push(`- ${stripTags(inner)}`);
+        chunks.push(`- ${inlineHtmlToMarkdown(inner)}`);
       }
       chunks.push('');
-    } else if (m[6]) chunks.push(`\n${stripTags(m[6])}\n`);
-    else if (m[7] || m[8]) {
-      const list = m[7] || m[8];
+    } else if (m[7]) chunks.push(`\n${inlineHtmlToMarkdown(m[7])}\n`);
+    else if (m[8] || m[9]) {
+      const list = m[8] || m[9];
       const items = list.match(/<li[^>]*>([\s\S]*?)<\/li>/gi) || [];
       for (const li of items) {
         const inner = li.replace(/<\/?li[^>]*>/gi, '');
-        chunks.push(`- ${stripTags(inner)}`);
+        chunks.push(`- ${inlineHtmlToMarkdown(inner)}`);
       }
       chunks.push('');
     }
