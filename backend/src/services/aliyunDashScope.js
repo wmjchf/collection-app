@@ -4,9 +4,30 @@ function isConfigured() {
   return Boolean(config.aliyun.dashScopeApiKey);
 }
 
+function messageTextLen(content) {
+  if (typeof content === 'string') return content.length;
+  if (!Array.isArray(content)) return 0;
+  return content.reduce((n, part) => {
+    if (typeof part === 'string') return n + part.length;
+    if (part && typeof part === 'object') {
+      return n + String(part.text || part.content || '').length;
+    }
+    return n;
+  }, 0);
+}
+
+function parseCachedTokens(usage) {
+  const u = usage || {};
+  const details = u.prompt_tokens_details || u.promptTokensDetails || {};
+  const fromDetails =
+    Number(details.cached_tokens ?? details.cachedTokens) || 0;
+  if (fromDetails > 0) return fromDetails;
+  return Number(u.cached_tokens ?? u.cachedTokens) || 0;
+}
+
 /**
  * 调用百炼 OpenAI 兼容接口（qwen3.8-max 等）
- * @returns {Promise<{ json: object, usage: { promptTokens: number, completionTokens: number, totalTokens: number } }>}
+ * @returns {Promise<{ json: object, usage: { promptTokens, completionTokens, totalTokens, cachedTokens, model } }>}
  */
 async function chatJson({ messages, model }) {
   const apiKey = config.aliyun.dashScopeApiKey;
@@ -67,17 +88,22 @@ async function chatJson({ messages, model }) {
   const u = body?.usage || {};
   const promptTokens = Number(u.prompt_tokens) || 0;
   const completionTokens = Number(u.completion_tokens) || 0;
+  const cachedTokens = parseCachedTokens(u);
   let totalTokens = Number(u.total_tokens) || 0;
   if (totalTokens <= 0) {
     totalTokens = promptTokens + completionTokens;
   }
-  // 接口偶发不带 usage：按内容长度粗估，避免漏记
   if (totalTokens <= 0) {
-    const chars = messages.reduce(
-      (n, m) => n + String(m?.content || '').length,
-      0,
-    ) + content.length;
+    const chars =
+      messages.reduce((n, m) => n + messageTextLen(m?.content), 0) +
+      content.length;
     totalTokens = Math.max(1, Math.ceil(chars / 2));
+  }
+
+  if (cachedTokens > 0) {
+    console.log(
+      `[chatJson] context_cache hit model=${modelId} cached=${cachedTokens} prompt=${promptTokens}`,
+    );
   }
 
   return {
@@ -86,6 +112,7 @@ async function chatJson({ messages, model }) {
       promptTokens,
       completionTokens,
       totalTokens,
+      cachedTokens,
       model: modelId,
     },
   };
