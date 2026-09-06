@@ -1,19 +1,21 @@
 const config = require('../config');
+const { messageContentLen } = require('./aiInput');
 
 function isConfigured() {
   return Boolean(config.aliyun.dashScopeApiKey);
 }
 
 function messageTextLen(content) {
-  if (typeof content === 'string') return content.length;
-  if (!Array.isArray(content)) return 0;
-  return content.reduce((n, part) => {
-    if (typeof part === 'string') return n + part.length;
-    if (part && typeof part === 'object') {
-      return n + String(part.text || part.content || '').length;
-    }
-    return n;
-  }, 0);
+  return messageContentLen(content);
+}
+
+function parseCacheCreationTokens(usage) {
+  const u = usage || {};
+  const details = u.prompt_tokens_details || u.promptTokensDetails || {};
+  return (
+    Number(details.cache_creation_input_tokens ?? details.cacheCreationInputTokens) ||
+    0
+  );
 }
 
 function parseCachedTokens(usage) {
@@ -89,6 +91,7 @@ async function chatJson({ messages, model }) {
   const promptTokens = Number(u.prompt_tokens) || 0;
   const completionTokens = Number(u.completion_tokens) || 0;
   const cachedTokens = parseCachedTokens(u);
+  const cacheCreationTokens = parseCacheCreationTokens(u);
   let totalTokens = Number(u.total_tokens) || 0;
   if (totalTokens <= 0) {
     totalTokens = promptTokens + completionTokens;
@@ -104,6 +107,10 @@ async function chatJson({ messages, model }) {
     console.log(
       `[chatJson] context_cache hit model=${modelId} cached=${cachedTokens} prompt=${promptTokens}`,
     );
+  } else if (cacheCreationTokens > 0) {
+    console.log(
+      `[chatJson] context_cache create model=${modelId} created=${cacheCreationTokens} prompt=${promptTokens}`,
+    );
   }
 
   return {
@@ -113,6 +120,7 @@ async function chatJson({ messages, model }) {
       completionTokens,
       totalTokens,
       cachedTokens,
+      cacheCreationTokens,
       model: modelId,
     },
   };

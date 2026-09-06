@@ -6,7 +6,7 @@ const transcriptSegments = require('./transcriptSegments');
 const {
   hasAiInput,
   buildInputText,
-  buildAiUserMessage,
+  buildAiTaskMessages,
 } = require('./aiInput');
 const {
   snapshotRegenerateFrom,
@@ -220,21 +220,14 @@ async function requestAiSuggest(userId, itemId, { force = false } = {}) {
 
   const regenBlock = formatRegenerateUserBlock(regenerateFrom);
   const inputText = buildInputText(row);
-  const taskTail = [
-    '请为以上内容建议标签。',
+  const previewMessages = buildAiTaskMessages(inputText, [
+    TAGS_SYSTEM_PROMPT,
     regenBlock,
-  ]
-    .filter(Boolean)
-    .join('\n\n');
+    '请为以上内容建议标签。',
+  ]);
   await usageService.assertAiQuota(userId, {
     estimatedTokens: usageService.estimateAiTokens({
-      messages: [
-        { role: 'system', content: TAGS_SYSTEM_PROMPT },
-        {
-          role: 'user',
-          content: buildAiUserMessage(inputText, taskTail),
-        },
-      ],
+      messages: previewMessages,
       feature: 'tags',
     }),
   });
@@ -295,26 +288,14 @@ async function runAiSuggestJob(itemId) {
     const currentNames = currentTagNames.join('、') || '（无）';
 
     const regenBlock = formatRegenerateUserBlock(meta.tags.regenerateFrom);
-    const taskTail = [
+    const messages = buildAiTaskMessages(inputText, [
+      TAGS_SYSTEM_PROMPT,
       `用户已有标签（可复用）：${existingNames}`,
       `本篇已打标签（请勿重复建议）：${currentNames}`,
-      '请为以上内容建议标签。',
       regenBlock,
-    ]
-      .filter(Boolean)
-      .join('\n\n');
-    const userContent = buildAiUserMessage(inputText, taskTail);
+      '请为以上内容建议标签。',
+    ]);
 
-    const messages = [
-      {
-        role: 'system',
-        content: TAGS_SYSTEM_PROMPT,
-      },
-      {
-        role: 'user',
-        content: userContent,
-      },
-    ];
     const usageService = require('./usageService');
     await usageService.assertAiQuota(row.user_id, {
       estimatedTokens: usageService.estimateAiTokens({

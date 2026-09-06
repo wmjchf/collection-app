@@ -6,7 +6,7 @@ const {
   hasAiInput,
   buildInputText,
   computeContentHash,
-  buildAiUserMessage,
+  buildAiTaskMessages,
 } = require('./aiInput');
 const {
   snapshotRegenerateFrom,
@@ -235,19 +235,11 @@ async function requestMindmap(userId, itemId, { force = false } = {}) {
 
   const regenBlock = formatRegenerateUserBlock(regenerateFrom);
   const inputText = buildInputText(row);
-  const taskTail = [
-    '请按 system 要求输出思维导图 JSON（仅 JSON，无其它文字）。',
+  const previewMessages = buildAiTaskMessages(inputText, [
+    MINDMAP_SYSTEM_PROMPT,
     regenBlock,
-  ]
-    .filter(Boolean)
-    .join('\n\n');
-  const previewMessages = [
-    { role: 'system', content: MINDMAP_SYSTEM_PROMPT },
-    {
-      role: 'user',
-      content: buildAiUserMessage(inputText, taskTail),
-    },
-  ];
+    '请按上述要求输出思维导图 JSON（仅 JSON，无其它文字）。',
+  ]);
   await usageService.assertAiQuota(userId, {
     estimatedTokens: usageService.estimateAiTokens({
       messages: previewMessages,
@@ -307,24 +299,12 @@ async function runMindmapJob(itemId) {
     }
 
     const regenBlock = formatRegenerateUserBlock(meta.mindmap.regenerateFrom);
-    const taskTail = [
-      '请按 system 要求输出思维导图 JSON（仅 JSON，无其它文字）。',
+    const messages = buildAiTaskMessages(inputText, [
+      MINDMAP_SYSTEM_PROMPT,
       regenBlock,
-    ]
-      .filter(Boolean)
-      .join('\n\n');
-    const userContent = buildAiUserMessage(inputText, taskTail);
+      '请按上述要求输出思维导图 JSON（仅 JSON，无其它文字）。',
+    ]);
 
-    const messages = [
-      {
-        role: 'system',
-        content: MINDMAP_SYSTEM_PROMPT,
-      },
-      {
-        role: 'user',
-        content: userContent,
-      },
-    ];
     const usageService = require('./usageService');
     await usageService.assertAiQuota(row.user_id, {
       estimatedTokens: usageService.estimateAiTokens({
