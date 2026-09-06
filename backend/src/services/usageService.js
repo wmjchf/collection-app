@@ -393,6 +393,112 @@ function creditsFromModelUsage(usage) {
   return tokensToCredits(billable);
 }
 
+function aiFeatureLabel(feature) {
+  switch (feature) {
+    case 'summary':
+      return 'AI 总结';
+    case 'mindmap':
+      return 'AI 思维导图';
+    case 'tags':
+      return 'AI 标签';
+    default:
+      return 'AI';
+  }
+}
+
+function parseUsageMeta(raw) {
+  if (raw == null || raw === '') return null;
+  if (typeof raw === 'object') return raw;
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+
+function mapUsageEventRow(row) {
+  const meta = parseUsageMeta(row.meta);
+  const feature = meta?.feature || null;
+  const amount = Number(row.amount) || 0;
+  const unit = row.unit || '';
+  const isAi = row.kind === KIND_AI;
+  return {
+    id: Number(row.id),
+    itemId: row.item_id != null ? Number(row.item_id) : null,
+    itemTitle: row.item_title ? String(row.item_title) : null,
+    itemDeleted: !!row.item_deleted_at,
+    kind: row.kind,
+    amount,
+    unit,
+    feature,
+    featureLabel: isAi ? aiFeatureLabel(feature) : '转写',
+    displayAmount: isAi
+      ? tokensToCredits(amount)
+      : round1(amount / 60),
+    displayUnit: isAi ? 'credits' : 'minutes',
+    createdAt: row.created_at,
+  };
+}
+
+/**
+ * 本月用量明细（AI / 转写）
+ * @param {number} userId
+ * @param {{ kind: 'ai'|'transcript', limit?: number, offset?: number }} opts
+ */
+async function listUsageEvents(userId, { kind, limit = 50, offset = 0 } = {}) {
+  const normalizedKind =
+    kind === KIND_TRANSCRIPT || kind === 'transcript'
+      ? KIND_TRANSCRIPT
+      : kind === KIND_AI || kind === 'ai'
+        ? KIND_AI
+        : null;
+  if (!normalizedKind) {
+    throw Object.assign(new Error('kind 须为 ai 或 transcript'), {
+      status: 400,
+    });
+  }
+
+  const safeLimit = Math.min(Math.max(Number(limit) || 50, 1), 100);
+  const safeOffset = Math.max(Number(offset) || 0, 0);
+  const { yearMonth, start, end } = periodBounds();
+
+  const [[countRow], [rows]] = await Promise.all([
+    pool.execute(
+      `SELECT COUNT(*) AS cnt
+       FROM usage_events
+       WHERE user_id = :userId
+         AND kind = :kind
+         AND created_at >= :start
+         AND created_at < :end`,
+      { userId, kind: normalizedKind, start, end },
+    ),
+    pool.execute(
+      `SELECT ue.id, ue.item_id, ue.kind, ue.amount, ue.unit, ue.meta, ue.created_at,
+              i.title AS item_title, i.deleted_at AS item_deleted_at
+       FROM usage_events ue
+       LEFT JOIN items i
+         ON i.id = ue.item_id AND i.user_id = ue.user_id
+       WHERE ue.user_id = :userId
+         AND ue.kind = :kind
+         AND ue.created_at >= :start
+         AND ue.created_at < :end
+       ORDER BY ue.created_at DESC
+       LIMIT ${safeLimit} OFFSET ${safeOffset}`,
+      { userId, kind: normalizedKind, start, end },
+    ),
+  ]);
+
+  const total = Number(countRow[0]?.cnt || 0);
+  return {
+    yearMonth,
+    kind: normalizedKind,
+    total,
+    limit: safeLimit,
+    offset: safeOffset,
+    items: rows.map(mapUsageEventRow),
+  };
+}
+
 /**
  * 当前用户本月用量摘要（按订阅档位返回额度）
  */
@@ -471,6 +577,7 @@ module.exports = {
   billableAiTokensFromUsage,
   tokensToCredits,
   creditsFromModelUsage,
+  listUsageEvents,
   getUsageSummary,
   assertQuota,
   assertTranscriptQuota,

@@ -3,7 +3,6 @@ import 'package:super_collection/core/ui/app_confirm_dialog.dart';
 
 /// 阅读页重新生成 AI 内容 / 转写
 enum ReadingRegenerateKind {
-  tags,
   mindmap,
   summary,
   transcript,
@@ -20,13 +19,6 @@ Future<bool?> showReadingRegenerateConfirmDialog(
         title: '重新转写文稿？',
         message: '该段已有文稿，重新转写将覆盖现有内容。',
         confirmLabel: '重新转写',
-        dangerConfirm: false,
-      ),
-    ReadingRegenerateKind.tags => showAppConfirmDialog(
-        context,
-        title: '重新生成标签建议？',
-        message: '将重新生成 AI 标签建议。',
-        confirmLabel: '重新生成',
         dangerConfirm: false,
       ),
     ReadingRegenerateKind.mindmap => showAppConfirmDialog(

@@ -16,4 +16,21 @@ router.get('/', async (req, res, next) => {
   }
 });
 
+/** GET /api/usage/events — 本月 AI / 转写用量明细 */
+router.get('/events', async (req, res, next) => {
+  try {
+    const kind = String(req.query.kind || '').trim();
+    const limit = req.query.limit != null ? Number(req.query.limit) : 50;
+    const offset = req.query.offset != null ? Number(req.query.offset) : 0;
+    const result = await usageService.listUsageEvents(req.auth.userId, {
+      kind,
+      limit,
+      offset,
+    });
+    return res.json(result);
+  } catch (err) {
+    return next(err);
+  }
+});
+
 module.exports = router;

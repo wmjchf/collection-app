@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:super_collection/core/analytics/screen_dwell_tracker.dart';
 import 'package:super_collection/features/auth/auth_repository.dart';
 import 'package:super_collection/features/settings/upgrade_pro_page.dart';
+import 'package:super_collection/features/settings/usage_events_page.dart';
 import 'package:super_collection/features/settings/usage_repository.dart';
 
 /// 账户详情：手机号、收藏容量、本月 AI / 转写用量。
@@ -99,6 +100,17 @@ class _AccountPageState extends State<AccountPage> with ScreenDwellMixin {
         builder: (_) => UpgradeProPage(
           from: 'account',
           initialTier: initialTier,
+        ),
+      ),
+    );
+  }
+
+  void _openUsageEvents(UsageEventsKind kind) {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => UsageEventsPage(
+          kind: kind,
+          yearMonth: _usage?.yearMonth,
         ),
       ),
     );
@@ -291,6 +303,7 @@ class _AccountPageState extends State<AccountPage> with ScreenDwellMixin {
                                 .clamp(0.0, 1.0)
                             : 0,
                         showProgress: true,
+                        onTap: () => _openUsageEvents(UsageEventsKind.ai),
                       ),
                       _UsageRow(
                         title: '转写',
@@ -304,6 +317,8 @@ class _AccountPageState extends State<AccountPage> with ScreenDwellMixin {
                                 .clamp(0.0, 1.0)
                             : 0,
                         showProgress: true,
+                        onTap: () =>
+                            _openUsageEvents(UsageEventsKind.transcript),
                       ),
                     ],
                   ),
@@ -392,6 +407,7 @@ class _UsageRow extends StatelessWidget {
     required this.limitLabel,
     required this.progress,
     this.showProgress = true,
+    this.onTap,
   });
 
   final String title;
@@ -399,6 +415,7 @@ class _UsageRow extends StatelessWidget {
   final String limitLabel;
   final double progress;
   final bool showProgress;
+  final VoidCallback? onTap;
 
   static const _muted = Color(0xFF737A85);
   static const _track = Color(0xFFECEEF2);
@@ -406,8 +423,8 @@ class _UsageRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+    final content = Padding(
+      padding: const EdgeInsets.fromLTRB(16, 16, onTap != null ? 12 : 16, 16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -426,6 +443,14 @@ class _UsageRow extends StatelessWidget {
                 '$usedLabel / $limitLabel',
                 style: const TextStyle(fontSize: 14, color: _muted),
               ),
+              if (onTap != null) ...[
+                const SizedBox(width: 2),
+                const Icon(
+                  Icons.chevron_right,
+                  size: 22,
+                  color: _muted,
+                ),
+              ],
             ],
           ),
           if (showProgress) ...[
@@ -442,6 +467,13 @@ class _UsageRow extends StatelessWidget {
           ],
         ],
       ),
+    );
+
+    if (onTap == null) return content;
+
+    return Material(
+      color: Colors.white,
+      child: InkWell(onTap: onTap, child: content),
     );
   }
 }
