@@ -7,6 +7,10 @@ const {
   buildInputText,
   computeContentHash,
 } = require('./aiInput');
+const {
+  snapshotRegenerateFrom,
+  formatRegenerateUserBlock,
+} = require('./aiRegeneratePrompt');
 
 /** 根 + 最多 3 层子节点：大主题 → 核心板块 → 详细解释 →（可选）关键细节 */
 const MAX_DEPTH = 3;
@@ -36,7 +40,6 @@ const MINDMAP_SYSTEM_PROMPT = `你是专业的知识结构化助手。输入已�
 - 覆盖核心论点、关键事实、因果与可执行建议；重要数字与专有名词保留
 - 自然区分（按需选用，非每层必全）：定义、底层逻辑、正确认知、误区、落地方法、案例、风险
 - 超长则保主干砍细节，勿灌水凑层
-- 用户若给了「期望方向」，在不破坏结构规则下调整侧重点
 - title 无字数上限：上层宜短便于扫读，下层按需写清；勿为凑字数灌水。每层子节点约 2～6 个（末层可为 0）
 
 ## 输出（严格）
@@ -91,7 +94,7 @@ async function failMindmapJob(itemId, message) {
     tree: null,
     error: String(message || '生成失败').slice(0, 500),
     generatedAt: new Date().toISOString(),
-    direction: null,
+    regenerateFrom: null,
   });
   await saveAiMeta(itemId, meta);
 }
@@ -138,15 +141,13 @@ async function onTranscriptSettledForMindmap(itemId) {
   enqueueMindmap(itemId);
 }
 
-async function requestMindmap(userId, itemId, { force = false, direction = null } = {}) {
+async function requestMindmap(userId, itemId, { force = false } = {}) {
   if (!aliyunDashScope.isConfigured()) {
     throw Object.assign(
       new Error('AI 未配置：请设置 DASHSCOPE_API_KEY'),
       { status: 503 },
     );
   }
-
-  const userDirection = aiMeta.normalizeUserDirection(direction);
 
   const row = await getItemRow(itemId, userId);
   if (!row) {
@@ -180,14 +181,9 @@ async function requestMindmap(userId, itemId, { force = false, direction = null 
   await usageService.assertPlanFeatureForUser(userId, 'ai_mindmap');
   await usageService.assertAiQuota(userId);
 
-  if (userDirection) {
-    const aiPreference = require('./aiPreferenceService');
-    aiPreference.recordDirectionSafe(userId, {
-      kind: aiPreference.KIND_MINDMAP,
-      itemId,
-      direction: userDirection,
-    });
-  }
+  const regenerateFrom = force
+    ? snapshotRegenerateFrom(meta, 'mindmap')
+    : null;
 
   if (transcriptSegments.shouldAutoTranscribeBeforeMindmap(row)) {
     await usageService.assertTranscriptQuota(userId);
@@ -213,7 +209,7 @@ async function requestMindmap(userId, itemId, { force = false, direction = null 
       contentHash: null,
       error: null,
       generatedAt: null,
-      direction: userDirection,
+      regenerateFrom,
     });
     meta.model = require('../config').aliyun.aiModel || 'qwen3.8-max';
     await saveAiMeta(itemId, meta);
@@ -236,12 +232,14 @@ async function requestMindmap(userId, itemId, { force = false, direction = null 
     throw Object.assign(new Error('内容不足，无法生成思维导图'), { status: 400 });
   }
 
+  const regenBlock = formatRegenerateUserBlock(regenerateFrom);
   const previewMessages = [
     { role: 'system', content: MINDMAP_SYSTEM_PROMPT },
     {
       role: 'user',
       content:
-        `请阅读以下内容，按 system 要求输出思维导图 JSON（仅 JSON，无其它文字）：\n\n` +
+        `请阅读以下内容，按 system 要求输出思维导图 JSON（仅 JSON，无其它文字）：` +
+        `${regenBlock}\n\n` +
         buildInputText(row),
     },
   ];
@@ -259,7 +257,7 @@ async function requestMindmap(userId, itemId, { force = false, direction = null 
     contentHash,
     error: null,
     generatedAt: null,
-    direction: userDirection,
+    regenerateFrom,
   });
   meta.model = require('../config').aliyun.aiModel || 'qwen3.8-max';
   await saveAiMeta(itemId, meta);
@@ -303,26 +301,9 @@ async function runMindmapJob(itemId) {
       throw new Error('内容不足');
     }
 
-    const direction = meta.mindmap.direction;
-    const aiPreference = require('./aiPreferenceService');
-    const prefs = await aiPreference.listRecentDirections(
-      row.user_id,
-      aiPreference.KIND_MINDMAP,
-      { limit: 5 },
-    );
-    const prefsBlock = aiPreference.formatPreferencesBlock(prefs, {
-      hasExplicitDirection: Boolean(direction),
-    });
-
     let userContent =
       '请阅读以下内容，按 system 要求输出思维导图 JSON（仅 JSON，无其它文字）：';
-    if (direction) {
-      userContent +=
-        `\n\n用户期望方向（请尽量遵循，在不破坏结构规则的前提下调整侧重点）：${direction}`;
-    }
-    if (prefsBlock) {
-      userContent += `\n\n${prefsBlock}`;
-    }
+    userContent += formatRegenerateUserBlock(meta.mindmap.regenerateFrom);
     userContent += `\n\n${inputText}`;
 
     const messages = [
@@ -361,7 +342,7 @@ async function runMindmapJob(itemId) {
       contentHash,
       error: null,
       generatedAt,
-      direction: null,
+      regenerateFrom: null,
     });
     await saveAiMeta(itemId, meta);
     require('./analyticsService').trackAiJobOutcome(row, 'mindmap', { ok: true });
@@ -388,7 +369,7 @@ async function runMindmapJob(itemId) {
       tree: null,
       error: (err.message || '生成失败').slice(0, 500),
       generatedAt: new Date().toISOString(),
-      direction: null,
+      regenerateFrom: null,
     });
     await saveAiMeta(itemId, meta);
     require('./analyticsService').trackAiJobOutcome(row, 'mindmap', {

@@ -189,7 +189,6 @@ router.post('/:id/ai-suggest', async (req, res, next) => {
       Number(req.params.id),
       {
         force: !!req.body?.force,
-        direction: req.body?.direction ?? req.body?.hint ?? null,
       },
     );
     return res.json({ item, message: '正在生成标签建议…' });
@@ -247,7 +246,6 @@ router.post('/:id/mindmap', async (req, res, next) => {
       Number(req.params.id),
       {
         force: !!req.body?.force,
-        direction: req.body?.direction ?? req.body?.hint ?? null,
       },
     );
     return res.json({ item, message: '正在生成思维导图…' });
@@ -277,7 +275,6 @@ router.post('/:id/summary', async (req, res, next) => {
       Number(req.params.id),
       {
         force: !!req.body?.force,
-        direction: req.body?.direction ?? req.body?.hint ?? null,
       },
     );
     return res.json({ item, message: '正在生成 AI 总结…' });
