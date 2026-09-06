@@ -27,6 +27,15 @@ const DEFAULT_SUMMARY = {
   direction: null,
 };
 
+/** 总结正文：trim、字面量 \\n → 换行、长度截断 */
+function normalizeSummaryDisplayText(raw) {
+  if (raw == null) return null;
+  let text = String(raw).trim();
+  if (!text) return null;
+  text = text.replace(/\\n/g, '\n').replace(/\r\n/g, '\n');
+  return text.slice(0, 4000);
+}
+
 function normalizeMindmapTree(raw) {
   if (!raw || typeof raw !== 'object') return null;
   const title = String(raw.title || '').trim();
@@ -65,10 +74,7 @@ function parseAiMeta(raw) {
   const mindmap = obj.mindmap && typeof obj.mindmap === 'object' ? obj.mindmap : {};
   const tree = normalizeMindmapTree(mindmap.tree);
   const summary = obj.summary && typeof obj.summary === 'object' ? obj.summary : {};
-  const summaryText =
-    summary.text != null && String(summary.text).trim()
-      ? String(summary.text).trim().slice(0, 4000)
-      : null;
+  const summaryText = normalizeSummaryDisplayText(summary.text);
 
   return {
     tags: {
@@ -187,6 +193,7 @@ function normalizeUserDirection(raw) {
 
 module.exports = {
   defaultAiMeta,
+  normalizeSummaryDisplayText,
   parseAiMeta,
   mapAiMetaForApi,
   isTagsPending,
