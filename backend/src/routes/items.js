@@ -77,7 +77,7 @@ router.get('/needs-client-fetch', async (req, res, next) => {
   }
 });
 
-/** GET /api/items/:id/usage — 本篇本月 AI/转写用量与预估积分（阅读页） */
+/** GET /api/items/:id/usage — 本篇 AI 预估积分（阅读页） */
 router.get('/:id/usage', async (req, res, next) => {
   try {
     const usage = await itemService.getItemUsageForUser(
