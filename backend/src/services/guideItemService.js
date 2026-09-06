@@ -7,7 +7,7 @@ const { extractMeta } = require('./parser/extractMeta');
 const GUIDE_URL = 'https://conflux.wobufang.com/guide';
 const GUIDE_TITLE = '使用指引与技巧';
 const GUIDE_SUMMARY =
-  '三种收藏方式、整理与搜索技巧、阅读标注、AI 与转写、订阅档位说明。';
+  '欢迎进入奏折：快速收藏、AI 分类与解读、实用阅读与搜索技巧。';
 const GUIDE_PLATFORM = 'guide';
 
 let _snapshotCache = null;

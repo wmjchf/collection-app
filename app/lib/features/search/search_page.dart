@@ -213,7 +213,7 @@ class _SearchPageState extends State<SearchPage> with ScreenDwellMixin {
                           height: 1.2,
                         ),
                         decoration: InputDecoration(
-                          hintText: '搜索标题、正文、备注、标注…',
+                          hintText: '搜索标题、正文、感想、AI 解读、标注…',
                           hintStyle: const TextStyle(
                             fontSize: 15,
                             color: _muted,

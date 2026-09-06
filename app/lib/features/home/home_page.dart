@@ -671,10 +671,25 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
               padding: EdgeInsets.zero,
               constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
               onPressed: _pasting ? null : _onAddPressed,
-              icon: SvgPicture.asset(
-                'assets/icons/add.svg',
-                width: 24,
-                height: 24,
+              icon: Container(
+                width: 32,
+                height: 32,
+                decoration: BoxDecoration(
+                  color: _pasting
+                      ? _blue.withValues(alpha: 0.45)
+                      : _blue,
+                  shape: BoxShape.circle,
+                ),
+                alignment: Alignment.center,
+                child: SvgPicture.asset(
+                  'assets/icons/add.svg',
+                  width: 18,
+                  height: 18,
+                  colorFilter: const ColorFilter.mode(
+                    Colors.white,
+                    BlendMode.srcIn,
+                  ),
+                ),
               ),
             ),
           ),
