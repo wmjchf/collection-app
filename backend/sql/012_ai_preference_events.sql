@@ -1,3 +1,4 @@
+-- 已由 020_drop_ai_preference_events.sql 废弃并删表
 -- 用户 AI 偏好事件：记录期望方向，供后续生成注入
 CREATE TABLE IF NOT EXISTS `ai_preference_events` (
   `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,

@@ -7,6 +7,10 @@ const {
   buildInputText,
   computeContentHash,
 } = require('./aiInput');
+const {
+  snapshotRegenerateFrom,
+  formatRegenerateUserBlock,
+} = require('./aiRegeneratePrompt');
 
 const SUMMARY_SYSTEM_PROMPT = `你是内容提炼助手。输入已是用户收藏的可读文本（标题、正文、音视频转写稿等），**不要假设还能打开链接、看视频或拉取字幕**。信息不足时在 text 中简短说明缺什么，禁止编造。
 
@@ -23,7 +27,6 @@ const SUMMARY_SYSTEM_PROMPT = `你是内容提炼助手。输入已是用户收�
 - 不要写成内容大纲或段落复述
 - 不要为显得全面而展开论证、举例、逐段概括
 - 不要寒暄、广告、引流、情绪煽情
-- 用户若给了「期望方向」，在不牺牲核心的前提下调整侧重点
 
 ## 篇幅
 说清核心就停，自然收束；通常几条短句或一两段即可，**不以字数为目标**。
@@ -67,7 +70,7 @@ async function failSummaryJob(itemId, message) {
     text: null,
     error: String(message || '生成失败').slice(0, 500),
     generatedAt: new Date().toISOString(),
-    direction: null,
+    regenerateFrom: null,
   });
   await saveAiMeta(itemId, meta);
 }
@@ -114,15 +117,13 @@ async function onTranscriptSettledForSummary(itemId) {
   enqueueSummary(itemId);
 }
 
-async function requestSummary(userId, itemId, { force = false, direction = null } = {}) {
+async function requestSummary(userId, itemId, { force = false } = {}) {
   if (!aliyunDashScope.isConfigured()) {
     throw Object.assign(
       new Error('AI 未配置：请设置 DASHSCOPE_API_KEY'),
       { status: 503 },
     );
   }
-
-  const userDirection = aiMeta.normalizeUserDirection(direction);
 
   const row = await getItemRow(itemId, userId);
   if (!row) {
@@ -156,14 +157,9 @@ async function requestSummary(userId, itemId, { force = false, direction = null 
   await usageService.assertPlanFeatureForUser(userId, 'ai_summary');
   await usageService.assertAiQuota(userId);
 
-  if (userDirection) {
-    const aiPreference = require('./aiPreferenceService');
-    aiPreference.recordDirectionSafe(userId, {
-      kind: aiPreference.KIND_SUMMARY,
-      itemId,
-      direction: userDirection,
-    });
-  }
+  const regenerateFrom = force
+    ? snapshotRegenerateFrom(meta, 'summary')
+    : null;
 
   if (transcriptSegments.shouldAutoTranscribeBeforeMindmap(row)) {
     await usageService.assertTranscriptQuota(userId);
@@ -189,7 +185,7 @@ async function requestSummary(userId, itemId, { force = false, direction = null 
       contentHash: null,
       error: null,
       generatedAt: null,
-      direction: userDirection,
+      regenerateFrom,
     });
     meta.model = require('../config').aliyun.aiModel || 'qwen3.8-max';
     await saveAiMeta(itemId, meta);
@@ -212,12 +208,14 @@ async function requestSummary(userId, itemId, { force = false, direction = null 
     throw Object.assign(new Error('内容不足，无法生成 AI 总结'), { status: 400 });
   }
 
+  const regenBlock = formatRegenerateUserBlock(regenerateFrom);
   const previewMessages = [
     { role: 'system', content: SUMMARY_SYSTEM_PROMPT },
     {
       role: 'user',
       content:
-        `请阅读以下内容，提炼核心信息（不要复述原文），按 system 要求输出 JSON（仅 JSON，无其它文字）：\n\n` +
+        `请阅读以下内容，提炼核心信息（不要复述原文），按 system 要求输出 JSON（仅 JSON，无其它文字）：` +
+        `${regenBlock}\n\n` +
         buildInputText(row),
     },
   ];
@@ -235,7 +233,7 @@ async function requestSummary(userId, itemId, { force = false, direction = null 
     contentHash,
     error: null,
     generatedAt: null,
-    direction: userDirection,
+    regenerateFrom,
   });
   meta.model = require('../config').aliyun.aiModel || 'qwen3.8-max';
   await saveAiMeta(itemId, meta);
@@ -279,26 +277,9 @@ async function runSummaryJob(itemId) {
       throw new Error('内容不足');
     }
 
-    const direction = meta.summary.direction;
-    const aiPreference = require('./aiPreferenceService');
-    const prefs = await aiPreference.listRecentDirections(
-      row.user_id,
-      aiPreference.KIND_SUMMARY,
-      { limit: 5 },
-    );
-    const prefsBlock = aiPreference.formatPreferencesBlock(prefs, {
-      hasExplicitDirection: Boolean(direction),
-    });
-
     let userContent =
       '请阅读以下内容，提炼核心信息（不要复述原文），按 system 要求输出 JSON（仅 JSON，无其它文字）：';
-    if (direction) {
-      userContent +=
-        `\n\n用户期望方向（请尽量遵循，但不牺牲核心提炼）：${direction}`;
-    }
-    if (prefsBlock) {
-      userContent += `\n\n${prefsBlock}`;
-    }
+    userContent += formatRegenerateUserBlock(meta.summary.regenerateFrom);
     userContent += `\n\n${inputText}`;
 
     const messages = [
@@ -331,7 +312,7 @@ async function runSummaryJob(itemId) {
       contentHash,
       error: null,
       generatedAt,
-      direction: null,
+      regenerateFrom: null,
     });
     await saveAiMeta(itemId, meta);
     require('./analyticsService').trackAiJobOutcome(row, 'summary', { ok: true });
@@ -357,7 +338,7 @@ async function runSummaryJob(itemId) {
       text: null,
       error: (err.message || '生成失败').slice(0, 500),
       generatedAt: new Date().toISOString(),
-      direction: null,
+      regenerateFrom: null,
     });
     await saveAiMeta(itemId, meta);
     require('./analyticsService').trackAiJobOutcome(row, 'summary', {

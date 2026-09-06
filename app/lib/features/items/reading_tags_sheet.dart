@@ -161,15 +161,13 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
     }
     if (_tagsMeta.isPending) return;
 
-    String? direction;
     if (force || (_tagsMeta.isSuccess && _tagsMeta.hasSuggestions)) {
-      final result = await showReadingRegenerateConfirmDialog(
+      final ok = await showReadingRegenerateConfirmDialog(
         context,
         ReadingRegenerateKind.tags,
       );
-      if (result == null || !mounted) return;
+      if (ok != true || !mounted) return;
       force = true;
-      direction = result;
     }
 
     try {
@@ -180,7 +178,6 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
       final updated = await _itemsRepo.requestAiSuggest(
         widget.itemId,
         force: force,
-        direction: direction,
       );
       if (!mounted) return;
       _syncTagsMeta(updated.aiMeta.tags);

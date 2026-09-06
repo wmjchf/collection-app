@@ -437,17 +437,15 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
       return;
     }
 
-    String? direction;
     final isRegen = force ||
         (_item.aiMeta.summary.isSuccess && _item.aiMeta.summary.hasText);
     if (isRegen) {
-      final result = await showReadingRegenerateConfirmDialog(
+      final ok = await showReadingRegenerateConfirmDialog(
         context,
         ReadingRegenerateKind.summary,
       );
-      if (result == null || !mounted) return;
+      if (ok != true || !mounted) return;
       force = true;
-      direction = result;
     }
 
     try {
@@ -458,7 +456,6 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
       final updated = await _repo.requestSummary(
         _item.id,
         force: force,
-        direction: direction,
       );
       if (!mounted) return;
       setState(() => _item = updated);
@@ -876,17 +873,15 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
       return;
     }
 
-    String? direction;
     final isRegen = force ||
         (_item.aiMeta.mindmap.isSuccess && _item.aiMeta.mindmap.hasTree);
     if (isRegen) {
-      final result = await showReadingRegenerateConfirmDialog(
+      final ok = await showReadingRegenerateConfirmDialog(
         context,
         ReadingRegenerateKind.mindmap,
       );
-      if (result == null || !mounted) return;
+      if (ok != true || !mounted) return;
       force = true;
-      direction = result;
     }
 
     try {
@@ -897,7 +892,6 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
       final updated = await _repo.requestMindmap(
         _item.id,
         force: force,
-        direction: direction,
       );
       if (!mounted) return;
       setState(() => _item = updated);

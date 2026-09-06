@@ -4,7 +4,7 @@ const DEFAULT_TAGS = {
   error: null,
   generatedAt: null,
   awaitTranscript: false,
-  direction: null,
+  regenerateFrom: null,
 };
 
 const DEFAULT_MINDMAP = {
@@ -14,7 +14,7 @@ const DEFAULT_MINDMAP = {
   error: null,
   generatedAt: null,
   awaitTranscript: false,
-  direction: null,
+  regenerateFrom: null,
 };
 
 const DEFAULT_SUMMARY = {
@@ -24,8 +24,12 @@ const DEFAULT_SUMMARY = {
   error: null,
   generatedAt: null,
   awaitTranscript: false,
-  direction: null,
+  regenerateFrom: null,
 };
+
+const {
+  normalizeRegenerateFrom,
+} = require('./aiRegeneratePrompt');
 
 /** 总结正文：trim、字面量 \\n → 换行、长度截断 */
 function normalizeSummaryDisplayText(raw) {
@@ -89,10 +93,7 @@ function parseAiMeta(raw) {
       error: tags.error != null ? String(tags.error) : null,
       generatedAt: tags.generatedAt || null,
       awaitTranscript: tags.awaitTranscript === true,
-      direction:
-        tags.direction != null && String(tags.direction).trim()
-          ? String(tags.direction).trim().slice(0, 200)
-          : null,
+      regenerateFrom: normalizeRegenerateFrom(tags.regenerateFrom),
     },
     mindmap: {
       status: mindmap.status || 'none',
@@ -101,10 +102,7 @@ function parseAiMeta(raw) {
       error: mindmap.error != null ? String(mindmap.error) : null,
       generatedAt: mindmap.generatedAt || null,
       awaitTranscript: mindmap.awaitTranscript === true,
-      direction:
-        mindmap.direction != null && String(mindmap.direction).trim()
-          ? String(mindmap.direction).trim().slice(0, 200)
-          : null,
+      regenerateFrom: normalizeRegenerateFrom(mindmap.regenerateFrom),
     },
     summary: {
       status: summary.status || 'none',
@@ -114,10 +112,7 @@ function parseAiMeta(raw) {
       error: summary.error != null ? String(summary.error) : null,
       generatedAt: summary.generatedAt || null,
       awaitTranscript: summary.awaitTranscript === true,
-      direction:
-        summary.direction != null && String(summary.direction).trim()
-          ? String(summary.direction).trim().slice(0, 200)
-          : null,
+      regenerateFrom: normalizeRegenerateFrom(summary.regenerateFrom),
     },
     model: obj.model != null ? String(obj.model) : null,
   };
@@ -186,14 +181,10 @@ function withSummaryState(meta, patch) {
   return m;
 }
 
-function normalizeUserDirection(raw) {
-  const text = String(raw || '').trim().slice(0, 200);
-  return text || null;
-}
-
 module.exports = {
   defaultAiMeta,
   normalizeSummaryDisplayText,
+  normalizeMindmapTree,
   parseAiMeta,
   mapAiMetaForApi,
   isTagsPending,
@@ -202,5 +193,4 @@ module.exports = {
   withTagsState,
   withMindmapState,
   withSummaryState,
-  normalizeUserDirection,
 };

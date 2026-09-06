@@ -333,15 +333,12 @@ class ItemsRepository {
   Future<CollectionItem> requestAiSuggest(
     int id, {
     bool force = false,
-    String? direction,
   }) async {
     final token = await _token();
-    final trimmed = direction?.trim();
     final json = await _api.post(
       '/api/items/$id/ai-suggest',
       body: {
         'force': force,
-        if (trimmed != null && trimmed.isNotEmpty) 'direction': trimmed,
       },
       accessToken: token,
     );
@@ -397,15 +394,12 @@ class ItemsRepository {
   Future<CollectionItem> requestMindmap(
     int id, {
     bool force = false,
-    String? direction,
   }) async {
     final token = await _token();
-    final trimmed = direction?.trim();
     final json = await _api.post(
       '/api/items/$id/mindmap',
       body: {
         'force': force,
-        if (trimmed != null && trimmed.isNotEmpty) 'direction': trimmed,
       },
       accessToken: token,
     );
@@ -437,15 +431,12 @@ class ItemsRepository {
   Future<CollectionItem> requestSummary(
     int id, {
     bool force = false,
-    String? direction,
   }) async {
     final token = await _token();
-    final trimmed = direction?.trim();
     final json = await _api.post(
       '/api/items/$id/summary',
       body: {
         'force': force,
-        if (trimmed != null && trimmed.isNotEmpty) 'direction': trimmed,
       },
       accessToken: token,
     );
