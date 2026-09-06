@@ -338,7 +338,7 @@ async function runSummaryJob(itemId) {
       console.warn(`[runSummaryJob] usage record failed item=${itemId}`, usageErr.message);
     }
     console.log(
-      `[runSummaryJob] ok item=${itemId} tokens=${modelUsage.totalTokens} cached=${modelUsage.cachedTokens || 0} ms=${Date.now() - started}`,
+      `[runSummaryJob] ok item=${itemId} billable=${usageService.billableAiTokensFromUsage(modelUsage)} total=${modelUsage.totalTokens} cached=${modelUsage.cachedTokens || 0} ms=${Date.now() - started}`,
     );
   } catch (err) {
     meta = aiMeta.withSummaryState(meta, {

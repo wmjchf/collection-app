@@ -358,7 +358,7 @@ async function runAiSuggestJob(itemId) {
         console.warn(`[runAiSuggestJob] usage record failed item=${itemId}`, usageErr.message);
       }
       console.log(
-        `[runAiSuggestJob] empty item=${itemId} tokens=${modelUsage.totalTokens} cached=${modelUsage.cachedTokens || 0} ms=${Date.now() - started}`,
+        `[runAiSuggestJob] empty item=${itemId} billable=${usageService.billableAiTokensFromUsage(modelUsage)} total=${modelUsage.totalTokens} cached=${modelUsage.cachedTokens || 0} ms=${Date.now() - started}`,
       );
       return;
     }
@@ -391,7 +391,7 @@ async function runAiSuggestJob(itemId) {
       console.warn(`[runAiSuggestJob] usage record failed item=${itemId}`, usageErr.message);
     }
     console.log(
-      `[runAiSuggestJob] ok item=${itemId} count=${items.length} tokens=${modelUsage.totalTokens} cached=${modelUsage.cachedTokens || 0} ms=${Date.now() - started}`,
+      `[runAiSuggestJob] ok item=${itemId} count=${items.length} billable=${usageService.billableAiTokensFromUsage(modelUsage)} total=${modelUsage.totalTokens} cached=${modelUsage.cachedTokens || 0} ms=${Date.now() - started}`,
     );
   } catch (err) {
     meta = aiMeta.withTagsState(meta, {

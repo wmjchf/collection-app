@@ -191,6 +191,24 @@ async function recordTranscriptUsage({
 }
 
 /**
+ * 用户侧可计费 token：未命中缓存的 prompt + 全部 completion（与百炼按量计费口径一致）。
+ * @param {{ promptTokens?: number, completionTokens?: number, cachedTokens?: number, totalTokens?: number } | null | undefined} usage
+ * @returns {number | null}
+ */
+function billableAiTokensFromUsage(usage) {
+  if (!usage || typeof usage !== 'object') return null;
+  const prompt = Number(usage.promptTokens);
+  const completion = Number(usage.completionTokens);
+  const cached = Number(usage.cachedTokens) || 0;
+  if (Number.isFinite(prompt) && Number.isFinite(completion)) {
+    return Math.max(0, Math.round(prompt - cached + completion));
+  }
+  const total = Number(usage.totalTokens);
+  if (Number.isFinite(total) && total > 0) return Math.round(total);
+  return null;
+}
+
+/**
  * AI 标签 / 思维导图共用 token 池。
  * @param {{ userId: number, itemId: number, feature: 'tags'|'mindmap'|'summary', tokens: number, generatedAt?: string, meta?: object }} args
  */
@@ -202,8 +220,9 @@ async function recordAiTokenUsage({
   generatedAt,
   meta = null,
 }) {
-  const tok = Math.round(Number(tokens));
-  if (!Number.isFinite(tok) || tok <= 0) {
+  const billable =
+    billableAiTokensFromUsage(meta) ?? Math.round(Number(tokens));
+  if (!Number.isFinite(billable) || billable <= 0) {
     console.warn(
       `[usage] ai skip no tokens item=${itemId} feature=${feature}`,
     );
@@ -220,12 +239,13 @@ async function recordAiTokenUsage({
     userId,
     itemId,
     kind: KIND_AI,
-    amount: tok,
+    amount: billable,
     unit: 'tokens',
     idempotencyKey: key,
     meta: {
       feature: feat,
       ...(meta && typeof meta === 'object' ? meta : {}),
+      billableTokens: billable,
     },
   });
 }
@@ -434,6 +454,7 @@ module.exports = {
   recordEvent,
   recordTranscriptUsage,
   recordAiTokenUsage,
+  billableAiTokensFromUsage,
   getUsageSummary,
   assertQuota,
   assertTranscriptQuota,
