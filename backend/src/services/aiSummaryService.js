@@ -6,7 +6,7 @@ const {
   hasAiInput,
   buildInputText,
   computeContentHash,
-  buildAiUserMessage,
+  buildAiTaskMessages,
 } = require('./aiInput');
 const {
   snapshotRegenerateFrom,
@@ -211,19 +211,11 @@ async function requestSummary(userId, itemId, { force = false } = {}) {
 
   const regenBlock = formatRegenerateUserBlock(regenerateFrom);
   const inputText = buildInputText(row);
-  const taskTail = [
-    '请按 system 要求提炼核心信息（不要复述原文），输出 JSON（仅 JSON，无其它文字）。',
+  const previewMessages = buildAiTaskMessages(inputText, [
+    SUMMARY_SYSTEM_PROMPT,
     regenBlock,
-  ]
-    .filter(Boolean)
-    .join('\n\n');
-  const previewMessages = [
-    { role: 'system', content: SUMMARY_SYSTEM_PROMPT },
-    {
-      role: 'user',
-      content: buildAiUserMessage(inputText, taskTail),
-    },
-  ];
+    '请按上述要求提炼核心信息（不要复述原文），输出 JSON（仅 JSON，无其它文字）。',
+  ]);
   await usageService.assertAiQuota(userId, {
     estimatedTokens: usageService.estimateAiTokens({
       messages: previewMessages,
@@ -283,18 +275,12 @@ async function runSummaryJob(itemId) {
     }
 
     const regenBlock = formatRegenerateUserBlock(meta.summary.regenerateFrom);
-    const taskTail = [
-      '请按 system 要求提炼核心信息（不要复述原文），输出 JSON（仅 JSON，无其它文字）。',
+    const messages = buildAiTaskMessages(inputText, [
+      SUMMARY_SYSTEM_PROMPT,
       regenBlock,
-    ]
-      .filter(Boolean)
-      .join('\n\n');
-    const userContent = buildAiUserMessage(inputText, taskTail);
+      '请按上述要求提炼核心信息（不要复述原文），输出 JSON（仅 JSON，无其它文字）。',
+    ]);
 
-    const messages = [
-      { role: 'system', content: SUMMARY_SYSTEM_PROMPT },
-      { role: 'user', content: userContent },
-    ];
     const usageService = require('./usageService');
     await usageService.assertAiQuota(row.user_id, {
       estimatedTokens: usageService.estimateAiTokens({

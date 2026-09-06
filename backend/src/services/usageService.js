@@ -1,5 +1,6 @@
 const { pool } = require('../db');
 const config = require('../config');
+const { messageContentLen } = require('./aiInput');
 const subscriptionService = require('./subscriptionService');
 const planService = require('./planService');
 
@@ -30,7 +31,7 @@ function isEnforcing() {
  */
 function estimateAiTokens({ messages = [], feature = 'tags', extraChars = 0 } = {}) {
   const chars =
-    messages.reduce((n, m) => n + String(m?.content || '').length, 0) +
+    messages.reduce((n, m) => n + messageContentLen(m?.content), 0) +
     Number(extraChars || 0);
   const promptEst = Math.ceil(Math.max(0, chars) / 2);
   const reserve =

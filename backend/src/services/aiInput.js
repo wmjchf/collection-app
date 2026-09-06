@@ -66,6 +66,56 @@ function buildAiUserMessage(inputText, taskTail) {
   return `${body}\n\n${tail}`;
 }
 
+function messageContentLen(content) {
+  if (typeof content === 'string') return content.length;
+  if (!Array.isArray(content)) return 0;
+  return content.reduce((n, part) => {
+    if (typeof part === 'string') return n + part.length;
+    if (part && typeof part === 'object') {
+      return n + String(part.text || part.content || '').length;
+    }
+    return n;
+  }, 0);
+}
+
+/**
+ * 百炼显式 Context Cache：正文放入带 cache_control 的 system 块（跨功能相同），
+ * 任务说明放 user（总结/标签/脑图各异）。5 分钟内同一篇文章后续功能可命中。
+ * @see https://help.aliyun.com/zh/model-studio/context-cache
+ */
+function buildExplicitCacheMessages(inputText, taskContent) {
+  const body = String(inputText || '').trim();
+  const task = String(taskContent || '').trim();
+  if (!body) {
+    return task ? [{ role: 'user', content: task }] : [];
+  }
+  const messages = [
+    {
+      role: 'system',
+      content: [
+        {
+          type: 'text',
+          text: body,
+          cache_control: { type: 'ephemeral' },
+        },
+      ],
+    },
+  ];
+  if (task) {
+    messages.push({ role: 'user', content: task });
+  }
+  return messages;
+}
+
+/** @param {string} inputText @param {Array<string | null | undefined>} taskParts */
+function buildAiTaskMessages(inputText, taskParts) {
+  const taskContent = (Array.isArray(taskParts) ? taskParts : [taskParts])
+    .map((p) => String(p || '').trim())
+    .filter(Boolean)
+    .join('\n\n');
+  return buildExplicitCacheMessages(inputText, taskContent);
+}
+
 module.exports = {
   CONTENT_LIMIT,
   TRANSCRIPT_LIMIT,
@@ -75,4 +125,7 @@ module.exports = {
   buildInputText,
   computeContentHash,
   buildAiUserMessage,
+  messageContentLen,
+  buildExplicitCacheMessages,
+  buildAiTaskMessages,
 };
