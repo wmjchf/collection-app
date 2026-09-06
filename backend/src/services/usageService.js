@@ -123,6 +123,36 @@ function durationSecFromCues(cues) {
   return maxMs > 0 ? maxMs / 1000 : null;
 }
 
+/** 记用量时快照收藏标题，硬删后列表仍可展示 */
+async function fetchItemTitleForUsage(itemId, userId) {
+  if (itemId == null || !userId) return null;
+  try {
+    const [rows] = await pool.execute(
+      `SELECT title FROM items
+       WHERE id = :itemId AND user_id = :userId
+       LIMIT 1`,
+      { itemId: Number(itemId), userId: Number(userId) },
+    );
+    const raw = rows[0]?.title;
+    if (raw == null) return null;
+    const title = String(raw).trim();
+    return title || null;
+  } catch {
+    return null;
+  }
+}
+
+function mergeUsageMeta(meta, itemTitle) {
+  const base =
+    meta && typeof meta === 'object' && !Array.isArray(meta)
+      ? { ...meta }
+      : {};
+  if (itemTitle && !base.itemTitle) {
+    base.itemTitle = itemTitle;
+  }
+  return Object.keys(base).length ? base : null;
+}
+
 /**
  * 写入一条用量；幂等键冲突则忽略（不抛错）
  */
@@ -139,6 +169,16 @@ async function recordEvent({
   if (!userId || !kind || !idempotencyKey) return { recorded: false };
   if (!Number.isFinite(amt) || amt <= 0) return { recorded: false };
 
+  let mergedMeta = meta;
+  if (itemId != null) {
+    const existing =
+      meta && typeof meta === 'object' && !Array.isArray(meta) ? meta : {};
+    if (!existing.itemTitle) {
+      const snap = await fetchItemTitleForUsage(itemId, userId);
+      mergedMeta = mergeUsageMeta(meta, snap);
+    }
+  }
+
   try {
     await pool.execute(
       `INSERT INTO usage_events
@@ -152,7 +192,7 @@ async function recordEvent({
         amount: amt,
         unit,
         idempotencyKey: String(idempotencyKey).slice(0, 160),
-        meta: meta == null ? null : JSON.stringify(meta),
+        meta: mergedMeta == null ? null : JSON.stringify(mergedMeta),
       },
     );
     return { recorded: true };
@@ -422,11 +462,18 @@ function mapUsageEventRow(row) {
   const amount = Number(row.amount) || 0;
   const unit = row.unit || '';
   const isAi = row.kind === KIND_AI;
+  const itemId = row.item_id != null ? Number(row.item_id) : null;
+  const liveTitle =
+    row.item_title != null ? String(row.item_title).trim() : '';
+  const snapTitle =
+    meta?.itemTitle != null ? String(meta.itemTitle).trim() : '';
+  const itemTitle = liveTitle || snapTitle || null;
+  const itemDeleted = itemId != null && row.item_live_id == null;
   return {
     id: Number(row.id),
-    itemId: row.item_id != null ? Number(row.item_id) : null,
-    itemTitle: row.item_title ? String(row.item_title) : null,
-    itemDeleted: !!row.item_deleted_at,
+    itemId,
+    itemTitle,
+    itemDeleted,
     kind: row.kind,
     amount,
     unit,
@@ -474,7 +521,7 @@ async function listUsageEvents(userId, { kind, limit = 50, offset = 0 } = {}) {
     ),
     pool.execute(
       `SELECT ue.id, ue.item_id, ue.kind, ue.amount, ue.unit, ue.meta, ue.created_at,
-              i.title AS item_title, i.deleted_at AS item_deleted_at
+              i.title AS item_title, i.id AS item_live_id
        FROM usage_events ue
        LEFT JOIN items i
          ON i.id = ue.item_id AND i.user_id = ue.user_id
