@@ -45,10 +45,10 @@ class ItemsRepository {
     return CollectionItem.fromJson(itemJson);
   }
 
-  Future<ItemUsageSnapshot> getItemUsage(int id) async {
+  Future<ItemAiEstimate> getItemUsage(int id) async {
     final token = await _token();
     final json = await _api.get('/api/items/$id/usage', accessToken: token);
-    return ItemUsageSnapshot.fromJson(json);
+    return ItemAiEstimate.fromJson(json);
   }
 
   Future<({List<SearchHit> items, int total, String query})> search(
