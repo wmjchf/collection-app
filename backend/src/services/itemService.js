@@ -875,7 +875,7 @@ async function beginTranscriptSegment(
 
   if (!aliyunAsr.isConfigured()) {
     throw Object.assign(
-      new Error('语音转写未配置：请设置 ALIYUN_NLS_APP_KEY'),
+      new Error('语音转写未配置：请设置 DASHSCOPE_API_KEY'),
       { status: 503 },
     );
   }
