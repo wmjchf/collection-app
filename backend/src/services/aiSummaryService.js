@@ -6,6 +6,7 @@ const {
   hasAiInput,
   buildInputText,
   computeContentHash,
+  buildAiUserMessage,
 } = require('./aiInput');
 const {
   snapshotRegenerateFrom,
@@ -209,14 +210,18 @@ async function requestSummary(userId, itemId, { force = false } = {}) {
   }
 
   const regenBlock = formatRegenerateUserBlock(regenerateFrom);
+  const inputText = buildInputText(row);
+  const taskTail = [
+    '请按 system 要求提炼核心信息（不要复述原文），输出 JSON（仅 JSON，无其它文字）。',
+    regenBlock,
+  ]
+    .filter(Boolean)
+    .join('\n\n');
   const previewMessages = [
     { role: 'system', content: SUMMARY_SYSTEM_PROMPT },
     {
       role: 'user',
-      content:
-        `请阅读以下内容，提炼核心信息（不要复述原文），按 system 要求输出 JSON（仅 JSON，无其它文字）：` +
-        `${regenBlock}\n\n` +
-        buildInputText(row),
+      content: buildAiUserMessage(inputText, taskTail),
     },
   ];
   await usageService.assertAiQuota(userId, {
@@ -277,10 +282,14 @@ async function runSummaryJob(itemId) {
       throw new Error('内容不足');
     }
 
-    let userContent =
-      '请阅读以下内容，提炼核心信息（不要复述原文），按 system 要求输出 JSON（仅 JSON，无其它文字）：';
-    userContent += formatRegenerateUserBlock(meta.summary.regenerateFrom);
-    userContent += `\n\n${inputText}`;
+    const regenBlock = formatRegenerateUserBlock(meta.summary.regenerateFrom);
+    const taskTail = [
+      '请按 system 要求提炼核心信息（不要复述原文），输出 JSON（仅 JSON，无其它文字）。',
+      regenBlock,
+    ]
+      .filter(Boolean)
+      .join('\n\n');
+    const userContent = buildAiUserMessage(inputText, taskTail);
 
     const messages = [
       { role: 'system', content: SUMMARY_SYSTEM_PROMPT },
@@ -329,7 +338,7 @@ async function runSummaryJob(itemId) {
       console.warn(`[runSummaryJob] usage record failed item=${itemId}`, usageErr.message);
     }
     console.log(
-      `[runSummaryJob] ok item=${itemId} tokens=${modelUsage.totalTokens} ms=${Date.now() - started}`,
+      `[runSummaryJob] ok item=${itemId} tokens=${modelUsage.totalTokens} cached=${modelUsage.cachedTokens || 0} ms=${Date.now() - started}`,
     );
   } catch (err) {
     meta = aiMeta.withSummaryState(meta, {

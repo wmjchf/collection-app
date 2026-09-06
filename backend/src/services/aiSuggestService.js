@@ -6,6 +6,7 @@ const transcriptSegments = require('./transcriptSegments');
 const {
   hasAiInput,
   buildInputText,
+  buildAiUserMessage,
 } = require('./aiInput');
 const {
   snapshotRegenerateFrom,
@@ -218,16 +219,20 @@ async function requestAiSuggest(userId, itemId, { force = false } = {}) {
   }
 
   const regenBlock = formatRegenerateUserBlock(regenerateFrom);
+  const inputText = buildInputText(row);
+  const taskTail = [
+    '请为以上内容建议标签。',
+    regenBlock,
+  ]
+    .filter(Boolean)
+    .join('\n\n');
   await usageService.assertAiQuota(userId, {
     estimatedTokens: usageService.estimateAiTokens({
       messages: [
         { role: 'system', content: TAGS_SYSTEM_PROMPT },
         {
           role: 'user',
-          content:
-            `请为以下内容建议标签：` +
-            `${regenBlock}\n\n` +
-            buildInputText(row),
+          content: buildAiUserMessage(inputText, taskTail),
         },
       ],
       feature: 'tags',
@@ -289,13 +294,16 @@ async function runAiSuggestJob(itemId) {
     const existingNames = userTags.map((t) => t.name).join('、') || '（无）';
     const currentNames = currentTagNames.join('、') || '（无）';
 
-    const userContentParts = [
+    const regenBlock = formatRegenerateUserBlock(meta.tags.regenerateFrom);
+    const taskTail = [
       `用户已有标签（可复用）：${existingNames}`,
       `本篇已打标签（请勿重复建议）：${currentNames}`,
-    ];
-    const regenBlock = formatRegenerateUserBlock(meta.tags.regenerateFrom);
-    if (regenBlock) userContentParts.push(regenBlock.trim());
-    userContentParts.push(`请为以下内容建议标签：\n\n${inputText}`);
+      '请为以上内容建议标签。',
+      regenBlock,
+    ]
+      .filter(Boolean)
+      .join('\n\n');
+    const userContent = buildAiUserMessage(inputText, taskTail);
 
     const messages = [
       {
@@ -304,7 +312,7 @@ async function runAiSuggestJob(itemId) {
       },
       {
         role: 'user',
-        content: userContentParts.join('\n'),
+        content: userContent,
       },
     ];
     const usageService = require('./usageService');
@@ -350,7 +358,7 @@ async function runAiSuggestJob(itemId) {
         console.warn(`[runAiSuggestJob] usage record failed item=${itemId}`, usageErr.message);
       }
       console.log(
-        `[runAiSuggestJob] empty item=${itemId} tokens=${modelUsage.totalTokens} ms=${Date.now() - started}`,
+        `[runAiSuggestJob] empty item=${itemId} tokens=${modelUsage.totalTokens} cached=${modelUsage.cachedTokens || 0} ms=${Date.now() - started}`,
       );
       return;
     }
@@ -383,7 +391,7 @@ async function runAiSuggestJob(itemId) {
       console.warn(`[runAiSuggestJob] usage record failed item=${itemId}`, usageErr.message);
     }
     console.log(
-      `[runAiSuggestJob] ok item=${itemId} count=${items.length} tokens=${modelUsage.totalTokens} ms=${Date.now() - started}`,
+      `[runAiSuggestJob] ok item=${itemId} count=${items.length} tokens=${modelUsage.totalTokens} cached=${modelUsage.cachedTokens || 0} ms=${Date.now() - started}`,
     );
   } catch (err) {
     meta = aiMeta.withTagsState(meta, {

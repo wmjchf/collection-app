@@ -55,6 +55,17 @@ function computeContentHash(row) {
     .slice(0, 24);
 }
 
+/**
+ * 百炼隐式缓存：稳定正文放前，任务/重新生成放后（Context Cache 文档建议）。
+ */
+function buildAiUserMessage(inputText, taskTail) {
+  const body = String(inputText || '').trim();
+  const tail = String(taskTail || '').trim();
+  if (!body) return tail;
+  if (!tail) return body;
+  return `${body}\n\n${tail}`;
+}
+
 module.exports = {
   CONTENT_LIMIT,
   TRANSCRIPT_LIMIT,
@@ -63,4 +74,5 @@ module.exports = {
   hasAiInput,
   buildInputText,
   computeContentHash,
+  buildAiUserMessage,
 };

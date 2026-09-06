@@ -6,7 +6,7 @@ function snapshotRegenerateFrom(meta, kind) {
   if (!meta || !kind) return null;
   if (kind === 'summary') {
     const text = meta.summary?.text?.trim();
-    return text ? { kind: 'summary', text: text.slice(0, 1500) } : null;
+    return text ? { kind: 'summary', text: text.slice(0, 600) } : null;
   }
   if (kind === 'mindmap') {
     const tree = meta.mindmap?.tree;
@@ -28,7 +28,7 @@ function normalizeRegenerateFrom(raw) {
   const kind = raw.kind;
   if (kind === 'summary') {
     const text = String(raw.text || '').trim();
-    return text ? { kind: 'summary', text: text.slice(0, 1500) } : null;
+    return text ? { kind: 'summary', text: text.slice(0, 600) } : null;
   }
   if (kind === 'mindmap') {
     const tree = raw.tree;
@@ -45,32 +45,38 @@ function normalizeRegenerateFrom(raw) {
   return null;
 }
 
+function mindmapOutline(tree) {
+  if (!tree || typeof tree !== 'object') return '';
+  const root = String(tree.title || '').trim();
+  if (!root) return '';
+  const l1 = (Array.isArray(tree.children) ? tree.children : [])
+    .map((c) => String(c?.title || '').trim())
+    .filter(Boolean)
+    .slice(0, 12);
+  if (!l1.length) return root;
+  return `${root}\n一级：${l1.join(' / ')}`;
+}
+
 function formatRegenerateUserBlock(from) {
   if (!from) return '';
   if (from.kind === 'summary') {
     return (
-      `\n\n【重新生成】用户对上一版总结不满意。请基于同一正文重新提炼核心：` +
-      `换表述或补漏，仍须精、不复述原文，禁止编造。\n上一版（勿照抄）：\n${from.text}`
+      `【重新生成】换表述或补漏，勿照抄上一版；仍须精、忠实正文。\n` +
+      `上一版：${from.text}`
     );
   }
   if (from.kind === 'mindmap') {
-    let preview;
-    try {
-      preview = JSON.stringify(from.tree);
-    } catch {
-      preview = String(from.tree?.title || '');
-    }
-    if (preview.length > 2200) preview = `${preview.slice(0, 2200)}…`;
+    const preview = mindmapOutline(from.tree);
+    if (!preview) return '';
     return (
-      `\n\n【重新生成】用户对上一版思维导图不满意。请换划分角度重组` +
-      `（尤其一级分支尽量与上一版不同），仍须忠实原文、遵守 JSON 树规则，禁止编造。\n` +
-      `上一版结构（勿照抄）：\n${preview}`
+      `【重新生成】换划分角度（一级分支尽量不同），勿照抄上一版；仍须忠实正文。\n` +
+      `上一版结构：${preview}`
     );
   }
   if (from.kind === 'tags') {
     return (
-      `\n\n【重新生成】用户对上一版标签不满意。请换角度建议 3～5 个标签，` +
-      `与上一版有明显差异，仍须贴合正文。\n上一版：${from.names.join('、')}`
+      `【重新生成】换角度建议标签，与上一版明显不同。\n` +
+      `上一版：${from.names.join('、')}`
     );
   }
   return '';
