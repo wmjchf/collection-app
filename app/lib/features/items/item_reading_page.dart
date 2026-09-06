@@ -20,6 +20,8 @@ import 'package:super_collection/features/items/article_content_blocks.dart';
 import 'package:super_collection/features/items/article_markdown.dart';
 import 'package:super_collection/features/items/item_image_gallery.dart';
 import 'package:super_collection/features/items/item_models.dart';
+import 'package:super_collection/features/items/item_reading_usage_line.dart';
+import 'package:super_collection/features/items/item_usage_models.dart';
 import 'package:super_collection/features/items/item_video_player.dart';
 import 'package:super_collection/features/items/items_repository.dart';
 import 'package:super_collection/features/items/reading_media_controller.dart';
@@ -80,6 +82,7 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
   bool _pageLoading = false;
   String? _pageError;
   bool _markedRead = false;
+  ItemUsageSnapshot? _itemUsage;
   late final DateTime _openedAt;
 
   @override
@@ -189,6 +192,7 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
   void _onItemReadyForReading(CollectionItem item) {
     _loadAnnotations();
     unawaited(_loadItemTags());
+    unawaited(_loadItemUsage());
     unawaited(ReadingMediaController.ensureAudioSession());
     if (item.hasAnyTranscriptPending && !item.isAiAwaitingTranscript) {
       _pollTranscript();
@@ -289,6 +293,16 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
     } on ApiException catch (e) {
       if (!mounted) return;
       AppToast.show(context, e.message);
+    }
+  }
+
+  Future<void> _loadItemUsage() async {
+    try {
+      final usage = await _repo.getItemUsage(widget.itemId);
+      if (!mounted) return;
+      setState(() => _itemUsage = usage);
+    } catch (_) {
+      // 非订阅用户或网络失败时不阻断阅读
     }
   }
 
@@ -532,6 +546,7 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
         _scrollToArticleEnd();
         if (st.summary.isSuccess) {
           AppToast.show(context, 'AI 总结已生成');
+          unawaited(_loadItemUsage());
         } else if (st.summary.isFailed) {
           AppToast.show(context, st.summary.error ?? 'AI 总结生成失败');
         }
@@ -837,6 +852,7 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
         final item = await _repo.getItem(_item.id);
         if (!mounted) return;
         setState(() => _item = item);
+        unawaited(_loadItemUsage());
         return;
       } catch (_) {
         // ignore poll errors
@@ -857,6 +873,7 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
     );
     if (!mounted) return;
     await _loadItemTags();
+    unawaited(_loadItemUsage());
   }
 
   Future<void> _onMindmap({bool force = false}) async {
@@ -966,6 +983,7 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
         _scrollToArticleEnd();
         if (st.mindmap.isSuccess) {
           AppToast.show(context, '思维导图已生成');
+          unawaited(_loadItemUsage());
         } else if (st.mindmap.isFailed) {
           AppToast.show(context, st.mindmap.error ?? '思维导图生成失败');
         }
@@ -1091,6 +1109,7 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
         final item = await _repo.getItem(_item.id);
         if (!mounted) return;
         setState(() => _item = item);
+        unawaited(_loadItemUsage());
         final anySuccess = st.segments.values.any((s) => s.isSuccess);
         if (anySuccess) {
           if (_item.shouldPromptAiSuggestAfterTranscript) {
@@ -1478,6 +1497,8 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
                     sourceTitle: title,
                     onRetry: () => _onMindmap(force: true),
                   ),
+                  if (_itemUsage != null)
+                    ItemReadingUsageLine(usage: _itemUsage!),
                   ],
                 ],
               ),
