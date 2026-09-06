@@ -369,7 +369,7 @@ async function runMindmapJob(itemId) {
       console.warn(`[runMindmapJob] usage record failed item=${itemId}`, usageErr.message);
     }
     console.log(
-      `[runMindmapJob] ok item=${itemId} tokens=${modelUsage.totalTokens} cached=${modelUsage.cachedTokens || 0} ms=${Date.now() - started}`,
+      `[runMindmapJob] ok item=${itemId} billable=${usageService.billableAiTokensFromUsage(modelUsage)} total=${modelUsage.totalTokens} cached=${modelUsage.cachedTokens || 0} ms=${Date.now() - started}`,
     );
   } catch (err) {
     meta = aiMeta.withMindmapState(meta, {
