@@ -25,6 +25,7 @@ class _UsageEventsPageState extends State<UsageEventsPage> with ScreenDwellMixin
   static const _bg = Color(0xFFF7F7FA);
   static const _text = Color(0xFF1F242E);
   static const _muted = Color(0xFF737A85);
+  static const _divider = Color(0xFFECEEF2);
 
   final _repo = UsageRepository();
   final _scroll = ScrollController();
@@ -146,7 +147,7 @@ class _UsageEventsPageState extends State<UsageEventsPage> with ScreenDwellMixin
   @override
   Widget build(BuildContext context) {
     final ym = _yearMonth.isNotEmpty ? _yearMonth : (widget.yearMonth ?? '');
-    final subtitle = ym.isEmpty ? '本月' : '本月（$ym）';
+    final sectionTitle = ym.isEmpty ? '本月' : '本月（$ym）';
 
     return Scaffold(
       backgroundColor: _bg,
@@ -192,89 +193,123 @@ class _UsageEventsPageState extends State<UsageEventsPage> with ScreenDwellMixin
                 )
               : RefreshIndicator(
                   onRefresh: () => _load(reset: true),
-                  child: _items.isEmpty
-                      ? ListView(
-                          physics: const AlwaysScrollableScrollPhysics(),
-                          padding: const EdgeInsets.fromLTRB(16, 20, 16, 40),
-                          children: [
-                            Padding(
-                              padding: const EdgeInsets.only(left: 4, bottom: 8),
-                              child: Text(
-                                subtitle,
-                                style: const TextStyle(
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w500,
-                                  color: _muted,
-                                ),
-                              ),
+                  child: CustomScrollView(
+                    controller: _scroll,
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    slivers: [
+                      SliverPadding(
+                        padding: const EdgeInsets.fromLTRB(16, 20, 16, 40),
+                        sliver: SliverList(
+                          delegate: SliverChildListDelegate([
+                            _SectionHeader(
+                              title: sectionTitle,
+                              count: _total,
                             ),
-                            const Padding(
-                              padding: EdgeInsets.only(top: 48),
-                              child: Center(
-                                child: Text(
-                                  '本月暂无记录',
-                                  style: TextStyle(
-                                    fontSize: 14,
-                                    color: _muted,
+                            const SizedBox(height: 8),
+                            if (_items.isEmpty)
+                              const Padding(
+                                padding: EdgeInsets.only(top: 48),
+                                child: Center(
+                                  child: Text(
+                                    '本月暂无记录',
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      color: _muted,
+                                    ),
                                   ),
                                 ),
+                              )
+                            else
+                              _CardGroup(
+                                children: [
+                                  for (var i = 0; i < _items.length; i++) ...[
+                                    if (i > 0)
+                                      const Divider(
+                                        height: 1,
+                                        indent: 16,
+                                        endIndent: 16,
+                                        color: _divider,
+                                      ),
+                                    _UsageEventRow(
+                                      event: _items[i],
+                                      timeLabel:
+                                          _fmtDateTime(_items[i].createdAt),
+                                      onTap: _items[i].canOpenItem
+                                          ? () => _openItem(_items[i])
+                                          : null,
+                                    ),
+                                  ],
+                                ],
                               ),
+                            pagedListFooter(
+                              loadingMore: _loadingMore,
+                              hasMore: _hasMore,
+                              isEmpty: _items.isEmpty,
                             ),
-                          ],
-                        )
-                      : ListView.builder(
-                          controller: _scroll,
-                          physics: const AlwaysScrollableScrollPhysics(),
-                          padding: const EdgeInsets.fromLTRB(16, 20, 16, 40),
-                          itemCount: _items.length + 2,
-                          itemBuilder: (context, index) {
-                            if (index == 0) {
-                              return Padding(
-                                padding: const EdgeInsets.only(
-                                  left: 4,
-                                  bottom: 8,
-                                ),
-                                child: Text(
-                                  subtitle,
-                                  style: const TextStyle(
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.w500,
-                                    color: _muted,
-                                  ),
-                                ),
-                              );
-                            }
-
-                            final itemIndex = index - 1;
-                            if (itemIndex >= _items.length) {
-                              return pagedListFooter(
-                                loadingMore: _loadingMore,
-                                hasMore: _hasMore,
-                                isEmpty: false,
-                              );
-                            }
-
-                            final event = _items[itemIndex];
-                            return Padding(
-                              padding: const EdgeInsets.only(bottom: 8),
-                              child: Container(
-                                decoration: BoxDecoration(
-                                  color: Colors.white,
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                                clipBehavior: Clip.antiAlias,
-                                child: _UsageEventRow(
-                                  event: event,
-                                  timeLabel: _fmtDateTime(event.createdAt),
-                                  onTap: event.canOpenItem
-                                      ? () => _openItem(event)
-                                      : null,
-                                ),
-                              ),
-                            );
-                          },
+                          ]),
                         ),
+                      ),
+                    ],
+                  ),
                 ),
+    );
+  }
+}
+
+class _SectionHeader extends StatelessWidget {
+  const _SectionHeader({
+    required this.title,
+    required this.count,
+  });
+
+  final String title;
+  final int count;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(left: 4),
+      child: Row(
+        children: [
+          Text(
+            title,
+            style: const TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w500,
+              color: Color(0xFF737A85),
+            ),
+          ),
+          if (count > 0) ...[
+            const Spacer(),
+            Text(
+              '共 $count 条',
+              style: const TextStyle(
+                fontSize: 12,
+                color: Color(0xFF737A85),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _CardGroup extends StatelessWidget {
+  const _CardGroup({required this.children});
+
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Column(children: children),
     );
   }
 }
@@ -290,14 +325,23 @@ class _UsageEventRow extends StatelessWidget {
   final String timeLabel;
   final VoidCallback? onTap;
 
+  static const _text = Color(0xFF1F242E);
+  static const _muted = Color(0xFF737A85);
+  static const _blue = Color(0xFF2F6FED);
+
   @override
   Widget build(BuildContext context) {
+    final mutedTitle = event.itemDeleted;
+    final meta = timeLabel.isEmpty
+        ? event.featureLabel
+        : '${event.featureLabel} · $timeLabel';
+
     return Material(
       color: Colors.white,
       child: InkWell(
         onTap: onTap,
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 14, 12, 14),
+          padding: EdgeInsets.fromLTRB(16, 14, onTap != null ? 12 : 16, 14),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -309,40 +353,43 @@ class _UsageEventRow extends StatelessWidget {
                       event.title,
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 15,
-                        color: Color(0xFF1F242E),
+                        fontWeight: FontWeight.w500,
+                        color: mutedTitle ? _muted : _text,
                         height: 1.35,
                       ),
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      '${event.featureLabel} · ${event.amountLabel}',
+                      meta,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
-                        fontSize: 13,
-                        color: Color(0xFF737A85),
+                        fontSize: 12,
+                        color: _muted,
+                        height: 1.3,
                       ),
                     ),
-                    if (timeLabel.isNotEmpty) ...[
-                      const SizedBox(height: 2),
-                      Text(
-                        timeLabel,
-                        style: const TextStyle(
-                          fontSize: 12,
-                          color: Color(0xFF737A85),
-                        ),
+                    const SizedBox(height: 6),
+                    Text(
+                      event.amountLabel,
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: event.isAi ? _blue : _text,
                       ),
-                    ],
+                    ),
                   ],
                 ),
               ),
               if (onTap != null)
                 const Padding(
-                  padding: EdgeInsets.only(top: 2, left: 4),
+                  padding: EdgeInsets.only(top: 2),
                   child: Icon(
                     Icons.chevron_right,
-                    size: 22,
-                    color: Color(0xFF737A85),
+                    size: 20,
+                    color: _muted,
                   ),
                 ),
             ],
