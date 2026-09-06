@@ -1314,7 +1314,8 @@ const HIT_LABELS = {
   title: '标题',
   content: '正文',
   summary: '摘要',
-  note: '备注',
+  note: '感想',
+  aiSummary: 'AI 解读',
   transcript: '文稿',
   url: '链接',
   platform: '来源',
@@ -1372,6 +1373,8 @@ function buildMatchedFields(row, query, platformAlias) {
   if (includes(row.content)) hits.push('content');
   if (includes(row.summary)) hits.push('summary');
   if (includes(row.note)) hits.push('note');
+  const aiSummaryText = aiMeta.parseAiMeta(row.ai_meta).summary?.text;
+  if (includes(aiSummaryText)) hits.push('aiSummary');
   const transcriptBlob = transcriptSegments.allTranscriptText(
     transcriptSegments.parseSegments(row.transcript_segments),
   );
@@ -1391,7 +1394,7 @@ function buildMatchedFields(row, query, platformAlias) {
 
 /**
  * 全局搜索（未删除条目）
- * 匹配：标题 / 正文 / 摘要 / 备注 / 文稿 / 链接 / 来源 / 标签名 / 标注原文与短注
+ * 匹配：标题 / 正文 / 摘要 / 感想 / AI 解读 / 文稿 / 链接 / 来源 / 标签名 / 标注原文与短注
  */
 async function searchItems(userId, rawQuery, { limit = 50, offset = 0 } = {}) {
   const query = String(rawQuery || '').trim();
@@ -1420,6 +1423,7 @@ async function searchItems(userId, rawQuery, { limit = 50, offset = 0 } = {}) {
       OR i.summary LIKE :like
       OR i.content LIKE :like
       OR i.note LIKE :like
+      OR JSON_UNQUOTE(JSON_EXTRACT(i.ai_meta, '$.summary.text')) LIKE :like
       OR CAST(i.transcript_segments AS CHAR) LIKE :like
       OR i.url LIKE :like
       OR i.canonical_url LIKE :like
