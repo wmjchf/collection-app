@@ -374,10 +374,10 @@ class _UsageEventRow extends StatelessWidget {
                     const SizedBox(height: 6),
                     Text(
                       event.amountLabel,
-                      style: TextStyle(
+                      style: const TextStyle(
                         fontSize: 14,
                         fontWeight: FontWeight.w600,
-                        color: event.isAi ? _blue : _text,
+                        color: _blue,
                       ),
                     ),
                   ],
