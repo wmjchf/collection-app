@@ -29,11 +29,13 @@ module.exports = {
     templateParam:
       process.env.ALIYUN_SMS_TEMPLATE_PARAM ||
       JSON.stringify({ code: '##code##', min: '5' }),
-    /** 智能语音交互 · 录音文件识别 AppKey（NLS 控制台项目） */
+    /** @deprecated 旧 NLS FileTrans，已迁移至百炼 Fun-ASR */
     nlsAppKey: process.env.ALIYUN_NLS_APP_KEY || '',
     nlsEndpoint:
       process.env.ALIYUN_NLS_ENDPOINT ||
       'http://filetrans.cn-shanghai.aliyuncs.com',
+    /** 百炼 Fun-ASR 录音文件识别模型 */
+    asrModel: process.env.ALIYUN_ASR_MODEL || 'fun-asr',
     /** 转写前托管防盗链 CDN（B 站等） */
     oss: {
       region: process.env.ALIYUN_OSS_REGION || '',
@@ -55,6 +57,8 @@ module.exports = {
     dashScopeBaseUrl:
       process.env.DASHSCOPE_BASE_URL ||
       'https://dashscope.aliyuncs.com/compatible-mode/v1',
+    /** 百炼 API 根（转写等非 compatible-mode 接口）；默认同域推导 */
+    dashScopeApiRoot: process.env.DASHSCOPE_API_ROOT || '',
     aiModel: process.env.ALIYUN_AI_MODEL || 'qwen3.8-max',
   },
   /**
