@@ -67,6 +67,9 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
     }
   }
 
+  String _tierDisplayName(String tier) =>
+      tier == UsagePlan.emperor ? '帝王Pro' : '太子Pro';
+
   @override
   String get dwellScreen => AnalyticsScreens.pro;
 
@@ -233,7 +236,7 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
       );
       if (!mounted) return;
       UsageRefresh.bump();
-      AppToast.show(context, '${UsagePlan.label(_selectedTier)} 已开通');
+      AppToast.show(context, '${_tierDisplayName(_selectedTier)} 已开通');
       Navigator.of(context).maybePop(true);
     } on ApiException catch (e) {
       if (!mounted) return;
@@ -332,7 +335,7 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
                 const _MembershipIntro(),
                 const SizedBox(height: 16),
                 _TierPlanCard(
-                  title: '太子',
+                  title: '太子Pro',
                   tagline: '智能整理：不限收藏，解锁 AI',
                   features: _princeFeatures(_quotas),
                   selected: _selectedTier == UsagePlan.prince,
@@ -340,8 +343,8 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
                 ),
                 const SizedBox(height: 10),
                 _TierPlanCard(
-                  title: '帝王',
-                  tagline: '深度加工：含太子，另解锁脑图与转写',
+                  title: '帝王Pro',
+                  tagline: '深度加工：含太子Pro，另解锁脑图与转写',
                   features: _emperorFeatures(_quotas),
                   selected: _selectedTier == UsagePlan.emperor,
                   onTap: () => _selectTier(UsagePlan.emperor),
@@ -403,7 +406,7 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
                   if (_selectedTierProductsReady) ..._planTiles()
                   else
                     _TierProductsSyncHint(
-                      tierLabel: UsagePlan.label(_selectedTier),
+                      tierLabel: _tierDisplayName(_selectedTier),
                       missingIds: _missingIdsForSelectedTier(),
                       onRetry: _busy ? null : _load,
                     ),
@@ -459,7 +462,7 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
 
   List<_PlanFeature> _emperorFeatures(PlanQuotasTable quotas) {
     return [
-      const _PlanFeature('含太子全部权益', included: true),
+      const _PlanFeature('含太子Pro全部权益', included: true),
       const _PlanFeature('AI 思维导图', included: true),
       const _PlanFeature('视频 / 音频转写', included: true),
       _PlanFeature(
@@ -578,7 +581,7 @@ class _TierProductsSyncHint extends StatelessWidget {
           const Text(
             'ASC 新建订阅后，沙盒通常需数小时才能查到。'
             '请确认商品已「准备提交」、id 与后端一致，稍后点重试；'
-            '太子档不受影响，可先订阅太子。',
+            '太子Pro档不受影响，可先订阅太子Pro。',
             style: TextStyle(fontSize: 13, color: _muted, height: 1.45),
           ),
           if (missingIds.isNotEmpty) ...[
