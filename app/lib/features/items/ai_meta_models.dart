@@ -56,6 +56,7 @@ class AiMindmapMeta {
     this.error,
     this.generatedAt,
     this.awaitTranscript = false,
+    this.creditsUsed,
   });
 
   final String status;
@@ -64,6 +65,7 @@ class AiMindmapMeta {
   final String? error;
   final DateTime? generatedAt;
   final bool awaitTranscript;
+  final int? creditsUsed;
 
   bool get isPending => status == 'pending';
   bool get isSuccess => status == 'success';
@@ -89,6 +91,7 @@ class AiMindmapMeta {
       error: json['error'] as String?,
       generatedAt: AiTagsMeta._parseTime(json['generatedAt']),
       awaitTranscript: json['awaitTranscript'] == true,
+      creditsUsed: (json['creditsUsed'] as num?)?.toInt(),
     );
   }
 }
@@ -100,6 +103,7 @@ class AiTagsMeta {
     this.error,
     this.generatedAt,
     this.awaitTranscript = false,
+    this.creditsUsed,
   });
 
   final String status;
@@ -107,6 +111,7 @@ class AiTagsMeta {
   final String? error;
   final DateTime? generatedAt;
   final bool awaitTranscript;
+  final int? creditsUsed;
 
   bool get isPending => status == 'pending';
   bool get isSuccess => status == 'success';
@@ -135,6 +140,7 @@ class AiTagsMeta {
       error: json['error'] as String?,
       generatedAt: _parseTime(json['generatedAt']),
       awaitTranscript: json['awaitTranscript'] == true,
+      creditsUsed: (json['creditsUsed'] as num?)?.toInt(),
     );
   }
 
@@ -154,6 +160,7 @@ class AiSummaryMeta {
     this.error,
     this.generatedAt,
     this.awaitTranscript = false,
+    this.creditsUsed,
   });
 
   final String status;
@@ -162,6 +169,7 @@ class AiSummaryMeta {
   final String? error;
   final DateTime? generatedAt;
   final bool awaitTranscript;
+  final int? creditsUsed;
 
   bool get isPending => status == 'pending';
   bool get isSuccess => status == 'success';
@@ -183,6 +191,7 @@ class AiSummaryMeta {
       error: json['error'] as String?,
       generatedAt: AiTagsMeta._parseTime(json['generatedAt']),
       awaitTranscript: json['awaitTranscript'] == true,
+      creditsUsed: (json['creditsUsed'] as num?)?.toInt(),
     );
   }
 }

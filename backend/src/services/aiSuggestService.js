@@ -312,6 +312,7 @@ async function runAiSuggestJob(itemId) {
     const items = matchSuggestedTags(rawTags, userTags, currentTagNames);
     if (!items.length) {
       const generatedAt = new Date().toISOString();
+      const creditsUsed = usageService.creditsFromModelUsage(modelUsage);
       meta = aiMeta.withTagsState(meta, {
         status: 'empty',
         awaitTranscript: false,
@@ -319,6 +320,7 @@ async function runAiSuggestJob(itemId) {
         error: null,
         generatedAt,
         regenerateFrom: null,
+        creditsUsed: creditsUsed || null,
       });
       await saveAiMeta(itemId, meta);
       require('./analyticsService').trackAiJobOutcome(row, 'tags', {
@@ -345,6 +347,7 @@ async function runAiSuggestJob(itemId) {
     }
 
     const generatedAt = new Date().toISOString();
+    const creditsUsed = usageService.creditsFromModelUsage(modelUsage);
     meta = aiMeta.withTagsState(meta, {
       status: 'success',
       awaitTranscript: false,
@@ -352,6 +355,7 @@ async function runAiSuggestJob(itemId) {
       error: null,
       generatedAt,
       regenerateFrom: null,
+      creditsUsed: creditsUsed || null,
     });
     await saveAiMeta(itemId, meta);
     require('./analyticsService').trackAiJobOutcome(row, 'tags', {

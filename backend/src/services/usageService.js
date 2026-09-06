@@ -386,83 +386,11 @@ function tokensToCredits(tokens) {
   return Math.floor(t / 100);
 }
 
-/**
- * 粗估本篇 AI 全套积分。默认按显式 Context Cache：首次含正文，后续仅任务尾。
- * @param {object} row items 表行
- * @param {{ includeMindmap?: boolean }} [opts]
- * @returns {{ tokens: number, credits: number, cacheApplicable: boolean } | null}
- */
-function estimateItemAiCredits(row, { includeMindmap = true } = {}) {
-  const {
-    hasAiInput,
-    buildInputText,
-    buildAiTaskMessages,
-  } = require('./aiInput');
-  if (!row || !hasAiInput(row)) return null;
-  const inputText = buildInputText(row);
-  const bodyTokens = Math.ceil(String(inputText).length / 2);
-  const cacheApplicable = bodyTokens >= 1024;
-
-  const specs = [
-    ['summary', '请输出 JSON 总结。'],
-    ['tags', '请为以上内容建议标签。'],
-  ];
-  if (includeMindmap) {
-    specs.push(['mindmap', '请输出思维导图 JSON。']);
-  }
-
-  let tokensNoCache = 0;
-  let tokensWithCache = 0;
-  let first = true;
-  for (const [feature, taskTail] of specs) {
-    const full = estimateAiTokens({
-      messages: buildAiTaskMessages(inputText, [taskTail]),
-      feature,
-    });
-    const afterCache = estimateAiTokens({
-      messages: [{ role: 'user', content: taskTail }],
-      feature,
-    });
-    tokensNoCache += full;
-    tokensWithCache += first || !cacheApplicable ? full : afterCache;
-    first = false;
-  }
-
-  const tokens = cacheApplicable ? tokensWithCache : tokensNoCache;
-  return {
-    tokens,
-    credits: tokensToCredits(tokens),
-    cacheApplicable,
-  };
-}
-
-/** @deprecated 使用 estimateItemAiCredits */
-function estimateItemAiUsage(row) {
-  const est = estimateItemAiCredits(row);
-  if (!est) return null;
-  return { fullStack: est };
-}
-
-/**
- * 阅读页：仅返回本篇 AI 预估积分（单次全套，偏保守）。
- */
-async function getItemUsageForReading(userId, itemId, row) {
-  const { plan } = await subscriptionService.getPlanForUser(userId);
-  const normalizedPlan = planService.normalizePlan(plan);
-  const show =
-    planService.hasPrince(normalizedPlan) ||
-    planService.hasEmperor(normalizedPlan);
-
-  const includeMindmap = planService.hasEmperor(normalizedPlan);
-  const est =
-    show && row ? estimateItemAiCredits(row, { includeMindmap }) : null;
-
-  return {
-    show,
-    estimateCredits: est?.credits ?? 0,
-    estimateTokens: est?.tokens ?? 0,
-    cacheApplicable: est?.cacheApplicable ?? false,
-  };
+/** 模型 usage → 用户可见积分（100 token = 1 积分） */
+function creditsFromModelUsage(usage) {
+  const billable = billableAiTokensFromUsage(usage);
+  if (billable == null || billable <= 0) return 0;
+  return tokensToCredits(billable);
 }
 
 /**
@@ -542,9 +470,7 @@ module.exports = {
   recordAiTokenUsage,
   billableAiTokensFromUsage,
   tokensToCredits,
-  estimateItemAiCredits,
-  estimateItemAiUsage,
-  getItemUsageForReading,
+  creditsFromModelUsage,
   getUsageSummary,
   assertQuota,
   assertTranscriptQuota,

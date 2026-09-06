@@ -324,6 +324,7 @@ async function runMindmapJob(itemId) {
 
     const contentHash = computeContentHash(row);
     const generatedAt = new Date().toISOString();
+    const creditsUsed = usageService.creditsFromModelUsage(modelUsage);
     meta = aiMeta.withMindmapState(meta, {
       status: 'success',
       awaitTranscript: false,
@@ -332,6 +333,7 @@ async function runMindmapJob(itemId) {
       error: null,
       generatedAt,
       regenerateFrom: null,
+      creditsUsed: creditsUsed || null,
     });
     await saveAiMeta(itemId, meta);
     require('./analyticsService').trackAiJobOutcome(row, 'mindmap', { ok: true });

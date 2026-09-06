@@ -5,6 +5,7 @@ const DEFAULT_TAGS = {
   generatedAt: null,
   awaitTranscript: false,
   regenerateFrom: null,
+  creditsUsed: null,
 };
 
 const DEFAULT_MINDMAP = {
@@ -15,6 +16,7 @@ const DEFAULT_MINDMAP = {
   generatedAt: null,
   awaitTranscript: false,
   regenerateFrom: null,
+  creditsUsed: null,
 };
 
 const DEFAULT_SUMMARY = {
@@ -25,6 +27,7 @@ const DEFAULT_SUMMARY = {
   generatedAt: null,
   awaitTranscript: false,
   regenerateFrom: null,
+  creditsUsed: null,
 };
 
 const {
@@ -50,6 +53,12 @@ function normalizeMindmapTree(raw) {
         .filter(Boolean)
     : [];
   return { title, children };
+}
+
+function parseCreditsUsed(raw) {
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  return Math.round(n);
 }
 
 function defaultAiMeta() {
@@ -94,6 +103,7 @@ function parseAiMeta(raw) {
       generatedAt: tags.generatedAt || null,
       awaitTranscript: tags.awaitTranscript === true,
       regenerateFrom: normalizeRegenerateFrom(tags.regenerateFrom),
+      creditsUsed: parseCreditsUsed(tags.creditsUsed),
     },
     mindmap: {
       status: mindmap.status || 'none',
@@ -103,6 +113,7 @@ function parseAiMeta(raw) {
       generatedAt: mindmap.generatedAt || null,
       awaitTranscript: mindmap.awaitTranscript === true,
       regenerateFrom: normalizeRegenerateFrom(mindmap.regenerateFrom),
+      creditsUsed: parseCreditsUsed(mindmap.creditsUsed),
     },
     summary: {
       status: summary.status || 'none',
@@ -113,6 +124,7 @@ function parseAiMeta(raw) {
       generatedAt: summary.generatedAt || null,
       awaitTranscript: summary.awaitTranscript === true,
       regenerateFrom: normalizeRegenerateFrom(summary.regenerateFrom),
+      creditsUsed: parseCreditsUsed(summary.creditsUsed),
     },
     model: obj.model != null ? String(obj.model) : null,
   };
@@ -130,6 +142,7 @@ function mapAiMetaForApi(meta) {
       error: m.tags.error,
       generatedAt: m.tags.generatedAt,
       awaitTranscript: m.tags.awaitTranscript,
+      creditsUsed: m.tags.creditsUsed,
     },
     mindmap: {
       status: m.mindmap.status,
@@ -138,6 +151,7 @@ function mapAiMetaForApi(meta) {
       error: m.mindmap.error,
       generatedAt: m.mindmap.generatedAt,
       awaitTranscript: m.mindmap.awaitTranscript,
+      creditsUsed: m.mindmap.creditsUsed,
     },
     summary: {
       status: m.summary.status,
@@ -146,6 +160,7 @@ function mapAiMetaForApi(meta) {
       error: m.summary.error,
       generatedAt: m.summary.generatedAt,
       awaitTranscript: m.summary.awaitTranscript,
+      creditsUsed: m.summary.creditsUsed,
     },
     model: m.model,
   };

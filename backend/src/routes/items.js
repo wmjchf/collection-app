@@ -77,19 +77,6 @@ router.get('/needs-client-fetch', async (req, res, next) => {
   }
 });
 
-/** GET /api/items/:id/usage — 本篇 AI 预估积分（阅读页） */
-router.get('/:id/usage', async (req, res, next) => {
-  try {
-    const usage = await itemService.getItemUsageForUser(
-      req.auth.userId,
-      Number(req.params.id),
-    );
-    return res.json(usage);
-  } catch (err) {
-    return next(err);
-  }
-});
-
 /** GET /api/items/:id — 详情（含最近删除中的条目） */
 router.get('/:id', async (req, res, next) => {
   try {

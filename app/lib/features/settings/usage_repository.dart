@@ -292,6 +292,13 @@ int tokensToCredits(int tokens) {
 
 String formatAiCredits(int tokens) => '${tokensToCredits(tokens)}';
 
+String aiDoneToast(String headline, int? creditsUsed) {
+  if (creditsUsed != null && creditsUsed > 0) {
+    return '$headline，消耗 $creditsUsed 积分';
+  }
+  return headline;
+}
+
 class PlanQuota {
   const PlanQuota({
     required this.transcriptMinutes,

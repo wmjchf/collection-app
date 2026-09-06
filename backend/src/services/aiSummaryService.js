@@ -300,6 +300,7 @@ async function runSummaryJob(itemId) {
 
     const contentHash = computeContentHash(row);
     const generatedAt = new Date().toISOString();
+    const creditsUsed = usageService.creditsFromModelUsage(modelUsage);
     meta = aiMeta.withSummaryState(meta, {
       status: 'success',
       awaitTranscript: false,
@@ -308,6 +309,7 @@ async function runSummaryJob(itemId) {
       error: null,
       generatedAt,
       regenerateFrom: null,
+      creditsUsed: creditsUsed || null,
     });
     await saveAiMeta(itemId, meta);
     require('./analyticsService').trackAiJobOutcome(row, 'summary', { ok: true });
