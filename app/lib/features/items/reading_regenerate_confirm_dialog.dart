@@ -154,7 +154,6 @@ class _RegenerateWithDirectionSheetState
               maxLength: 200,
               maxLines: 3,
               minLines: 2,
-              autofocus: true,
               textInputAction: TextInputAction.done,
               style: const TextStyle(fontSize: 15, color: _text),
               onSubmitted: (_) => _confirm(),
