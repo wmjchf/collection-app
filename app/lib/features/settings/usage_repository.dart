@@ -210,6 +210,19 @@ class UsageRepository {
     return UsageSummary.fromJson(json);
   }
 
+  Future<UsageEventList> fetchUsageEvents({
+    required String kind,
+    int limit = 50,
+    int offset = 0,
+  }) async {
+    final token = await _token();
+    final json = await _api.get(
+      '/api/usage/events?kind=$kind&limit=$limit&offset=$offset',
+      accessToken: token,
+    );
+    return UsageEventList.fromJson(json);
+  }
+
   Future<BillingProductsConfig> fetchBillingProducts() async {
     final token = await _token();
     try {
@@ -297,6 +310,116 @@ String aiDoneToast(String headline, int? creditsUsed) {
     return '$headline，消耗 $creditsUsed 积分';
   }
   return headline;
+}
+
+class UsageEvent {
+  const UsageEvent({
+    required this.id,
+    this.itemId,
+    this.itemTitle,
+    this.itemDeleted = false,
+    required this.kind,
+    required this.amount,
+    required this.unit,
+    this.feature,
+    required this.featureLabel,
+    required this.displayAmount,
+    required this.displayUnit,
+    this.createdAt,
+  });
+
+  final int id;
+  final int? itemId;
+  final String? itemTitle;
+  final bool itemDeleted;
+  final String kind;
+  final double amount;
+  final String unit;
+  final String? feature;
+  final String featureLabel;
+  final num displayAmount;
+  final String displayUnit;
+  final DateTime? createdAt;
+
+  bool get isAi => kind == 'ai';
+  bool get canOpenItem => itemId != null && !itemDeleted;
+
+  String get title {
+    final t = itemTitle?.trim();
+    if (t != null && t.isNotEmpty) return t;
+    if (itemDeleted) return '已删除的收藏';
+    return '未知条目';
+  }
+
+  String get amountLabel {
+    if (displayUnit == 'credits') {
+      final n = displayAmount is int
+          ? displayAmount
+          : (displayAmount as num).round();
+      return '$n 积分';
+    }
+    final m = displayAmount;
+    if (m == m.roundToDouble()) return '${m.toInt()} 分钟';
+    return '${m.toStringAsFixed(1)} 分钟';
+  }
+
+  factory UsageEvent.fromJson(Map<String, dynamic> json) {
+    final createdRaw = json['createdAt'];
+    DateTime? createdAt;
+    if (createdRaw is String && createdRaw.isNotEmpty) {
+      createdAt = DateTime.tryParse(createdRaw);
+    }
+    return UsageEvent(
+      id: (json['id'] as num?)?.toInt() ?? 0,
+      itemId: (json['itemId'] as num?)?.toInt(),
+      itemTitle: json['itemTitle'] as String?,
+      itemDeleted: json['itemDeleted'] == true,
+      kind: json['kind'] as String? ?? '',
+      amount: (json['amount'] as num?)?.toDouble() ?? 0,
+      unit: json['unit'] as String? ?? '',
+      feature: json['feature'] as String?,
+      featureLabel: json['featureLabel'] as String? ?? '',
+      displayAmount: json['displayAmount'] as num? ?? 0,
+      displayUnit: json['displayUnit'] as String? ?? '',
+      createdAt: createdAt,
+    );
+  }
+}
+
+class UsageEventList {
+  const UsageEventList({
+    required this.yearMonth,
+    required this.kind,
+    required this.total,
+    required this.items,
+  });
+
+  final String yearMonth;
+  final String kind;
+  final int total;
+  final List<UsageEvent> items;
+
+  factory UsageEventList.fromJson(Map<String, dynamic> json) {
+    final raw = json['items'];
+    final items = <UsageEvent>[];
+    if (raw is List) {
+      for (final e in raw) {
+        if (e is Map<String, dynamic>) {
+          items.add(UsageEvent.fromJson(e));
+        } else if (e is Map) {
+          items.add(UsageEvent.fromJson(
+            e.map((k, v) => MapEntry(k.toString(), v)),
+          ));
+        }
+      }
+    }
+    return UsageEventList(
+      yearMonth: json['yearMonth'] as String? ?? '',
+      kind: json['kind'] as String? ?? '',
+      total: (json['total'] as num?)?.toInt() ?? items.length,
+      items: items,
+    );
+  }
 }
 
 class PlanQuota {

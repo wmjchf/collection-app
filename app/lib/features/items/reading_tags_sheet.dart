@@ -8,7 +8,6 @@ import 'package:super_collection/features/collection/tag_models.dart';
 import 'package:super_collection/features/collection/tags_repository.dart';
 import 'package:super_collection/features/items/ai_meta_models.dart';
 import 'package:super_collection/features/items/items_repository.dart';
-import 'package:super_collection/features/items/reading_regenerate_confirm_dialog.dart';
 import 'package:super_collection/core/ui/app_toast.dart';
 import 'package:super_collection/features/settings/quota_gate.dart';
 
@@ -162,11 +161,6 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
     if (_tagsMeta.isPending) return;
 
     if (force || (_tagsMeta.isSuccess && _tagsMeta.hasSuggestions)) {
-      final ok = await showReadingRegenerateConfirmDialog(
-        context,
-        ReadingRegenerateKind.tags,
-      );
-      if (ok != true || !mounted) return;
       force = true;
     }
 

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 /// 全 App 统一底部悬浮 Toast（对齐 Figma 公共 Toast）
@@ -6,6 +8,9 @@ class AppToast {
 
   static const _bg = Color(0xFF1F242E);
   static const _fg = Colors.white;
+
+  static OverlayEntry? _entry;
+  static Timer? _hideTimer;
 
   /// 普通提示；[loading] 为 true 时显示转圈，并默认常驻直到 [hide]。
   static void show(
@@ -16,10 +21,69 @@ class AppToast {
     String? actionLabel,
     VoidCallback? onAction,
   }) {
+    hide(context);
+
+    final overlay = Overlay.maybeOf(context, rootOverlay: true);
+    if (overlay == null) {
+      _showSnackBarFallback(
+        context,
+        message,
+        loading: loading,
+        duration: duration,
+        actionLabel: actionLabel,
+        onAction: onAction,
+      );
+      return;
+    }
+
+    final resolvedDuration = duration ??
+        (loading ? const Duration(days: 1) : const Duration(seconds: 2));
+
+    _entry = OverlayEntry(
+      builder: (ctx) {
+        final bottom = MediaQuery.paddingOf(ctx).bottom;
+        return Stack(
+          children: [
+            Positioned(
+              left: 24,
+              right: 24,
+              bottom: 16 + bottom,
+              child: Center(
+                child: _ToastPill(
+                  message: message,
+                  loading: loading,
+                  actionLabel: actionLabel,
+                  onAction: onAction == null
+                      ? null
+                      : () {
+                          hide(context);
+                          onAction();
+                        },
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+    overlay.insert(_entry!);
+
+    if (!loading) {
+      _hideTimer = Timer(resolvedDuration, () => hide(context));
+    }
+  }
+
+  static void _showSnackBarFallback(
+    BuildContext context,
+    String message, {
+    required bool loading,
+    Duration? duration,
+    String? actionLabel,
+    VoidCallback? onAction,
+  }) {
     final messenger = ScaffoldMessenger.maybeOf(context);
     if (messenger == null) return;
 
-    messenger.hideCurrentSnackBar();
     final bottom = MediaQuery.paddingOf(context).bottom;
     messenger.showSnackBar(
       SnackBar(
@@ -54,6 +118,10 @@ class AppToast {
   }
 
   static void hide(BuildContext context) {
+    _hideTimer?.cancel();
+    _hideTimer = null;
+    _entry?.remove();
+    _entry = null;
     ScaffoldMessenger.maybeOf(context)?.hideCurrentSnackBar();
   }
 }
