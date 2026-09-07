@@ -3,5 +3,5 @@ abstract final class AppBrand {
   static const name = '奏折';
   static const proName = '奏折 Pro';
   static const shortcutInstallName = '保存链接到奏折';
-  static const mindmapShareLine = '奏折不再吃灰的收藏夹';
+  static const mindmapShareLine = '奏折——收藏以致用';
 }
