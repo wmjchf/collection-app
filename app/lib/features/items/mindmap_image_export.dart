@@ -8,8 +8,7 @@ import 'package:super_collection/core/config/app_brand.dart';
 import 'package:super_collection/features/items/ai_meta_models.dart';
 import 'package:super_collection/features/items/mindmap_render.dart';
 
-/// 分享 PNG 页脚品牌行；平铺水印仅用短名 [_shareBrandShort]。
-const _shareBrandShort = AppBrand.name;
+/// 分享 PNG 页脚与平铺水印共用 [AppBrand.mindmapShareLine]。
 const _shareBrandLine = AppBrand.mindmapShareLine;
 
 /// 微信等对体积/尺寸敏感：长边与文件大小上限。
@@ -141,11 +140,11 @@ Future<Uint8List> renderMindmapPngBytesForShare({
 
 /// 脑图区域斜向平铺半透明品牌水印（不遮挡阅读）。
 void _paintBrandWatermark(Canvas canvas, Size size) {
-  const text = _shareBrandShort;
+  const text = _shareBrandLine;
   const style = TextStyle(
-    fontSize: 24,
+    fontSize: 20,
     fontWeight: FontWeight.w600,
-    letterSpacing: 2,
+    letterSpacing: 1,
     color: Color(0x0D1F242E),
   );
 
@@ -159,7 +158,7 @@ void _paintBrandWatermark(Canvas canvas, Size size) {
     textDirection: TextDirection.ltr,
   )..layout();
 
-  const stepX = 260.0;
+  const stepX = 360.0;
   const stepY = 168.0;
   final spanW = size.width + size.height;
   final spanH = size.height + size.width;

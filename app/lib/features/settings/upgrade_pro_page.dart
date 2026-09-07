@@ -49,7 +49,7 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
   AppleIapPhase? _phase;
   bool _restoreFlow = false;
   String? _error;
-  String? _selectedId;
+  bool _yearlyBilling = false;
 
   bool get _isIos => !kIsWeb && Platform.isIOS;
   bool get _busy => _phase != null;
@@ -115,7 +115,6 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
       if (!mounted) return;
       setState(() {
         _products = result.products;
-        _selectedId = _defaultProductId(result.products);
         _productsLoading = false;
         _error = null;
       });
@@ -147,47 +146,49 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
         : billing.prince;
   }
 
-  String? _defaultProductId(Map<String, ProductDetails> map) {
-    final ids = _tierIds;
-    if (map.containsKey(ids.monthly)) return ids.monthly;
-    if (map.containsKey(ids.yearly)) return ids.yearly;
-    for (final p in map.values) {
-      final id = p.id.toLowerCase();
-      final tier = _selectedTier;
-      if (tier == UsagePlan.emperor && id.contains('emperor')) {
-        if (id.contains('month')) return p.id;
-      }
-      if (tier == UsagePlan.prince &&
-          !id.contains('emperor') &&
-          id.contains('month')) {
-        return p.id;
-      }
+  ProductDetails? get _selected => _productForTier(_selectedTier);
+
+  TierProductIds _idsForTier(String tier) {
+    final billing = _billing;
+    if (billing == null) {
+      return tier == UsagePlan.emperor
+          ? const TierProductIds(
+              monthly: IapProductIds.emperorMonthly,
+              yearly: IapProductIds.emperorYearly,
+            )
+          : const TierProductIds(
+              monthly: IapProductIds.princeMonthly,
+              yearly: IapProductIds.princeYearly,
+            );
     }
-    for (final p in map.values) {
+    return tier == UsagePlan.emperor ? billing.emperor : billing.prince;
+  }
+
+  ProductDetails? _productForTier(String tier) {
+    final ids = _idsForTier(tier);
+    final preferred = _yearlyBilling ? ids.yearly : ids.monthly;
+    final direct = _products[preferred];
+    if (direct != null) return direct;
+
+    for (final p in _products.values) {
       final id = p.id.toLowerCase();
-      final tier = _selectedTier;
-      if (tier == UsagePlan.emperor && id.contains('emperor')) {
-        if (id.contains('year')) return p.id;
-      }
-      if (tier == UsagePlan.prince &&
-          !id.contains('emperor') &&
-          id.contains('year')) {
-        return p.id;
-      }
+      final isEmperor = id.contains('emperor');
+      if (tier == UsagePlan.prince && isEmperor) continue;
+      if (tier == UsagePlan.emperor && !isEmperor) continue;
+      final isYear = _isYearlyProduct(p);
+      if (_yearlyBilling == isYear) return p;
     }
     return null;
   }
 
-  ProductDetails? get _selected {
-    final tierProducts = _productsForSelectedTier();
-    if (tierProducts.isEmpty) return null;
-    final id = _selectedId;
-    if (id != null) {
-      for (final p in tierProducts) {
-        if (p.id == id) return p;
-      }
-    }
-    return tierProducts.first;
+  String? _priceLabelForTier(String tier) {
+    final p = _productForTier(tier);
+    if (p == null) return null;
+    return _yearlyBilling ? '${p.price}/年' : '${p.price}/月';
+  }
+
+  void _setBillingPeriod(bool yearly) {
+    setState(() => _yearlyBilling = yearly);
   }
 
   List<String> _missingIdsForSelectedTier() {
@@ -197,7 +198,8 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
         .toList();
   }
 
-  bool get _selectedTierProductsReady => _productsForSelectedTier().isNotEmpty;
+  bool get _selectedTierProductsReady =>
+      _productForTier(_selectedTier) != null;
 
   bool _isYearlyProduct(ProductDetails? p) {
     if (p == null) return false;
@@ -334,9 +336,28 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
               children: [
                 const _MembershipIntro(),
                 const SizedBox(height: 16),
+                if (_isIos)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: Row(
+                      children: [
+                        const Spacer(),
+                        _BillingPeriodToggle(
+                          yearly: _yearlyBilling,
+                          enabled: !_busy &&
+                              !_productsLoading &&
+                              _error == null,
+                          onChanged: _setBillingPeriod,
+                        ),
+                      ],
+                    ),
+                  ),
                 _TierPlanCard(
                   title: '太子Pro',
                   tagline: '智能整理：不限收藏，解锁 AI',
+                  priceLabel: _isIos && !_productsLoading && _error == null
+                      ? _priceLabelForTier(UsagePlan.prince)
+                      : null,
                   features: _princeFeatures(_quotas),
                   selected: _selectedTier == UsagePlan.prince,
                   onTap: () => _selectTier(UsagePlan.prince),
@@ -345,6 +366,9 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
                 _TierPlanCard(
                   title: '帝王Pro',
                   tagline: '深度加工：含太子Pro，另解锁脑图与转写',
+                  priceLabel: _isIos && !_productsLoading && _error == null
+                      ? _priceLabelForTier(UsagePlan.emperor)
+                      : null,
                   features: _emperorFeatures(_quotas),
                   selected: _selectedTier == UsagePlan.emperor,
                   onTap: () => _selectTier(UsagePlan.emperor),
@@ -389,27 +413,13 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
                     onPressed: _busy ? null : _load,
                     child: const Text('重试'),
                   ),
-                ] else ...[
-                  const SizedBox(height: 20),
-                  const Align(
-                    alignment: Alignment.centerLeft,
-                    child: Text(
-                      '选择周期',
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w500,
-                        color: _muted,
-                      ),
-                    ),
+                ] else if (!_selectedTierProductsReady) ...[
+                  const SizedBox(height: 16),
+                  _TierProductsSyncHint(
+                    tierLabel: _tierDisplayName(_selectedTier),
+                    missingIds: _missingIdsForSelectedTier(),
+                    onRetry: _busy ? null : _load,
                   ),
-                  const SizedBox(height: 10),
-                  if (_selectedTierProductsReady) ..._planTiles()
-                  else
-                    _TierProductsSyncHint(
-                      tierLabel: _tierDisplayName(_selectedTier),
-                      missingIds: _missingIdsForSelectedTier(),
-                      onRetry: _busy ? null : _load,
-                    ),
                 ],
               ],
             ),
@@ -439,10 +449,7 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
   }
 
   void _selectTier(String tier) {
-    setState(() {
-      _selectedTier = tier;
-      _selectedId = _defaultProductId(_products);
-    });
+    setState(() => _selectedTier = tier);
   }
 
   List<_PlanFeature> _princeFeatures(PlanQuotasTable quotas) {
@@ -485,58 +492,87 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
       ),
     );
   }
+}
 
-  List<ProductDetails> _productsForSelectedTier() {
-    final tierIds = _tierIds;
-    final ids = {tierIds.monthly, tierIds.yearly};
-    final list = <ProductDetails>[];
-    for (final id in ids) {
-      final p = _products[id];
-      if (p != null) list.add(p);
-    }
-    if (list.isNotEmpty) return list;
+class _BillingPeriodToggle extends StatelessWidget {
+  const _BillingPeriodToggle({
+    required this.yearly,
+    required this.enabled,
+    required this.onChanged,
+  });
 
-    // 兜底：按 id 过滤当前档位，仍用统一短文案，不用 StoreKit 标题/描述
-    for (final p in _products.values) {
-      final id = p.id.toLowerCase();
-      final isEmperor = id.contains('emperor');
-      if (_selectedTier == UsagePlan.prince && isEmperor) continue;
-      if (_selectedTier == UsagePlan.emperor && !isEmperor) continue;
-      list.add(p);
-    }
-    list.sort((a, b) {
-      final ay = _isYearlyProduct(a);
-      final by = _isYearlyProduct(b);
-      if (ay != by) return ay ? 1 : -1;
-      return a.id.compareTo(b.id);
-    });
-    return list;
-  }
+  final bool yearly;
+  final bool enabled;
+  final ValueChanged<bool> onChanged;
 
-  String _periodTitle(ProductDetails p) =>
-      _isYearlyProduct(p) ? '年付' : '月付';
-
-  String _periodSubtitle(ProductDetails p) =>
-      _isYearlyProduct(p) ? '按年自动续期' : '按月自动续期';
-
-  List<Widget> _planTiles() {
-    final products = _productsForSelectedTier();
-    final tiles = <Widget>[];
-
-    for (final p in products) {
-      if (tiles.isNotEmpty) tiles.add(const SizedBox(height: 10));
-      tiles.add(
-        _PlanTile(
-          title: _periodTitle(p),
-          subtitle: _periodSubtitle(p),
-          price: p.price,
-          selected: _selectedId == p.id,
-          badge: _isYearlyProduct(p) ? '更划算' : null,
-          onTap: () => setState(() => _selectedId = p.id),
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: _UpgradeProPageState._border),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(3),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _BillingPeriodChip(
+              label: '月付',
+              selected: !yearly,
+              enabled: enabled,
+              onTap: () => onChanged(false),
+            ),
+            _BillingPeriodChip(
+              label: '年付',
+              selected: yearly,
+              enabled: enabled,
+              onTap: () => onChanged(true),
+            ),
+          ],
         ),
-      );
-    }
-    return tiles;
+      ),
+    );
+  }
+}
+
+class _BillingPeriodChip extends StatelessWidget {
+  const _BillingPeriodChip({
+    required this.label,
+    required this.selected,
+    required this.enabled,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool selected;
+  final bool enabled;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: selected ? _UpgradeProPageState._accentSoft : Colors.transparent,
+      borderRadius: BorderRadius.circular(8),
+      child: InkWell(
+        onTap: enabled ? onTap : null,
+        borderRadius: BorderRadius.circular(8),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+          child: Text(
+            label,
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+              color: selected
+                  ? _UpgradeProPageState._accent
+                  : _UpgradeProPageState._muted,
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }
 
@@ -697,6 +733,7 @@ class _TierPlanCard extends StatelessWidget {
     required this.features,
     required this.selected,
     required this.onTap,
+    this.priceLabel,
   });
 
   final String title;
@@ -704,6 +741,7 @@ class _TierPlanCard extends StatelessWidget {
   final List<_PlanFeature> features;
   final bool selected;
   final VoidCallback onTap;
+  final String? priceLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -757,6 +795,20 @@ class _TierPlanCard extends StatelessWidget {
                             height: 1.4,
                           ),
                         ),
+                        if (priceLabel != null) ...[
+                          const SizedBox(height: 10),
+                          Text(
+                            priceLabel!,
+                            style: TextStyle(
+                              fontSize: 22,
+                              fontWeight: FontWeight.w700,
+                              color: selected
+                                  ? _UpgradeProPageState._accent
+                                  : _UpgradeProPageState._text,
+                              height: 1.2,
+                            ),
+                          ),
+                        ],
                       ],
                     ),
                   ),
@@ -845,157 +897,6 @@ class _TierRadioMark extends StatelessWidget {
       child: const Icon(Icons.check_rounded, size: 14, color: Colors.white),
     );
   }
-}
-
-class _PlanTile extends StatelessWidget {
-  const _PlanTile({
-    required this.title,
-    required this.subtitle,
-    required this.price,
-    required this.selected,
-    required this.onTap,
-    this.badge,
-  });
-
-  final String title;
-  final String subtitle;
-  final String price;
-  final bool selected;
-  final VoidCallback onTap;
-  final String? badge;
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: selected ? _UpgradeProPageState._accentSoft : Colors.white,
-      borderRadius: BorderRadius.circular(14),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(14),
-        child: Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(
-              color: selected
-                  ? _UpgradeProPageState._accent
-                  : _UpgradeProPageState._border,
-              width: selected ? 2 : 1,
-            ),
-          ),
-          child: Row(
-            children: [
-              _RadioMark(selected: selected),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Text(
-                          title,
-                          style: const TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w700,
-                            color: _UpgradeProPageState._text,
-                          ),
-                        ),
-                        if (badge != null) ...[
-                          const SizedBox(width: 8),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 8,
-                              vertical: 2,
-                            ),
-                            decoration: BoxDecoration(
-                              color: _UpgradeProPageState._accent,
-                              borderRadius: BorderRadius.circular(6),
-                            ),
-                            child: Text(
-                              badge!,
-                              style: const TextStyle(
-                                fontSize: 11,
-                                fontWeight: FontWeight.w500,
-                                color: Colors.white,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ],
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      subtitle,
-                      style: const TextStyle(
-                        fontSize: 13,
-                        color: _UpgradeProPageState._muted,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              Text(
-                price,
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w700,
-                  color: selected
-                      ? _UpgradeProPageState._accent
-                      : _UpgradeProPageState._text,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _RadioMark extends StatelessWidget {
-  const _RadioMark({required this.selected});
-
-  final bool selected;
-
-  @override
-  Widget build(BuildContext context) {
-    const size = 20.0;
-    if (!selected) {
-      return Container(
-        width: size,
-        height: size,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          border: Border.all(color: const Color(0xFFC7CCD4), width: 1.5),
-        ),
-      );
-    }
-    return SizedBox(
-      width: size,
-      height: size,
-      child: CustomPaint(painter: _SelectedRadioPainter()),
-    );
-  }
-}
-
-class _SelectedRadioPainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    final stroke = Paint()
-      ..color = const Color(0xFF2A6B52)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 2;
-    final fill = Paint()
-      ..color = const Color(0xFF2A6B52)
-      ..style = PaintingStyle.fill;
-    final c = Offset(size.width / 2, size.height / 2);
-    canvas.drawCircle(c, size.width / 2 - 1, stroke);
-    canvas.drawCircle(c, size.width * 0.25, fill);
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 
 class _SubscribeButton extends StatelessWidget {
