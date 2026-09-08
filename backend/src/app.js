@@ -32,6 +32,15 @@ app.get('/privacy', sendPrivacy);
 app.get('/privacy-policy', sendPrivacy);
 app.get('/privacy.html', sendPrivacy);
 
+/** App Store EULA / Terms of Use */
+function sendTerms(_req, res) {
+  res.sendFile(path.join(publicDir, 'terms.html'));
+}
+app.get('/terms', sendTerms);
+app.get('/terms-of-use', sendTerms);
+app.get('/eula', sendTerms);
+app.get('/terms.html', sendTerms);
+
 /** App Store Support URL */
 function sendSupport(_req, res) {
   res.sendFile(path.join(publicDir, 'support.html'));
