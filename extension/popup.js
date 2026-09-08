@@ -1070,7 +1070,7 @@ async function openSettings() {
       chevron: true,
       onClick: () =>
         window.open(
-          'https://conflux.wobufang.com/support#user-agreement',
+          'https://conflux.wobufang.com/terms',
           '_blank',
         ),
     }),
