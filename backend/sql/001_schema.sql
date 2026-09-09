@@ -59,12 +59,14 @@ CREATE TABLE `categories` (
   `name` VARCHAR(64) NOT NULL,
   `is_system` TINYINT(1) NOT NULL DEFAULT 0,
   `sort_order` INT NOT NULL DEFAULT 0,
+  `parent_id` BIGINT UNSIGNED DEFAULT NULL COMMENT '标签父级（仅 section=tag；一层）',
   `created_at` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
   `updated_at` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
   PRIMARY KEY (`id`),
   UNIQUE KEY `uk_categories_user_section_name` (`user_id`, `section`, `name`),
   KEY `idx_categories_user_section_sort` (`user_id`, `section`, `sort_order`),
-  KEY `idx_categories_user_section_code` (`user_id`, `section`, `code`)
+  KEY `idx_categories_user_section_code` (`user_id`, `section`, `code`),
+  KEY `idx_categories_parent` (`parent_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE `items` (

@@ -7,14 +7,28 @@ function mapTag(row) {
     code: row.code,
     isSystem: !!row.is_system,
     sortOrder: row.sort_order,
+    parentId: row.parent_id == null ? null : Number(row.parent_id),
     itemCount: Number(row.item_count || 0),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
 }
 
+async function fetchTagWithCount(userId, tagId) {
+  const [rows] = await pool.execute(
+    `SELECT c.*,
+       (SELECT COUNT(*) FROM item_tags it
+        INNER JOIN items i ON i.id = it.item_id
+          AND i.user_id = :userId AND i.deleted_at IS NULL
+        WHERE it.category_id = c.id) AS item_count
+     FROM categories c WHERE c.id = :id LIMIT 1`,
+    { id: tagId, userId },
+  );
+  return rows[0] ? mapTag(rows[0]) : null;
+}
+
 /**
- * 用户自建标签（含条目数）
+ * 用户自建标签（含条目数 + parentId；扁平列表，前端自行建树）
  */
 async function listTags(userId) {
   const [rows] = await pool.execute(
@@ -26,6 +40,7 @@ async function listTags(userId) {
        c.name,
        c.is_system,
        c.sort_order,
+       c.parent_id,
        c.created_at,
        c.updated_at,
        COUNT(i.id) AS item_count
@@ -76,16 +91,12 @@ async function createTag(userId, rawName) {
 
   try {
     const [result] = await pool.execute(
-      `INSERT INTO categories (user_id, section, code, name, is_system, sort_order)
-       VALUES (:userId, 'tag', NULL, :name, 0, :sortOrder)`,
+      `INSERT INTO categories (user_id, section, code, name, is_system, sort_order, parent_id)
+       VALUES (:userId, 'tag', NULL, :name, 0, :sortOrder, NULL)`,
       { userId, name, sortOrder },
     );
 
-    const [rows] = await pool.execute(
-      `SELECT c.*, 0 AS item_count FROM categories c WHERE c.id = :id LIMIT 1`,
-      { id: result.insertId },
-    );
-    return mapTag(rows[0]);
+    return fetchTagWithCount(userId, result.insertId);
   } catch (err) {
     if (err && err.code === 'ER_DUP_ENTRY') {
       throw Object.assign(new Error('同名标签已存在'), { status: 409 });
@@ -128,16 +139,7 @@ async function renameTag(userId, tagId, rawName) {
 
   const tag = await getOwnedTag(userId, tagId);
   if (tag.name === name) {
-    const [rows] = await pool.execute(
-      `SELECT c.*,
-         (SELECT COUNT(*) FROM item_tags it
-          INNER JOIN items i ON i.id = it.item_id
-            AND i.user_id = :userId AND i.deleted_at IS NULL
-          WHERE it.category_id = c.id) AS item_count
-       FROM categories c WHERE c.id = :id LIMIT 1`,
-      { id: tag.id, userId },
-    );
-    return mapTag(rows[0]);
+    return fetchTagWithCount(userId, tag.id);
   }
 
   const [existing] = await pool.execute(
@@ -164,32 +166,142 @@ async function renameTag(userId, tagId, rawName) {
     throw err;
   }
 
-  const [rows] = await pool.execute(
-    `SELECT c.*,
-       (SELECT COUNT(*) FROM item_tags it
-        INNER JOIN items i ON i.id = it.item_id
-          AND i.user_id = :userId AND i.deleted_at IS NULL
-        WHERE it.category_id = c.id) AS item_count
-     FROM categories c WHERE c.id = :id LIMIT 1`,
-    { id: tag.id, userId },
-  );
-  return mapTag(rows[0]);
+  return fetchTagWithCount(userId, tag.id);
 }
 
 /**
- * 删除用户自建标签：仅解除关联（item_tags CASCADE），不删条目
+ * 删除用户自建标签：子标签升为根级；仅解除关联（item_tags CASCADE），不删条目
  */
 async function deleteTag(userId, tagId) {
   const tag = await getOwnedTag(userId, tagId);
-  await pool.execute(
-    `DELETE FROM categories WHERE id = :tagId AND user_id = :userId`,
-    { tagId: tag.id, userId },
-  );
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    await conn.execute(
+      `UPDATE categories
+       SET parent_id = NULL, updated_at = CURRENT_TIMESTAMP(3)
+       WHERE user_id = :userId AND section = 'tag' AND parent_id = :tagId`,
+      { userId, tagId: tag.id },
+    );
+    await conn.execute(
+      `DELETE FROM categories WHERE id = :tagId AND user_id = :userId`,
+      { tagId: tag.id, userId },
+    );
+    await conn.commit();
+  } catch (err) {
+    await conn.rollback();
+    throw err;
+  } finally {
+    conn.release();
+  }
   return {
     id: tag.id,
     name: tag.name,
     associationsRemoved: true,
   };
+}
+
+/**
+ * 批量更新标签分组与排序（一层 parent；打标场景不读此结构）
+ * body.items: [{ id, parentId, sortOrder }]
+ */
+async function reorderTags(userId, rawItems) {
+  if (!Array.isArray(rawItems) || rawItems.length === 0) {
+    throw Object.assign(new Error('请提供排序项'), { status: 400 });
+  }
+
+  const owned = await listTags(userId);
+  const byId = new Map(owned.map((t) => [t.id, t]));
+
+  const seen = new Set();
+  const updates = [];
+
+  for (const raw of rawItems) {
+    const id = Number(raw?.id);
+    if (!Number.isFinite(id) || id <= 0 || !byId.has(id)) {
+      throw Object.assign(new Error('含无效标签'), { status: 400 });
+    }
+    if (seen.has(id)) {
+      throw Object.assign(new Error('标签重复'), { status: 400 });
+    }
+    seen.add(id);
+
+    let parentId = raw?.parentId == null || raw?.parentId === ''
+      ? null
+      : Number(raw.parentId);
+    if (parentId != null && !Number.isFinite(parentId)) {
+      throw Object.assign(new Error('无效的父标签'), { status: 400 });
+    }
+    if (parentId === id) {
+      throw Object.assign(new Error('不能将标签设为自己的子级'), { status: 400 });
+    }
+    if (parentId != null && !byId.has(parentId)) {
+      throw Object.assign(new Error('父标签不存在'), { status: 400 });
+    }
+
+    const sortOrder = Number(raw?.sortOrder);
+    if (!Number.isFinite(sortOrder)) {
+      throw Object.assign(new Error('无效的排序值'), { status: 400 });
+    }
+
+    updates.push({ id, parentId, sortOrder });
+  }
+
+  // 提交的 items 须覆盖该用户全部自建标签，避免半更新导致孤儿
+  if (seen.size !== byId.size) {
+    throw Object.assign(new Error('请提交全部标签的排序'), { status: 400 });
+  }
+
+  const proposedParent = new Map(updates.map((u) => [u.id, u.parentId]));
+  for (const u of updates) {
+    if (u.parentId == null) continue;
+    if (proposedParent.get(u.parentId) != null) {
+      throw Object.assign(new Error('仅支持一层分组'), { status: 400 });
+    }
+  }
+  const proposedChildCount = new Map();
+  for (const u of updates) {
+    if (u.parentId == null) continue;
+    proposedChildCount.set(
+      u.parentId,
+      (proposedChildCount.get(u.parentId) || 0) + 1,
+    );
+  }
+  for (const u of updates) {
+    if (u.parentId != null && (proposedChildCount.get(u.id) || 0) > 0) {
+      throw Object.assign(new Error('已有子标签，请先移出子标签'), {
+        status: 400,
+      });
+    }
+  }
+
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    for (const u of updates) {
+      await conn.execute(
+        `UPDATE categories
+         SET parent_id = :parentId,
+             sort_order = :sortOrder,
+             updated_at = CURRENT_TIMESTAMP(3)
+         WHERE id = :id AND user_id = :userId AND section = 'tag'`,
+        {
+          parentId: u.parentId,
+          sortOrder: u.sortOrder,
+          id: u.id,
+          userId,
+        },
+      );
+    }
+    await conn.commit();
+  } catch (err) {
+    await conn.rollback();
+    throw err;
+  } finally {
+    conn.release();
+  }
+
+  return listTags(userId);
 }
 
 /**
@@ -250,5 +362,6 @@ module.exports = {
   createTag,
   renameTag,
   deleteTag,
+  reorderTags,
   listTagItems,
 };

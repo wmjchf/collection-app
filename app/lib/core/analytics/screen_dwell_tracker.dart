@@ -5,6 +5,7 @@ import 'package:super_collection/core/analytics/analytics.dart';
 abstract final class AnalyticsScreens {
   static const home = 'home';
   static const library = 'library';
+  static const tags = 'tags';
   static const search = 'search';
   static const pro = 'pro';
   static const settings = 'settings';

@@ -29,6 +29,19 @@ router.post('/', async (req, res, next) => {
   }
 });
 
+/** PUT /api/tags/reorder — 批量更新分组与排序（须提交全部自建标签） */
+router.put('/reorder', async (req, res, next) => {
+  try {
+    const tags = await tagService.reorderTags(
+      req.auth.userId,
+      req.body?.items,
+    );
+    return res.json({ tags, message: '已更新' });
+  } catch (err) {
+    return next(err);
+  }
+});
+
 /** GET /api/tags/:id/items — 标签下条目 */
 router.get('/:id/items', async (req, res, next) => {
   try {
