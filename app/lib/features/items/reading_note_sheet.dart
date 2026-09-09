@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:super_collection/core/network/api_client.dart';
 import 'package:super_collection/features/items/item_models.dart';
 import 'package:super_collection/features/items/items_repository.dart';
+import 'package:super_collection/core/ui/app_bottom_sheet.dart';
 import 'package:super_collection/core/ui/app_toast.dart';
 
 Future<CollectionItem?> showReadingNoteSheet(
@@ -9,19 +10,11 @@ Future<CollectionItem?> showReadingNoteSheet(
   required int itemId,
   String? initialNote,
 }) {
-  return showModalBottomSheet<CollectionItem>(
+  return showAppBottomSheet<CollectionItem>(
     context: context,
-    isScrollControlled: true,
-    backgroundColor: Colors.transparent,
-    barrierColor: const Color(0x59000000),
-    builder: (context) => Padding(
-      padding: EdgeInsets.only(
-        bottom: MediaQuery.viewInsetsOf(context).bottom,
-      ),
-      child: _ReadingNoteSheet(
-        itemId: itemId,
-        initialNote: initialNote,
-      ),
+    builder: (context) => _ReadingNoteSheet(
+      itemId: itemId,
+      initialNote: initialNote,
     ),
   );
 }
@@ -85,11 +78,7 @@ class _ReadingNoteSheetState extends State<_ReadingNoteSheet> {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-      child: Align(
-        alignment: Alignment.bottomCenter,
-        child: Material(
+    return Material(
           color: Colors.white,
           borderRadius: BorderRadius.circular(24),
           child: Padding(
@@ -164,8 +153,6 @@ class _ReadingNoteSheetState extends State<_ReadingNoteSheet> {
               ],
             ),
           ),
-        ),
-      ),
-    );
+        );
   }
 }

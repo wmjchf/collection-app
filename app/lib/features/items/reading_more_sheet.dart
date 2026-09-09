@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:super_collection/core/ui/app_bottom_sheet.dart';
 
 enum ReadingMoreAction { transcript, note }
 
@@ -7,10 +8,10 @@ Future<ReadingMoreAction?> showReadingMoreSheet(
   bool showTranscript = false,
   bool hasNote = false,
 }) {
-  return showModalBottomSheet<ReadingMoreAction>(
+  return showAppBottomSheet<ReadingMoreAction>(
     context: context,
-    backgroundColor: Colors.transparent,
     barrierColor: const Color(0x66000000),
+    padding: EdgeInsets.zero,
     builder: (context) => _ReadingMoreSheet(
       showTranscript: showTranscript,
       hasNote: hasNote,

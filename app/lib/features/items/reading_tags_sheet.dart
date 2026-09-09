@@ -8,6 +8,7 @@ import 'package:super_collection/features/collection/tag_models.dart';
 import 'package:super_collection/features/collection/tags_repository.dart';
 import 'package:super_collection/features/items/ai_meta_models.dart';
 import 'package:super_collection/features/items/items_repository.dart';
+import 'package:super_collection/core/ui/app_bottom_sheet.dart';
 import 'package:super_collection/core/ui/app_toast.dart';
 import 'package:super_collection/features/settings/quota_gate.dart';
 
@@ -29,11 +30,8 @@ Future<void> showReadingTagsSheet(
   final session = _TagsSheetSession();
 
   while (true) {
-    final result = await showModalBottomSheet<ReadingTagsSheetResult>(
+    final result = await showAppBottomSheet<ReadingTagsSheetResult>(
       context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      barrierColor: const Color(0x59000000),
       builder: (context) => _ReadingTagsSheet(
         itemId: itemId,
         session: session,
@@ -914,15 +912,7 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
       _scheduleSyncOverlayGeometry();
     }
 
-    return Padding(
-      padding: EdgeInsets.only(
-        left: 16,
-        right: 16,
-        bottom: 16 + MediaQuery.viewInsetsOf(context).bottom,
-      ),
-      child: Align(
-        alignment: Alignment.bottomCenter,
-        child: Material(
+    return Material(
           color: Colors.white,
           clipBehavior: Clip.none,
           borderRadius: BorderRadius.circular(24),
@@ -1018,9 +1008,7 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
               ),
             ),
           ),
-        ),
-      ),
-    );
+        );
   }
 }
 

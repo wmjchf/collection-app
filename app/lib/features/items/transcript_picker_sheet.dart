@@ -1,15 +1,15 @@
 import 'package:flutter/material.dart';
+import 'package:super_collection/core/ui/app_bottom_sheet.dart';
 import 'package:super_collection/features/items/transcript_models.dart';
 
 Future<TranscriptTarget?> showTranscriptPickerSheet(
   BuildContext context, {
   required List<TranscriptTarget> targets,
 }) {
-  return showModalBottomSheet<TranscriptTarget>(
+  return showAppBottomSheet<TranscriptTarget>(
     context: context,
-    backgroundColor: Colors.transparent,
     barrierColor: const Color(0x66000000),
-    isScrollControlled: true,
+    padding: EdgeInsets.zero,
     builder: (context) => _TranscriptPickerSheet(targets: targets),
   );
 }

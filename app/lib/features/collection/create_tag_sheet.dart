@@ -1,23 +1,14 @@
 import 'package:flutter/material.dart';
+import 'package:super_collection/core/ui/app_bottom_sheet.dart';
 import 'package:super_collection/core/network/api_client.dart';
 import 'package:super_collection/features/collection/tag_models.dart';
 import 'package:super_collection/features/collection/tags_repository.dart';
 
 /// 弹出「新建标签」弹框；成功返回 [Tag]，关闭返回 null。
 Future<Tag?> showCreateTagSheet(BuildContext context) {
-  return showModalBottomSheet<Tag>(
+  return showAppBottomSheet<Tag>(
     context: context,
-    isScrollControlled: true,
-    backgroundColor: Colors.transparent,
-    barrierColor: const Color(0x59000000),
-    builder: (context) {
-      return Padding(
-        padding: EdgeInsets.only(
-          bottom: MediaQuery.viewInsetsOf(context).bottom,
-        ),
-        child: const _TagNameSheet(),
-      );
-    },
+    builder: (context) => const _TagNameSheet(),
   );
 }
 
@@ -27,22 +18,12 @@ Future<Tag?> showEditTagSheet(
   required int tagId,
   required String initialName,
 }) {
-  return showModalBottomSheet<Tag>(
+  return showAppBottomSheet<Tag>(
     context: context,
-    isScrollControlled: true,
-    backgroundColor: Colors.transparent,
-    barrierColor: const Color(0x59000000),
-    builder: (context) {
-      return Padding(
-        padding: EdgeInsets.only(
-          bottom: MediaQuery.viewInsetsOf(context).bottom,
-        ),
-        child: _TagNameSheet(
-          tagId: tagId,
-          initialName: initialName,
-        ),
-      );
-    },
+    builder: (context) => _TagNameSheet(
+      tagId: tagId,
+      initialName: initialName,
+    ),
   );
 }
 
@@ -138,13 +119,10 @@ class _TagNameSheetState extends State<_TagNameSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final bottom = MediaQuery.paddingOf(context).bottom;
     final title = widget.isEdit ? '编辑标签名' : '新建标签';
     final action = widget.isEdit ? '保存' : '创建';
 
-    return Padding(
-      padding: EdgeInsets.fromLTRB(16, 0, 16, 16 + (bottom > 0 ? bottom : 0)),
-      child: Material(
+    return Material(
         color: Colors.white,
         borderRadius: BorderRadius.circular(24),
         clipBehavior: Clip.antiAlias,
@@ -275,7 +253,6 @@ class _TagNameSheetState extends State<_TagNameSheet> {
             ],
           ),
         ),
-      ),
-    );
+      );
   }
 }
