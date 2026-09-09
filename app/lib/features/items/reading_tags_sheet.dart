@@ -79,6 +79,8 @@ class _ReadingTagsSheet extends StatefulWidget {
 }
 
 class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
+  static final Object _searchTapGroup = Object();
+
   static const _text = Color(0xFF1F242E);
   static const _muted = Color(0xFF737A85);
   static const _blue = Color(0xFF2F6FED);
@@ -90,7 +92,11 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
   final _itemsRepo = ItemsRepository();
   final _searchController = TextEditingController();
   final _searchFocus = FocusNode();
-  final _searchOverlayController = OverlayPortalController(debugLabel: 'tagSearch');
+  final _searchFieldKey = GlobalKey();
+  final _sheetStackKey = GlobalKey();
+  double? _overlayLeft;
+  double? _overlayWidth;
+  double? _overlayBottom;
   List<Tag> _all = const [];
   final Set<int> _selected = {};
   bool _loading = true;
@@ -104,6 +110,7 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
   @override
   void initState() {
     super.initState();
+    _searchFocus.addListener(_onSearchFocusChanged);
     _tagsMeta = widget.initialTagsMeta;
     _aiSelected.addAll(_tagsMeta.items.map((e) => e.name));
     _load();
@@ -244,29 +251,69 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
     _searchFocus.unfocus();
   }
 
+  void _onSearchFocusChanged() {
+    setState(() {});
+    _scheduleSyncOverlayGeometry();
+  }
+
   @override
   void dispose() {
     _aiPollTimer?.cancel();
-    _searchOverlayController.hide();
+    _searchFocus.removeListener(_onSearchFocusChanged);
     _searchController.dispose();
     _searchFocus.dispose();
     super.dispose();
   }
 
-  void _syncSearchOverlayVisibility() {
+  void _scheduleSyncOverlayGeometry() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      if (_showSearchOverlay) {
-        _searchOverlayController.show();
-      } else {
-        _searchOverlayController.hide();
+      _syncOverlayGeometry();
+    });
+  }
+
+  void _syncOverlayGeometry() {
+    if (!_showSearchOverlay) {
+      if (_overlayLeft != null || _overlayWidth != null || _overlayBottom != null) {
+        setState(() {
+          _overlayLeft = null;
+          _overlayWidth = null;
+          _overlayBottom = null;
+        });
       }
+      return;
+    }
+    final fieldBox =
+        _searchFieldKey.currentContext?.findRenderObject() as RenderBox?;
+    final stackBox =
+        _sheetStackKey.currentContext?.findRenderObject() as RenderBox?;
+    if (fieldBox == null ||
+        stackBox == null ||
+        !fieldBox.hasSize ||
+        !stackBox.hasSize) {
+      return;
+    }
+    final fieldOrigin = fieldBox.localToGlobal(Offset.zero);
+    final stackOrigin = stackBox.localToGlobal(Offset.zero);
+    final left = fieldOrigin.dx - stackOrigin.dx;
+    final width = fieldBox.size.width;
+    final fieldTop = fieldOrigin.dy - stackOrigin.dy;
+    final bottom = stackBox.size.height - fieldTop + _overlayGap;
+    if (_overlayLeft == left &&
+        _overlayWidth == width &&
+        _overlayBottom == bottom) {
+      return;
+    }
+    setState(() {
+      _overlayLeft = left;
+      _overlayWidth = width;
+      _overlayBottom = bottom;
     });
   }
 
   void _onSearchChanged(String _) {
     setState(() {});
-    _syncSearchOverlayVisibility();
+    _scheduleSyncOverlayGeometry();
   }
 
   List<Tag> get _selectedTags {
@@ -280,20 +327,16 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
   }
 
   bool get _showSearchOverlay {
-    final query = _searchController.text.trim();
-    return query.isNotEmpty &&
-        !_loading &&
-        _error == null &&
-        _all.isNotEmpty;
+    return _searchFocus.hasFocus && !_loading && _error == null;
   }
 
   List<Tag> get _filteredTags {
     final q = _searchController.text.trim().toLowerCase();
-    if (q.isEmpty) return const [];
-    return _all
-        .where((t) => t.name.toLowerCase().contains(q))
-        .toList()
-      ..sort((a, b) => a.name.compareTo(b.name));
+    final list = q.isEmpty
+        ? List<Tag>.from(_all)
+        : _all.where((t) => t.name.toLowerCase().contains(q)).toList();
+    list.sort((a, b) => a.name.compareTo(b.name));
+    return list;
   }
 
   Future<void> _load() async {
@@ -317,7 +360,7 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
         _loading = false;
       });
       _syncSession();
-      _syncSearchOverlayVisibility();
+      _scheduleSyncOverlayGeometry();
     } on ApiException catch (e) {
       if (!mounted) return;
       setState(() {
@@ -634,7 +677,6 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
       controller: _searchController,
       focusNode: _searchFocus,
       onChanged: _onSearchChanged,
-      onTapOutside: (_) => _unfocusSearch(),
       onSubmitted: (_) => _unfocusSearch(),
       textInputAction: TextInputAction.search,
       decoration: InputDecoration(
@@ -669,37 +711,17 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
     );
   }
 
+  static const _searchFieldHeight = 48.0;
+  static const _overlayGap = 8.0;
+
   Widget _buildSearchArea() {
-    return OverlayPortal.overlayChildLayoutBuilder(
-      controller: _searchOverlayController,
-      overlayLocation: OverlayChildLocation.rootOverlay,
-      overlayChildBuilder: (context, info) {
-        if (!_showSearchOverlay) return const SizedBox.shrink();
-
-        final query = _searchController.text.trim();
-        final filtered = _filteredTags;
-        final targetRect = MatrixUtils.transformRect(
-          info.childPaintTransform,
-          Offset.zero & info.childSize,
-        );
-
-        return SizedBox(
-          width: info.overlaySize.width,
-          height: info.overlaySize.height,
-          child: Stack(
-            clipBehavior: Clip.none,
-            children: [
-              Positioned(
-                left: targetRect.left + 4,
-                width: info.childSize.width - 8,
-                bottom: info.overlaySize.height - targetRect.top + 8,
-                child: _buildSearchOverlay(query, filtered),
-              ),
-            ],
-          ),
-        );
-      },
-      child: _buildSearchField(),
+    return TapRegion(
+      groupId: _searchTapGroup,
+      child: SizedBox(
+        key: _searchFieldKey,
+        height: _searchFieldHeight,
+        child: _buildSearchField(),
+      ),
     );
   }
 
@@ -733,15 +755,28 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
   }
 
   static const _overlayMaxHeight = 200.0;
+  static const _overlayRowHeight = 45.0;
+
+  double _overlayListHeight(int count) {
+    if (count <= 0) return 0;
+    final natural = count * _overlayRowHeight + (count - 1);
+    return natural > _overlayMaxHeight ? _overlayMaxHeight : natural;
+  }
 
   Widget _buildSearchResultsList(List<Tag> filtered) {
-    return ConstrainedBox(
-      constraints: const BoxConstraints(maxHeight: _overlayMaxHeight),
+    final height = _overlayListHeight(filtered.length);
+    final scrollable = filtered.length * _overlayRowHeight + (filtered.length - 1) >
+        _overlayMaxHeight;
+
+    return SizedBox(
+      height: height,
       child: ListView.separated(
-        shrinkWrap: true,
         padding: EdgeInsets.zero,
         primary: false,
-        physics: const ClampingScrollPhysics(),
+        shrinkWrap: !scrollable,
+        physics: scrollable
+            ? const ClampingScrollPhysics()
+            : const NeverScrollableScrollPhysics(),
         itemCount: filtered.length,
         separatorBuilder: (context, _) => const Divider(
           height: 1,
@@ -756,32 +791,23 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
   }
 
   Widget _buildSearchOverlay(String query, List<Tag> filtered) {
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFFE8ECF0)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.16),
-            blurRadius: 28,
-            offset: const Offset(0, 10),
-          ),
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.08),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(12),
+    return Material(
+      color: Colors.white,
+      elevation: 8,
+      shadowColor: Colors.black.withValues(alpha: 0.16),
+      borderRadius: BorderRadius.circular(12),
+      clipBehavior: Clip.antiAlias,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          border: Border.all(color: const Color(0xFFE8ECF0)),
+          borderRadius: BorderRadius.circular(12),
+        ),
         child: filtered.isEmpty
             ? Padding(
                 padding:
                     const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
                 child: Text(
-                  '没有「$query」相关的标签',
+                  query.isEmpty ? '暂无标签' : '没有「$query」相关的标签',
                   style: const TextStyle(
                     fontSize: 13,
                     color: _muted,
@@ -790,6 +816,29 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
                 ),
               )
             : _buildSearchResultsList(filtered),
+      ),
+    );
+  }
+
+  Widget? _buildFloatingSearchOverlay() {
+    if (!_showSearchOverlay) return null;
+
+    final left = _overlayLeft;
+    final width = _overlayWidth;
+    final bottom = _overlayBottom;
+    if (left == null || width == null || bottom == null) return null;
+
+    final query = _searchController.text.trim();
+    final filtered = _filteredTags;
+
+    return Positioned(
+      left: left,
+      width: width,
+      bottom: bottom,
+      child: TapRegion(
+        groupId: _searchTapGroup,
+        onTapOutside: (_) => _unfocusSearch(),
+        child: _buildSearchOverlay(query, filtered),
       ),
     );
   }
@@ -861,6 +910,9 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
   @override
   Widget build(BuildContext context) {
     final maxSheetHeight = MediaQuery.sizeOf(context).height * 0.82;
+    if (_showSearchOverlay) {
+      _scheduleSyncOverlayGeometry();
+    }
 
     return Padding(
       padding: EdgeInsets.only(
@@ -878,86 +930,91 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
             constraints: BoxConstraints(maxHeight: maxSheetHeight),
             child: Padding(
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
-              child: GestureDetector(
-                onTap: _unfocusSearch,
-                behavior: HitTestBehavior.translucent,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                  Center(
-                    child: Container(
-                      width: 40,
-                      height: 4,
-                      decoration: BoxDecoration(
-                        color: _handle,
-                        borderRadius: BorderRadius.circular(2),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.center,
+              child: Stack(
+                key: _sheetStackKey,
+                clipBehavior: Clip.none,
+                children: [
+                  Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      const Text(
-                        '选择标签',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w700,
-                          color: _text,
+                      Center(
+                        child: Container(
+                          width: 40,
+                          height: 4,
+                          decoration: BoxDecoration(
+                            color: _handle,
+                            borderRadius: BorderRadius.circular(2),
+                          ),
                         ),
                       ),
-                      const SizedBox(width: 8),
-                      _HeaderActionButton(
-                        icon: Icons.tips_and_updates_outlined,
-                        label: _aiSuggestButtonLabel,
-                        onTap: _aiSuggestTapEnabled ? _onAiSuggest : _toastDisabledAi,
-                        foreground:
-                            _aiSuggestTapEnabled ? _blue : _muted,
-                        borderColor: _aiSuggestTapEnabled
-                            ? const Color(0xFFB8CCFA)
-                            : const Color(0xFFE8ECF0),
-                      ),
-                      const SizedBox(width: 6),
-                      _HeaderActionButton(
-                        icon: Icons.add,
-                        label: '新建',
-                        onTap: _createTag,
-                        foreground: _text,
-                        borderColor: const Color(0xFFE8ECF0),
-                      ),
-                      const Spacer(),
-                      GestureDetector(
-                        onTap: () => Navigator.pop(context),
-                        child: const Text(
-                          '关闭',
-                          style: TextStyle(
-                            fontSize: 14,
-                            color: _muted,
+                      const SizedBox(height: 12),
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        children: [
+                          const Text(
+                            '选择标签',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w700,
+                              color: _text,
+                            ),
                           ),
+                          const SizedBox(width: 8),
+                          _HeaderActionButton(
+                            icon: Icons.tips_and_updates_outlined,
+                            label: _aiSuggestButtonLabel,
+                            onTap: _aiSuggestTapEnabled
+                                ? _onAiSuggest
+                                : _toastDisabledAi,
+                            foreground:
+                                _aiSuggestTapEnabled ? _blue : _muted,
+                            borderColor: _aiSuggestTapEnabled
+                                ? const Color(0xFFB8CCFA)
+                                : const Color(0xFFE8ECF0),
+                          ),
+                          const SizedBox(width: 6),
+                          _HeaderActionButton(
+                            icon: Icons.add,
+                            label: '新建',
+                            onTap: _createTag,
+                            foreground: _text,
+                            borderColor: const Color(0xFFE8ECF0),
+                          ),
+                          const Spacer(),
+                          GestureDetector(
+                            onTap: () => Navigator.pop(context),
+                            child: const Text(
+                              '关闭',
+                              style: TextStyle(
+                                fontSize: 14,
+                                color: _muted,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      _buildBody(),
+                      const SizedBox(height: 16),
+                      SizedBox(
+                        width: double.infinity,
+                        height: 48,
+                        child: FilledButton(
+                          onPressed: _loading || _saving ? null : _save,
+                          style: FilledButton.styleFrom(
+                            backgroundColor: _blue,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                          child: Text(_saving ? '保存中…' : '完成'),
                         ),
                       ),
                     ],
                   ),
-                  const SizedBox(height: 12),
-                  _buildBody(),
-                  const SizedBox(height: 16),
-                  SizedBox(
-                    width: double.infinity,
-                    height: 48,
-                    child: FilledButton(
-                      onPressed: _loading || _saving ? null : _save,
-                      style: FilledButton.styleFrom(
-                        backgroundColor: _blue,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                      child: Text(_saving ? '保存中…' : '完成'),
-                    ),
-                  ),
+                  ?_buildFloatingSearchOverlay(),
                 ],
-                ),
               ),
             ),
           ),
