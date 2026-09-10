@@ -15,7 +15,7 @@ class Tag {
   final bool isSystem;
   final int itemCount;
   final int sortOrder;
-  /// 父标签；仅整理视图使用，打标仍扁平。可多层嵌套。
+  /// 父标签；「我的标签」整理与选标签列表建树用。打标仍按勾选写入，无父子联动。
   final int? parentId;
 
   String get countLabel => '$itemCount';

@@ -78,10 +78,9 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
   final _searchController = TextEditingController();
   final _searchFocus = FocusNode();
   final _searchFieldKey = GlobalKey();
-  final _sheetStackKey = GlobalKey();
-  double? _overlayLeft;
-  double? _overlayWidth;
-  double? _overlayBottom;
+  final _layerLink = LayerLink();
+  final _overlayPortal = OverlayPortalController();
+  double _fieldWidth = 0;
   List<Tag> _all = const [];
   final Set<int> _selected = {};
   bool _loading = true;
@@ -237,8 +236,13 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
   }
 
   void _onSearchFocusChanged() {
+    if (_searchFocus.hasFocus) {
+      _overlayPortal.show();
+      _scheduleSyncFieldWidth();
+    } else {
+      _overlayPortal.hide();
+    }
     setState(() {});
-    _scheduleSyncOverlayGeometry();
   }
 
   @override
@@ -250,55 +254,25 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
     super.dispose();
   }
 
-  void _scheduleSyncOverlayGeometry() {
+  void _scheduleSyncFieldWidth() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      _syncOverlayGeometry();
+      _syncFieldWidth();
     });
   }
 
-  void _syncOverlayGeometry() {
-    if (!_showSearchOverlay) {
-      if (_overlayLeft != null || _overlayWidth != null || _overlayBottom != null) {
-        setState(() {
-          _overlayLeft = null;
-          _overlayWidth = null;
-          _overlayBottom = null;
-        });
-      }
-      return;
-    }
-    final fieldBox =
+  void _syncFieldWidth() {
+    final box =
         _searchFieldKey.currentContext?.findRenderObject() as RenderBox?;
-    final stackBox =
-        _sheetStackKey.currentContext?.findRenderObject() as RenderBox?;
-    if (fieldBox == null ||
-        stackBox == null ||
-        !fieldBox.hasSize ||
-        !stackBox.hasSize) {
-      return;
-    }
-    final fieldOrigin = fieldBox.localToGlobal(Offset.zero);
-    final stackOrigin = stackBox.localToGlobal(Offset.zero);
-    final left = fieldOrigin.dx - stackOrigin.dx;
-    final width = fieldBox.size.width;
-    final fieldTop = fieldOrigin.dy - stackOrigin.dy;
-    final bottom = stackBox.size.height - fieldTop + _overlayGap;
-    if (_overlayLeft == left &&
-        _overlayWidth == width &&
-        _overlayBottom == bottom) {
-      return;
-    }
-    setState(() {
-      _overlayLeft = left;
-      _overlayWidth = width;
-      _overlayBottom = bottom;
-    });
+    if (box == null || !box.hasSize) return;
+    final w = box.size.width;
+    if ((_fieldWidth - w).abs() < 0.5) return;
+    setState(() => _fieldWidth = w);
   }
 
   void _onSearchChanged(String _) {
     setState(() {});
-    _scheduleSyncOverlayGeometry();
+    _scheduleSyncFieldWidth();
   }
 
   List<Tag> get _selectedTags {
@@ -311,18 +285,26 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
     return tags;
   }
 
-  bool get _showSearchOverlay {
-    return _searchFocus.hasFocus && !_loading && _error == null;
-  }
-
   List<Tag> get _filteredTags {
     final q = _searchController.text.trim().toLowerCase();
-    final list = q.isEmpty
-        ? List<Tag>.from(_all)
-        : _all.where((t) => t.name.toLowerCase().contains(q)).toList();
-    list.sort((a, b) => a.name.compareTo(b.name));
-    return list;
+    if (q.isEmpty) return flattenTagsForDisplay(_all);
+
+    // 命中项 + 祖先，保持树形可读
+    final byId = {for (final t in _all) t.id: t};
+    final keep = <int>{};
+    for (final t in _all) {
+      if (!t.name.toLowerCase().contains(q)) continue;
+      keep.add(t.id);
+      var cur = t.parentId;
+      while (cur != null && keep.add(cur)) {
+        cur = byId[cur]?.parentId;
+      }
+    }
+    final subset = [for (final t in _all) if (keep.contains(t.id)) t];
+    return flattenTagsForDisplay(subset);
   }
+
+  Map<int, Tag> get _tagById => {for (final t in _all) t.id: t};
 
   Future<void> _load() async {
     setState(() {
@@ -345,7 +327,7 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
         _loading = false;
       });
       _syncSession();
-      _scheduleSyncOverlayGeometry();
+      _scheduleSyncFieldWidth();
     } on ApiException catch (e) {
       if (!mounted) return;
       setState(() {
@@ -695,32 +677,80 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
   static const _overlayGap = 8.0;
 
   Widget _buildSearchArea() {
-    return TapRegion(
-      groupId: _searchTapGroup,
-      child: SizedBox(
-        key: _searchFieldKey,
-        height: _searchFieldHeight,
-        child: _buildSearchField(),
+    return OverlayPortal(
+      controller: _overlayPortal,
+      overlayChildBuilder: (context) {
+        final query = _searchController.text.trim();
+        final filtered = _filteredTags;
+        final width = _fieldWidth > 0 ? _fieldWidth : 280.0;
+        // Overlay 默认给最大约束，白底 Container 会被撑满全屏；必须松约束
+        return UnconstrainedBox(
+          alignment: Alignment.topLeft,
+          child: CompositedTransformFollower(
+            link: _layerLink,
+            showWhenUnlinked: false,
+            targetAnchor: Alignment.topLeft,
+            followerAnchor: Alignment.bottomLeft,
+            offset: const Offset(0, -_overlayGap),
+            child: SizedBox(
+              width: width,
+              child: TapRegion(
+                groupId: _searchTapGroup,
+                onTapOutside: (_) => _unfocusSearch(),
+                child: Material(
+                  type: MaterialType.transparency,
+                  child: _buildSearchOverlay(query, filtered),
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+      child: TapRegion(
+        groupId: _searchTapGroup,
+        child: CompositedTransformTarget(
+          link: _layerLink,
+          child: SizedBox(
+            key: _searchFieldKey,
+            height: _searchFieldHeight,
+            width: double.infinity,
+            child: _buildSearchField(),
+          ),
+        ),
       ),
     );
   }
 
   Widget _buildSearchResultRow(Tag tag) {
     final on = _selected.contains(tag.id);
+    final depth = tagDepth(tag, _tagById);
+    final isNested = depth > 0;
     return Material(
       color: Colors.white,
       child: InkWell(
         onTap: () => _toggleTag(tag.id),
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          padding: EdgeInsets.only(
+            left: 14.0 + depth * 16.0,
+            right: 14,
+            top: 12,
+            bottom: 12,
+          ),
           child: Row(
             children: [
+              if (isNested)
+                Container(
+                  width: 2,
+                  height: 16,
+                  margin: const EdgeInsets.only(right: 8),
+                  color: const Color(0xFFE5E8ED),
+                ),
               Expanded(
                 child: Text(
                   '#${tag.name}',
-                  style: const TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w500,
+                  style: TextStyle(
+                    fontSize: isNested ? 14 : 15,
+                    fontWeight: isNested ? FontWeight.w400 : FontWeight.w500,
                     color: _text,
                   ),
                 ),
@@ -747,6 +777,7 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
     final height = _overlayListHeight(filtered.length);
     final scrollable = filtered.length * _overlayRowHeight + (filtered.length - 1) >
         _overlayMaxHeight;
+    final byId = _tagById;
 
     return SizedBox(
       height: height,
@@ -758,12 +789,15 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
             ? const ClampingScrollPhysics()
             : const NeverScrollableScrollPhysics(),
         itemCount: filtered.length,
-        separatorBuilder: (context, _) => const Divider(
-          height: 1,
-          indent: 12,
-          endIndent: 12,
-          color: Color(0xFFF0F2F5),
-        ),
+        separatorBuilder: (context, index) {
+          final depth = tagDepth(filtered[index], byId);
+          return Divider(
+            height: 1,
+            indent: 14.0 + depth * 16.0,
+            endIndent: 12,
+            color: const Color(0xFFF0F2F5),
+          );
+        },
         itemBuilder: (context, index) =>
             _buildSearchResultRow(filtered[index]),
       ),
@@ -807,29 +841,6 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
                 ),
               )
             : _buildSearchResultsList(filtered),
-      ),
-    );
-  }
-
-  Widget? _buildFloatingSearchOverlay() {
-    if (!_showSearchOverlay) return null;
-
-    final left = _overlayLeft;
-    final width = _overlayWidth;
-    final bottom = _overlayBottom;
-    if (left == null || width == null || bottom == null) return null;
-
-    final query = _searchController.text.trim();
-    final filtered = _filteredTags;
-
-    return Positioned(
-      left: left,
-      width: width,
-      bottom: bottom,
-      child: TapRegion(
-        groupId: _searchTapGroup,
-        onTapOutside: (_) => _unfocusSearch(),
-        child: _buildSearchOverlay(query, filtered),
       ),
     );
   }
@@ -901,94 +912,86 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
   @override
   Widget build(BuildContext context) {
     final maxSheetHeight = MediaQuery.sizeOf(context).height * 0.82;
-    if (_showSearchOverlay) {
-      _scheduleSyncOverlayGeometry();
+    if (_searchFocus.hasFocus) {
+      _scheduleSyncFieldWidth();
     }
 
     return Material(
       color: Colors.white,
       borderRadius: BorderRadius.circular(24),
-      // 不裁剪 Stack，避免搜索浮层上/右阴影被切掉
-      clipBehavior: Clip.none,
+      clipBehavior: Clip.antiAlias,
       child: ConstrainedBox(
         constraints: BoxConstraints(maxHeight: maxSheetHeight),
         child: Padding(
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
-          child: Stack(
-            key: _sheetStackKey,
-            clipBehavior: Clip.none,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: _handle,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  Center(
-                    child: Container(
-                      width: 40,
-                      height: 4,
-                      decoration: BoxDecoration(
-                        color: _handle,
-                        borderRadius: BorderRadius.circular(2),
-                      ),
+                  const Text(
+                    '选择标签',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                      color: _text,
                     ),
                   ),
-                  const SizedBox(height: 12),
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    children: [
-                      const Text(
-                        '选择标签',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w700,
-                          color: _text,
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      _HeaderActionButton(
-                        icon: Icons.tips_and_updates_outlined,
-                        label: _aiSuggestButtonLabel,
-                        onTap: _aiSuggestTapEnabled
-                            ? _onAiSuggest
-                            : _toastDisabledAi,
-                        foreground: _aiSuggestTapEnabled ? _blue : _muted,
-                        borderColor: _aiSuggestTapEnabled
-                            ? const Color(0xFFB8CCFA)
-                            : const Color(0xFFE8ECF0),
-                      ),
-                      const Spacer(),
-                      GestureDetector(
-                        onTap: () => Navigator.pop(context),
-                        child: const Text(
-                          '关闭',
-                          style: TextStyle(
-                            fontSize: 14,
-                            color: _muted,
-                          ),
-                        ),
-                      ),
-                    ],
+                  const SizedBox(width: 8),
+                  _HeaderActionButton(
+                    icon: Icons.tips_and_updates_outlined,
+                    label: _aiSuggestButtonLabel,
+                    onTap: _aiSuggestTapEnabled
+                        ? _onAiSuggest
+                        : _toastDisabledAi,
+                    foreground: _aiSuggestTapEnabled ? _blue : _muted,
+                    borderColor: _aiSuggestTapEnabled
+                        ? const Color(0xFFB8CCFA)
+                        : const Color(0xFFE8ECF0),
                   ),
-                  const SizedBox(height: 12),
-                  _buildBody(),
-                  const SizedBox(height: 16),
-                  SizedBox(
-                    width: double.infinity,
-                    height: 48,
-                    child: FilledButton(
-                      onPressed: _loading || _saving ? null : _save,
-                      style: FilledButton.styleFrom(
-                        backgroundColor: _blue,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
+                  const Spacer(),
+                  GestureDetector(
+                    onTap: () => Navigator.pop(context),
+                    child: const Text(
+                      '关闭',
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: _muted,
                       ),
-                      child: Text(_saving ? '保存中…' : '完成'),
                     ),
                   ),
                 ],
               ),
-              ?_buildFloatingSearchOverlay(),
+              const SizedBox(height: 12),
+              _buildBody(),
+              const SizedBox(height: 16),
+              SizedBox(
+                width: double.infinity,
+                height: 48,
+                child: FilledButton(
+                  onPressed: _loading || _saving ? null : _save,
+                  style: FilledButton.styleFrom(
+                    backgroundColor: _blue,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  child: Text(_saving ? '保存中…' : '完成'),
+                ),
+              ),
             ],
           ),
         ),
