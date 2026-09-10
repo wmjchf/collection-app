@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:super_collection/core/network/api_client.dart';
+import 'package:super_collection/core/ui/app_bottom_sheet.dart';
 import 'package:super_collection/core/ui/app_confirm_dialog.dart';
 import 'package:super_collection/core/ui/app_toast.dart';
 import 'package:super_collection/features/items/item_models.dart';
@@ -12,22 +13,14 @@ Future<void> showAnnotationDetailSheet(
   required ItemAnnotation annotation,
   required VoidCallback onChanged,
 }) {
-  return showModalBottomSheet<void>(
+  return showAppBottomSheet<void>(
     context: context,
-    isScrollControlled: true,
-    backgroundColor: Colors.transparent,
-    barrierColor: const Color(0x59000000),
-    builder: (context) => Padding(
-      padding: EdgeInsets.only(
-        bottom: MediaQuery.viewInsetsOf(context).bottom,
-      ),
-      child: _AnnotationNoteSheet(
-        itemId: itemId,
-        annotation: annotation,
-        selectedText: annotation.selectedText,
-        initialNote: annotation.note,
-        onChanged: onChanged,
-      ),
+    builder: (context) => _AnnotationNoteSheet(
+      itemId: itemId,
+      annotation: annotation,
+      selectedText: annotation.selectedText,
+      initialNote: annotation.note,
+      onChanged: onChanged,
     ),
   );
 }
@@ -40,22 +33,14 @@ Future<ItemAnnotation?> showCreateAnnotationNoteSheet(
   int? startOffset,
   int? endOffset,
 }) {
-  return showModalBottomSheet<ItemAnnotation>(
+  return showAppBottomSheet<ItemAnnotation>(
     context: context,
-    isScrollControlled: true,
-    backgroundColor: Colors.transparent,
-    barrierColor: const Color(0x59000000),
-    builder: (context) => Padding(
-      padding: EdgeInsets.only(
-        bottom: MediaQuery.viewInsetsOf(context).bottom,
-      ),
-      child: _AnnotationNoteSheet(
-        itemId: itemId,
-        selectedText: selectedText,
-        startOffset: startOffset,
-        endOffset: endOffset,
-        isCreate: true,
-      ),
+    builder: (context) => _AnnotationNoteSheet(
+      itemId: itemId,
+      selectedText: selectedText,
+      startOffset: startOffset,
+      endOffset: endOffset,
+      isCreate: true,
     ),
   );
 }
@@ -174,11 +159,7 @@ class _AnnotationNoteSheetState extends State<_AnnotationNoteSheet> {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-      child: Align(
-        alignment: Alignment.bottomCenter,
-        child: Material(
+    return Material(
           color: Colors.white,
           borderRadius: BorderRadius.circular(24),
           child: Padding(
@@ -313,8 +294,6 @@ class _AnnotationNoteSheetState extends State<_AnnotationNoteSheet> {
               ],
             ),
           ),
-        ),
-      ),
-    );
+        );
   }
 }

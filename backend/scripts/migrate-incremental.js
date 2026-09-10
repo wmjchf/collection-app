@@ -28,6 +28,7 @@ const MIGRATION_FILES = [
   '018_remove_starred_filter.sql',
   '019_seed_guide_items.sql',
   '020_drop_ai_preference_events.sql',
+  '021_tag_parent_id.sql',
 ];
 
 async function getConnection() {
@@ -218,6 +219,22 @@ async function apply019(conn) {
   );
 }
 
+async function apply021(conn, dbName) {
+  if (await columnExists(conn, dbName, 'categories', 'parent_id')) {
+    console.log('[db:migrate] 021: parent_id 已存在，跳过');
+    return;
+  }
+  await conn.query(
+    "ALTER TABLE `categories` ADD COLUMN `parent_id` BIGINT UNSIGNED DEFAULT NULL COMMENT '标签父级（仅 section=tag；可多层）' AFTER `sort_order`",
+  );
+  if (!(await indexExists(conn, dbName, 'categories', 'idx_categories_parent'))) {
+    await conn.query(
+      'ALTER TABLE `categories` ADD KEY `idx_categories_parent` (`parent_id`)',
+    );
+  }
+  console.log('[db:migrate] 021: 已添加 categories.parent_id');
+}
+
 async function applyMigration(conn, dbName, file) {
   if (file === '002_last_read_at.sql') {
     await apply002(conn, dbName);
@@ -245,6 +262,10 @@ async function applyMigration(conn, dbName, file) {
   }
   if (file === '019_seed_guide_items.sql') {
     await apply019(conn);
+    return;
+  }
+  if (file === '021_tag_parent_id.sql') {
+    await apply021(conn, dbName);
     return;
   }
   await runSqlFile(conn, file);

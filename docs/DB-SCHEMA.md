@@ -115,6 +115,7 @@
 | name | VARCHAR(64) NOT NULL | |
 | is_system | TINYINT(1) NOT NULL DEFAULT 0 | |
 | sort_order | INT NOT NULL DEFAULT 0 | |
+| parent_id | BIGINT UNSIGNED NULL | 标签父级（仅 `section=tag`；可多层嵌套，整理视图）；打标不读此字段 |
 | created_at / updated_at | DATETIME(3) | |
 
 约束：`UNIQUE (user_id, section, name)`  
@@ -186,10 +187,11 @@ API：`GET …/transcript-targets`、`POST …/transcript`（body.segmentKey）�
 
 | 接口 | 说明 |
 | --- | --- |
-| `GET /api/tags` | 当前用户自建标签；含 `itemCount` |
+| `GET /api/tags` | 当前用户自建标签；含 `itemCount`、`parentId`（扁平列表） |
 | `POST /api/tags` | body `{ name }` 新建 |
+| `PUT /api/tags/reorder` | body `{ items:[{ id, parentId, sortOrder }] }` 须覆盖全部自建标签；可多层，防环 |
 | `PATCH /api/tags/:id` | body `{ name }` 重命名自建标签 |
-| `DELETE /api/tags/:id` | 仅自建标签；解除 `item_tags` 关联，不删条目 |
+| `DELETE /api/tags/:id` | 仅自建标签；子标签接到被删节点的父级；解除 `item_tags` 关联，不删条目 |
 
 ## 系统筛选 API（约定）
 
@@ -223,7 +225,7 @@ API：`GET …/transcript-targets`、`POST …/transcript`（body.segmentKey）�
 
 ## 二期预留
 
-- 收藏夹嵌套（`categories.parent_id`）
+- 收藏夹嵌套（folder 的 `parent_id`；标签分组已用 `categories.parent_id`）
 - 一键登录（运营商取号，同属号码认证，可后加）
 - 支付校验与商店回调写入 `subscriptions`
 

@@ -58,6 +58,32 @@ class TagsRepository {
     await _api.delete('/api/tags/$id', accessToken: token);
   }
 
+  /// 批量更新分组与排序；[items] 须覆盖当前用户全部自建标签。
+  Future<List<Tag>> reorderTags(
+    List<({int id, int? parentId, int sortOrder})> items,
+  ) async {
+    final token = await _token();
+    final json = await _api.put(
+      '/api/tags/reorder',
+      body: {
+        'items': [
+          for (final e in items)
+            {
+              'id': e.id,
+              'parentId': e.parentId,
+              'sortOrder': e.sortOrder,
+            },
+        ],
+      },
+      accessToken: token,
+    );
+    final list = json['tags'] as List<dynamic>? ?? const [];
+    return list
+        .whereType<Map<String, dynamic>>()
+        .map(Tag.fromJson)
+        .toList();
+  }
+
   Future<({List<CollectionItem> items, int total})> listTagItems(
     int tagId, {
     int limit = 50,
