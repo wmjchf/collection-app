@@ -101,6 +101,22 @@ List<Tag> flattenTagsForDisplay(List<Tag> tags) {
   return out;
 }
 
+/// 节点路径文案：根 › … › 自身。
+String tagPathLabel(Tag tag, Map<int, Tag> byId, {String sep = ' › '}) {
+  final parts = <String>[tag.name];
+  var cur = tag.parentId;
+  final seen = <int>{tag.id};
+  while (cur != null) {
+    if (!seen.add(cur)) break;
+    final p = byId[cur];
+    if (p == null) break;
+    parts.insert(0, p.name);
+    cur = p.parentId;
+    if (parts.length > 64) break;
+  }
+  return parts.join(sep);
+}
+
 /// 节点深度：根 = 0。
 int tagDepth(Tag tag, Map<int, Tag> byId) {
   var depth = 0;

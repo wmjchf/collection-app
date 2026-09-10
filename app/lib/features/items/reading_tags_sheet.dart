@@ -380,6 +380,15 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
   bool get _aiSuggestTapEnabled =>
       widget.aiSuggestEnabled || _tagsMeta.isPending;
 
+  /// 已有标签显示整理路径；新建仍用短名。
+  String _aiSuggestDisplayLabel(AiTagSuggestion item) {
+    final id = item.existingTagId;
+    if (id == null) return item.name;
+    final tag = _tagById[id];
+    if (tag == null) return item.name;
+    return tagPathLabel(tag, _tagById);
+  }
+
   Widget _buildAiSuggestSection() {
     final meta = _tagsMeta;
     if (meta.status == 'none' || meta.status == 'skipped') {
@@ -541,7 +550,7 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
                               }
                             }),
                     child: _AiSuggestChip(
-                      label: item.name,
+                      label: _aiSuggestDisplayLabel(item),
                       isExisting: item.existingTagId != null,
                       selected: _aiSelected.contains(item.name),
                     ),
@@ -578,7 +587,7 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
             ),
             const SizedBox(height: 6),
             const Text(
-              '带 ＋ 为新建建议，其余为已有标签（可复用）',
+              '路径仅作参考；采纳只写入所选标签，不自动带祖先。带 ＋ 为新建建议。',
               style: TextStyle(fontSize: 12, color: _muted, height: 1.4),
             ),
           ],
