@@ -225,7 +225,7 @@ async function apply021(conn, dbName) {
     return;
   }
   await conn.query(
-    "ALTER TABLE `categories` ADD COLUMN `parent_id` BIGINT UNSIGNED DEFAULT NULL COMMENT '标签父级（仅 section=tag；一层）' AFTER `sort_order`",
+    "ALTER TABLE `categories` ADD COLUMN `parent_id` BIGINT UNSIGNED DEFAULT NULL COMMENT '标签父级（仅 section=tag；可多层）' AFTER `sort_order`",
   );
   if (!(await indexExists(conn, dbName, 'categories', 'idx_categories_parent'))) {
     await conn.query(

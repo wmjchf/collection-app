@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:super_collection/core/network/api_client.dart';
+import 'package:super_collection/core/ui/app_confirm_dialog.dart';
 import 'package:super_collection/core/ui/app_toast.dart';
 import 'package:super_collection/features/collection/create_tag_sheet.dart';
 import 'package:super_collection/features/collection/items_browse_page.dart';
@@ -7,7 +8,7 @@ import 'package:super_collection/features/collection/tag_models.dart';
 import 'package:super_collection/features/collection/tags_repository.dart';
 import 'package:super_collection/features/shell/user_avatar_button.dart';
 
-/// 我的标签 Tab：一层分组整理；选标签 / 打标仍用扁平列表。
+/// 我的标签 Tab：多层分组整理；选标签 / 打标仍用扁平列表。
 class TagsPage extends StatefulWidget {
   const TagsPage({
     super.key,
@@ -28,6 +29,7 @@ class _TagsPageState extends State<TagsPage> {
   static const _bg = Color(0xFFF7F7FA);
   static const _text = Color(0xFF1F242E);
   static const _muted = Color(0xFF737A85);
+  static const _brand = Color(0xFF2F6FED);
   static const _inputBg = Color(0xFFF5F7FA);
   static const _card = Colors.white;
   static const _divider = Color(0xFFF0F2F5);
@@ -79,7 +81,9 @@ class _TagsPageState extends State<TagsPage> {
 
   bool get _isSearching => _searchController.text.trim().isNotEmpty;
 
-  bool _hasChildren(int id) => _tags.any((t) => t.parentId == id);
+  Map<int, Tag> get _byId => {for (final t in _tags) t.id: t};
+
+  Map<int, List<Tag>> get _childrenByParent => tagChildrenByParent(_tags);
 
   Future<void> _load({bool quiet = false}) async {
     if (!quiet) {
@@ -182,46 +186,75 @@ class _TagsPageState extends State<TagsPage> {
   }
 
   Future<void> _moveToGroup(Tag tag) async {
-    if (_hasChildren(tag.id)) {
-      AppToast.show(context, '请先移出子标签');
-      return;
-    }
-    final candidates = _tags
-        .where((t) => t.parentId == null && t.id != tag.id)
-        .toList()
-      ..sort((a, b) => a.name.compareTo(b.name));
+    final blocked = {
+      tag.id,
+      ...tagDescendantIds(tag.id, _childrenByParent),
+    };
+    final candidates = flattenTagsForDisplay(_tags)
+        .where((t) => !blocked.contains(t.id))
+        .toList();
     if (candidates.isEmpty) {
-      AppToast.show(context, '暂无可用分组');
+      AppToast.show(context, '暂无可用上级');
       return;
     }
     final picked = await showModalBottomSheet<Tag>(
       context: context,
       backgroundColor: Colors.white,
+      isScrollControlled: true,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
       ),
       builder: (context) {
+        final allById = _byId;
+        final maxH = MediaQuery.sizeOf(context).height * 0.72;
         return SafeArea(
-          child: ListView(
-            shrinkWrap: true,
-            children: [
-              const Padding(
-                padding: EdgeInsets.fromLTRB(16, 16, 16, 8),
-                child: Text(
-                  '归入分组',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w700,
-                    color: _text,
+          child: ConstrainedBox(
+            constraints: BoxConstraints(maxHeight: maxH),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const Padding(
+                  padding: EdgeInsets.fromLTRB(16, 16, 16, 8),
+                  child: Text(
+                    '归入分组',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                      color: _text,
+                    ),
                   ),
                 ),
-              ),
-              for (final r in candidates)
-                ListTile(
-                  title: Text('#${r.name}'),
-                  onTap: () => Navigator.pop(context, r),
+                Flexible(
+                  child: ListView.separated(
+                    shrinkWrap: true,
+                    padding: const EdgeInsets.fromLTRB(0, 0, 0, 12),
+                    itemCount: candidates.length,
+                    separatorBuilder: (_, i) {
+                      final depth = tagDepth(candidates[i], allById);
+                      return Divider(
+                        height: 1,
+                        indent: 16.0 + depth * 22.0,
+                        endIndent: 16,
+                        color: _divider,
+                      );
+                    },
+                    itemBuilder: (context, index) {
+                      final r = candidates[index];
+                      final depth = tagDepth(r, allById);
+                      return InkWell(
+                        onTap: () => Navigator.pop(context, r),
+                        child: _buildTreeLabel(
+                          r,
+                          depth: depth,
+                          showCount: false,
+                        ),
+                      );
+                    },
+                  ),
                 ),
-            ],
+              ],
+            ),
           ),
         );
       },
@@ -233,86 +266,204 @@ class _TagsPageState extends State<TagsPage> {
     ]);
   }
 
-  Future<void> _unnest(int tagId) async {
+  /// 与列表行一致的树形标签文案（缩进 + 竖条 + 字号字重）。
+  Widget _buildTreeLabel(
+    Tag tag, {
+    required int depth,
+    Widget? trailing,
+    EdgeInsetsGeometry? padding,
+    bool showCount = true,
+  }) {
+    final isNested = depth > 0;
+    return Padding(
+      padding: padding ??
+          EdgeInsets.only(
+            left: 16.0 + depth * 22.0,
+            right: 16,
+            top: 14,
+            bottom: 14,
+          ),
+      child: Row(
+        children: [
+          if (isNested)
+            Container(
+              width: 2,
+              height: 18,
+              margin: const EdgeInsets.only(right: 10),
+              color: const Color(0xFFE5E8ED),
+            ),
+          Expanded(
+            child: Text.rich(
+              TextSpan(
+                children: [
+                  TextSpan(
+                    text: '#${tag.name}',
+                    style: TextStyle(
+                      fontSize: isNested ? 14 : 15,
+                      fontWeight: isNested ? FontWeight.w400 : FontWeight.w500,
+                      color: _text,
+                    ),
+                  ),
+                  if (showCount)
+                    TextSpan(
+                      text: ' (${tag.countLabel})',
+                      style: TextStyle(
+                        fontSize: isNested ? 13 : 14,
+                        fontWeight: FontWeight.w400,
+                        color: _muted,
+                      ),
+                    ),
+                ],
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          if (trailing != null) ...[
+            const SizedBox(width: 8),
+            trailing,
+          ],
+        ],
+      ),
+    );
+  }
+
+  /// 升一级：父级改为祖父；已在根下则变根。
+  Future<void> _promoteOneLevel(int tagId) async {
+    final tag = _byId[tagId];
+    if (tag == null || tag.parentId == null) return;
+    final parent = _byId[tag.parentId!];
+    final newParentId = parent?.parentId;
     await _persist([
       for (final t in _tags)
-        if (t.id == tagId) t.copyWith(clearParentId: true) else t,
+        if (t.id == tagId)
+          t.copyWith(
+            parentId: newParentId,
+            clearParentId: newParentId == null,
+          )
+        else
+          t,
     ]);
+  }
+
+  Future<void> _deleteTag(Tag tag) async {
+    final hasChildren = _childrenByParent[tag.id]?.isNotEmpty == true;
+    final confirmed = await showAppConfirmDialog(
+      context,
+      title: '删除标签',
+      message: hasChildren
+          ? '确定删除标签「${tag.name}」？仅解除与条目的关联，不会删除条目；其子标签将接到上一级。'
+          : '确定删除标签「${tag.name}」？仅解除与条目的关联，不会删除条目。',
+      confirmLabel: '删除',
+    );
+    if (confirmed != true || !mounted) return;
+    try {
+      await _tagsRepo.deleteTag(tag.id);
+      if (!mounted) return;
+      AppToast.show(context, '已删除标签「${tag.name}」');
+      await _load(quiet: true);
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      AppToast.show(context, e.message);
+    } catch (_) {
+      if (!mounted) return;
+      AppToast.show(context, '删除失败');
+    }
   }
 
   Future<void> _onReorder(int oldIndex, int newIndex) async {
     if (_isSearching || _savingLayout) return;
     final rows = List<Tag>.from(_displayRows);
-    if (newIndex > oldIndex) newIndex -= 1;
+    if (oldIndex < 0 || oldIndex >= rows.length) return;
 
     final moved = rows[oldIndex];
-    final block = <Tag>[moved];
-    if (moved.parentId == null) {
-      block.addAll(rows.where((t) => t.parentId == moved.id));
-    }
-    final blockIds = block.map((t) => t.id).toSet();
-    final remaining = rows.where((t) => !blockIds.contains(t.id)).toList();
+    final parentId = moved.parentId;
 
-    var insertAt = newIndex.clamp(0, remaining.length);
-    // 移除块后校正插入点
-    final removedBefore = rows
-        .take(newIndex + (newIndex > oldIndex ? 1 : 0))
-        .where((t) => blockIds.contains(t.id))
-        .length;
-    if (oldIndex < newIndex) {
-      insertAt = (newIndex - removedBefore + 1).clamp(0, remaining.length);
-    } else {
-      insertAt = newIndex.clamp(0, remaining.length);
+    // 同级头节点（相同 parentId）在展示行中的下标
+    final heads = <int>[
+      for (var i = 0; i < rows.length; i++)
+        if (rows[i].parentId == parentId) i,
+    ];
+    if (heads.length < 2) {
+      if (mounted) setState(() {});
+      return;
     }
 
-    final nextRows = [...remaining]..insertAll(insertAt, block);
+    final fromRank = heads.indexOf(oldIndex);
+    if (fromRank < 0) {
+      if (mounted) setState(() {});
+      return;
+    }
 
-    final result = <Tag>[];
-    for (var i = 0; i < nextRows.length; i++) {
-      final t = nextRows[i];
-      // 跟随父节点移动的子节点
-      if (moved.parentId == null &&
-          t.id != moved.id &&
-          blockIds.contains(t.id)) {
-        result.add(t.copyWith(parentId: moved.id, sortOrder: (i + 1) * 10));
-        continue;
+    final starts = heads;
+    final ends = [
+      for (final h in heads) h + tagSubtreeBlock(rows, h).length,
+    ];
+    final bandStart = starts.first;
+    final bandEnd = ends.last;
+
+    var dest = newIndex;
+    if (dest > oldIndex) dest -= 1;
+
+    // 拖出同级区间 → 不改层级，直接还原
+    if (dest < bandStart || dest >= bandEnd) {
+      if (mounted) setState(() {});
+      return;
+    }
+
+    // 映射为同级插入位：0..heads.length（length = 插到末尾）
+    var toRank = heads.length;
+    for (var i = 0; i < heads.length; i++) {
+      if (dest < starts[i]) {
+        toRank = i;
+        break;
       }
-
-      var parentId = _inferParent(nextRows, i);
-      if (t.id == moved.id && _hasChildren(moved.id)) {
-        parentId = null;
+      if (dest < ends[i]) {
+        if (fromRank == i) {
+          if (mounted) setState(() {});
+          return;
+        }
+        // 落在某同级子树内：从上往下 → 插到其后；从下往上 → 插到其前
+        toRank = fromRank < i ? i + 1 : i;
+        break;
       }
-      if (parentId != null && _hasChildren(t.id)) {
-        parentId = null;
-      }
-
-      result.add(
-        t.copyWith(
-          parentId: parentId,
-          clearParentId: parentId == null,
-          sortOrder: (i + 1) * 10,
-        ),
-      );
     }
 
-    final seen = result.map((t) => t.id).toSet();
-    for (final t in _tags) {
-      if (!seen.contains(t.id)) result.add(t);
-    }
-    await _persist(result);
-  }
+    final siblings = [for (final h in heads) rows[h]];
+    final reordered = List<Tag>.from(siblings);
+    final item = reordered.removeAt(fromRank);
+    var insertAt = toRank;
+    if (fromRank < insertAt) insertAt -= 1;
+    insertAt = insertAt.clamp(0, reordered.length);
+    reordered.insert(insertAt, item);
 
-  int? _inferParent(List<Tag> rows, int index) {
-    if (index <= 0) return null;
-    final prev = rows[index - 1];
-    final next = index + 1 < rows.length ? rows[index + 1] : null;
-    if (prev.parentId != null) return prev.parentId;
-    if (next != null && next.parentId == prev.id) return prev.id;
-    return null;
+    var unchanged = true;
+    for (var i = 0; i < reordered.length; i++) {
+      if (reordered[i].id != siblings[i].id) {
+        unchanged = false;
+        break;
+      }
+    }
+    if (unchanged) {
+      if (mounted) setState(() {});
+      return;
+    }
+
+    final orderById = <int, int>{
+      for (var i = 0; i < reordered.length; i++)
+        reordered[i].id: (i + 1) * 10,
+    };
+    await _persist([
+      for (final t in _tags)
+        if (orderById.containsKey(t.id))
+          t.copyWith(sortOrder: orderById[t.id])
+        else
+          t,
+    ]);
   }
 
   Future<void> _showRowActions(Tag tag) async {
-    final isChild = tag.parentId != null;
+    final hasParent = tag.parentId != null;
     final action = await showModalBottomSheet<String>(
       context: context,
       backgroundColor: Colors.white,
@@ -338,18 +489,25 @@ class _TagsPageState extends State<TagsPage> {
                   ),
                 ),
               ),
-              if (!isChild)
-                ListTile(
-                  leading: const Icon(Icons.subdirectory_arrow_right_rounded),
-                  title: const Text('归入分组'),
-                  onTap: () => Navigator.pop(context, 'nest'),
-                ),
-              if (isChild)
+              ListTile(
+                leading: const Icon(Icons.subdirectory_arrow_right_rounded),
+                title: const Text('归入分组'),
+                onTap: () => Navigator.pop(context, 'nest'),
+              ),
+              if (hasParent)
                 ListTile(
                   leading: const Icon(Icons.undo_rounded),
-                  title: const Text('移出分组'),
-                  onTap: () => Navigator.pop(context, 'unnest'),
+                  title: const Text('升一级'),
+                  onTap: () => Navigator.pop(context, 'promote'),
                 ),
+              ListTile(
+                leading: const Icon(Icons.delete_outline_rounded, color: Color(0xFFBF3333)),
+                title: const Text(
+                  '删除标签',
+                  style: TextStyle(color: Color(0xFFBF3333)),
+                ),
+                onTap: () => Navigator.pop(context, 'delete'),
+              ),
               ListTile(
                 leading: const Icon(Icons.close_rounded),
                 title: const Text('取消'),
@@ -362,7 +520,8 @@ class _TagsPageState extends State<TagsPage> {
     );
     if (!mounted) return;
     if (action == 'nest') await _moveToGroup(tag);
-    if (action == 'unnest') await _unnest(tag.id);
+    if (action == 'promote') await _promoteOneLevel(tag.id);
+    if (action == 'delete') await _deleteTag(tag);
   }
 
   PreferredSizeWidget _buildAppBar() {
@@ -394,7 +553,7 @@ class _TagsPageState extends State<TagsPage> {
                     prefixIcon: const Icon(
                       Icons.search_rounded,
                       color: _muted,
-                      size: 22,
+                      size: 24,
                     ),
                     suffixIcon: _searchController.text.isEmpty
                         ? null
@@ -402,7 +561,7 @@ class _TagsPageState extends State<TagsPage> {
                             icon: const Icon(
                               Icons.close_rounded,
                               color: _muted,
-                              size: 20,
+                              size: 22,
                             ),
                             onPressed: () {
                               _searchController.clear();
@@ -415,11 +574,17 @@ class _TagsPageState extends State<TagsPage> {
                     contentPadding: const EdgeInsets.symmetric(vertical: 10),
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(20),
-                      borderSide: BorderSide.none,
+                      borderSide: const BorderSide(
+                        color: Color(0xFFB8CCFA),
+                        width: 1,
+                      ),
                     ),
                     enabledBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(20),
-                      borderSide: BorderSide.none,
+                      borderSide: const BorderSide(
+                        color: Color(0xFFB8CCFA),
+                        width: 1,
+                      ),
                     ),
                     focusedBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(20),
@@ -447,7 +612,7 @@ class _TagsPageState extends State<TagsPage> {
           const SizedBox(width: 8),
           const Expanded(
             child: Text(
-              '拖动手柄排序',
+              '长按调整层级 · 拖动手柄同级排序',
               style: TextStyle(fontSize: 12, color: _muted),
               overflow: TextOverflow.ellipsis,
             ),
@@ -458,21 +623,20 @@ class _TagsPageState extends State<TagsPage> {
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
               decoration: BoxDecoration(
-                color: Colors.white,
+                color: _brand,
                 borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: const Color(0xFFE8ECF0)),
               ),
               child: const Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(Icons.add, size: 16, color: _text),
+                  Icon(Icons.add, size: 16, color: Colors.white),
                   SizedBox(width: 2),
                   Text(
                     '新建',
                     style: TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w500,
-                      color: _text,
+                      color: Colors.white,
                     ),
                   ),
                 ],
@@ -484,51 +648,30 @@ class _TagsPageState extends State<TagsPage> {
     );
   }
 
-  Widget _buildRow(Tag tag, {required bool isChild, required int index}) {
+  Widget _buildRow(Tag tag, {required int depth, required int index}) {
     return Material(
       color: _card,
       child: InkWell(
         onTap: () => _openTag(tag),
         onLongPress: _isSearching ? null : () => _showRowActions(tag),
-        child: Padding(
+        child: _buildTreeLabel(
+          tag,
+          depth: depth,
           padding: EdgeInsets.only(
-            left: isChild ? 38 : 14,
+            left: 14.0 + depth * 22.0,
             right: 4,
             top: 14,
             bottom: 14,
           ),
-          child: Row(
+          trailing: Row(
+            mainAxisSize: MainAxisSize.min,
             children: [
-              if (isChild)
-                Container(
-                  width: 2,
-                  height: 18,
-                  margin: const EdgeInsets.only(right: 10),
-                  color: const Color(0xFFE5E8ED),
-                ),
-              Expanded(
-                child: Text(
-                  '#${tag.name}',
-                  style: TextStyle(
-                    fontSize: isChild ? 14 : 15,
-                    fontWeight: isChild ? FontWeight.w400 : FontWeight.w500,
-                    color: _text,
-                  ),
-                ),
-              ),
-              Text(
-                tag.countLabel,
-                style: const TextStyle(fontSize: 14, color: _muted),
-              ),
               if (!_isSearching)
                 ReorderableDragStartListener(
                   index: index,
                   child: const Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 8),
-                    child: Icon(
-                      Icons.drag_handle_rounded,
-                      color: Color(0xFFB8BFC8),
-                    ),
+                    padding: EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    child: _DragGrip(),
                   ),
                 )
               else
@@ -565,6 +708,14 @@ class _TagsPageState extends State<TagsPage> {
 
     final rows = _displayRows;
     if (rows.isEmpty) {
+      if (_isSearching) {
+        return const Center(
+          child: Text(
+            '没有相关标签',
+            style: TextStyle(fontSize: 14, color: _muted),
+          ),
+        );
+      }
       return _EmptyState(onCreate: _createTag);
     }
 
@@ -578,8 +729,11 @@ class _TagsPageState extends State<TagsPage> {
             child: _isSearching
                 ? ListView.builder(
                     padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
-                    itemCount: rows.length,
+                    itemCount: rows.length + 1,
                     itemBuilder: (context, index) {
+                      if (index == rows.length) {
+                        return const _ListEndTip();
+                      }
                       final tag = rows[index];
                       return Container(
                         decoration: BoxDecoration(
@@ -595,7 +749,7 @@ class _TagsPageState extends State<TagsPage> {
                         ),
                         child: Column(
                           children: [
-                            _buildRow(tag, isChild: false, index: index),
+                            _buildRow(tag, depth: 0, index: index),
                             if (index < rows.length - 1)
                               const Divider(
                                 height: 1,
@@ -620,9 +774,10 @@ class _TagsPageState extends State<TagsPage> {
                       );
                     },
                     onReorder: _onReorder,
+                    footer: const _ListEndTip(),
                     itemBuilder: (context, index) {
                       final tag = rows[index];
-                      final isChild = tag.parentId != null;
+                      final depth = tagDepth(tag, _byId);
                       return Container(
                         key: ValueKey(tag.id),
                         decoration: BoxDecoration(
@@ -638,11 +793,11 @@ class _TagsPageState extends State<TagsPage> {
                         ),
                         child: Column(
                           children: [
-                            _buildRow(tag, isChild: isChild, index: index),
+                            _buildRow(tag, depth: depth, index: index),
                             if (index < rows.length - 1)
                               Divider(
                                 height: 1,
-                                indent: isChild ? 38 : 14,
+                                indent: 14.0 + depth * 22.0,
                                 endIndent: 14,
                                 color: _divider,
                               ),
@@ -653,14 +808,6 @@ class _TagsPageState extends State<TagsPage> {
                   ),
           ),
         ),
-        if (!_isSearching)
-          const Padding(
-            padding: EdgeInsets.fromLTRB(16, 0, 16, 12),
-            child: Text(
-              '拖动手柄排序；长按标签可归入 / 移出分组。给链接选标签时仍为扁平列表，勾选什么就记什么。',
-              style: TextStyle(fontSize: 12, color: _muted, height: 1.4),
-            ),
-          ),
       ],
     );
   }
@@ -671,6 +818,51 @@ class _TagsPageState extends State<TagsPage> {
       backgroundColor: _bg,
       appBar: _buildAppBar(),
       body: _buildBody(),
+    );
+  }
+}
+
+class _ListEndTip extends StatelessWidget {
+  const _ListEndTip();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Padding(
+      padding: EdgeInsets.symmetric(vertical: 14),
+      child: Center(
+        child: Text(
+          '没有更多了',
+          style: TextStyle(fontSize: 12, color: Color(0xFF737A85)),
+        ),
+      ),
+    );
+  }
+}
+
+class _DragGrip extends StatelessWidget {
+  const _DragGrip();
+
+  static const _color = Color(0xFFB8BFC8);
+
+  @override
+  Widget build(BuildContext context) {
+    Widget line() => Container(
+          width: 12,
+          height: 1.5,
+          decoration: BoxDecoration(
+            color: _color,
+            borderRadius: BorderRadius.circular(1),
+          ),
+        );
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        line(),
+        const SizedBox(height: 3),
+        line(),
+        const SizedBox(height: 3),
+        line(),
+      ],
     );
   }
 }

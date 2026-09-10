@@ -59,7 +59,7 @@ CREATE TABLE `categories` (
   `name` VARCHAR(64) NOT NULL,
   `is_system` TINYINT(1) NOT NULL DEFAULT 0,
   `sort_order` INT NOT NULL DEFAULT 0,
-  `parent_id` BIGINT UNSIGNED DEFAULT NULL COMMENT '标签父级（仅 section=tag；一层）',
+  `parent_id` BIGINT UNSIGNED DEFAULT NULL COMMENT '标签父级（仅 section=tag；可多层）',
   `created_at` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
   `updated_at` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
   PRIMARY KEY (`id`),

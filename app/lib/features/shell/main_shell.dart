@@ -34,9 +34,9 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
   static String _tabScreen(int index) {
     switch (index) {
       case 1:
-        return AnalyticsScreens.library;
-      case 2:
         return AnalyticsScreens.tags;
+      case 2:
+        return AnalyticsScreens.library;
       default:
         return AnalyticsScreens.home;
     }
@@ -153,12 +153,12 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
                 refreshTick: _homeRefreshTick,
                 onOpenAccount: _openAccountDrawer,
               ),
-              CollectionPage(
+              TagsPage(
                 isActive: _index == 1,
                 refreshTick: _homeRefreshTick,
                 onOpenAccount: _openAccountDrawer,
               ),
-              TagsPage(
+              CollectionPage(
                 isActive: _index == 2,
                 refreshTick: _homeRefreshTick,
                 onOpenAccount: _openAccountDrawer,

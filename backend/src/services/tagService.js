@@ -170,7 +170,7 @@ async function renameTag(userId, tagId, rawName) {
 }
 
 /**
- * 删除用户自建标签：子标签升为根级；仅解除关联（item_tags CASCADE），不删条目
+ * 删除用户自建标签：子标签接到被删节点的父级；仅解除关联（item_tags CASCADE），不删条目
  */
 async function deleteTag(userId, tagId) {
   const tag = await getOwnedTag(userId, tagId);
@@ -179,9 +179,9 @@ async function deleteTag(userId, tagId) {
     await conn.beginTransaction();
     await conn.execute(
       `UPDATE categories
-       SET parent_id = NULL, updated_at = CURRENT_TIMESTAMP(3)
+       SET parent_id = :newParentId, updated_at = CURRENT_TIMESTAMP(3)
        WHERE user_id = :userId AND section = 'tag' AND parent_id = :tagId`,
-      { userId, tagId: tag.id },
+      { userId, tagId: tag.id, newParentId: tag.parent_id ?? null },
     );
     await conn.execute(
       `DELETE FROM categories WHERE id = :tagId AND user_id = :userId`,
@@ -202,7 +202,7 @@ async function deleteTag(userId, tagId) {
 }
 
 /**
- * 批量更新标签分组与排序（一层 parent；打标场景不读此结构）
+ * 批量更新标签分组与排序（任意多层 parent；打标场景不读此结构）
  * body.items: [{ id, parentId, sortOrder }]
  */
 async function reorderTags(userId, rawItems) {
@@ -253,25 +253,23 @@ async function reorderTags(userId, rawItems) {
   }
 
   const proposedParent = new Map(updates.map((u) => [u.id, u.parentId]));
+  const maxDepth = 32;
   for (const u of updates) {
     if (u.parentId == null) continue;
-    if (proposedParent.get(u.parentId) != null) {
-      throw Object.assign(new Error('仅支持一层分组'), { status: 400 });
-    }
-  }
-  const proposedChildCount = new Map();
-  for (const u of updates) {
-    if (u.parentId == null) continue;
-    proposedChildCount.set(
-      u.parentId,
-      (proposedChildCount.get(u.parentId) || 0) + 1,
-    );
-  }
-  for (const u of updates) {
-    if (u.parentId != null && (proposedChildCount.get(u.id) || 0) > 0) {
-      throw Object.assign(new Error('已有子标签，请先移出子标签'), {
-        status: 400,
-      });
+    let cur = u.parentId;
+    let depth = 0;
+    const walked = new Set([u.id]);
+    while (cur != null) {
+      if (walked.has(cur)) {
+        throw Object.assign(new Error('标签分组不能成环'), { status: 400 });
+      }
+      walked.add(cur);
+      depth += 1;
+      if (depth > maxDepth) {
+        throw Object.assign(new Error('标签层级过深'), { status: 400 });
+      }
+      cur = proposedParent.get(cur);
+      if (cur === undefined) break;
     }
   }
 
