@@ -14,19 +14,42 @@ const {
 } = require('./aiRegeneratePrompt');
 
 const TAGS_SYSTEM_PROMPT =
-  '你是收藏整理助手。根据用户收藏的内容，建议 3～5 个简短中文标签（每个 2～8 字），帮助分类与检索。' +
-  '优先从用户已有标签里选择（多篇收藏可共用同一标签）；若无合适项可建议新标签名。' +
+  '你是收藏整理助手。根据本篇收藏的实际内容，建议 3～5 个简短中文标签（每个 2～8 字），帮助分类与检索。' +
+  '用户已有标签可能带层级路径（用 › 连接，如「旅游 › 南京」）；层级只是用户整理方式，不等于内容归属。' +
+  '优先复用已有标签中与本篇内容真正相关的项；不要因为某标签挂在某个父级下就连父级一起建议。' +
+  '是否建议某标签只看本篇在讲什么，不看它在树里挂在哪。' +
+  '若无合适已有项可建议新标签名（将作为根级创建，用户可稍后整理）。' +
   '不要建议「本篇已打标签」列表中的任何名称。' +
-  '只输出 JSON：{"tags":["标签1","标签2"]}，不要其它字段或说明。';
+  '只输出 JSON：{"tags":["标签1","标签2"]}，其中为短标签名本身（不要带路径），不要其它字段或说明。';
 
 async function listUserTagsForMatch(userId) {
   const [rows] = await pool.execute(
-    `SELECT id, name FROM categories
+    `SELECT id, name, parent_id FROM categories
      WHERE user_id = :userId AND section = 'tag' AND is_system = 0
      ORDER BY sort_order ASC, id ASC`,
     { userId },
   );
   return rows;
+}
+
+/** 将用户标签格式化为带路径的提示文案（根 › 子 › …） */
+function formatUserTagsForPrompt(userTags) {
+  if (!userTags.length) return '（无）';
+  const byId = new Map(userTags.map((t) => [Number(t.id), t]));
+  const lines = [];
+  for (const t of userTags) {
+    const parts = [String(t.name).trim()];
+    let cur = t.parent_id == null ? null : Number(t.parent_id);
+    const seen = new Set([Number(t.id)]);
+    while (cur != null && byId.has(cur) && !seen.has(cur)) {
+      seen.add(cur);
+      const p = byId.get(cur);
+      parts.unshift(String(p.name).trim());
+      cur = p.parent_id == null ? null : Number(p.parent_id);
+    }
+    lines.push(parts.filter(Boolean).join(' › '));
+  }
+  return lines.join('、');
 }
 
 async function listItemTagNames(userId, itemId) {
@@ -284,16 +307,16 @@ async function runAiSuggestJob(itemId) {
 
     const userTags = await listUserTagsForMatch(row.user_id);
     const currentTagNames = await listItemTagNames(row.user_id, itemId);
-    const existingNames = userTags.map((t) => t.name).join('、') || '（无）';
+    const existingNames = formatUserTagsForPrompt(userTags);
     const currentNames = currentTagNames.join('、') || '（无）';
 
     const regenBlock = formatRegenerateUserBlock(meta.tags.regenerateFrom);
     const messages = buildAiTaskMessages(inputText, [
       TAGS_SYSTEM_PROMPT,
-      `用户已有标签（可复用）：${existingNames}`,
+      `用户已有标签（可复用，› 仅为整理路径）：${existingNames}`,
       `本篇已打标签（请勿重复建议）：${currentNames}`,
       regenBlock,
-      '请为以上内容建议标签。',
+      '请根据本篇实际内容建议标签。',
     ]);
 
     const usageService = require('./usageService');
