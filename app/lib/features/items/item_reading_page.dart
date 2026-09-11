@@ -301,9 +301,7 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
       final tags = await _repo.listItemTags(_item.id);
       if (!mounted) return;
       setState(() {
-        _itemTags = leafTagsAmong(
-          tags.where((t) => !t.isSystem).toList(growable: false),
-        );
+        _itemTags = tags.where((t) => !t.isSystem).toList(growable: false);
       });
     } catch (_) {
       // ignore
