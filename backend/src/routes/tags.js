@@ -16,10 +16,12 @@ router.get('/', async (req, res, next) => {
   }
 });
 
-/** POST /api/tags — 新建标签 */
+/** POST /api/tags — 新建标签；可选 body.parentId */
 router.post('/', async (req, res, next) => {
   try {
-    const tag = await tagService.createTag(req.auth.userId, req.body?.name);
+    const tag = await tagService.createTag(req.auth.userId, req.body?.name, {
+      parentId: req.body?.parentId,
+    });
     return res.status(201).json({
       tag,
       message: '已创建',

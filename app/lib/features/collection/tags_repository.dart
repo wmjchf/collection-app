@@ -31,11 +31,14 @@ class TagsRepository {
         .toList();
   }
 
-  Future<Tag> createTag(String name) async {
+  Future<Tag> createTag(String name, {int? parentId}) async {
     final token = await _token();
     final json = await _api.post(
       '/api/tags',
-      body: {'name': name},
+      body: {
+        'name': name,
+        if (parentId != null) 'parentId': parentId,
+      },
       accessToken: token,
     );
     final tagJson = json['tag'] as Map<String, dynamic>? ?? {};
