@@ -115,7 +115,7 @@
 | name | VARCHAR(64) NOT NULL | |
 | is_system | TINYINT(1) NOT NULL DEFAULT 0 | |
 | sort_order | INT NOT NULL DEFAULT 0 | |
-| parent_id | BIGINT UNSIGNED NULL | 标签父级（仅 `section=tag`；可多层嵌套，整理视图）；打标不读此字段 |
+| parent_id | BIGINT UNSIGNED NULL | 标签父级（仅 `section=tag`；可多层嵌套）；整理视图 + 打标写入时自动关联祖先 |
 | created_at / updated_at | DATETIME(3) | |
 
 约束：`UNIQUE (user_id, section, name)`  

@@ -202,7 +202,7 @@ async function deleteTag(userId, tagId) {
 }
 
 /**
- * 批量更新标签分组与排序（任意多层 parent；打标场景不读此结构）
+ * 批量更新标签分组与排序（任意多层 parent；打标写入会沿 parent 补祖先）
  * body.items: [{ id, parentId, sortOrder }]
  */
 async function reorderTags(userId, rawItems) {
