@@ -317,12 +317,13 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
       if (!mounted) return;
       setState(() {
         _all = all.where((t) => !t.isSystem).toList();
-        final initialIds = widget.session.selectedIds.isNotEmpty
-            ? widget.session.selectedIds
-            : leafTagIdsAmong(current.map((t) => t.id), _all);
         _selected
           ..clear()
-          ..addAll(initialIds);
+          ..addAll(
+            widget.session.selectedIds.isNotEmpty
+                ? widget.session.selectedIds
+                : current.map((t) => t.id),
+          );
         _loading = false;
       });
       _syncSession();
@@ -379,14 +380,8 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
   bool get _aiSuggestTapEnabled =>
       widget.aiSuggestEnabled || _tagsMeta.isPending;
 
-  /// 已有标签显示整理路径；新建仍用短名。
-  String _aiSuggestDisplayLabel(AiTagSuggestion item) {
-    final id = item.existingTagId;
-    if (id == null) return item.name;
-    final tag = _tagById[id];
-    if (tag == null) return item.name;
-    return tagPathLabel(tag, _tagById);
-  }
+  /// 建议 chip 只用短名；已有项靠「无 ＋」区分，路径不进展示。
+  String _aiSuggestDisplayLabel(AiTagSuggestion item) => item.name;
 
   Widget _buildAiSuggestSection() {
     final meta = _tagsMeta;
@@ -586,7 +581,7 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
             ),
             const SizedBox(height: 6),
             const Text(
-              '路径仅作参考；采纳写入所选标签并自动关联父级，展示只显示所选层。带 ＋ 为新建建议。',
+              '按内容建议；优先复用已有标签。采纳后自动关联父级。带 ＋ 为新建建议。',
               style: TextStyle(fontSize: 12, color: _muted, height: 1.4),
             ),
           ],
