@@ -772,7 +772,8 @@ async function listItemTags(userId, itemId) {
     throw Object.assign(new Error('条目不存在'), { status: 404 });
   }
   const [rows] = await pool.execute(
-    `SELECT c.id, c.name, c.code, c.is_system, c.sort_order, c.created_at, c.updated_at
+    `SELECT c.id, c.name, c.code, c.is_system, c.sort_order, c.parent_id,
+            c.created_at, c.updated_at
      FROM item_tags it
      INNER JOIN categories c ON c.id = it.category_id
      INNER JOIN items i ON i.id = it.item_id
@@ -789,22 +790,53 @@ async function listItemTags(userId, itemId) {
     code: row.code,
     isSystem: !!row.is_system,
     sortOrder: row.sort_order,
+    parentId: row.parent_id == null ? null : Number(row.parent_id),
     itemCount: 0,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   }));
 }
 
-/** 覆盖设置条目标签（仅用户自建标签 id） */
+/**
+ * 将所选标签 id 扩展为「自身 + 全部祖先」，便于按父级筛选条目。
+ * 深度上限 32，与 reorder 防环一致。
+ */
+async function expandTagIdsWithAncestors(userId, tagIds) {
+  const ids = [...new Set((tagIds || []).map((n) => Number(n)).filter((n) => n > 0))];
+  if (!ids.length) return [];
+
+  const [rows] = await pool.execute(
+    `SELECT id, parent_id FROM categories
+     WHERE user_id = :userId AND section = 'tag' AND is_system = 0`,
+    { userId },
+  );
+  const parentById = new Map(
+    rows.map((r) => [Number(r.id), r.parent_id == null ? null : Number(r.parent_id)]),
+  );
+
+  const out = new Set();
+  for (const start of ids) {
+    let cur = start;
+    let guard = 0;
+    while (cur != null && guard++ < 32) {
+      if (!parentById.has(cur)) break;
+      out.add(cur);
+      cur = parentById.get(cur) ?? null;
+    }
+  }
+  return [...out];
+}
+
+/** 覆盖设置条目标签（仅用户自建标签 id；自动写入所选节点的祖先） */
 async function setItemTags(userId, itemId, tagIds) {
   const existing = await getByIdForUser(userId, itemId);
   if (!existing) {
     throw Object.assign(new Error('条目不存在'), { status: 404 });
   }
-  const ids = [...new Set((tagIds || []).map((n) => Number(n)).filter((n) => n > 0))];
+  const requested = [...new Set((tagIds || []).map((n) => Number(n)).filter((n) => n > 0))];
 
-  if (ids.length) {
-    for (const tagId of ids) {
+  if (requested.length) {
+    for (const tagId of requested) {
       const [owned] = await pool.execute(
         `SELECT id FROM categories
          WHERE id = :tagId AND section = 'tag'
@@ -817,6 +849,8 @@ async function setItemTags(userId, itemId, tagIds) {
       }
     }
   }
+
+  const ids = await expandTagIdsWithAncestors(userId, requested);
 
   const conn = await pool.getConnection();
   try {

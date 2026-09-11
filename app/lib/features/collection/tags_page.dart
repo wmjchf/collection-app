@@ -8,7 +8,7 @@ import 'package:super_collection/features/collection/tag_models.dart';
 import 'package:super_collection/features/collection/tags_repository.dart';
 import 'package:super_collection/features/shell/user_avatar_button.dart';
 
-/// 我的标签 Tab：多层分组整理；选标签 / 打标仍用扁平列表。
+/// 我的标签 Tab：多层分组整理；内容页打标写入所选并关联祖先，展示仅最深层。
 class TagsPage extends StatefulWidget {
   const TagsPage({
     super.key,

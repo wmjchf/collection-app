@@ -317,13 +317,12 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
       if (!mounted) return;
       setState(() {
         _all = all.where((t) => !t.isSystem).toList();
+        final initialIds = widget.session.selectedIds.isNotEmpty
+            ? widget.session.selectedIds
+            : leafTagIdsAmong(current.map((t) => t.id), _all);
         _selected
           ..clear()
-          ..addAll(
-            widget.session.selectedIds.isNotEmpty
-                ? widget.session.selectedIds
-                : current.map((t) => t.id),
-          );
+          ..addAll(initialIds);
         _loading = false;
       });
       _syncSession();
@@ -587,7 +586,7 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
             ),
             const SizedBox(height: 6),
             const Text(
-              '路径仅作参考；采纳只写入所选标签，不自动带祖先。带 ＋ 为新建建议。',
+              '路径仅作参考；采纳写入所选标签并自动关联父级，展示只显示所选层。带 ＋ 为新建建议。',
               style: TextStyle(fontSize: 12, color: _muted, height: 1.4),
             ),
           ],

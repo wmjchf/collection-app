@@ -15,7 +15,7 @@ class Tag {
   final bool isSystem;
   final int itemCount;
   final int sortOrder;
-  /// 父标签；「我的标签」整理与选标签列表建树用。打标仍按勾选写入，无父子联动。
+  /// 父标签；整理建树、选标签缩进；打标写入时会连带祖先，展示只显示最深勾选层。
   final int? parentId;
 
   String get countLabel => '$itemCount';
@@ -129,6 +129,42 @@ int tagDepth(Tag tag, Map<int, Tag> byId) {
     if (depth > 64) break;
   }
   return depth;
+}
+
+/// 在已选 id 中，去掉「另有更深层后代也被选中」的祖先，仅保留最深展示层。
+///
+/// [allTags] 提供完整 `parentId` 关系（通常为用户全部标签）。
+Set<int> leafTagIdsAmong(Iterable<int> selectedIds, List<Tag> allTags) {
+  final ids = selectedIds.toSet();
+  if (ids.isEmpty) return {};
+  final byId = {for (final t in allTags) t.id: t};
+
+  bool hasSelectedDescendant(int id) {
+    for (final otherId in ids) {
+      if (otherId == id) continue;
+      var cur = byId[otherId]?.parentId;
+      final seen = <int>{};
+      while (cur != null && seen.add(cur)) {
+        if (cur == id) return true;
+        cur = byId[cur]?.parentId;
+      }
+    }
+    return false;
+  }
+
+  return {
+    for (final id in ids)
+      if (!hasSelectedDescendant(id)) id,
+  };
+}
+
+/// 条目已关联标签中，仅保留展示用的最深层（祖先已写入但不展示）。
+List<Tag> leafTagsAmong(List<Tag> tags) {
+  if (tags.isEmpty) return const [];
+  final leafIds = leafTagIdsAmong(tags.map((t) => t.id), tags);
+  final out = [for (final t in tags) if (leafIds.contains(t.id)) t];
+  out.sort(_tagSort);
+  return out;
 }
 
 /// [id] 的全部后代（不含自身）。
