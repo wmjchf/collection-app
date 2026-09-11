@@ -41,6 +41,8 @@ class _TagsPageState extends State<TagsPage> {
   bool _loading = true;
   String? _error;
   bool _savingLayout = false;
+  /// 收起的父标签 id（其子树在列表中隐藏）
+  final Set<int> _collapsedIds = {};
 
   @override
   void initState() {
@@ -76,7 +78,34 @@ class _TagsPageState extends State<TagsPage> {
       return List<Tag>.from(_filtered)
         ..sort((a, b) => a.name.compareTo(b.name));
     }
-    return flattenTagsForDisplay(_tags);
+    final all = flattenTagsForDisplay(_tags);
+    if (_collapsedIds.isEmpty) return all;
+    final byId = _byId;
+    return [
+      for (final t in all)
+        if (!_isHiddenByCollapse(t, byId)) t,
+    ];
+  }
+
+  bool _isHiddenByCollapse(Tag tag, Map<int, Tag> byId) {
+    var cur = tag.parentId;
+    final seen = <int>{};
+    while (cur != null && seen.add(cur)) {
+      if (_collapsedIds.contains(cur)) return true;
+      cur = byId[cur]?.parentId;
+    }
+    return false;
+  }
+
+  bool _hasChildren(int id) =>
+      (_childrenByParent[id] ?? const <Tag>[]).isNotEmpty;
+
+  void _toggleCollapsed(int id) {
+    setState(() {
+      if (!_collapsedIds.add(id)) {
+        _collapsedIds.remove(id);
+      }
+    });
   }
 
   bool get _isSearching => _searchController.text.trim().isNotEmpty;
@@ -99,6 +128,10 @@ class _TagsPageState extends State<TagsPage> {
         _tags = tags;
         _loading = false;
         _error = null;
+        _collapsedIds.removeWhere((id) {
+          final kids = tagChildrenByParent(tags)[id];
+          return kids == null || kids.isEmpty;
+        });
       });
     } on ApiException catch (e) {
       if (!mounted) return;
@@ -270,6 +303,7 @@ class _TagsPageState extends State<TagsPage> {
   Widget _buildTreeLabel(
     Tag tag, {
     required int depth,
+    Widget? leading,
     Widget? trailing,
     EdgeInsetsGeometry? padding,
     bool showCount = true,
@@ -285,6 +319,10 @@ class _TagsPageState extends State<TagsPage> {
           ),
       child: Row(
         children: [
+          if (leading != null) ...[
+            leading,
+            const SizedBox(width: 4),
+          ],
           if (isNested)
             Container(
               width: 2,
@@ -347,12 +385,12 @@ class _TagsPageState extends State<TagsPage> {
   }
 
   Future<void> _deleteTag(Tag tag) async {
-    final hasChildren = _childrenByParent[tag.id]?.isNotEmpty == true;
+    final childCount = _descendantCount(tag.id);
     final confirmed = await showAppConfirmDialog(
       context,
       title: '删除标签',
-      message: hasChildren
-          ? '确定删除标签「${tag.name}」？仅解除与条目的关联，不会删除条目；其子标签将接到上一级。'
+      message: childCount > 0
+          ? '确定删除标签「${tag.name}」及其下 $childCount 个子标签？仅解除与条目的关联，不会删除条目。'
           : '确定删除标签「${tag.name}」？仅解除与条目的关联，不会删除条目。',
       confirmLabel: '删除',
     );
@@ -369,6 +407,15 @@ class _TagsPageState extends State<TagsPage> {
       if (!mounted) return;
       AppToast.show(context, '删除失败');
     }
+  }
+
+  int _descendantCount(int id) {
+    final kids = _childrenByParent[id] ?? const <Tag>[];
+    var n = kids.length;
+    for (final c in kids) {
+      n += _descendantCount(c.id);
+    }
+    return n;
   }
 
   Future<void> _onReorder(int oldIndex, int newIndex) async {
@@ -649,6 +696,8 @@ class _TagsPageState extends State<TagsPage> {
   }
 
   Widget _buildRow(Tag tag, {required int depth, required int index}) {
+    final hasKids = !_isSearching && _hasChildren(tag.id);
+    final collapsed = _collapsedIds.contains(tag.id);
     return Material(
       color: _card,
       child: InkWell(
@@ -658,27 +707,47 @@ class _TagsPageState extends State<TagsPage> {
           tag,
           depth: depth,
           padding: EdgeInsets.only(
-            left: 14.0 + depth * 22.0,
+            left: 10.0 + depth * 22.0,
             right: 4,
             top: 14,
             bottom: 14,
           ),
-          trailing: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (!_isSearching)
-                ReorderableDragStartListener(
-                  index: index,
-                  child: const Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                    child: _DragGrip(),
+          leading: hasKids
+              ? GestureDetector(
+                  onTap: () => _toggleCollapsed(tag.id),
+                  behavior: HitTestBehavior.opaque,
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(4, 2, 4, 2),
+                    child: Icon(
+                      collapsed
+                          ? Icons.chevron_right_rounded
+                          : Icons.expand_more_rounded,
+                      size: 22,
+                      color: _muted,
+                    ),
                   ),
                 )
-              else
-                const SizedBox(width: 8),
-              const Icon(Icons.chevron_right_rounded, color: _muted, size: 22),
-            ],
-          ),
+              : const SizedBox(width: 30, height: 26),
+          trailing: !_isSearching
+              ? ReorderableDragStartListener(
+                  index: index,
+                  child: const SizedBox(
+                    width: 52,
+                    height: 48,
+                    child: Center(
+                      child: Icon(
+                        Icons.drag_handle_rounded,
+                        size: 26,
+                        color: Color(0xFF9AA3AD),
+                      ),
+                    ),
+                  ),
+                )
+              : const Icon(
+                  Icons.chevron_right_rounded,
+                  color: _muted,
+                  size: 22,
+                ),
         ),
       ),
     );
@@ -835,34 +904,6 @@ class _ListEndTip extends StatelessWidget {
           style: TextStyle(fontSize: 12, color: Color(0xFF737A85)),
         ),
       ),
-    );
-  }
-}
-
-class _DragGrip extends StatelessWidget {
-  const _DragGrip();
-
-  static const _color = Color(0xFFB8BFC8);
-
-  @override
-  Widget build(BuildContext context) {
-    Widget line() => Container(
-          width: 12,
-          height: 1.5,
-          decoration: BoxDecoration(
-            color: _color,
-            borderRadius: BorderRadius.circular(1),
-          ),
-        );
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        line(),
-        const SizedBox(height: 3),
-        line(),
-        const SizedBox(height: 3),
-        line(),
-      ],
     );
   }
 }

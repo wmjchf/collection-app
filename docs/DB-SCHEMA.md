@@ -188,7 +188,7 @@ API：`GET …/transcript-targets`、`POST …/transcript`（body.segmentKey）�
 | 接口 | 说明 |
 | --- | --- |
 | `GET /api/tags` | 当前用户自建标签；含 `itemCount`、`parentId`（扁平列表） |
-| `POST /api/tags` | body `{ name }` 新建 |
+| `POST /api/tags` | body `{ name, parentId? }` 新建（可选挂父级） |
 | `PUT /api/tags/reorder` | body `{ items:[{ id, parentId, sortOrder }] }` 须覆盖全部自建标签；可多层，防环 |
 | `PATCH /api/tags/:id` | body `{ name }` 重命名自建标签 |
 | `DELETE /api/tags/:id` | 仅自建标签；子标签接到被删节点的父级；解除 `item_tags` 关联，不删条目 |
