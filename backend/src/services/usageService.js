@@ -589,6 +589,7 @@ async function getUsageSummary(userId) {
     planLabel: planService.planLabel(normalizedPlan),
     planExpiresAt: subscription?.expiresAt || null,
     subscription,
+    trialReminder: subscriptionService.buildTrialReminder(subscription),
     enforcing: isEnforcing(),
     transcript: {
       usedSeconds: round1(transcriptSeconds),

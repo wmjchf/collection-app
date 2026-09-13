@@ -3,9 +3,102 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:in_app_purchase/in_app_purchase.dart';
+import 'package:in_app_purchase_storekit/in_app_purchase_storekit.dart';
+import 'package:in_app_purchase_storekit/store_kit_2_wrappers.dart';
+import 'package:in_app_purchase_storekit/store_kit_wrappers.dart';
 import 'package:super_collection/core/network/api_client.dart';
 import 'package:super_collection/features/auth/auth_repository.dart';
 import 'package:super_collection/features/settings/usage_repository.dart';
+
+/// 月付商品上的免费试用（ASC Introductory Offer · Free）
+class AppleFreeTrialOffer {
+  const AppleFreeTrialOffer({required this.days});
+
+  final int days;
+}
+
+/// 是否为月付 SKU（年付不加试用）
+bool isMonthlyIapProductId(String productId) {
+  final id = productId.toLowerCase();
+  return id.contains('month') && !id.contains('year') && !id.contains('annual');
+}
+
+/// 从 StoreKit 商品读取免费试用天数；非月付或未配置 intro 时返回 null。
+AppleFreeTrialOffer? freeTrialOfferOf(ProductDetails product) {
+  if (kIsWeb || !Platform.isIOS) return null;
+  if (!isMonthlyIapProductId(product.id)) return null;
+
+  try {
+    if (product is AppStoreProductDetails) {
+      final intro = product.skProduct.introductoryPrice;
+      if (intro == null) return null;
+      // StoreKit1 枚举历史拼写为 freeTrail
+      if (intro.paymentMode != SKProductDiscountPaymentMode.freeTrail) {
+        return null;
+      }
+      final days = _sk1PeriodApproxDays(intro.subscriptionPeriod) *
+          intro.numberOfPeriods;
+      if (days <= 0) return null;
+      return AppleFreeTrialOffer(days: days);
+    }
+
+    if (product is AppStoreProduct2Details) {
+      final offers =
+          product.sk2Product.subscription?.promotionalOffers ?? const [];
+      for (final o in offers) {
+        if (o.type != SK2SubscriptionOfferType.introductory) continue;
+        if (o.paymentMode != SK2SubscriptionOfferPaymentMode.freeTrial) {
+          continue;
+        }
+        final days = _sk2PeriodApproxDays(o.period) * o.periodCount;
+        if (days <= 0) continue;
+        return AppleFreeTrialOffer(days: days);
+      }
+    }
+  } catch (_) {
+    return null;
+  }
+  return null;
+}
+
+/// StoreKit2：当前 Apple ID 是否仍有资格领取 introductory offer。
+/// 不可用时乐观返回 true（有 offer 配置即可展示；购买时由 Apple 最终拦截）。
+Future<bool> isIntroOfferEligible(String productId) async {
+  if (kIsWeb || !Platform.isIOS) return false;
+  try {
+    return await SK2Product.isIntroductoryOfferEligible(productId);
+  } catch (_) {
+    return true;
+  }
+}
+
+int _sk1PeriodApproxDays(SKProductSubscriptionPeriodWrapper period) {
+  final n = period.numberOfUnits;
+  switch (period.unit) {
+    case SKSubscriptionPeriodUnit.day:
+      return n;
+    case SKSubscriptionPeriodUnit.week:
+      return n * 7;
+    case SKSubscriptionPeriodUnit.month:
+      return n * 30;
+    case SKSubscriptionPeriodUnit.year:
+      return n * 365;
+  }
+}
+
+int _sk2PeriodApproxDays(SK2SubscriptionPeriod period) {
+  final n = period.value;
+  switch (period.unit) {
+    case SK2SubscriptionPeriodUnit.day:
+      return n;
+    case SK2SubscriptionPeriodUnit.week:
+      return n * 7;
+    case SK2SubscriptionPeriodUnit.month:
+      return n * 30;
+    case SK2SubscriptionPeriodUnit.year:
+      return n * 365;
+  }
+}
 
 /// App Store 商品 id（须与 ASC / 后端 env 一致）
 class IapProductIds {
@@ -14,9 +107,9 @@ class IapProductIds {
   static const emperorMonthly = 'com.bufang.supercollection.emperor.monthly';
   static const emperorYearly = 'com.bufang.supercollection.emperor.yearly';
 
-  /** @deprecated */
+  /// @deprecated
   static const monthly = princeMonthly;
-  /** @deprecated */
+  /// @deprecated
   static const yearly = princeYearly;
 
   static const all = <String>{

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:super_collection/core/analytics/screen_dwell_tracker.dart';
 import 'package:super_collection/features/auth/auth_repository.dart';
+import 'package:super_collection/features/settings/trial_expiry_banner.dart';
 import 'package:super_collection/features/settings/upgrade_pro_page.dart';
 import 'package:super_collection/features/settings/usage_events_page.dart';
 import 'package:super_collection/features/settings/usage_repository.dart';
@@ -24,6 +25,7 @@ class _AccountPageState extends State<AccountPage> with ScreenDwellMixin {
 
   AuthSession? _session;
   UsageSummary? _usage;
+  TrialReminder? _trialReminder;
   bool _loading = true;
 
   @override
@@ -47,15 +49,23 @@ class _AccountPageState extends State<AccountPage> with ScreenDwellMixin {
   Future<void> _load() async {
     final session = await _auth.readSession();
     UsageSummary? usage;
+    TrialReminder? trial;
     try {
       usage = await _usageRepo.fetchUsage();
+      final rem = usage.trialReminder;
+      if (rem != null &&
+          !(await TrialExpiryBanner.isDismissed(rem.endsAt))) {
+        trial = rem;
+      }
     } catch (_) {
       usage = null;
+      trial = null;
     }
     if (!mounted) return;
     setState(() {
       _session = session;
       _usage = usage;
+      _trialReminder = trial;
       _loading = false;
     });
   }
@@ -149,6 +159,11 @@ class _AccountPageState extends State<AccountPage> with ScreenDwellMixin {
           : ListView(
               padding: const EdgeInsets.fromLTRB(16, 20, 16, 40),
               children: [
+                if (_trialReminder != null)
+                  TrialExpiryBanner(
+                    reminder: _trialReminder!,
+                    margin: const EdgeInsets.only(bottom: 16),
+                  ),
                 const _SectionLabel('账号信息'),
                 const SizedBox(height: 8),
                 _CardGroup(

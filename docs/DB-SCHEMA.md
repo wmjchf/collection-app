@@ -235,7 +235,7 @@ API：`GET …/transcript-targets`、`POST …/transcript`（body.segmentKey）�
 | source | `manual` / `dev` / `apple` / `google` / `wechat` / `alipay` … |
 | external_id | 商店订单号（支付接入后） |
 | expires_at | NULL=不限期；有效 Pro = active 且未过期 |
-| meta | JSON |
+| meta | JSON | 含 `productId`、`isTrial`、`offerDiscountType`、`autoRenewEnabled` 等 |
 
 当前是否 Pro：查有效 active 行；额度数字在环境变量（`FREE_*` / `PRO_*`），不写进本表。
 

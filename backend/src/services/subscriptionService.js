@@ -54,20 +54,77 @@ async function getPlanForUser(userId) {
   };
 }
 
+function parseMeta(row) {
+  if (!row) return {};
+  if (typeof row.meta === 'string') {
+    try {
+      return JSON.parse(row.meta) || {};
+    } catch (_) {
+      return {};
+    }
+  }
+  if (row.meta && typeof row.meta === 'object') {
+    return { ...row.meta };
+  }
+  return {};
+}
+
+/** 月付 + 订阅窗口 ≤ 约 8.5 天 → 视作免费试用（兼容未写 meta 的旧数据） */
+function inferIsTrial(row, meta = {}) {
+  if (meta.isTrial === true) return true;
+  if (meta.isTrial === false) return false;
+  if (meta.offerDiscountType === 'FREE_TRIAL') return true;
+
+  const productId = String(meta.productId || '');
+  const isMonthly =
+    /month/i.test(productId) && !/year|annual/i.test(productId);
+  if (!isMonthly || !row?.expires_at || !row?.started_at) return false;
+  const span =
+    new Date(row.expires_at).getTime() - new Date(row.started_at).getTime();
+  return span > 0 && span <= 8.5 * 24 * 60 * 60 * 1000;
+}
+
 function mapSub(row) {
   if (!row) return null;
+  const meta = parseMeta(row);
+  const autoRenew =
+    meta.autoRenewEnabled === undefined || meta.autoRenewEnabled === null
+      ? null
+      : Boolean(meta.autoRenewEnabled);
   return {
     id: Number(row.id),
     plan: planService.normalizePlan(row.plan),
     status: row.status,
     source: row.source,
     externalId: row.external_id || null,
+    productId: meta.productId ? String(meta.productId) : null,
+    isTrial: inferIsTrial(row, meta),
+    autoRenewEnabled: autoRenew,
     startedAt: row.started_at
       ? new Date(row.started_at).toISOString()
       : null,
     expiresAt: row.expires_at
       ? new Date(row.expires_at).toISOString()
       : null,
+  };
+}
+
+/** 试用即将结束（48h 内）时给客户端的站内提醒载荷；否则 null */
+function buildTrialReminder(subscription, { withinHours = 48 } = {}) {
+  if (!subscription?.isTrial || !subscription.expiresAt) return null;
+  const endsMs = new Date(subscription.expiresAt).getTime();
+  if (!Number.isFinite(endsMs)) return null;
+  const msLeft = endsMs - Date.now();
+  if (msLeft <= 0) return null;
+  const withinMs = Math.max(1, Number(withinHours) || 48) * 60 * 60 * 1000;
+  if (msLeft > withinMs) return null;
+  const hoursLeft = Math.max(1, Math.ceil(msLeft / (60 * 60 * 1000)));
+  const daysLeft = Math.max(1, Math.ceil(msLeft / (24 * 60 * 60 * 1000)));
+  return {
+    endsAt: subscription.expiresAt,
+    hoursLeft,
+    daysLeft,
+    autoRenewEnabled: subscription.autoRenewEnabled,
   };
 }
 
@@ -138,6 +195,11 @@ async function activateSubscription({
         nextExpires = null;
       }
 
+      let nextMeta = null;
+      if (meta != null) {
+        nextMeta = { ...parseMeta(existing), ...meta };
+      }
+
       await pool.execute(
         `UPDATE subscriptions
          SET plan = :plan,
@@ -151,7 +213,7 @@ async function activateSubscription({
           plan: storePlan,
           expiresAt: nextExpires,
           source: String(source).slice(0, 32),
-          meta: meta == null ? null : JSON.stringify(meta),
+          meta: nextMeta == null ? null : JSON.stringify(nextMeta),
         },
       );
       const [rows] = await pool.execute(
@@ -264,16 +326,7 @@ async function extendByExternalId({
   const row = rows[0];
   if (!row) return { updated: false, reason: 'not_found' };
 
-  let meta = {};
-  if (typeof row.meta === 'string') {
-    try {
-      meta = JSON.parse(row.meta) || {};
-    } catch (_) {
-      meta = {};
-    }
-  } else if (row.meta && typeof row.meta === 'object') {
-    meta = { ...row.meta };
-  }
+  let meta = parseMeta(row);
   if (metaPatch && typeof metaPatch === 'object') {
     Object.assign(meta, metaPatch);
   }
@@ -314,6 +367,37 @@ async function extendByExternalId({
   return { updated: true, subscription: mapSub(fresh[0]) };
 }
 
+/**
+ * 仅合并 meta（如自动续订开关），不改 expires_at
+ */
+async function patchMetaByExternalId({ source, externalId, metaPatch = null }) {
+  if (!externalId || !metaPatch || typeof metaPatch !== 'object') {
+    return { updated: false };
+  }
+  const [rows] = await pool.execute(
+    `SELECT * FROM subscriptions
+     WHERE source = :source AND external_id = :externalId
+     ORDER BY id DESC
+     LIMIT 1`,
+    { source: String(source).slice(0, 32), externalId: String(externalId).slice(0, 191) },
+  );
+  const row = rows[0];
+  if (!row) return { updated: false, reason: 'not_found' };
+
+  const meta = { ...parseMeta(row), ...metaPatch };
+  await pool.execute(
+    `UPDATE subscriptions
+     SET meta = :meta, updated_at = CURRENT_TIMESTAMP(3)
+     WHERE id = :id`,
+    { id: row.id, meta: JSON.stringify(meta) },
+  );
+  const [fresh] = await pool.execute(
+    `SELECT * FROM subscriptions WHERE id = :id LIMIT 1`,
+    { id: row.id },
+  );
+  return { updated: true, subscription: mapSub(fresh[0]) };
+}
+
 async function expireByExternalId({ source, externalId, reason = null }) {
   if (!externalId) return { updated: false };
   const [rows] = await pool.execute(
@@ -332,16 +416,7 @@ async function expireByExternalId({ source, externalId, reason = null }) {
   const row = rows[0];
   if (!row) return { updated: false, reason: 'not_found' };
 
-  let meta = {};
-  if (typeof row.meta === 'string') {
-    try {
-      meta = JSON.parse(row.meta) || {};
-    } catch (_) {
-      meta = {};
-    }
-  } else if (row.meta && typeof row.meta === 'object') {
-    meta = { ...row.meta };
-  }
+  let meta = parseMeta(row);
   if (reason) meta.expireReason = String(reason).slice(0, 200);
 
   await pool.execute(
@@ -367,6 +442,8 @@ module.exports = {
   STATUS_CANCELLED,
   getActiveSubscription,
   getActiveSubscriptions,
+  buildTrialReminder,
+  patchMetaByExternalId,
   getPlanForUser,
   activateSubscription,
   activatePro,
