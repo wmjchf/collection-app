@@ -13,10 +13,12 @@ Future<Tag?> showCreateTagSheet(
     isScrollControlled: true,
     backgroundColor: Colors.transparent,
     barrierColor: const Color(0x59000000),
+    useSafeArea: false,
     builder: (context) {
       return Padding(
         padding: EdgeInsets.only(
-          bottom: MediaQuery.viewInsetsOf(context).bottom,
+          bottom: MediaQuery.viewInsetsOf(context).bottom +
+              MediaQuery.paddingOf(context).bottom,
         ),
         child: _CreateTagSheet(moduleId: moduleId),
       );

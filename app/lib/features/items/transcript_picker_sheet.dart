@@ -10,6 +10,7 @@ Future<TranscriptTarget?> showTranscriptPickerSheet(
     backgroundColor: Colors.transparent,
     barrierColor: const Color(0x66000000),
     isScrollControlled: true,
+    useSafeArea: false,
     builder: (context) => _TranscriptPickerSheet(targets: targets),
   );
 }

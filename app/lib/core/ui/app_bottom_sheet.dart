@@ -71,6 +71,7 @@ Future<T?> showAppBottomSheet<T>({
     barrierColor: barrierColor,
     isDismissible: isDismissible,
     enableDrag: enableDrag,
+    useSafeArea: false,
     builder: (context) => AppBottomSheetShell(
       onDismiss: onDismiss,
       padding: padding,

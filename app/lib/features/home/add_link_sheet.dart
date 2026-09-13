@@ -26,6 +26,7 @@ Future<void> showAddLinkSheet(
     isScrollControlled: true,
     backgroundColor: Colors.transparent,
     barrierColor: const Color(0x73000000),
+    useSafeArea: false,
     builder: (context) {
       return Padding(
         padding: EdgeInsets.only(

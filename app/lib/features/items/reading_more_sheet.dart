@@ -11,6 +11,8 @@ Future<ReadingMoreAction?> showReadingMoreSheet(
     context: context,
     backgroundColor: Colors.transparent,
     barrierColor: const Color(0x66000000),
+    // 关闭默认安全区：否则透明背景下真机会在 Home 条上方露出一条底色
+    useSafeArea: false,
     builder: (context) => _ReadingMoreSheet(
       showTranscript: showTranscript,
       hasNote: hasNote,
