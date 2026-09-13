@@ -31,3 +31,39 @@ Future<void> handleApiException(
     ),
   );
 }
+
+typedef PlanFeatureRequirement = ({
+  bool Function(UsageFeatures features) has,
+  String tier,
+});
+
+/// 档位不足时先去订阅页，不继续后续弹层/请求。返回 true 表示可继续。
+Future<bool> ensurePlanFeatures(
+  BuildContext context, {
+  required List<PlanFeatureRequirement> requirements,
+  UsageRepository? usageRepo,
+  bool hasResultOrPending = false,
+}) async {
+  if (hasResultOrPending || requirements.isEmpty) return true;
+  final repo = usageRepo ?? UsageRepository();
+  try {
+    final usage = await repo.fetchUsage();
+    if (!usage.enforcing) return true;
+    for (final req in requirements) {
+      if (req.has(usage.features)) continue;
+      if (!context.mounted) return false;
+      await Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => UpgradeProPage(
+            from: 'feature_gate',
+            initialTier: req.tier,
+          ),
+        ),
+      );
+      return false;
+    }
+    return true;
+  } catch (_) {
+    return true;
+  }
+}

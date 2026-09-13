@@ -10,6 +10,7 @@ import 'package:super_collection/features/items/ai_meta_models.dart';
 import 'package:super_collection/features/items/items_repository.dart';
 import 'package:super_collection/core/ui/app_toast.dart';
 import 'package:super_collection/features/settings/quota_gate.dart';
+import 'package:super_collection/features/settings/usage_repository.dart';
 
 enum ReadingTagsSheetResult { createTag }
 
@@ -24,6 +25,7 @@ Future<void> showReadingTagsSheet(
   bool aiSuggestEnabled = true,
   bool transcriptPending = false,
   bool autoStartAiSuggest = false,
+  bool needsAutoTranscript = false,
   void Function(AiTagsMeta tagsMeta)? onTagsMetaChanged,
 }) async {
   final session = _TagsSheetSession();
@@ -44,6 +46,7 @@ Future<void> showReadingTagsSheet(
         aiSuggestEnabled: aiSuggestEnabled,
         transcriptPending: transcriptPending,
         autoStartAiSuggest: autoStartAiSuggest,
+        needsAutoTranscript: needsAutoTranscript,
         onTagsMetaChanged: (updated) {
           meta = updated;
           onTagsMetaChanged?.call(updated);
@@ -69,6 +72,7 @@ class _ReadingTagsSheet extends StatefulWidget {
     required this.aiSuggestEnabled,
     required this.transcriptPending,
     required this.autoStartAiSuggest,
+    this.needsAutoTranscript = false,
     this.onTagsMetaChanged,
   });
 
@@ -78,6 +82,7 @@ class _ReadingTagsSheet extends StatefulWidget {
   final bool aiSuggestEnabled;
   final bool transcriptPending;
   final bool autoStartAiSuggest;
+  final bool needsAutoTranscript;
   final void Function(AiTagsMeta tagsMeta)? onTagsMetaChanged;
 
   @override
@@ -167,6 +172,19 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
       return;
     }
     if (_tagsMeta.isPending) return;
+
+    final needs = <PlanFeatureRequirement>[
+      (has: (f) => f.aiTags, tier: UsagePlan.prince),
+    ];
+    if (widget.needsAutoTranscript) {
+      needs.add((has: (f) => f.transcript, tier: UsagePlan.emperor));
+    }
+    final allowed = await ensurePlanFeatures(
+      context,
+      hasResultOrPending: _tagsMeta.hasSuggestions || _tagsMeta.isFailed,
+      requirements: needs,
+    );
+    if (!allowed || !mounted) return;
 
     if (force || (_tagsMeta.isSuccess && _tagsMeta.hasSuggestions)) {
       force = true;

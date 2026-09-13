@@ -51,6 +51,7 @@ class UsageFeatures {
   const UsageFeatures({
     required this.aiTags,
     required this.aiSummary,
+    required this.aiOrganize,
     required this.aiMindmap,
     required this.transcript,
     required this.unlimitedItems,
@@ -58,6 +59,7 @@ class UsageFeatures {
 
   final bool aiTags;
   final bool aiSummary;
+  final bool aiOrganize;
   final bool aiMindmap;
   final bool transcript;
   final bool unlimitedItems;
@@ -65,6 +67,7 @@ class UsageFeatures {
   static const none = UsageFeatures(
     aiTags: false,
     aiSummary: false,
+    aiOrganize: false,
     aiMindmap: false,
     transcript: false,
     unlimitedItems: false,
@@ -75,6 +78,7 @@ class UsageFeatures {
     return UsageFeatures(
       aiTags: json['aiTags'] as bool? ?? false,
       aiSummary: json['aiSummary'] as bool? ?? false,
+      aiOrganize: json['aiOrganize'] as bool? ?? false,
       aiMindmap: json['aiMindmap'] as bool? ?? false,
       transcript: json['transcript'] as bool? ?? false,
       unlimitedItems: json['unlimitedItems'] as bool? ?? false,
