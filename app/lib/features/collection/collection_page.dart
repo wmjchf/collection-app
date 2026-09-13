@@ -57,8 +57,6 @@ class _CollectionPageState extends State<CollectionPage> {
   String? _error;
   /// 归类标签收进顶栏：0 未贴顶，1 完全收起
   final _tagsFocusT = ValueNotifier<double>(0);
-  /// 归类标签编辑态：显示删归类 / 组内 +标签
-  bool _tagsEditing = false;
 
   @override
   void initState() {
@@ -155,6 +153,12 @@ class _CollectionPageState extends State<CollectionPage> {
   Future<void> _createModule() async {
     final module = await showCreateModuleSheet(context);
     if (module == null || !mounted) return;
+    await _load(quiet: true);
+  }
+
+  Future<void> _renameModule(TagModule module) async {
+    final updated = await showRenameModuleSheet(context, module: module);
+    if (updated == null || !mounted) return;
     await _load(quiet: true);
   }
 
@@ -303,12 +307,8 @@ class _CollectionPageState extends State<CollectionPage> {
                               ),
                             ),
                           ),
-                          CollectionTagsActionsMenu(
-                            editing: _tagsEditing,
-                            onToggleEditing: () => setState(
-                              () => _tagsEditing = !_tagsEditing,
-                            ),
-                            onCreateModule: _createModule,
+                          CollectionCreateModuleButton(
+                            onPressed: _createModule,
                             iconPadding: const EdgeInsets.symmetric(
                               horizontal: 12,
                             ),
@@ -402,11 +402,9 @@ class _CollectionPageState extends State<CollectionPage> {
                 modules: _modules,
                 ungrouped: _ungrouped,
                 headerCollapse: _tagsFocusT,
-                editing: _tagsEditing,
-                onToggleEditing: () =>
-                    setState(() => _tagsEditing = !_tagsEditing),
                 onOpenTag: _openTag,
                 onAddTag: _addTagToModule,
+                onRenameModule: _renameModule,
                 onDeleteModule: _deleteModule,
                 onCreateModule: _createModule,
                 onAiOrganize: _aiOrganize,

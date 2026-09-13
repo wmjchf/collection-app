@@ -127,6 +127,52 @@ async function createModule(userId, rawName) {
   }
 }
 
+async function renameModule(userId, moduleId, rawName) {
+  const mid = Number(moduleId);
+  if (!Number.isFinite(mid) || mid <= 0) {
+    throw Object.assign(new Error('无效的归类 ID'), { status: 400 });
+  }
+  const name = String(rawName || '').trim();
+  if (!name) {
+    throw Object.assign(new Error('请输入归类名称'), { status: 400 });
+  }
+  if (name.length > 64) {
+    throw Object.assign(new Error('名称最多 64 个字'), { status: 400 });
+  }
+
+  await getOwnedModule(userId, mid);
+
+  const [existing] = await pool.execute(
+    `SELECT id FROM tag_modules
+     WHERE user_id = :userId AND name = :name AND id <> :moduleId
+     LIMIT 1`,
+    { userId, name, moduleId: mid },
+  );
+  if (existing[0]) {
+    throw Object.assign(new Error('同名归类已存在'), { status: 409 });
+  }
+
+  try {
+    await pool.execute(
+      `UPDATE tag_modules
+       SET name = :name
+       WHERE id = :moduleId AND user_id = :userId`,
+      { name, moduleId: mid, userId },
+    );
+  } catch (err) {
+    if (err && err.code === 'ER_DUP_ENTRY') {
+      throw Object.assign(new Error('同名归类已存在'), { status: 409 });
+    }
+    throw err;
+  }
+
+  const [rows] = await pool.execute(
+    `SELECT * FROM tag_modules WHERE id = :id LIMIT 1`,
+    { id: mid },
+  );
+  return mapModule(rows[0]);
+}
+
 /**
  * 删除模块；组内标签 module_id 由 FK ON DELETE SET NULL 回到未归类。
  */
@@ -150,6 +196,7 @@ async function deleteModule(userId, moduleId) {
 module.exports = {
   listModules,
   createModule,
+  renameModule,
   deleteModule,
   getOwnedModule,
   mapModule,
