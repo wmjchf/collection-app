@@ -666,16 +666,27 @@ class _TagChipState extends State<_TagChip> {
 
     return Material(
       color: Colors.transparent,
-      elevation: feedback ? 6 : 0,
-      shadowColor: Colors.black.withValues(alpha: 0.18),
-      borderRadius: BorderRadius.circular(8),
+      elevation: feedback ? 12 : 0,
+      shadowColor: Colors.black.withValues(alpha: feedback ? 0.28 : 0.18),
+      borderRadius: BorderRadius.circular(10),
       child: Transform.scale(
-        scale: feedback ? 1.06 : 1,
+        scale: feedback ? 1.14 : 1,
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+          padding: EdgeInsets.symmetric(
+            horizontal: feedback ? 12 : 8,
+            vertical: feedback ? 8 : 6,
+          ),
           decoration: BoxDecoration(
-            color: feedback || pressed ? soft : Colors.transparent,
-            borderRadius: BorderRadius.circular(8),
+            color: feedback
+                ? soft
+                : (pressed ? soft : Colors.transparent),
+            borderRadius: BorderRadius.circular(10),
+            border: feedback
+                ? Border.all(
+                    color: color.withValues(alpha: 0.35),
+                    width: 1.2,
+                  )
+                : null,
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
@@ -687,8 +698,8 @@ class _TagChipState extends State<_TagChip> {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w500,
+                    fontSize: feedback ? 15 : 14,
+                    fontWeight: FontWeight.w600,
                     height: 1.25,
                     color: color,
                   ),
@@ -699,7 +710,7 @@ class _TagChipState extends State<_TagChip> {
                 Text(
                   '${widget.tag.itemCount}',
                   style: TextStyle(
-                    fontSize: 12,
+                    fontSize: feedback ? 13 : 12,
                     fontWeight: FontWeight.w600,
                     height: 1.25,
                     color: color.withValues(alpha: 0.65),
@@ -737,6 +748,8 @@ class _TagChipState extends State<_TagChip> {
     return LongPressDraggable<Tag>(
       data: widget.tag,
       hapticFeedbackOnStart: true,
+      // 浮层抬到指尖上方，真机指腹不会挡住「已可拖」的反馈。
+      feedbackOffset: const Offset(0, -56),
       onDragStarted: () {
         _setPressed(false);
         HapticFeedback.mediumImpact();
@@ -750,7 +763,7 @@ class _TagChipState extends State<_TagChip> {
         child: _buildVisual(pressed: false, feedback: true),
       ),
       childWhenDragging: Opacity(
-        opacity: 0.35,
+        opacity: 0.22,
         child: _buildVisual(pressed: false, feedback: false),
       ),
       child: chip,
