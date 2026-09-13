@@ -2,10 +2,6 @@ const aliyunDashScope = require('./aliyunDashScope');
 const tagModuleService = require('./tagModuleService');
 const tagService = require('./tagService');
 const usageService = require('./usageService');
-const {
-  normalizeRegenerateFrom,
-  formatRegenerateUserBlock,
-} = require('./aiRegeneratePrompt');
 
 const ORGANIZE_SYSTEM_PROMPT =
   '你是收藏整理助手。用户有一批标签，以及可选的已有归类（模块）。' +
@@ -148,9 +144,8 @@ function normalizeProposal(raw, tagById, moduleById) {
 
 /**
  * 同步生成归类建议（不落库）。
- * force 时附带上一版快照，引导换划分角度。
  */
-async function suggestOrganize(userId, { hint, force, previousProposal } = {}) {
+async function suggestOrganize(userId, { hint } = {}) {
   await usageService.assertPlanFeatureForUser(userId, 'ai_organize');
   await usageService.assertAiQuota(userId);
 
@@ -169,33 +164,9 @@ async function suggestOrganize(userId, { hint, force, previousProposal } = {}) {
   const catalog = buildCatalogText(modules, ungrouped);
   const hintText = String(hint || '').trim().slice(0, 200);
 
-  let regenerateFrom = null;
-  if (force) {
-    const prev = previousProposal && typeof previousProposal === 'object'
-      ? {
-          kind: 'organize',
-          modules: (previousProposal.modules || []).map((m) => ({
-            name: m?.name,
-            tags: Array.isArray(m?.tags)
-              ? m.tags.map((t) => (typeof t === 'string' ? t : t?.name))
-              : [],
-          })),
-          ungrouped: Array.isArray(previousProposal.ungroupedTags)
-            ? previousProposal.ungroupedTags.map((t) =>
-                typeof t === 'string' ? t : t?.name,
-              )
-            : Array.isArray(previousProposal.ungrouped)
-              ? previousProposal.ungrouped
-              : [],
-        }
-      : null;
-    regenerateFrom = normalizeRegenerateFrom(prev);
-  }
-
   const userParts = [
     catalog,
     hintText ? `用户补充偏好：${hintText}` : '',
-    formatRegenerateUserBlock(regenerateFrom),
     '请给出归类方案。',
   ].filter(Boolean);
 

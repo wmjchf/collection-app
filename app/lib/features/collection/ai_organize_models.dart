@@ -102,16 +102,4 @@ class AiOrganizeProposal {
         'modules': modules.map((m) => m.toApplyJson()).toList(),
         'ungroupedTagIds': ungroupedTagIds,
       };
-
-  /// 重新生成时传给后端的上一版快照（仅名称）。
-  Map<String, dynamic> toRegenerateSnapshot() => {
-        'modules': [
-          for (final m in modules)
-            {
-              'name': m.name,
-              'tags': [for (final t in m.tags) t.name],
-            },
-        ],
-        'ungroupedTags': [for (final t in ungroupedTags) t.name],
-      };
 }
