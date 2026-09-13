@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
-/// 底部导航栏（对齐 Figma Tab Bar）
+/// 底部导航栏（对齐 Figma Tab Bar：阅读 / 收藏）
 class AppBottomNavBar extends StatelessWidget {
   const AppBottomNavBar({
     super.key,
@@ -32,7 +32,7 @@ class AppBottomNavBar extends StatelessWidget {
           children: [
             Expanded(
               child: _TabItem(
-                label: '首页',
+                label: '阅读',
                 activeAsset: 'assets/icons/home_active.svg',
                 inactiveAsset: 'assets/icons/home_inactive.svg',
                 selected: currentIndex == 0,
@@ -41,7 +41,7 @@ class AppBottomNavBar extends StatelessWidget {
             ),
             Expanded(
               child: _TabItem(
-                label: '我的收藏',
+                label: '收藏',
                 activeAsset: 'assets/icons/collection_active.svg',
                 inactiveAsset: 'assets/icons/collection_inactive.svg',
                 selected: currentIndex == 1,
