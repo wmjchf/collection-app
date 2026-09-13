@@ -4,7 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:super_collection/features/collection/tag_models.dart';
 import 'package:super_collection/features/collection/tag_module_models.dart';
 
-/// 归类标签：按归类分组展示；可新建归类、组内加标签。
+/// 归类标签：按归类分组展示；可新建归类、点归类名操作。
 class CollectionTagModulesSection extends StatelessWidget {
   const CollectionTagModulesSection({
     super.key,
@@ -13,10 +13,9 @@ class CollectionTagModulesSection extends StatelessWidget {
     required this.onOpenTag,
     required this.onAddTag,
     required this.onCreateModule,
+    this.onRenameModule,
     this.onDeleteModule,
     this.onAiOrganize,
-    this.editing = false,
-    this.onToggleEditing,
     this.headerKey,
     this.headerCollapse,
   });
@@ -26,10 +25,9 @@ class CollectionTagModulesSection extends StatelessWidget {
   final ValueChanged<Tag> onOpenTag;
   final ValueChanged<int?> onAddTag;
   final VoidCallback onCreateModule;
+  final ValueChanged<TagModule>? onRenameModule;
   final ValueChanged<TagModule>? onDeleteModule;
   final VoidCallback? onAiOrganize;
-  final bool editing;
-  final VoidCallback? onToggleEditing;
   final Key? headerKey;
   /// 0 展开页内标题，1 收进顶栏；为 null 则始终展开。
   final ValueListenable<double>? headerCollapse;
@@ -49,6 +47,7 @@ class CollectionTagModulesSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final hasContent = modules.isNotEmpty || ungrouped.isNotEmpty;
+
     final blocks = <Widget>[
       _ModuleBlock(
         title: '未归类',
@@ -67,7 +66,8 @@ class CollectionTagModulesSection extends StatelessWidget {
           title: m.name,
           tags: m.tags,
           onOpenTag: onOpenTag,
-          editing: editing,
+          onRenameModule:
+              onRenameModule != null ? () => onRenameModule!(m) : null,
           onAddTag: () => onAddTag(m.id),
           onDeleteModule:
               onDeleteModule != null ? () => onDeleteModule!(m) : null,
@@ -89,15 +89,13 @@ class CollectionTagModulesSection extends StatelessWidget {
             children: [
               _CollapsingSectionHeader(
                 collapse: headerCollapse,
-                editing: editing,
-                onToggleEditing: onToggleEditing,
                 onCreateModule: onCreateModule,
               ),
               if (!hasContent)
                 const Padding(
                   padding: EdgeInsets.only(bottom: 12),
                   child: Text(
-                    '还没有归类。可用未归类旁的 AI 归类，或点右侧 ⋯ 新建归类。',
+                    '还没有归类。可用未归类旁的 AI 归类，或点右侧 + 新建归类。',
                     style: TextStyle(
                       fontSize: 13,
                       height: 1.45,
@@ -118,25 +116,17 @@ class _CollapsingSectionHeader extends StatelessWidget {
   const _CollapsingSectionHeader({
     required this.onCreateModule,
     this.collapse,
-    this.editing = false,
-    this.onToggleEditing,
   });
 
   final ValueListenable<double>? collapse;
   final VoidCallback onCreateModule;
-  final bool editing;
-  final VoidCallback? onToggleEditing;
 
   @override
   Widget build(BuildContext context) {
     final header = Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _SectionHeader(
-          editing: editing,
-          onToggleEditing: onToggleEditing,
-          onCreateModule: onCreateModule,
-        ),
+        _SectionHeader(onCreateModule: onCreateModule),
         const SizedBox(height: 8),
       ],
     );
@@ -168,15 +158,9 @@ class _CollapsingSectionHeader extends StatelessWidget {
 }
 
 class _SectionHeader extends StatelessWidget {
-  const _SectionHeader({
-    required this.onCreateModule,
-    this.editing = false,
-    this.onToggleEditing,
-  });
+  const _SectionHeader({required this.onCreateModule});
 
   final VoidCallback onCreateModule;
-  final bool editing;
-  final VoidCallback? onToggleEditing;
 
   @override
   Widget build(BuildContext context) {
@@ -195,111 +179,152 @@ class _SectionHeader extends StatelessWidget {
               ),
             ),
           ),
-          CollectionTagsActionsMenu(
-            editing: editing,
-            onToggleEditing: onToggleEditing,
-            onCreateModule: onCreateModule,
-          ),
+          CollectionCreateModuleButton(onPressed: onCreateModule),
         ],
       ),
     );
   }
 }
 
-/// 归类标签 ⋯ 菜单：编辑/完成、新建归类。
-class CollectionTagsActionsMenu extends StatelessWidget {
-  const CollectionTagsActionsMenu({
+/// 归类标签标题旁：新建归类。
+class CollectionCreateModuleButton extends StatelessWidget {
+  const CollectionCreateModuleButton({
     super.key,
-    required this.onCreateModule,
-    this.editing = false,
-    this.onToggleEditing,
+    required this.onPressed,
     this.iconPadding = const EdgeInsets.symmetric(horizontal: 4),
   });
 
-  final VoidCallback onCreateModule;
-  final bool editing;
-  final VoidCallback? onToggleEditing;
+  final VoidCallback onPressed;
   final EdgeInsetsGeometry iconPadding;
-
-  static const _text = Color(0xFF1F242E);
 
   @override
   Widget build(BuildContext context) {
-    return PopupMenuButton<String>(
-      tooltip: '更多',
-      offset: const Offset(0, 40),
-      elevation: 8,
-      color: Colors.white,
-      shadowColor: Colors.black.withValues(alpha: 0.14),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: const BorderSide(color: Color(0xFFE6E8EB)),
+    return Padding(
+      padding: iconPadding,
+      child: IconButton(
+        tooltip: '新建归类',
+        onPressed: onPressed,
+        visualDensity: VisualDensity.compact,
+        padding: EdgeInsets.zero,
+        constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+        icon: const Icon(
+          Icons.add_rounded,
+          size: 26,
+          color: CollectionTagModulesSection.ink,
+        ),
       ),
-      constraints: const BoxConstraints(minWidth: 156, maxWidth: 180),
-      onSelected: (value) {
-        switch (value) {
-          case 'edit':
-            onToggleEditing?.call();
-          case 'create':
-            onCreateModule();
-        }
-      },
-      itemBuilder: (context) => [
-        if (onToggleEditing != null)
-          PopupMenuItem<String>(
-            value: 'edit',
-            height: 44,
-            child: Row(
-              children: [
-                Icon(
-                  editing ? Icons.check_rounded : Icons.edit_rounded,
-                  size: 20,
-                  color: _text,
-                ),
-                const SizedBox(width: 10),
-                Text(
-                  editing ? '完成' : '编辑',
-                  style: const TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w500,
-                    color: _text,
-                  ),
-                ),
-              ],
-            ),
-          ),
+    );
+  }
+}
+
+Future<void> _showModuleActionsMenu(
+  BuildContext context, {
+  VoidCallback? onRename,
+  VoidCallback? onAddTag,
+  VoidCallback? onDelete,
+}) async {
+  if (onRename == null && onAddTag == null && onDelete == null) return;
+
+  /// 菜单锚在 [context]（三个点）下方，右对齐到图标。
+  final box = context.findRenderObject() as RenderBox?;
+  final overlay = Overlay.of(context).context.findRenderObject() as RenderBox?;
+  if (box == null || !box.hasSize || overlay == null) return;
+
+  final topLeft = box.localToGlobal(Offset.zero, ancestor: overlay);
+  final size = box.size;
+  const menuWidth = 160.0;
+  final left = (topLeft.dx + size.width - menuWidth)
+      .clamp(12.0, overlay.size.width - menuWidth - 12.0);
+  final position = RelativeRect.fromLTRB(
+    left,
+    topLeft.dy + size.height + 4,
+    overlay.size.width - left - menuWidth,
+    overlay.size.height - (topLeft.dy + size.height + 4),
+  );
+
+  const text = Color(0xFF1F242E);
+  const danger = Color(0xFFD14343);
+
+  final action = await showMenu<String>(
+    context: context,
+    position: position,
+    elevation: 8,
+    color: Colors.white,
+    shadowColor: Colors.black.withValues(alpha: 0.14),
+    shape: RoundedRectangleBorder(
+      borderRadius: BorderRadius.circular(12),
+      side: const BorderSide(color: Color(0xFFE6E8EB)),
+    ),
+    constraints: const BoxConstraints(minWidth: 160, maxWidth: 160),
+    items: [
+      if (onRename != null)
         const PopupMenuItem<String>(
-          value: 'create',
+          value: 'rename',
           height: 44,
           child: Row(
             children: [
-              Icon(Icons.add_rounded, size: 20, color: _text),
+              Icon(Icons.edit_outlined, size: 20, color: text),
               SizedBox(width: 10),
               Text(
-                '新建归类',
+                '修改名称',
                 style: TextStyle(
                   fontSize: 15,
                   fontWeight: FontWeight.w500,
-                  color: _text,
+                  color: text,
                 ),
               ),
             ],
           ),
         ),
-      ],
-      child: Padding(
-        padding: iconPadding,
-        child: const SizedBox(
-          width: 38,
-          height: 38,
-          child: Icon(
-            Icons.more_horiz,
-            size: 26,
-            color: _text,
+      if (onAddTag != null)
+        const PopupMenuItem<String>(
+          value: 'add',
+          height: 44,
+          child: Row(
+            children: [
+              Icon(Icons.add_rounded, size: 20, color: text),
+              SizedBox(width: 10),
+              Text(
+                '添加标签',
+                style: TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w500,
+                  color: text,
+                ),
+              ),
+            ],
           ),
         ),
-      ),
-    );
+      if (onDelete != null)
+        const PopupMenuItem<String>(
+          value: 'delete',
+          height: 44,
+          child: Row(
+            children: [
+              Icon(Icons.delete_outline_rounded, size: 20, color: danger),
+              SizedBox(width: 10),
+              Text(
+                '删除归类',
+                style: TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w500,
+                  color: danger,
+                ),
+              ),
+            ],
+          ),
+        ),
+    ],
+  );
+
+  if (action == null || !context.mounted) return;
+  switch (action) {
+    case 'rename':
+      onRename?.call();
+    case 'add':
+      onAddTag?.call();
+    case 'delete':
+      onDelete?.call();
   }
 }
 
@@ -308,10 +333,10 @@ class _ModuleBlock extends StatelessWidget {
     required this.title,
     required this.tags,
     required this.onOpenTag,
+    this.onRenameModule,
     this.onAddTag,
     this.onDeleteModule,
     this.onAiOrganize,
-    this.editing = false,
     this.titleMuted = false,
     this.ungrouped = false,
   });
@@ -319,18 +344,30 @@ class _ModuleBlock extends StatelessWidget {
   final String title;
   final bool titleMuted;
   final bool ungrouped;
-  final bool editing;
   final List<Tag> tags;
   final ValueChanged<Tag> onOpenTag;
+  final VoidCallback? onRenameModule;
   final VoidCallback? onAddTag;
   final VoidCallback? onDeleteModule;
   final VoidCallback? onAiOrganize;
 
+  bool get _hasActions =>
+      !ungrouped &&
+      (onRenameModule != null || onAddTag != null || onDeleteModule != null);
+
+  Future<void> _showActions(BuildContext context) async {
+    if (!_hasActions) return;
+    HapticFeedback.selectionClick();
+    await _showModuleActionsMenu(
+      context,
+      onRename: onRenameModule,
+      onAddTag: onAddTag,
+      onDelete: onDeleteModule,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    final hasEditActions = !ungrouped &&
-        (onAddTag != null || onDeleteModule != null);
-
     final body = Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -374,6 +411,29 @@ class _ModuleBlock extends StatelessWidget {
                   ),
                 ),
               ),
+              if (_hasActions)
+                Builder(
+                  builder: (anchorContext) {
+                    final color = CollectionTagModulesSection.ink
+                        .withValues(alpha: 0.45);
+                    return Material(
+                      color: Colors.transparent,
+                      child: InkWell(
+                        onTap: () => _showActions(anchorContext),
+                        borderRadius: BorderRadius.circular(8),
+                        child: SizedBox(
+                          width: 28,
+                          height: 28,
+                          child: Icon(
+                            Icons.more_horiz,
+                            size: 18,
+                            color: color,
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                ),
               if (onAiOrganize != null)
                 Material(
                   color: Colors.transparent,
@@ -401,24 +461,6 @@ class _ModuleBlock extends StatelessWidget {
                           ),
                         ],
                       ),
-                    ),
-                  ),
-                ),
-              if (hasEditActions)
-                Opacity(
-                  opacity: editing ? 1 : 0,
-                  child: IgnorePointer(
-                    ignoring: !editing,
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        if (onDeleteModule != null) ...[
-                          _DeleteModuleButton(onPressed: onDeleteModule!),
-                          const SizedBox(width: 6),
-                        ],
-                        if (onAddTag != null)
-                          _AddTagInModuleButton(onPressed: onAddTag!),
-                      ],
                     ),
                   ),
                 ),
@@ -467,90 +509,6 @@ class _ModuleBlock extends StatelessWidget {
           borderRadius: BorderRadius.circular(14),
         ),
         child: body,
-      ),
-    );
-  }
-}
-
-class _DeleteModuleButton extends StatelessWidget {
-  const _DeleteModuleButton({required this.onPressed});
-
-  final VoidCallback onPressed;
-
-  static const _danger = Color(0xFFD14343);
-
-  @override
-  Widget build(BuildContext context) {
-    return Tooltip(
-      message: '删除归类',
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: onPressed,
-          borderRadius: BorderRadius.circular(8),
-          child: SizedBox(
-            width: 28,
-            height: 28,
-            child: Icon(
-              Icons.delete_outline_rounded,
-              size: 18,
-              color: _danger.withValues(alpha: 0.85),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _AddTagInModuleButton extends StatelessWidget {
-  const _AddTagInModuleButton({required this.onPressed});
-
-  final VoidCallback onPressed;
-
-  @override
-  Widget build(BuildContext context) {
-    return Tooltip(
-      message: '添加标签',
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: onPressed,
-          borderRadius: BorderRadius.circular(8),
-          child: Container(
-            height: 28,
-            padding: const EdgeInsets.symmetric(horizontal: 8),
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(
-                color:
-                    CollectionTagModulesSection.brand.withValues(alpha: 0.45),
-                width: 1,
-              ),
-            ),
-            child: const Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  Icons.add_rounded,
-                  size: 15,
-                  color: CollectionTagModulesSection.brand,
-                ),
-                SizedBox(width: 2),
-                Text(
-                  '标签',
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    color: CollectionTagModulesSection.brand,
-                    height: 1,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
       ),
     );
   }

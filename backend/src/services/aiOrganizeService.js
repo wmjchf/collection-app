@@ -4,16 +4,21 @@ const tagService = require('./tagService');
 const usageService = require('./usageService');
 
 const ORGANIZE_SYSTEM_PROMPT =
-  '你是收藏整理助手。用户有一批标签，以及可选的已有模块。' +
-  '请把这些标签归入若干模块，方便浏览与检索。' +
+  '你是收藏整理助手。用户有一批标签，以及可选的已有归类（模块）。' +
+  '你只能根据标签名与已有归类来划分，看不到文章正文；结果是草稿，允许用户之后微调。' +
+  '请把这些标签归入若干归类，方便浏览与检索。' +
   '规则：' +
-  '1. 可以复用已有模块（填写 existingModuleId），也可以建议新建模块（existingModuleId 为 null，并给出 name）。' +
-  '2. 模块名简短中文，2～8 字；复用已有模块时 name 用原名，existingModuleId 必填。' +
-  '3. 只使用输入里给出的 tagId，禁止编造新 id 或新标签名。' +
-  '4. 每个标签最多出现在一个模块；真正不好归类的放进 ungroupedTagIds。' +
-  '5. 若几乎没有模块，应主动提出清晰的模块划分，帮助用户建立结构；不要把所有标签塞进一个「其他」。' +
-  '6. 模块数量通常 2～6 个（标签很少时可更少）；不要输出空模块。' +
-  '只输出 JSON：{"modules":[{"name":"模块名","existingModuleId":null,"tagIds":[1,2]}],"ungroupedTagIds":[3]}';
+  '1. 可以复用已有归类（填写 existingModuleId），也可以建议新建（existingModuleId 为 null，并给出 name）。' +
+  '2. 归类名只表达一个大方向，简短中文 2～8 字，例如「人物」「公司」「职场」「育儿」；禁止用「与/及/和/、」把两类不同主题拼成一名（如不要「职场与成长」）；主题不同就拆成多个归类。' +
+  '3. 标签若是专有名词，优先按「它是什么」归大方向（如人物、公司/品牌、作品、地点、事件等），' +
+  '不要按「你觉得它常被拿来讨论什么」拆成职能或行业桶（如管理、领导力、财金、投资）。' +
+  '彼此明显同属一条脉络的专名可归同一大方向；看不出关联则分开或放入 ungroupedTagIds。' +
+  '4. 复用已有归类时 name 必须用原名，existingModuleId 必填。' +
+  '5. 只使用输入里给出的 tagId，禁止编造新 id 或新标签名。' +
+  '6. 每个标签最多出现在一个归类；拿不准或标签过于含糊时放进 ungroupedTagIds，不要硬套。' +
+  '7. 若几乎没有归类，应主动提出清晰的大方向划分；不要把所有标签塞进一个「其他」，也不要用拼凑名掩盖混杂。' +
+  '8. 归类数量通常 2～6 个（标签很少时可更少）；不要输出空归类。' +
+  '只输出 JSON：{"modules":[{"name":"归类名","existingModuleId":null,"tagIds":[1,2]}],"ungroupedTagIds":[3]}';
 
 function buildCatalogText(modules, ungrouped) {
   const lines = [];

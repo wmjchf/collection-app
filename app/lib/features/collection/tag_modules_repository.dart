@@ -47,6 +47,17 @@ class TagModulesRepository {
     return TagModule.fromJson(moduleJson);
   }
 
+  Future<TagModule> renameModule(int id, String name) async {
+    final token = await _token();
+    final json = await _api.patch(
+      '/api/tag-modules/$id',
+      body: {'name': name},
+      accessToken: token,
+    );
+    final moduleJson = json['module'] as Map<String, dynamic>? ?? {};
+    return TagModule.fromJson(moduleJson);
+  }
+
   Future<void> deleteModule(int id) async {
     final token = await _token();
     await _api.delete('/api/tag-modules/$id', accessToken: token);

@@ -8,7 +8,9 @@ class CoachHoleOverlay extends StatelessWidget {
     this.holeRadius = 10,
     required this.tooltip,
     this.tooltipTop,
+    this.tooltipLeft,
     this.onHoleTap,
+    this.onHoleLongPress,
   });
 
   /// 为空则全屏遮罩（完成步）
@@ -18,7 +20,10 @@ class CoachHoleOverlay extends StatelessWidget {
 
   /// 气泡顶部 Y；为空则垂直居中
   final double? tooltipTop;
+  /// 气泡左侧 X；为空则水平居中
+  final double? tooltipLeft;
   final VoidCallback? onHoleTap;
+  final VoidCallback? onHoleLongPress;
 
   static const _dim = Color(0x8C000000);
   static const _tooltipWidth = 300.0;
@@ -27,7 +32,8 @@ class CoachHoleOverlay extends StatelessWidget {
   Widget build(BuildContext context) {
     final size = MediaQuery.sizeOf(context);
     final hole = this.hole;
-    final tipLeft = (size.width - _tooltipWidth) / 2;
+    final tipLeft =
+        tooltipLeft ?? (size.width - _tooltipWidth) / 2;
 
     return Material(
       type: MaterialType.transparency,
@@ -60,6 +66,7 @@ class CoachHoleOverlay extends StatelessWidget {
               child: GestureDetector(
                 behavior: HitTestBehavior.opaque,
                 onTap: onHoleTap,
+                onLongPress: onHoleLongPress,
               ),
             ),
           ],

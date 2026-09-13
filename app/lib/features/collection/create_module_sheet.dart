@@ -5,6 +5,21 @@ import 'package:super_collection/features/collection/tag_modules_repository.dart
 
 /// 弹出「新建归类」弹框；成功返回 [TagModule]。
 Future<TagModule?> showCreateModuleSheet(BuildContext context) {
+  return _showModuleNameSheet(context);
+}
+
+/// 弹出「修改归类名」弹框；成功返回更新后的 [TagModule]。
+Future<TagModule?> showRenameModuleSheet(
+  BuildContext context, {
+  required TagModule module,
+}) {
+  return _showModuleNameSheet(context, module: module);
+}
+
+Future<TagModule?> _showModuleNameSheet(
+  BuildContext context, {
+  TagModule? module,
+}) {
   return showModalBottomSheet<TagModule>(
     context: context,
     isScrollControlled: true,
@@ -17,30 +32,40 @@ Future<TagModule?> showCreateModuleSheet(BuildContext context) {
           bottom: MediaQuery.viewInsetsOf(context).bottom +
               MediaQuery.paddingOf(context).bottom,
         ),
-        child: const _CreateModuleSheet(),
+        child: _ModuleNameSheet(module: module),
       );
     },
   );
 }
 
-class _CreateModuleSheet extends StatefulWidget {
-  const _CreateModuleSheet();
+class _ModuleNameSheet extends StatefulWidget {
+  const _ModuleNameSheet({this.module});
+
+  final TagModule? module;
 
   @override
-  State<_CreateModuleSheet> createState() => _CreateModuleSheetState();
+  State<_ModuleNameSheet> createState() => _ModuleNameSheetState();
 }
 
-class _CreateModuleSheetState extends State<_CreateModuleSheet> {
+class _ModuleNameSheetState extends State<_ModuleNameSheet> {
   static const _text = Color(0xFF1F242E);
   static const _muted = Color(0xFF737A85);
   static const _fieldBg = Color(0xFFF5F7FA);
   static const _blue = Color(0xFF2F6FED);
   static const _handle = Color(0xFFE5E8ED);
 
-  final _controller = TextEditingController();
+  late final TextEditingController _controller;
   final _repo = TagModulesRepository();
   String? _error;
   bool _submitting = false;
+
+  bool get _isRename => widget.module != null;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: widget.module?.name ?? '');
+  }
 
   @override
   void dispose() {
@@ -65,13 +90,21 @@ class _CreateModuleSheetState extends State<_CreateModuleSheet> {
       return;
     }
 
+    final existing = widget.module;
+    if (existing != null && name == existing.name) {
+      Navigator.of(context).pop(existing);
+      return;
+    }
+
     setState(() {
       _submitting = true;
       _error = null;
     });
 
     try {
-      final module = await _repo.createModule(name);
+      final module = existing == null
+          ? await _repo.createModule(name)
+          : await _repo.renameModule(existing.id, name);
       if (!mounted) return;
       Navigator.of(context).pop(module);
     } on ApiException catch (e) {
@@ -117,9 +150,9 @@ class _CreateModuleSheetState extends State<_CreateModuleSheet> {
                 height: 27,
                 child: Row(
                   children: [
-                    const Text(
-                      '新建归类',
-                      style: TextStyle(
+                    Text(
+                      _isRename ? '修改名称' : '新建归类',
+                      style: const TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.w700,
                         color: _text,
@@ -214,9 +247,9 @@ class _CreateModuleSheetState extends State<_CreateModuleSheet> {
                             color: Colors.white,
                           ),
                         )
-                      : const Text(
-                          '创建',
-                          style: TextStyle(
+                      : Text(
+                          _isRename ? '保存' : '创建',
+                          style: const TextStyle(
                             fontSize: 15,
                             fontWeight: FontWeight.w500,
                           ),

@@ -58,6 +58,23 @@ router.post('/', async (req, res, next) => {
   }
 });
 
+/** PATCH /api/tag-modules/:id — 重命名 */
+router.patch('/:id', async (req, res, next) => {
+  try {
+    const module = await tagModuleService.renameModule(
+      req.auth.userId,
+      req.params.id,
+      req.body?.name,
+    );
+    return res.json({
+      module,
+      message: '已更新',
+    });
+  } catch (err) {
+    return next(err);
+  }
+});
+
 /** DELETE /api/tag-modules/:id — 删除模块（标签回未归类） */
 router.delete('/:id', async (req, res, next) => {
   try {
