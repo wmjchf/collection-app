@@ -3,12 +3,19 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:super_collection/core/analytics/analytics.dart';
 import 'package:super_collection/core/network/api_client.dart';
+import 'package:super_collection/features/collection/create_tag_sheet.dart';
 import 'package:super_collection/features/collection/tag_models.dart';
 import 'package:super_collection/features/collection/tags_repository.dart';
 import 'package:super_collection/features/items/ai_meta_models.dart';
 import 'package:super_collection/features/items/items_repository.dart';
 import 'package:super_collection/core/ui/app_toast.dart';
 import 'package:super_collection/features/settings/quota_gate.dart';
+
+enum ReadingTagsSheetResult { createTag }
+
+class _TagsSheetSession {
+  final Set<int> selectedIds = {};
+}
 
 Future<void> showReadingTagsSheet(
   BuildContext context, {
@@ -18,26 +25,45 @@ Future<void> showReadingTagsSheet(
   bool transcriptPending = false,
   bool autoStartAiSuggest = false,
   void Function(AiTagsMeta tagsMeta)? onTagsMetaChanged,
-}) {
-  return showModalBottomSheet<void>(
-    context: context,
-    isScrollControlled: true,
-    backgroundColor: Colors.transparent,
-    barrierColor: const Color(0x59000000),
-    builder: (context) => _ReadingTagsSheet(
-      itemId: itemId,
-      initialTagsMeta: tagsMeta,
-      aiSuggestEnabled: aiSuggestEnabled,
-      transcriptPending: transcriptPending,
-      autoStartAiSuggest: autoStartAiSuggest,
-      onTagsMetaChanged: onTagsMetaChanged,
-    ),
-  );
+}) async {
+  final session = _TagsSheetSession();
+  var meta = tagsMeta;
+
+  while (true) {
+    if (!context.mounted) return;
+    final result = await showModalBottomSheet<ReadingTagsSheetResult>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      barrierColor: const Color(0x59000000),
+      builder: (context) => _ReadingTagsSheet(
+        itemId: itemId,
+        session: session,
+        initialTagsMeta: meta,
+        aiSuggestEnabled: aiSuggestEnabled,
+        transcriptPending: transcriptPending,
+        autoStartAiSuggest: autoStartAiSuggest,
+        onTagsMetaChanged: (updated) {
+          meta = updated;
+          onTagsMetaChanged?.call(updated);
+        },
+      ),
+    );
+    if (result != ReadingTagsSheetResult.createTag) {
+      return;
+    }
+    if (!context.mounted) return;
+    final created = await showCreateTagSheet(context);
+    if (created != null) {
+      session.selectedIds.add(created.id);
+    }
+  }
 }
 
 class _ReadingTagsSheet extends StatefulWidget {
   const _ReadingTagsSheet({
     required this.itemId,
+    required this.session,
     required this.initialTagsMeta,
     required this.aiSuggestEnabled,
     required this.transcriptPending,
@@ -46,6 +72,7 @@ class _ReadingTagsSheet extends StatefulWidget {
   });
 
   final int itemId;
+  final _TagsSheetSession session;
   final AiTagsMeta initialTagsMeta;
   final bool aiSuggestEnabled;
   final bool transcriptPending;
@@ -290,9 +317,14 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
         _all = all.where((t) => !t.isSystem).toList();
         _selected
           ..clear()
-          ..addAll(current.map((t) => t.id));
+          ..addAll(
+            widget.session.selectedIds.isNotEmpty
+                ? widget.session.selectedIds
+                : current.map((t) => t.id),
+          );
         _loading = false;
       });
+      _syncSession();
       _syncSearchOverlayVisibility();
     } on ApiException catch (e) {
       if (!mounted) return;
@@ -309,6 +341,17 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
     }
   }
 
+  void _syncSession() {
+    widget.session.selectedIds
+      ..clear()
+      ..addAll(_selected);
+  }
+
+  void _createTag() {
+    _syncSession();
+    Navigator.pop(context, ReadingTagsSheetResult.createTag);
+  }
+
   void _toggleTag(int id) {
     setState(() {
       if (_selected.contains(id)) {
@@ -316,6 +359,7 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
       } else {
         _selected.add(id);
       }
+      _syncSession();
     });
   }
 
@@ -820,7 +864,7 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
           const Padding(
             padding: EdgeInsets.only(top: 8),
             child: Text(
-              '还没有标签，可到「我的收藏」新建，或使用 AI 建议',
+              '还没有标签，可点「新建」或使用 AI 建议',
               style: TextStyle(fontSize: 13, color: _muted, height: 1.4),
             ),
           ),
@@ -887,6 +931,14 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
                         borderColor: _aiSuggestTapEnabled
                             ? const Color(0xFFB8CCFA)
                             : const Color(0xFFE8ECF0),
+                      ),
+                      const SizedBox(width: 6),
+                      _HeaderActionButton(
+                        icon: Icons.add,
+                        label: '新建',
+                        onTap: _createTag,
+                        foreground: _text,
+                        borderColor: const Color(0xFFE8ECF0),
                       ),
                       const Spacer(),
                       GestureDetector(

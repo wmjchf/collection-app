@@ -14,11 +14,12 @@ const QUOTA_MESSAGES = {
   storage: '收藏已达上限，订阅太子后可继续',
 };
 
-/** 标签 / 脑图 / AI 总结 completion 预留（偏保守，避免打穿） */
+/** 标签 / 脑图 / AI 总结 / 归类 completion 预留（偏保守，避免打穿） */
 const AI_COMPLETION_RESERVE = {
   tags: 800,
   mindmap: 2500,
   summary: 1200,
+  organize: 1500,
 };
 
 function isEnforcing() {
@@ -27,7 +28,7 @@ function isEnforcing() {
 
 /**
  * 按消息字符粗估 token（对齐 DashScope 中文约 2 字/token）+ completion 预留。
- * @param {{ messages?: Array<{content?: string}>, feature?: 'tags'|'mindmap'|'summary', extraChars?: number }} opts
+ * @param {{ messages?: Array<{content?: string}>, feature?: 'tags'|'mindmap'|'summary'|'organize', extraChars?: number }} opts
  */
 function estimateAiTokens({ messages = [], feature = 'tags', extraChars = 0 } = {}) {
   const chars =
@@ -39,7 +40,9 @@ function estimateAiTokens({ messages = [], feature = 'tags', extraChars = 0 } = 
       ? AI_COMPLETION_RESERVE.mindmap
       : feature === 'summary'
         ? AI_COMPLETION_RESERVE.summary
-        : AI_COMPLETION_RESERVE.tags;
+        : feature === 'organize'
+          ? AI_COMPLETION_RESERVE.organize
+          : AI_COMPLETION_RESERVE.tags;
   return Math.max(1, promptEst + reserve);
 }
 
@@ -250,8 +253,8 @@ function billableAiTokensFromUsage(usage) {
 }
 
 /**
- * AI 标签 / 思维导图共用 token 池。
- * @param {{ userId: number, itemId: number, feature: 'tags'|'mindmap'|'summary', tokens: number, generatedAt?: string, meta?: object }} args
+ * AI 标签 / 思维导图 / 归类共用 token 池。
+ * @param {{ userId: number, itemId?: number|null, feature: 'tags'|'mindmap'|'summary'|'organize', tokens: number, generatedAt?: string, meta?: object }} args
  */
 async function recordAiTokenUsage({
   userId,
@@ -274,11 +277,16 @@ async function recordAiTokenUsage({
       ? 'mindmap'
       : feature === 'summary'
         ? 'summary'
-        : 'tags';
-  const key = `ai:${feat}:${userId}:${itemId}:${generatedAt || Date.now()}`;
+        : feature === 'organize'
+          ? 'organize'
+          : 'tags';
+  const key =
+    itemId != null
+      ? `ai:${feat}:${userId}:${itemId}:${generatedAt || Date.now()}`
+      : `ai:${feat}:${userId}:${generatedAt || Date.now()}`;
   return recordEvent({
     userId,
-    itemId,
+    itemId: itemId != null ? Number(itemId) : null,
     kind: KIND_AI,
     amount: billable,
     unit: 'tokens',
@@ -303,6 +311,8 @@ async function countActiveItems(userId) {
 }
 
 async function assertPlanFeatureForUser(userId, feature) {
+  // 与额度触顶一致：USAGE_ENFORCING=false 时本地开发不拦档位
+  if (!isEnforcing()) return;
   const { plan } = await subscriptionService.getPlanForUser(userId);
   planService.assertFeature(plan, feature);
 }
@@ -439,6 +449,8 @@ function aiFeatureLabel(feature) {
       return 'AI 总结';
     case 'mindmap':
       return 'AI 思维导图';
+    case 'organize':
+      return 'AI 归类';
     case 'tags':
       return 'AI 标签';
     default:
@@ -601,6 +613,7 @@ async function getUsageSummary(userId) {
     features: {
       aiTags: planService.hasPrince(normalizedPlan),
       aiSummary: planService.hasPrince(normalizedPlan),
+      aiOrganize: planService.hasPrince(normalizedPlan),
       aiMindmap: planService.hasEmperor(normalizedPlan),
       transcript: planService.hasEmperor(normalizedPlan),
       unlimitedItems: planService.hasPrince(normalizedPlan),

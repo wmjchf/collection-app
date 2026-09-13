@@ -5,7 +5,6 @@ import 'package:super_collection/core/ui/app_confirm_dialog.dart';
 import 'package:super_collection/core/ui/app_subpage_app_bar.dart';
 import 'package:super_collection/core/ui/app_toast.dart';
 import 'package:super_collection/core/ui/paged_list.dart';
-import 'package:super_collection/features/collection/create_tag_sheet.dart';
 import 'package:super_collection/features/collection/tags_repository.dart';
 import 'package:super_collection/features/home/home_format.dart';
 import 'package:super_collection/features/items/item_list_tile.dart';
@@ -27,7 +26,7 @@ class ItemsBrowsePage extends StatefulWidget {
   final String title;
   final ItemsBrowseLoader loader;
 
-  /// 非空且为自建标签时，右上角显示「⋯」菜单（编辑名称 / 删除）。
+  /// 非空且为自建标签时，右上角显示删除图标。
   final int? tagId;
 
   @override
@@ -36,7 +35,6 @@ class ItemsBrowsePage extends StatefulWidget {
 
 class _ItemsBrowsePageState extends State<ItemsBrowsePage> with ScreenDwellMixin {
   static const _bg = Color(0xFFF7F7FA);
-  static const _text = Color(0xFF1F242E);
   static const _muted = Color(0xFF737A85);
   static const _danger = Color(0xFFF56C6C);
 
@@ -77,27 +75,6 @@ class _ItemsBrowsePageState extends State<ItemsBrowsePage> with ScreenDwellMixin
 
   void _onScroll() {
     if (shouldLoadMore(_scroll)) _loadMore();
-  }
-
-  Future<void> _onMenuSelected(String value) async {
-    if (value == 'rename') {
-      await _onRenameTag();
-    } else if (value == 'delete') {
-      await _onDeleteTag();
-    }
-  }
-
-  Future<void> _onRenameTag() async {
-    final tagId = widget.tagId;
-    if (tagId == null || _busy) return;
-    final updated = await showEditTagSheet(
-      context,
-      tagId: tagId,
-      initialName: _title,
-    );
-    if (!mounted || updated == null) return;
-    setState(() => _title = updated.name);
-    AppToast.show(context, '已更新为「${updated.name}」');
   }
 
   Future<void> _onDeleteTag() async {
@@ -196,48 +173,13 @@ class _ItemsBrowsePageState extends State<ItemsBrowsePage> with ScreenDwellMixin
   List<Widget>? _buildActions() {
     if (!_canManageTag) return null;
     return [
-      PopupMenuButton<String>(
-        enabled: !_busy,
-        tooltip: '更多',
-        offset: const Offset(0, 40),
-        elevation: 8,
-        color: Colors.white,
-        shadowColor: Colors.black.withValues(alpha: 0.14),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-          side: const BorderSide(color: Color(0xFFE6E8EB)),
-        ),
-        constraints: const BoxConstraints(minWidth: 148, maxWidth: 168),
-        onSelected: _onMenuSelected,
-        itemBuilder: (context) => const [
-          PopupMenuItem<String>(
-            value: 'rename',
-            height: 44,
-            child: Text(
-              '编辑名称',
-              style: TextStyle(
-                fontSize: 15,
-                fontWeight: FontWeight.w500,
-                color: _text,
-              ),
-            ),
-          ),
-          PopupMenuItem<String>(
-            value: 'delete',
-            height: 44,
-            child: Text(
-              '删除',
-              style: TextStyle(
-                fontSize: 15,
-                fontWeight: FontWeight.w500,
-                color: _danger,
-              ),
-            ),
-          ),
-        ],
-        child: const Padding(
-          padding: EdgeInsets.symmetric(horizontal: 12),
-          child: Icon(Icons.more_horiz, size: 26, color: _text),
+      IconButton(
+        tooltip: '删除标签',
+        onPressed: _busy ? null : _onDeleteTag,
+        icon: Icon(
+          Icons.delete_outline_rounded,
+          size: 24,
+          color: _busy ? _muted : _danger,
         ),
       ),
     ];

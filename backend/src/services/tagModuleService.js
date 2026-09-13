@@ -85,7 +85,7 @@ async function listModules(userId) {
 async function createModule(userId, rawName) {
   const name = String(rawName || '').trim();
   if (!name) {
-    throw Object.assign(new Error('请输入模块名称'), { status: 400 });
+    throw Object.assign(new Error('请输入归类名称'), { status: 400 });
   }
   if (name.length > 64) {
     throw Object.assign(new Error('名称最多 64 个字'), { status: 400 });
@@ -98,7 +98,7 @@ async function createModule(userId, rawName) {
     { userId, name },
   );
   if (existing[0]) {
-    throw Object.assign(new Error('同名模块已存在'), { status: 409 });
+    throw Object.assign(new Error('同名归类已存在'), { status: 409 });
   }
 
   const [sortRows] = await pool.execute(
@@ -121,15 +121,36 @@ async function createModule(userId, rawName) {
     return { ...mapModule(rows[0]), tags: [] };
   } catch (err) {
     if (err && err.code === 'ER_DUP_ENTRY') {
-      throw Object.assign(new Error('同名模块已存在'), { status: 409 });
+      throw Object.assign(new Error('同名归类已存在'), { status: 409 });
     }
     throw err;
   }
 }
 
+/**
+ * 删除模块；组内标签 module_id 由 FK ON DELETE SET NULL 回到未归类。
+ */
+async function deleteModule(userId, moduleId) {
+  const mid = Number(moduleId);
+  if (!Number.isFinite(mid) || mid <= 0) {
+    throw Object.assign(new Error('无效的模块 ID'), { status: 400 });
+  }
+  await getOwnedModule(userId, mid);
+  const [result] = await pool.execute(
+    `DELETE FROM tag_modules
+     WHERE id = :moduleId AND user_id = :userId`,
+    { moduleId: mid, userId },
+  );
+  if (!result.affectedRows) {
+    throw Object.assign(new Error('模块不存在'), { status: 404 });
+  }
+  return { ok: true };
+}
+
 module.exports = {
   listModules,
   createModule,
+  deleteModule,
   getOwnedModule,
   mapModule,
 };

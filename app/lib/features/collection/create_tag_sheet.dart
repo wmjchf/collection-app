@@ -18,77 +18,32 @@ Future<Tag?> showCreateTagSheet(
         padding: EdgeInsets.only(
           bottom: MediaQuery.viewInsetsOf(context).bottom,
         ),
-        child: _TagNameSheet(moduleId: moduleId),
+        child: _CreateTagSheet(moduleId: moduleId),
       );
     },
   );
 }
 
-/// 弹出「编辑标签名」弹框；成功返回更新后的 [Tag]。
-Future<Tag?> showEditTagSheet(
-  BuildContext context, {
-  required int tagId,
-  required String initialName,
-}) {
-  return showModalBottomSheet<Tag>(
-    context: context,
-    isScrollControlled: true,
-    backgroundColor: Colors.transparent,
-    barrierColor: const Color(0x59000000),
-    builder: (context) {
-      return Padding(
-        padding: EdgeInsets.only(
-          bottom: MediaQuery.viewInsetsOf(context).bottom,
-        ),
-        child: _TagNameSheet(
-          tagId: tagId,
-          initialName: initialName,
-        ),
-      );
-    },
-  );
-}
+class _CreateTagSheet extends StatefulWidget {
+  const _CreateTagSheet({this.moduleId});
 
-class _TagNameSheet extends StatefulWidget {
-  const _TagNameSheet({
-    this.tagId,
-    this.initialName,
-    this.moduleId,
-  });
-
-  final int? tagId;
-  final String? initialName;
   final int? moduleId;
 
-  bool get isEdit => tagId != null;
-
   @override
-  State<_TagNameSheet> createState() => _TagNameSheetState();
+  State<_CreateTagSheet> createState() => _CreateTagSheetState();
 }
 
-class _TagNameSheetState extends State<_TagNameSheet> {
+class _CreateTagSheetState extends State<_CreateTagSheet> {
   static const _text = Color(0xFF1F242E);
   static const _muted = Color(0xFF737A85);
   static const _fieldBg = Color(0xFFF5F7FA);
   static const _blue = Color(0xFF2F6FED);
   static const _handle = Color(0xFFE5E8ED);
 
-  late final TextEditingController _controller;
+  final _controller = TextEditingController();
   final _tags = TagsRepository();
   String? _error;
   bool _submitting = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = TextEditingController(text: widget.initialName ?? '');
-    if (widget.isEdit) {
-      _controller.selection = TextSelection(
-        baseOffset: 0,
-        extentOffset: _controller.text.length,
-      );
-    }
-  }
 
   @override
   void dispose() {
@@ -119,9 +74,7 @@ class _TagNameSheetState extends State<_TagNameSheet> {
     });
 
     try {
-      final tag = widget.isEdit
-          ? await _tags.renameTag(widget.tagId!, name)
-          : await _tags.createTag(name, moduleId: widget.moduleId);
+      final tag = await _tags.createTag(name, moduleId: widget.moduleId);
       if (!mounted) return;
       Navigator.of(context).pop(tag);
     } on ApiException catch (e) {
@@ -134,9 +87,7 @@ class _TagNameSheetState extends State<_TagNameSheet> {
       if (!mounted) return;
       setState(() {
         _submitting = false;
-        _error = widget.isEdit
-            ? '保存失败，请检查网络或后端是否启动'
-            : '创建失败，请检查网络或后端是否启动';
+        _error = '创建失败，请检查网络或后端是否启动';
       });
     }
   }
@@ -144,8 +95,6 @@ class _TagNameSheetState extends State<_TagNameSheet> {
   @override
   Widget build(BuildContext context) {
     final bottom = MediaQuery.paddingOf(context).bottom;
-    final title = widget.isEdit ? '编辑标签名' : '新建标签';
-    final action = widget.isEdit ? '保存' : '创建';
 
     return Padding(
       padding: EdgeInsets.fromLTRB(16, 0, 16, 16 + (bottom > 0 ? bottom : 0)),
@@ -171,9 +120,9 @@ class _TagNameSheetState extends State<_TagNameSheet> {
                 height: 27,
                 child: Row(
                   children: [
-                    Text(
-                      title,
-                      style: const TextStyle(
+                    const Text(
+                      '新建标签',
+                      style: TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.w700,
                         color: _text,
@@ -225,10 +174,6 @@ class _TagNameSheetState extends State<_TagNameSheet> {
                     borderRadius: BorderRadius.circular(12),
                     borderSide: const BorderSide(color: _blue, width: 1.5),
                   ),
-                  disabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide.none,
-                  ),
                 ),
               ),
               if (_error != null) ...[
@@ -237,42 +182,38 @@ class _TagNameSheetState extends State<_TagNameSheet> {
                   alignment: Alignment.centerLeft,
                   child: Text(
                     _error!,
-                    style: const TextStyle(
-                      fontSize: 12,
-                      color: Color(0xFFE34D59),
-                    ),
+                    style: const TextStyle(fontSize: 13, color: Color(0xFFD14343)),
                   ),
                 ),
               ],
-              const SizedBox(height: 12),
+              const SizedBox(height: 16),
               SizedBox(
                 width: double.infinity,
+                height: 48,
                 child: FilledButton(
                   onPressed: _submitting ? null : _onSubmit,
                   style: FilledButton.styleFrom(
                     backgroundColor: _blue,
-                    disabledBackgroundColor: _blue.withValues(alpha: 0.6),
-                    foregroundColor: Colors.white,
-                    disabledForegroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    disabledBackgroundColor: _blue.withValues(alpha: 0.45),
                     shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
+                      borderRadius: BorderRadius.circular(14),
                     ),
+                    elevation: 0,
                   ),
                   child: _submitting
                       ? const SizedBox(
-                          width: 18,
-                          height: 18,
+                          width: 22,
+                          height: 22,
                           child: CircularProgressIndicator(
-                            strokeWidth: 2,
+                            strokeWidth: 2.2,
                             color: Colors.white,
                           ),
                         )
-                      : Text(
-                          action,
-                          style: const TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w500,
+                      : const Text(
+                          '创建',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
                           ),
                         ),
                 ),

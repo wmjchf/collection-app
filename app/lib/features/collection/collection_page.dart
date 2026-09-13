@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:super_collection/core/network/api_client.dart';
+import 'package:super_collection/core/ui/app_confirm_dialog.dart';
+import 'package:super_collection/core/ui/app_toast.dart';
+import 'package:super_collection/features/collection/ai_organize_sheet.dart';
 import 'package:super_collection/features/collection/collection_tag_modules_section.dart';
 import 'package:super_collection/features/collection/create_module_sheet.dart';
 import 'package:super_collection/features/collection/create_tag_sheet.dart';
@@ -54,6 +57,8 @@ class _CollectionPageState extends State<CollectionPage> {
   String? _error;
   /// 归类标签区顶到顶栏：切换顶栏形态
   bool _tagsFocused = false;
+  /// 归类标签编辑态：显示删模块 / 组内 +标签
+  bool _tagsEditing = false;
 
   @override
   void initState() {
@@ -172,6 +177,41 @@ class _CollectionPageState extends State<CollectionPage> {
     await _load(quiet: true);
   }
 
+  Future<void> _deleteModule(TagModule module) async {
+    final ok = await showAppConfirmDialog(
+      context,
+      title: '删除模块',
+      message: '确定删除模块「${module.name}」？组内标签会回到未归类，不会删除标签。',
+      confirmLabel: '删除',
+    );
+    if (ok != true || !mounted) return;
+    try {
+      await _tagModulesRepo.deleteModule(module.id);
+      if (!mounted) return;
+      AppToast.show(context, '已删除模块「${module.name}」');
+      await _load(quiet: true);
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      AppToast.show(context, e.message);
+    } catch (_) {
+      if (!mounted) return;
+      AppToast.show(context, '删除失败');
+    }
+  }
+
+  Future<void> _aiOrganize() async {
+    final tagCount = _ungrouped.length +
+        _modules.fold<int>(0, (n, m) => n + m.tags.length);
+    if (tagCount < 2) {
+      AppToast.show(context, '至少需要 2 个标签才能 AI 归类');
+      return;
+    }
+    final ok = await showAiOrganizeSheet(context);
+    if (ok == true && mounted) {
+      await _load(quiet: true);
+    }
+  }
+
   void _openSystemFilter(SystemFilter filter) {
     Navigator.of(context)
         .push(
@@ -231,16 +271,13 @@ class _CollectionPageState extends State<CollectionPage> {
         ),
         centerTitle: true,
         actions: [
-          IconButton(
-            tooltip: '新建模块',
-            onPressed: _createModule,
-            icon: const Icon(
-              Icons.add_rounded,
-              size: 24,
-              color: Color(0xFF2F6FED),
-            ),
+          CollectionTagsActionsMenu(
+            editing: _tagsEditing,
+            onToggleEditing: () =>
+                setState(() => _tagsEditing = !_tagsEditing),
+            onCreateModule: _createModule,
+            iconPadding: const EdgeInsets.symmetric(horizontal: 12),
           ),
-          const SizedBox(width: 4),
         ],
       );
     }
@@ -358,9 +395,14 @@ class _CollectionPageState extends State<CollectionPage> {
                 modules: _modules,
                 ungrouped: _ungrouped,
                 showInlineHeader: !_tagsFocused,
+                editing: _tagsEditing,
+                onToggleEditing: () =>
+                    setState(() => _tagsEditing = !_tagsEditing),
                 onOpenTag: _openTag,
                 onAddTag: _addTagToModule,
+                onDeleteModule: _deleteModule,
                 onCreateModule: _createModule,
+                onAiOrganize: _aiOrganize,
               ),
               // 便于上滑把归类标签顶到顶栏
               SizedBox(height: MediaQuery.sizeOf(context).height * 0.45),

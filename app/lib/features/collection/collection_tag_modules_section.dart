@@ -12,6 +12,10 @@ class CollectionTagModulesSection extends StatelessWidget {
     required this.onOpenTag,
     required this.onAddTag,
     required this.onCreateModule,
+    this.onDeleteModule,
+    this.onAiOrganize,
+    this.editing = false,
+    this.onToggleEditing,
     this.headerKey,
     this.showInlineHeader = true,
   });
@@ -21,6 +25,10 @@ class CollectionTagModulesSection extends StatelessWidget {
   final ValueChanged<Tag> onOpenTag;
   final ValueChanged<int?> onAddTag;
   final VoidCallback onCreateModule;
+  final ValueChanged<TagModule>? onDeleteModule;
+  final VoidCallback? onAiOrganize;
+  final bool editing;
+  final VoidCallback? onToggleEditing;
   final Key? headerKey;
   final bool showInlineHeader;
 
@@ -43,6 +51,7 @@ class CollectionTagModulesSection extends StatelessWidget {
         ungrouped: true,
         tags: ungrouped,
         onOpenTag: onOpenTag,
+        onAiOrganize: onAiOrganize,
       ),
     ];
 
@@ -53,7 +62,10 @@ class CollectionTagModulesSection extends StatelessWidget {
           title: m.name,
           tags: m.tags,
           onOpenTag: onOpenTag,
-          onAddTag: () => onAddTag(m.id),
+          onAddTag: editing ? () => onAddTag(m.id) : null,
+          onDeleteModule: editing && onDeleteModule != null
+              ? () => onDeleteModule!(m)
+              : null,
         ),
       );
     }
@@ -76,7 +88,11 @@ class CollectionTagModulesSection extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               if (showInlineHeader)
-                _SectionHeader(onCreateModule: onCreateModule)
+                _SectionHeader(
+                  editing: editing,
+                  onToggleEditing: onToggleEditing,
+                  onCreateModule: onCreateModule,
+                )
               else
                 const SizedBox(height: 1),
               if (showInlineHeader) const SizedBox(height: 8),
@@ -84,7 +100,7 @@ class CollectionTagModulesSection extends StatelessWidget {
                 const Padding(
                   padding: EdgeInsets.only(bottom: 12),
                   child: Text(
-                    '还没有归类。点右侧 + 新建模块，再往里加标签。',
+                    '还没有归类。可用未归类旁的 AI 归类，或点右侧 ⋯ 新建归类。',
                     style: TextStyle(
                       fontSize: 13,
                       height: 1.45,
@@ -102,9 +118,15 @@ class CollectionTagModulesSection extends StatelessWidget {
 }
 
 class _SectionHeader extends StatelessWidget {
-  const _SectionHeader({required this.onCreateModule});
+  const _SectionHeader({
+    required this.onCreateModule,
+    this.editing = false,
+    this.onToggleEditing,
+  });
 
   final VoidCallback onCreateModule;
+  final bool editing;
+  final VoidCallback? onToggleEditing;
 
   @override
   Widget build(BuildContext context) {
@@ -123,24 +145,109 @@ class _SectionHeader extends StatelessWidget {
               ),
             ),
           ),
-          Material(
-            color: CollectionTagModulesSection.brandSoft,
-            borderRadius: BorderRadius.circular(10),
-            child: InkWell(
-              onTap: onCreateModule,
-              borderRadius: BorderRadius.circular(10),
-              child: const SizedBox(
-                width: 38,
-                height: 38,
-                child: Icon(
-                  Icons.add_rounded,
-                  size: 24,
-                  color: CollectionTagModulesSection.brand,
-                ),
-              ),
-            ),
+          CollectionTagsActionsMenu(
+            editing: editing,
+            onToggleEditing: onToggleEditing,
+            onCreateModule: onCreateModule,
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// 归类标签 ⋯ 菜单：编辑/完成、新建归类。
+class CollectionTagsActionsMenu extends StatelessWidget {
+  const CollectionTagsActionsMenu({
+    super.key,
+    required this.onCreateModule,
+    this.editing = false,
+    this.onToggleEditing,
+    this.iconPadding = const EdgeInsets.symmetric(horizontal: 4),
+  });
+
+  final VoidCallback onCreateModule;
+  final bool editing;
+  final VoidCallback? onToggleEditing;
+  final EdgeInsetsGeometry iconPadding;
+
+  static const _text = Color(0xFF1F242E);
+
+  @override
+  Widget build(BuildContext context) {
+    return PopupMenuButton<String>(
+      tooltip: '更多',
+      offset: const Offset(0, 40),
+      elevation: 8,
+      color: Colors.white,
+      shadowColor: Colors.black.withValues(alpha: 0.14),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: const BorderSide(color: Color(0xFFE6E8EB)),
+      ),
+      constraints: const BoxConstraints(minWidth: 156, maxWidth: 180),
+      onSelected: (value) {
+        switch (value) {
+          case 'edit':
+            onToggleEditing?.call();
+          case 'create':
+            onCreateModule();
+        }
+      },
+      itemBuilder: (context) => [
+        if (onToggleEditing != null)
+          PopupMenuItem<String>(
+            value: 'edit',
+            height: 44,
+            child: Row(
+              children: [
+                Icon(
+                  editing ? Icons.check_rounded : Icons.edit_rounded,
+                  size: 20,
+                  color: _text,
+                ),
+                const SizedBox(width: 10),
+                Text(
+                  editing ? '完成' : '编辑',
+                  style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w500,
+                    color: _text,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        const PopupMenuItem<String>(
+          value: 'create',
+          height: 44,
+          child: Row(
+            children: [
+              Icon(Icons.add_rounded, size: 20, color: _text),
+              SizedBox(width: 10),
+              Text(
+                '新建归类',
+                style: TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w500,
+                  color: _text,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+      child: Padding(
+        padding: iconPadding,
+        child: const SizedBox(
+          width: 38,
+          height: 38,
+          child: Icon(
+            Icons.more_horiz,
+            size: 26,
+            color: _text,
+          ),
+        ),
       ),
     );
   }
@@ -152,6 +259,8 @@ class _ModuleBlock extends StatelessWidget {
     required this.tags,
     required this.onOpenTag,
     this.onAddTag,
+    this.onDeleteModule,
+    this.onAiOrganize,
     this.titleMuted = false,
     this.ungrouped = false,
   });
@@ -162,6 +271,8 @@ class _ModuleBlock extends StatelessWidget {
   final List<Tag> tags;
   final ValueChanged<Tag> onOpenTag;
   final VoidCallback? onAddTag;
+  final VoidCallback? onDeleteModule;
+  final VoidCallback? onAiOrganize;
 
   @override
   Widget build(BuildContext context) {
@@ -203,6 +314,29 @@ class _ModuleBlock extends StatelessWidget {
                 ),
               ),
             ),
+            if (onAiOrganize != null)
+              Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  onTap: onAiOrganize,
+                  borderRadius: BorderRadius.circular(8),
+                  child: const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    child: Text(
+                      'AI 归类',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: CollectionTagModulesSection.brand,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            if (onDeleteModule != null) ...[
+              _DeleteModuleButton(onPressed: onDeleteModule!),
+              const SizedBox(width: 6),
+            ],
             if (onAddTag != null)
               _AddTagInModuleButton(onPressed: onAddTag!),
           ],
@@ -248,6 +382,37 @@ class _ModuleBlock extends StatelessWidget {
           borderRadius: BorderRadius.circular(14),
         ),
         child: body,
+      ),
+    );
+  }
+}
+
+class _DeleteModuleButton extends StatelessWidget {
+  const _DeleteModuleButton({required this.onPressed});
+
+  final VoidCallback onPressed;
+
+  static const _danger = Color(0xFFD14343);
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: '删除模块',
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onPressed,
+          borderRadius: BorderRadius.circular(8),
+          child: SizedBox(
+            width: 28,
+            height: 28,
+            child: Icon(
+              Icons.delete_outline_rounded,
+              size: 18,
+              color: _danger.withValues(alpha: 0.85),
+            ),
+          ),
+        ),
       ),
     );
   }
