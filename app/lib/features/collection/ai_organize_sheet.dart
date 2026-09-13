@@ -321,7 +321,7 @@ class _ModulePreview extends StatelessWidget {
               child: Text(
                 module.name,
                 style: const TextStyle(
-                  fontSize: 15,
+                  fontSize: 16,
                   fontWeight: FontWeight.w600,
                   color: _text,
                 ),
@@ -336,7 +336,7 @@ class _ModulePreview extends StatelessWidget {
               child: Text(
                 module.isNew ? '新建' : '已有',
                 style: TextStyle(
-                  fontSize: 11,
+                  fontSize: 12,
                   fontWeight: FontWeight.w600,
                   color: module.isNew ? _blue : _muted,
                 ),
@@ -346,14 +346,14 @@ class _ModulePreview extends StatelessWidget {
         ),
         const SizedBox(height: 8),
         Wrap(
-          spacing: 8,
-          runSpacing: 6,
+          spacing: 4,
+          runSpacing: 2,
           children: [
             for (final t in module.tags)
               Text(
                 t.name.startsWith('#') ? t.name : '#${t.name}',
                 style: const TextStyle(
-                  fontSize: 13,
+                  fontSize: 15,
                   fontWeight: FontWeight.w500,
                   color: _blue,
                   height: 1.25,
@@ -386,7 +386,7 @@ class _UngroupedPreview extends StatelessWidget {
             Text(
               '仍放未归类',
               style: TextStyle(
-                fontSize: 13,
+                fontSize: 15,
                 fontWeight: FontWeight.w600,
                 color: _muted,
               ),
@@ -395,14 +395,14 @@ class _UngroupedPreview extends StatelessWidget {
         ),
         const SizedBox(height: 8),
         Wrap(
-          spacing: 8,
-          runSpacing: 6,
+          spacing: 4,
+          runSpacing: 2,
           children: [
             for (final t in tags)
               Text(
                 t.name.startsWith('#') ? t.name : '#${t.name}',
                 style: const TextStyle(
-                  fontSize: 13,
+                  fontSize: 15,
                   fontWeight: FontWeight.w500,
                   color: _blue,
                   height: 1.25,

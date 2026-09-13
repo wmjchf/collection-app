@@ -417,7 +417,7 @@ class _ModuleBlock extends StatelessWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                    fontSize: 13,
+                    fontSize: 15,
                     fontWeight: FontWeight.w600,
                     letterSpacing: ungrouped ? 0.2 : 0.4,
                     color: ungrouped || titleMuted
@@ -470,7 +470,7 @@ class _ModuleBlock extends StatelessWidget {
                           Text(
                             'AI 归类',
                             style: TextStyle(
-                              fontSize: 13,
+                              fontSize: 14,
                               fontWeight: FontWeight.w600,
                               color: CollectionTagModulesSection.brand,
                             ),
@@ -488,15 +488,15 @@ class _ModuleBlock extends StatelessWidget {
           const Text(
             '暂无标签',
             style: TextStyle(
-              fontSize: 13,
+              fontSize: 14,
               height: 1.35,
               color: CollectionTagModulesSection.muted,
             ),
           )
         else
           Wrap(
-            spacing: 10,
-            runSpacing: ungrouped ? 12 : 6,
+            spacing: 4,
+            runSpacing: ungrouped ? 6 : 2,
             children: [
               for (final tag in tags)
                 _TagChip(
@@ -698,7 +698,7 @@ class _TagChipState extends State<_TagChip> {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                    fontSize: feedback ? 15 : 14,
+                    fontSize: feedback ? 16 : 15,
                     fontWeight: FontWeight.w600,
                     height: 1.25,
                     color: color,
@@ -710,7 +710,7 @@ class _TagChipState extends State<_TagChip> {
                 Text(
                   '${widget.tag.itemCount}',
                   style: TextStyle(
-                    fontSize: feedback ? 13 : 12,
+                    fontSize: feedback ? 14 : 13,
                     fontWeight: FontWeight.w600,
                     height: 1.25,
                     color: color.withValues(alpha: 0.65),
