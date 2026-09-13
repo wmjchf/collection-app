@@ -136,7 +136,7 @@
 | section | code | name |
 | --- | --- | --- |
 | system | unread / all / today / untagged / annotated / recent_read | 未读/所有/今天/未打标/标注/最近阅读 |
-| system | recent_read | 最近阅读（系统筛选；首页「查看更多」进入此列表） |
+| system | recent_read | 最近阅读（已读且有 `last_read_at`；排除未读，避免与未读区重复） |
 | folder | uncategorized | 未分类 |
 | other | archived | 已归档（不在 App 导航展示；`filter=archived` API 仍可用） |
 | system | trash | 回收站（原 other，见 `009_trash_system_section.sql`） |
@@ -166,7 +166,8 @@ segmentKey：`video_url`（顶栏，仅无内嵌 `!v` 时）或 `inline:N`。
 API：`GET …/transcript-targets`、`POST …/transcript`（body.segmentKey）、`GET …/transcript-status`。  
 迁移：`backend/sql/007_transcript_segments.sql`；执行：`cd backend && pnpm db:migrate:007`（或 `pnpm db:migrate` 跑全部未执行增量）。
 
-**阅读时写入**：进入阅读页 → `last_read_at = NOW()`，且 `is_unread = 0`。
+**阅读时写入**：进入阅读页 → `last_read_at = NOW()`，且 `is_unread = 0`。  
+**标回未读**：只改 `is_unread = 1`，保留 `last_read_at`；`recent_read` 筛选仍要求已读，故不会与未读列表重复。
 
 ---
 
