@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_svg/flutter_svg.dart';
 import 'package:super_collection/core/network/api_client.dart';
 import 'package:super_collection/core/ui/app_confirm_dialog.dart';
 import 'package:super_collection/core/ui/app_toast.dart';
@@ -14,7 +13,6 @@ import 'package:super_collection/features/collection/system_filters_repository.d
 import 'package:super_collection/features/collection/tag_models.dart';
 import 'package:super_collection/features/collection/tag_module_models.dart';
 import 'package:super_collection/features/collection/tag_modules_repository.dart';
-import 'package:super_collection/features/collection/tag_search_page.dart';
 import 'package:super_collection/features/collection/tags_repository.dart';
 import 'package:super_collection/features/shell/user_avatar_button.dart';
 
@@ -83,14 +81,6 @@ class _CollectionPageState extends State<CollectionPage> {
     if (widget.refreshTick != oldWidget.refreshTick) {
       _load(quiet: true);
     }
-  }
-
-  void _openTagSearch() {
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => const TagSearchPage(),
-      ),
-    );
   }
 
   Future<void> _load({bool quiet = false}) async {
@@ -303,20 +293,6 @@ class _CollectionPageState extends State<CollectionPage> {
                 onPressed: widget.onOpenAccount ?? () {},
               ),
               const Spacer(),
-              IconButton(
-                tooltip: '搜索标签',
-                padding: EdgeInsets.zero,
-                constraints: const BoxConstraints(
-                  minWidth: 36,
-                  minHeight: 36,
-                ),
-                onPressed: _openTagSearch,
-                icon: SvgPicture.asset(
-                  'assets/icons/search.svg',
-                  width: 24,
-                  height: 24,
-                ),
-              ),
             ],
           ),
         ),

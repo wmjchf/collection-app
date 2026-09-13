@@ -22,7 +22,6 @@ import 'package:super_collection/features/items/items_repository.dart';
 import 'package:super_collection/features/onboarding/coach_prefs.dart';
 import 'package:super_collection/features/onboarding/home_coach_overlay.dart';
 import 'package:super_collection/features/onboarding/shortcuts_help_page.dart';
-import 'package:super_collection/features/search/search_page.dart';
 import 'package:super_collection/features/shell/user_avatar_button.dart';
 import 'package:super_collection/features/settings/trial_expiry_banner.dart';
 
@@ -649,23 +648,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
           ),
         ),
         actions: [
-          IconButton(
-            tooltip: '搜索',
-            padding: EdgeInsets.zero,
-            constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
-            onPressed: () {
-              Navigator.of(context).push(
-                MaterialPageRoute<void>(
-                  builder: (_) => const SearchPage(),
-                ),
-              );
-            },
-            icon: SvgPicture.asset(
-              'assets/icons/search.svg',
-              width: 24,
-              height: 24,
-            ),
-          ),
           Padding(
             padding: const EdgeInsets.only(right: 8),
             child: IconButton(

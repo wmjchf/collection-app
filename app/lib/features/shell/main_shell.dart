@@ -11,6 +11,7 @@ import 'package:super_collection/core/ui/parse_progress_controller.dart';
 import 'package:super_collection/core/ui/parse_progress_tracker.dart';
 import 'package:super_collection/features/collection/collection_page.dart';
 import 'package:super_collection/features/home/home_page.dart';
+import 'package:super_collection/features/search/search_page.dart';
 import 'package:super_collection/features/settings/account_drawer.dart';
 import 'package:super_collection/features/shell/app_bottom_nav_bar.dart';
 import 'package:super_collection/features/shortcuts/shortcut_inbound.dart';
@@ -58,6 +59,12 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
 
   void _openAccountDrawer() {
     _scaffoldKey.currentState?.openDrawer();
+  }
+
+  void _openSearch() {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(builder: (_) => const SearchPage()),
+    );
   }
 
   @override
@@ -162,6 +169,7 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
       bottomNavigationBar: AppBottomNavBar(
         currentIndex: _index,
         onChanged: _switchTab,
+        onSearchTap: _openSearch,
       ),
     );
   }
