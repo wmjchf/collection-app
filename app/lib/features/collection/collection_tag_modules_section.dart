@@ -6,13 +6,14 @@ import 'package:flutter/services.dart';
 import 'package:super_collection/features/collection/tag_models.dart';
 import 'package:super_collection/features/collection/tag_module_models.dart';
 
-/// 归类标签：按归类分组展示；可新建归类、点归类名操作；长按拖标签换模块。
+/// 归类标签：按归类分组展示；点归类名看全部条目；旁 ⋯ 操作；长按拖标签换模块。
 class CollectionTagModulesSection extends StatelessWidget {
   const CollectionTagModulesSection({
     super.key,
     required this.modules,
     required this.ungrouped,
     required this.onOpenTag,
+    this.onOpenModule,
     required this.onAddTag,
     required this.onCreateModule,
     this.onRenameModule,
@@ -26,6 +27,8 @@ class CollectionTagModulesSection extends StatelessWidget {
   final List<TagModule> modules;
   final List<Tag> ungrouped;
   final ValueChanged<Tag> onOpenTag;
+  /// 点归类名：看该归类下全部条目。
+  final ValueChanged<TagModule>? onOpenModule;
   final ValueChanged<int?> onAddTag;
   final VoidCallback onCreateModule;
   final ValueChanged<TagModule>? onRenameModule;
@@ -74,6 +77,8 @@ class CollectionTagModulesSection extends StatelessWidget {
           title: m.name,
           tags: m.tags,
           onOpenTag: onOpenTag,
+          onOpenModule:
+              onOpenModule != null ? () => onOpenModule!(m) : null,
           onRenameModule:
               onRenameModule != null ? () => onRenameModule!(m) : null,
           onAddTag: () => onAddTag(m.id),
@@ -343,6 +348,7 @@ class _ModuleBlock extends StatelessWidget {
     required this.title,
     required this.tags,
     required this.onOpenTag,
+    this.onOpenModule,
     this.onRenameModule,
     this.onAddTag,
     this.onDeleteModule,
@@ -359,6 +365,7 @@ class _ModuleBlock extends StatelessWidget {
   final bool ungrouped;
   final List<Tag> tags;
   final ValueChanged<Tag> onOpenTag;
+  final VoidCallback? onOpenModule;
   final VoidCallback? onRenameModule;
   final VoidCallback? onAddTag;
   final VoidCallback? onDeleteModule;
@@ -384,6 +391,21 @@ class _ModuleBlock extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final titleStyle = TextStyle(
+      fontSize: 15,
+      fontWeight: FontWeight.w600,
+      letterSpacing: ungrouped ? 0.2 : 0.4,
+      color: ungrouped || titleMuted
+          ? CollectionTagModulesSection.muted
+          : CollectionTagModulesSection.ink.withValues(alpha: 0.78),
+    );
+    final titleText = Text(
+      title,
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      style: titleStyle,
+    );
+
     final body = Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -412,20 +434,30 @@ class _ModuleBlock extends StatelessWidget {
                   ),
                 ),
               Expanded(
-                child: Text(
-                  title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w600,
-                    letterSpacing: ungrouped ? 0.2 : 0.4,
-                    color: ungrouped || titleMuted
-                        ? CollectionTagModulesSection.muted
-                        : CollectionTagModulesSection.ink
-                            .withValues(alpha: 0.78),
-                  ),
-                ),
+                child: onOpenModule != null
+                    ? GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: () {
+                          HapticFeedback.selectionClick();
+                          onOpenModule!();
+                        },
+                        child: Align(
+                          alignment: Alignment.centerLeft,
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Flexible(child: titleText),
+                              Icon(
+                                Icons.chevron_right_rounded,
+                                size: 20,
+                                color: CollectionTagModulesSection.ink
+                                    .withValues(alpha: 0.35),
+                              ),
+                            ],
+                          ),
+                        ),
+                      )
+                    : titleText,
               ),
               if (_hasActions)
                 Builder(

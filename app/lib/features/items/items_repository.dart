@@ -269,6 +269,16 @@ class ItemsRepository {
     return CollectionItem.fromJson(itemJson);
   }
 
+  Future<CollectionItem> markAsUnread(int id) async {
+    final token = await _token();
+    final json = await _api.post(
+      '/api/items/$id/unread',
+      accessToken: token,
+    );
+    final itemJson = json['item'] as Map<String, dynamic>? ?? {};
+    return CollectionItem.fromJson(itemJson);
+  }
+
   Future<CollectionItem> setStarred(int id, {required bool starred}) async {
     final token = await _token();
     final json = await _api.post(

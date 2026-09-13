@@ -58,6 +58,23 @@ router.post('/', async (req, res, next) => {
   }
 });
 
+/** GET /api/tag-modules/:id/items — 归类下全部条目（组内标签 OR） */
+router.get('/:id/items', async (req, res, next) => {
+  try {
+    const result = await tagModuleService.listModuleItems(
+      req.auth.userId,
+      req.params.id,
+      {
+        limit: req.query.limit,
+        offset: req.query.offset,
+      },
+    );
+    return res.json(result);
+  } catch (err) {
+    return next(err);
+  }
+});
+
 /** PATCH /api/tag-modules/:id — 重命名 */
 router.patch('/:id', async (req, res, next) => {
   try {

@@ -327,6 +327,19 @@ router.post('/:id/read', async (req, res, next) => {
   }
 });
 
+/** POST /api/items/:id/unread — 标回未读（保留 last_read_at） */
+router.post('/:id/unread', async (req, res, next) => {
+  try {
+    const item = await itemService.markAsUnread(
+      req.auth.userId,
+      Number(req.params.id),
+    );
+    return res.json({ item });
+  } catch (err) {
+    return next(err);
+  }
+});
+
 /** POST /api/items/:id/star — body { starred: boolean } */
 router.post('/:id/star', async (req, res, next) => {
   try {

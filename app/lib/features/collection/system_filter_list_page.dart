@@ -8,6 +8,7 @@ import 'package:super_collection/features/home/home_format.dart';
 import 'package:super_collection/features/items/item_list_tile.dart';
 import 'package:super_collection/features/items/item_reading_page.dart';
 import 'package:super_collection/features/items/item_models.dart';
+import 'package:super_collection/features/items/items_repository.dart';
 
 /// 系统筛选条目列表（未读 / 所有 / 今天 …）
 class SystemFilterListPage extends StatefulWidget {
@@ -30,6 +31,7 @@ class _SystemFilterListPageState extends State<SystemFilterListPage>
   static const _muted = Color(0xFF737A85);
 
   final _repo = SystemFiltersRepository();
+  final _itemsRepo = ItemsRepository();
   final _scroll = ScrollController();
   List<CollectionItem> _items = const [];
   int _total = 0;
@@ -38,6 +40,7 @@ class _SystemFilterListPageState extends State<SystemFilterListPage>
   String? _error;
 
   bool get _hasMore => _items.length < _total;
+  bool get _isUntagged => widget.code == 'untagged';
 
   @override
   String get dwellScreen => AnalyticsScreens.filterList;
@@ -134,6 +137,42 @@ class _SystemFilterListPageState extends State<SystemFilterListPage>
     return '$platform · $status';
   }
 
+  Future<void> _openItem(CollectionItem item) async {
+    final deleted = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) => ItemReadingPage(
+          itemId: item.id,
+          initialItem: item,
+          openEntry: widget.code == 'unread' ? 'unread' : 'library',
+        ),
+      ),
+    );
+    if (!mounted) return;
+    if (deleted == true) {
+      setState(() {
+        _items = _items.where((e) => e.id != item.id).toList();
+        _total = (_total - 1).clamp(0, 1 << 30);
+      });
+      return;
+    }
+    if (_isUntagged) {
+      await _removeIfTagged(item.id);
+    }
+  }
+
+  Future<void> _removeIfTagged(int itemId) async {
+    try {
+      final tags = await _itemsRepo.listItemTags(itemId);
+      if (!mounted || tags.isEmpty) return;
+      setState(() {
+        _items = _items.where((e) => e.id != itemId).toList();
+        _total = (_total - 1).clamp(0, 1 << 30);
+      });
+    } catch (_) {
+      // 检查失败时保留列表，下次刷新即可
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -198,26 +237,7 @@ class _SystemFilterListPageState extends State<SystemFilterListPage>
                         child: ItemListTile.fromItem(
                           item,
                           subtitle: _subtitle(item),
-                          onTap: () async {
-                            final deleted =
-                                await Navigator.of(context).push<bool>(
-                              MaterialPageRoute(
-                                builder: (_) => ItemReadingPage(
-                                  itemId: item.id,
-                                  initialItem: item,
-                                  openEntry: widget.code == 'unread'
-                                      ? 'unread'
-                                      : 'library',
-                                ),
-                              ),
-                            );
-                            if (!mounted || deleted != true) return;
-                            setState(() {
-                              _items =
-                                  _items.where((e) => e.id != item.id).toList();
-                              _total = (_total - 1).clamp(0, 1 << 30);
-                            });
-                          },
+                          onTap: () => _openItem(item),
                         ),
                       );
                     },

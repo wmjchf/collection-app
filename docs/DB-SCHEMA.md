@@ -30,7 +30,7 @@
 
 | 第一层 | 第二层例子 | 一条 item 与第二层关系 |
 | --- | --- | --- |
-| system | 未读 / 所有 / 今天 / 标注 / 最近阅读 | **规则命中**（不算归属边） |
+| system | 所有 / 今天 / 未打标 / 标注 | **规则命中**（不算归属边）；未读 / 最近阅读仅在首页入口 |
 | folder | **未分类** / 用户自建夹 | **恰好一个**（`items.folder_id`） |
 | tag | （仅用户自建） | **0～N 个**（`item_tags`） |
 | other | 已归档 / 最近删除 | **状态字段**（`is_archived` / `deleted_at`） |
@@ -135,7 +135,7 @@
 
 | section | code | name |
 | --- | --- | --- |
-| system | unread / all / today / annotated | 未读/所有/今天/标注 |
+| system | unread / all / today / untagged / annotated / recent_read | 未读/所有/今天/未打标/标注/最近阅读 |
 | system | recent_read | 最近阅读（系统筛选；首页「查看更多」进入此列表） |
 | folder | uncategorized | 未分类 |
 | other | archived | 已归档（不在 App 导航展示；`filter=archived` API 仍可用） |
@@ -203,6 +203,7 @@ API：`GET …/transcript-targets`、`POST …/transcript`（body.segmentKey）�
 | `PATCH /api/tags/:id` | body `{ name }` 重命名；或 `{ moduleId, beforeTagId? }` 换模块/组内排序（`beforeTagId` 空=追加末尾） |
 | `DELETE /api/tags/:id` | 仅自建标签；解除 `item_tags` 关联，不删条目 |
 | `GET /api/tag-modules` | `{ modules:[{ id, name, tags[] }], ungrouped: Tag[] }` |
+| `GET /api/tag-modules/:id/items` | 归类下全部条目（组内任一标签 OR，去重分页）；含 `tags` |
 | `POST /api/tag-modules` | body `{ name }` 新建模块（仅标题） |
 | `PATCH /api/tag-modules/:id` | body `{ name }` 重命名 |
 | `DELETE /api/tag-modules/:id` | 删除模块；组内标签回未归类 |
@@ -213,7 +214,7 @@ API：`GET …/transcript-targets`、`POST …/transcript`（body.segmentKey）�
 
 | 接口 | 说明 |
 | --- | --- |
-| `GET /api/system-filters` | 未读/所有/今天/标注/最近阅读 + 数量；`tzOffsetMinutes` 可选（默认 480） |
+| `GET /api/system-filters` | 未读/所有/今天/未打标/标注/最近阅读 + 数量；`tzOffsetMinutes` 可选（默认 480） |
 | `GET /api/items?filter=` | 按系统筛选列条目；`filter` 同上；支持 `limit`/`offset`/`tzOffsetMinutes`；条目含 `tags:[{id,name}]` |
 | `GET /api/home` | 首页两板块：未读 / 最近阅读（`recentRead`），各最多 3 条；条目含 `tags` |
 | `GET /api/items/:id` | 单条详情；含 `tags` |

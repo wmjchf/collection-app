@@ -726,6 +726,21 @@ async function markAsRead(userId, itemId) {
   return getByIdForUser(userId, itemId);
 }
 
+/** 标回未读（保留 last_read_at，最近阅读仍可见） */
+async function markAsUnread(userId, itemId) {
+  const existing = await getByIdForUser(userId, itemId);
+  if (!existing) {
+    throw Object.assign(new Error('条目不存在'), { status: 404 });
+  }
+  await pool.execute(
+    `UPDATE items
+     SET is_unread = 1
+     WHERE id = :itemId AND user_id = :userId AND deleted_at IS NULL`,
+    { itemId, userId },
+  );
+  return getByIdForUser(userId, itemId);
+}
+
 /** 切换星标 */
 async function setStarred(userId, itemId, starred) {
   const existing = await getByIdForUser(userId, itemId);
@@ -1563,6 +1578,7 @@ module.exports = {
   attachTagsToItems,
   listBySystemFilter,
   markAsRead,
+  markAsUnread,
   setStarred,
   updateNote,
   updateContent,
