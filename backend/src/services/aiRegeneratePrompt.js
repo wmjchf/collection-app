@@ -42,6 +42,26 @@ function normalizeRegenerateFrom(raw) {
       : [];
     return names.length ? { kind: 'tags', names } : null;
   }
+  if (kind === 'organize') {
+    const modules = Array.isArray(raw.modules)
+      ? raw.modules
+          .map((m) => {
+            const name = String(m?.name || '').trim();
+            const tags = Array.isArray(m?.tags)
+              ? m.tags.map((t) => String(t || '').trim()).filter(Boolean).slice(0, 20)
+              : [];
+            if (!name || !tags.length) return null;
+            return { name, tags };
+          })
+          .filter(Boolean)
+          .slice(0, 8)
+      : [];
+    const ungrouped = Array.isArray(raw.ungrouped)
+      ? raw.ungrouped.map((t) => String(t || '').trim()).filter(Boolean).slice(0, 30)
+      : [];
+    if (!modules.length && !ungrouped.length) return null;
+    return { kind: 'organize', modules, ungrouped };
+  }
   return null;
 }
 
@@ -77,6 +97,19 @@ function formatRegenerateUserBlock(from) {
     return (
       `【重新生成】换角度建议标签，与上一版明显不同；仍须贴合正文，勿硬套弱相关已有标签。\n` +
       `上一版：${from.names.join('、')}`
+    );
+  }
+  if (from.kind === 'organize') {
+    const lines = (from.modules || []).map(
+      (m) => `${m.name}←${(m.tags || []).join('、')}`,
+    );
+    if ((from.ungrouped || []).length) {
+      lines.push(`未归类←${from.ungrouped.join('、')}`);
+    }
+    if (!lines.length) return '';
+    return (
+      `【重新生成】换一种归类划分，结构尽量与上一版明显不同；仍须逐个理解每个标签「它是什么」并全部归入归类（可单独成类），禁止留未归类，勿照抄上一版。\n` +
+      `上一版：${lines.join('；')}`
     );
   }
   return '';

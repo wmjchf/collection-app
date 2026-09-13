@@ -22,6 +22,8 @@ router.post('/ai-organize', async (req, res, next) => {
   try {
     const result = await aiOrganizeService.suggestOrganize(req.auth.userId, {
       hint: req.body?.hint,
+      force: Boolean(req.body?.force),
+      previousProposal: req.body?.previousProposal,
     });
     return res.json(result);
   } catch (err) {

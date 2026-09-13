@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:super_collection/core/network/api_client.dart';
 import 'package:super_collection/core/ui/app_toast.dart';
@@ -40,6 +42,7 @@ class _AiOrganizeSheetState extends State<_AiOrganizeSheet> {
   final _repo = TagModulesRepository();
 
   bool _loading = true;
+  bool _generateInFlight = false;
   bool _applying = false;
   String? _error;
   AiOrganizeProposal? _proposal;
@@ -48,20 +51,27 @@ class _AiOrganizeSheetState extends State<_AiOrganizeSheet> {
   @override
   void initState() {
     super.initState();
-    _generate();
+    unawaited(_generate());
   }
 
-  Future<void> _generate() async {
+  Future<void> _generate({bool force = false}) async {
+    if (_generateInFlight || _applying) return;
+    final previous = force ? _proposal : null;
     setState(() {
+      _generateInFlight = true;
       _loading = true;
       _error = null;
-      _proposal = null;
+      if (force) _proposal = null;
     });
     try {
-      final result = await _repo.suggestAiOrganize();
+      final result = await _repo.suggestAiOrganize(
+        force: force,
+        previous: previous,
+      );
       if (!mounted) return;
       setState(() {
         _loading = false;
+        _generateInFlight = false;
         _proposal = result.proposal;
         _suggestMessage = result.message;
       });
@@ -69,6 +79,7 @@ class _AiOrganizeSheetState extends State<_AiOrganizeSheet> {
       if (!mounted) return;
       setState(() {
         _loading = false;
+        _generateInFlight = false;
         _error = e.message;
       });
       await handleApiException(context, e);
@@ -76,6 +87,7 @@ class _AiOrganizeSheetState extends State<_AiOrganizeSheet> {
       if (!mounted) return;
       setState(() {
         _loading = false;
+        _generateInFlight = false;
         _error = '生成失败，请稍后重试';
       });
     }
@@ -83,7 +95,7 @@ class _AiOrganizeSheetState extends State<_AiOrganizeSheet> {
 
   Future<void> _apply() async {
     final proposal = _proposal;
-    if (proposal == null || _applying) return;
+    if (proposal == null || _applying || _generateInFlight) return;
     setState(() => _applying = true);
     try {
       final result = await _repo.applyAiOrganize(proposal);
@@ -110,6 +122,8 @@ class _AiOrganizeSheetState extends State<_AiOrganizeSheet> {
   Widget build(BuildContext context) {
     final bottom = MediaQuery.paddingOf(context).bottom;
     final maxH = MediaQuery.sizeOf(context).height * 0.78;
+    final showRegen =
+        _proposal != null && !_loading && !_applying && !_generateInFlight;
 
     return Padding(
       padding: EdgeInsets.fromLTRB(16, 0, 16, 16 + (bottom > 0 ? bottom : 0)),
@@ -152,6 +166,21 @@ class _AiOrganizeSheetState extends State<_AiOrganizeSheet> {
                         ),
                       ),
                       const Spacer(),
+                      if (showRegen) ...[
+                        GestureDetector(
+                          onTap: () => unawaited(_generate(force: true)),
+                          behavior: HitTestBehavior.opaque,
+                          child: const Padding(
+                            padding: EdgeInsets.all(4),
+                            child: Icon(
+                              Icons.refresh_rounded,
+                              size: 20,
+                              color: _muted,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                      ],
                       GestureDetector(
                         onTap: _close,
                         behavior: HitTestBehavior.opaque,
@@ -242,10 +271,17 @@ class _AiOrganizeSheetState extends State<_AiOrganizeSheet> {
               textAlign: TextAlign.center,
               style: const TextStyle(fontSize: 14, height: 1.45, color: _muted),
             ),
-            const SizedBox(height: 16),
-            TextButton(
-              onPressed: _generate,
-              child: const Text('重试'),
+            const SizedBox(height: 12),
+            GestureDetector(
+              onTap: () => unawaited(_generate(force: true)),
+              child: const Text(
+                '重试',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: _blue,
+                ),
+              ),
             ),
           ],
         ),

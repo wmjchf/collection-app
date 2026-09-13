@@ -2,24 +2,27 @@ const aliyunDashScope = require('./aliyunDashScope');
 const tagModuleService = require('./tagModuleService');
 const tagService = require('./tagService');
 const usageService = require('./usageService');
+const {
+  normalizeRegenerateFrom,
+  formatRegenerateUserBlock,
+} = require('./aiRegeneratePrompt');
 
 const ORGANIZE_SYSTEM_PROMPT =
   '你是收藏整理助手。用户有一批标签，以及可选的已有归类（模块）。' +
   '你只能根据标签名与已有归类来划分，看不到文章正文；结果是草稿，允许用户之后微调。' +
-  '核心目标：逐个理解每一个标签名的含义，再把意思相近、同属一类的标签放进同一个归类，方便浏览与检索。' +
+  '核心目标：逐个理解每一个标签「它是什么」，再把同类放进同一归类；每一个标签都必须归入某个归类，不允许留在未归类。' +
   '规则：' +
-  '1. 先对输入里的标签逐个弄清「这个标签是什么意思」，不要跳过或批量糊弄；再依据含义上的同类关系归并，不是看字面像不像；想清楚后再起归类名、再分配。' +
+  '1. 先对输入里的标签逐个弄清含义，不要跳过或批量糊弄；再按含义归并，不是看字面像不像；想清楚后再起归类名、再分配。' +
   '2. 可以复用已有归类（填写 existingModuleId），也可以建议新建（existingModuleId 为 null，并给出 name）。' +
   '3. 归类名只表达一个大方向，简短中文 2～8 字，例如「人物」「公司」「职场」「育儿」；禁止用「与/及/和/、」把两类不同主题拼成一名（如不要「职场与成长」）；主题不同就拆成多个归类。' +
-  '4. 标签若是专有名词，优先按「它是什么」理解并归类（如人物、公司/品牌、作品、地点、事件等），' +
-  '不要脱离标签本身含义、凭行业常识硬套职能或话题桶（如管理、领导力、财金、投资）。' +
-  '明显同属一条脉络的专名可放同一归类；看不出同类关系则分开或放入 ungroupedTagIds。' +
-  '5. 复用已有归类时 name 必须用原名，existingModuleId 必填。' +
-  '6. 只使用输入里给出的 tagId，禁止编造新 id 或新标签名。' +
-  '7. 每个标签最多出现在一个归类；拿不准或标签过于含糊时放进 ungroupedTagIds，不要硬套。' +
-  '8. 若几乎没有归类，应主动按含义提出清晰的大方向划分；不要把所有标签塞进一个「其他」，也不要用拼凑名掩盖混杂。' +
-  '9. 归类数量通常 2～6 个（标签很少时可更少）；不要输出空归类。' +
-  '只输出 JSON：{"modules":[{"name":"归类名","existingModuleId":null,"tagIds":[1,2]}],"ungroupedTagIds":[3]}';
+  '4. 专有名词按「它是什么」归（如人物、公司/品牌、作品、地点、事件等），不要凭行业常识硬套职能或话题桶（如管理、领导力、财金、投资）。' +
+  '5. 只有一个标签、或找不到可合并的同类时，也必须单独成一类，归类名仍要表达它是什么；禁止因为「只有一个」就丢进未归类。' +
+  '6. 复用已有归类时 name 必须用原名，existingModuleId 必填。' +
+  '7. 只使用输入里给出的 tagId，禁止编造新 id 或新标签名；每个标签最多出现在一个归类。' +
+  '8. 输入中的全部 tagId 都必须出现在某个 modules[].tagIds 里；ungroupedTagIds 必须为空数组 []。' +
+  '9. 若几乎没有归类，应主动按含义提出清晰的大方向划分；不要把所有标签塞进一个「其他」，也不要用拼凑名掩盖混杂。' +
+  '10. 归类数量通常 2～8 个（标签很少或需单列时可更少/略多）；不要输出空归类。' +
+  '只输出 JSON：{"modules":[{"name":"归类名","existingModuleId":null,"tagIds":[1,2]}],"ungroupedTagIds":[]}';
 
 function buildCatalogText(modules, ungrouped) {
   const lines = [];
@@ -66,15 +69,41 @@ function collectUserTags(modules, ungrouped) {
 
 function normalizeProposal(raw, tagById, moduleById) {
   const modulesIn = Array.isArray(raw?.modules) ? raw.modules : [];
-  const ungroupedIn = Array.isArray(raw?.ungroupedTagIds)
-    ? raw.ungroupedTagIds
-    : [];
 
   const used = new Set();
   const modules = [];
+  const maxModules = Math.max(12, tagById.size);
+
+  const pushModule = (name, existingId, tagIds) => {
+    if (!tagIds.length || modules.length >= maxModules) return;
+    modules.push({
+      name,
+      existingModuleId: existingId,
+      tagIds,
+      tags: tagIds.map((id) => ({
+        id,
+        name: tagById.get(id).name,
+      })),
+    });
+  };
+
+  const resolveExistingId = (name, existingId) => {
+    let id = existingId;
+    let resolvedName = name;
+    if (id == null) {
+      for (const [mid, m] of moduleById) {
+        if (String(m.name).trim().toLowerCase() === name.toLowerCase()) {
+          id = mid;
+          resolvedName = m.name;
+          break;
+        }
+      }
+    }
+    return { existingId: id, name: resolvedName };
+  };
 
   for (const row of modulesIn) {
-    if (modules.length >= 8) break;
+    if (modules.length >= maxModules) break;
     let name = String(row?.name || '').trim();
     if (name.length > 64) name = name.slice(0, 64);
     let existingId = null;
@@ -87,16 +116,7 @@ function normalizeProposal(raw, tagById, moduleById) {
     }
     if (!name) continue;
 
-    // 名称撞上已有模块时改为复用
-    if (existingId == null) {
-      for (const [id, m] of moduleById) {
-        if (String(m.name).trim().toLowerCase() === name.toLowerCase()) {
-          existingId = id;
-          name = m.name;
-          break;
-        }
-      }
-    }
+    ({ existingId, name } = resolveExistingId(name, existingId));
 
     const tagIds = [];
     const rawIds = Array.isArray(row?.tagIds) ? row.tagIds : [];
@@ -106,40 +126,31 @@ function normalizeProposal(raw, tagById, moduleById) {
       used.add(tid);
       tagIds.push(tid);
     }
-    if (!tagIds.length) continue;
-    modules.push({
-      name,
-      existingModuleId: existingId,
-      tagIds,
-      tags: tagIds.map((id) => ({
-        id,
-        name: tagById.get(id).name,
-      })),
-    });
+    pushModule(name, existingId, tagIds);
   }
 
-  const ungroupedTagIds = [];
-  for (const rawId of ungroupedIn) {
-    const tid = Number(rawId);
-    if (!Number.isFinite(tid) || !tagById.has(tid) || used.has(tid)) continue;
+  // 模型漏放或仍标未归类的标签：各自成一类（归类名先用标签名截断；理想情况应由模型给出大方向名）
+  for (const [tid, tag] of tagById) {
+    if (used.has(tid)) continue;
     used.add(tid);
-    ungroupedTagIds.push(tid);
+    let name = String(tag.name || '').trim().slice(0, 8);
+    if (!name) name = `标签${tid}`;
+    const resolved = resolveExistingId(name, null);
+    pushModule(resolved.name, resolved.existingId, [tid]);
   }
 
   return {
     modules,
-    ungroupedTagIds,
-    ungroupedTags: ungroupedTagIds.map((id) => ({
-      id,
-      name: tagById.get(id).name,
-    })),
+    ungroupedTagIds: [],
+    ungroupedTags: [],
   };
 }
 
 /**
  * 同步生成归类建议（不落库）。
+ * force 时附带上一版快照，引导换划分角度。
  */
-async function suggestOrganize(userId, { hint } = {}) {
+async function suggestOrganize(userId, { hint, force, previousProposal } = {}) {
   await usageService.assertPlanFeatureForUser(userId, 'ai_organize');
   await usageService.assertAiQuota(userId);
 
@@ -157,9 +168,34 @@ async function suggestOrganize(userId, { hint } = {}) {
 
   const catalog = buildCatalogText(modules, ungrouped);
   const hintText = String(hint || '').trim().slice(0, 200);
+
+  let regenerateFrom = null;
+  if (force) {
+    const prev = previousProposal && typeof previousProposal === 'object'
+      ? {
+          kind: 'organize',
+          modules: (previousProposal.modules || []).map((m) => ({
+            name: m?.name,
+            tags: Array.isArray(m?.tags)
+              ? m.tags.map((t) => (typeof t === 'string' ? t : t?.name))
+              : [],
+          })),
+          ungrouped: Array.isArray(previousProposal.ungroupedTags)
+            ? previousProposal.ungroupedTags.map((t) =>
+                typeof t === 'string' ? t : t?.name,
+              )
+            : Array.isArray(previousProposal.ungrouped)
+              ? previousProposal.ungrouped
+              : [],
+        }
+      : null;
+    regenerateFrom = normalizeRegenerateFrom(prev);
+  }
+
   const userParts = [
     catalog,
     hintText ? `用户补充偏好：${hintText}` : '',
+    formatRegenerateUserBlock(regenerateFrom),
     '请给出归类方案。',
   ].filter(Boolean);
 
