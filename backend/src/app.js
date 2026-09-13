@@ -67,6 +67,7 @@ app.use('/api', healthRouter);
 app.use('/api/auth', authRouter);
 app.use('/api/items', itemsRouter);
 app.use('/api/tags', tagsRouter);
+app.use('/api/tag-modules', require('./routes/tagModules'));
 app.use('/api/system-filters', systemFiltersRouter);
 app.use('/api/home', homeRouter);
 app.use('/api/usage', usageRouter);

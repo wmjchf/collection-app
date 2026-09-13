@@ -3,19 +3,12 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:super_collection/core/analytics/analytics.dart';
 import 'package:super_collection/core/network/api_client.dart';
-import 'package:super_collection/features/collection/create_tag_sheet.dart';
 import 'package:super_collection/features/collection/tag_models.dart';
 import 'package:super_collection/features/collection/tags_repository.dart';
 import 'package:super_collection/features/items/ai_meta_models.dart';
 import 'package:super_collection/features/items/items_repository.dart';
 import 'package:super_collection/core/ui/app_toast.dart';
 import 'package:super_collection/features/settings/quota_gate.dart';
-
-enum ReadingTagsSheetResult { createTag }
-
-class _TagsSheetSession {
-  final Set<int> selectedIds = {};
-}
 
 Future<void> showReadingTagsSheet(
   BuildContext context, {
@@ -25,40 +18,26 @@ Future<void> showReadingTagsSheet(
   bool transcriptPending = false,
   bool autoStartAiSuggest = false,
   void Function(AiTagsMeta tagsMeta)? onTagsMetaChanged,
-}) async {
-  final session = _TagsSheetSession();
-
-  while (true) {
-    final result = await showModalBottomSheet<ReadingTagsSheetResult>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      barrierColor: const Color(0x59000000),
-      builder: (context) => _ReadingTagsSheet(
-        itemId: itemId,
-        session: session,
-        initialTagsMeta: tagsMeta,
-        aiSuggestEnabled: aiSuggestEnabled,
-        transcriptPending: transcriptPending,
-        autoStartAiSuggest: autoStartAiSuggest,
-        onTagsMetaChanged: onTagsMetaChanged,
-      ),
-    );
-    if (result != ReadingTagsSheetResult.createTag) {
-      return;
-    }
-    if (!context.mounted) return;
-    final created = await showCreateTagSheet(context);
-    if (created != null) {
-      session.selectedIds.add(created.id);
-    }
-  }
+}) {
+  return showModalBottomSheet<void>(
+    context: context,
+    isScrollControlled: true,
+    backgroundColor: Colors.transparent,
+    barrierColor: const Color(0x59000000),
+    builder: (context) => _ReadingTagsSheet(
+      itemId: itemId,
+      initialTagsMeta: tagsMeta,
+      aiSuggestEnabled: aiSuggestEnabled,
+      transcriptPending: transcriptPending,
+      autoStartAiSuggest: autoStartAiSuggest,
+      onTagsMetaChanged: onTagsMetaChanged,
+    ),
+  );
 }
 
 class _ReadingTagsSheet extends StatefulWidget {
   const _ReadingTagsSheet({
     required this.itemId,
-    required this.session,
     required this.initialTagsMeta,
     required this.aiSuggestEnabled,
     required this.transcriptPending,
@@ -67,7 +46,6 @@ class _ReadingTagsSheet extends StatefulWidget {
   });
 
   final int itemId;
-  final _TagsSheetSession session;
   final AiTagsMeta initialTagsMeta;
   final bool aiSuggestEnabled;
   final bool transcriptPending;
@@ -91,6 +69,7 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
   final _searchController = TextEditingController();
   final _searchFocus = FocusNode();
   final _searchOverlayController = OverlayPortalController(debugLabel: 'tagSearch');
+  static final Object _searchTapGroup = Object();
   List<Tag> _all = const [];
   final Set<int> _selected = {};
   bool _loading = true;
@@ -104,6 +83,7 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
   @override
   void initState() {
     super.initState();
+    _searchFocus.addListener(_onSearchFocusChanged);
     _tagsMeta = widget.initialTagsMeta;
     _aiSelected.addAll(_tagsMeta.items.map((e) => e.name));
     _load();
@@ -206,7 +186,6 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
           ..clear()
           ..addAll(current.map((t) => t.id));
       });
-      _syncSession();
 
       if (!mounted) return;
       AppToast.show(context, '已采纳标签');
@@ -244,9 +223,15 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
     _searchFocus.unfocus();
   }
 
+  void _onSearchFocusChanged() {
+    setState(() {});
+    _syncSearchOverlayVisibility();
+  }
+
   @override
   void dispose() {
     _aiPollTimer?.cancel();
+    _searchFocus.removeListener(_onSearchFocusChanged);
     _searchOverlayController.hide();
     _searchController.dispose();
     _searchFocus.dispose();
@@ -280,20 +265,16 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
   }
 
   bool get _showSearchOverlay {
-    final query = _searchController.text.trim();
-    return query.isNotEmpty &&
-        !_loading &&
-        _error == null &&
-        _all.isNotEmpty;
+    return _searchFocus.hasFocus && !_loading && _error == null;
   }
 
   List<Tag> get _filteredTags {
     final q = _searchController.text.trim().toLowerCase();
-    if (q.isEmpty) return const [];
-    return _all
-        .where((t) => t.name.toLowerCase().contains(q))
-        .toList()
-      ..sort((a, b) => a.name.compareTo(b.name));
+    final list = q.isEmpty
+        ? List<Tag>.from(_all)
+        : _all.where((t) => t.name.toLowerCase().contains(q)).toList();
+    list.sort((a, b) => a.name.compareTo(b.name));
+    return list;
   }
 
   Future<void> _load() async {
@@ -309,14 +290,9 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
         _all = all.where((t) => !t.isSystem).toList();
         _selected
           ..clear()
-          ..addAll(
-            widget.session.selectedIds.isNotEmpty
-                ? widget.session.selectedIds
-                : current.map((t) => t.id),
-          );
+          ..addAll(current.map((t) => t.id));
         _loading = false;
       });
-      _syncSession();
       _syncSearchOverlayVisibility();
     } on ApiException catch (e) {
       if (!mounted) return;
@@ -333,15 +309,14 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
     }
   }
 
-  void _syncSession() {
-    widget.session.selectedIds
-      ..clear()
-      ..addAll(_selected);
-  }
-
-  void _createTag() {
-    _syncSession();
-    Navigator.pop(context, ReadingTagsSheetResult.createTag);
+  void _toggleTag(int id) {
+    setState(() {
+      if (_selected.contains(id)) {
+        _selected.remove(id);
+      } else {
+        _selected.add(id);
+      }
+    });
   }
 
   Future<void> _save() async {
@@ -582,17 +557,6 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
     );
   }
 
-  void _toggleTag(int id) {
-    setState(() {
-      if (_selected.contains(id)) {
-        _selected.remove(id);
-      } else {
-        _selected.add(id);
-      }
-      _syncSession();
-    });
-  }
-
   Widget _tagChip(Tag tag, {VoidCallback? onRemove}) {
     final on = _selected.contains(tag.id);
     return Container(
@@ -630,40 +594,42 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
   }
 
   Widget _buildSearchField() {
-    return TextField(
-      controller: _searchController,
-      focusNode: _searchFocus,
-      onChanged: _onSearchChanged,
-      onTapOutside: (_) => _unfocusSearch(),
-      onSubmitted: (_) => _unfocusSearch(),
-      textInputAction: TextInputAction.search,
-      decoration: InputDecoration(
-        hintText: '搜索标签',
-        hintStyle: const TextStyle(fontSize: 15, color: _muted),
-        prefixIcon: const Icon(Icons.search_rounded, color: _muted, size: 24),
-        suffixIcon: _searchController.text.isEmpty
-            ? null
-            : IconButton(
-                icon: const Icon(Icons.close_rounded, color: _muted, size: 22),
-                onPressed: () {
-                  _searchController.clear();
-                  _onSearchChanged('');
-                },
-              ),
-        filled: true,
-        fillColor: _chipBg,
-        contentPadding: const EdgeInsets.symmetric(vertical: 12),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide.none,
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide.none,
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: Color(0xFFB8CCFA), width: 1),
+    return TapRegion(
+      groupId: _searchTapGroup,
+      child: TextField(
+        controller: _searchController,
+        focusNode: _searchFocus,
+        onChanged: _onSearchChanged,
+        onSubmitted: (_) => _unfocusSearch(),
+        textInputAction: TextInputAction.search,
+        decoration: InputDecoration(
+          hintText: '搜索标签',
+          hintStyle: const TextStyle(fontSize: 15, color: _muted),
+          prefixIcon: const Icon(Icons.search_rounded, color: _muted, size: 24),
+          suffixIcon: _searchController.text.isEmpty
+              ? null
+              : IconButton(
+                  icon: const Icon(Icons.close_rounded, color: _muted, size: 22),
+                  onPressed: () {
+                    _searchController.clear();
+                    _onSearchChanged('');
+                  },
+                ),
+          filled: true,
+          fillColor: _chipBg,
+          contentPadding: const EdgeInsets.symmetric(vertical: 12),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide.none,
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide.none,
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: const BorderSide(color: Color(0xFFB8CCFA), width: 1),
+          ),
         ),
       ),
     );
@@ -693,7 +659,11 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
                 left: targetRect.left + 4,
                 width: info.childSize.width - 8,
                 bottom: info.overlaySize.height - targetRect.top + 8,
-                child: _buildSearchOverlay(query, filtered),
+                child: TapRegion(
+                  groupId: _searchTapGroup,
+                  onTapOutside: (_) => _unfocusSearch(),
+                  child: _buildSearchOverlay(query, filtered),
+                ),
               ),
             ],
           ),
@@ -781,7 +751,7 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
                 padding:
                     const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
                 child: Text(
-                  '没有「$query」相关的标签',
+                  query.isEmpty ? '暂无标签' : '没有「$query」相关的标签',
                   style: const TextStyle(
                     fontSize: 13,
                     color: _muted,
@@ -850,7 +820,7 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
           const Padding(
             padding: EdgeInsets.only(top: 8),
             child: Text(
-              '还没有标签，可点「新建」或使用 AI 建议',
+              '还没有标签，可到「我的收藏」新建，或使用 AI 建议',
               style: TextStyle(fontSize: 13, color: _muted, height: 1.4),
             ),
           ),
@@ -917,14 +887,6 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
                         borderColor: _aiSuggestTapEnabled
                             ? const Color(0xFFB8CCFA)
                             : const Color(0xFFE8ECF0),
-                      ),
-                      const SizedBox(width: 6),
-                      _HeaderActionButton(
-                        icon: Icons.add,
-                        label: '新建',
-                        onTap: _createTag,
-                        foreground: _text,
-                        borderColor: const Color(0xFFE8ECF0),
                       ),
                       const Spacer(),
                       GestureDetector(

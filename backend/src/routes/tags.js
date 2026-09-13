@@ -16,14 +16,34 @@ router.get('/', async (req, res, next) => {
   }
 });
 
-/** POST /api/tags — 新建标签 */
+/** POST /api/tags — 新建标签；可选 moduleId 归入模块 */
 router.post('/', async (req, res, next) => {
   try {
-    const tag = await tagService.createTag(req.auth.userId, req.body?.name);
+    const tag = await tagService.createTag(req.auth.userId, req.body?.name, {
+      moduleId: req.body?.moduleId,
+    });
     return res.status(201).json({
       tag,
       message: '已创建',
     });
+  } catch (err) {
+    return next(err);
+  }
+});
+
+/** GET /api/tags/search?q= — 搜标签 + 挂有匹配标签的条目（须在 /:id 之前） */
+router.get('/search', async (req, res, next) => {
+  try {
+    const result = await tagService.searchTagsAndItems(
+      req.auth.userId,
+      req.query.q,
+      {
+        limit: req.query.limit,
+        offset: req.query.offset,
+        filterTagIds: req.query.filterTagIds,
+      },
+    );
+    return res.json(result);
   } catch (err) {
     return next(err);
   }
@@ -46,18 +66,30 @@ router.get('/:id/items', async (req, res, next) => {
   }
 });
 
-/** PATCH /api/tags/:id — 重命名自建标签 */
+/** PATCH /api/tags/:id — 重命名，或放置（换模块 / 组内排序） */
 router.patch('/:id', async (req, res, next) => {
   try {
     const id = Number(req.params.id);
     if (!Number.isFinite(id) || id <= 0) {
       return res.status(400).json({ message: '无效的标签 ID' });
     }
-    const tag = await tagService.renameTag(
-      req.auth.userId,
-      id,
-      req.body?.name,
-    );
+    const body = req.body || {};
+    const hasName = body.name !== undefined;
+    const hasPlace = Object.prototype.hasOwnProperty.call(body, 'moduleId');
+    if (!hasName && !hasPlace) {
+      return res.status(400).json({ message: '请提供 name 或 moduleId' });
+    }
+
+    let tag = null;
+    if (hasPlace) {
+      tag = await tagService.placeTag(req.auth.userId, id, {
+        moduleId: body.moduleId,
+        beforeTagId: body.beforeTagId,
+      });
+    }
+    if (hasName) {
+      tag = await tagService.renameTag(req.auth.userId, id, body.name);
+    }
     return res.json({
       tag,
       message: '已更新',

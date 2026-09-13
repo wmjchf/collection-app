@@ -28,6 +28,8 @@ const MIGRATION_FILES = [
   '018_remove_starred_filter.sql',
   '019_seed_guide_items.sql',
   '020_drop_ai_preference_events.sql',
+  '021_remove_parsed_filter.sql',
+  '022_tag_modules.sql',
 ];
 
 async function getConnection() {

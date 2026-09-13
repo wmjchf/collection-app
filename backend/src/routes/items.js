@@ -25,7 +25,7 @@ router.post('/', async (req, res, next) => {
 });
 
 /**
- * GET /api/items?filter=unread|all|today|parsed|annotated|recent_read|archived
+ * GET /api/items?filter=unread|all|today|annotated|recent_read|archived
  * Query: tzOffsetMinutes, limit, offset
  */
 router.get('/', async (req, res, next) => {
@@ -34,7 +34,7 @@ router.get('/', async (req, res, next) => {
     if (!filter) {
       return res.status(400).json({
         message:
-          '请指定 filter（unread/all/today/parsed/annotated/recent_read/archived）',
+          '请指定 filter（unread/all/today/annotated/recent_read/archived）',
       });
     }
     const result = await itemService.listBySystemFilter(req.auth.userId, filter, {

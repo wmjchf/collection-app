@@ -1,11 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:super_collection/core/network/api_client.dart';
+import 'package:super_collection/core/ui/app_confirm_dialog.dart';
+import 'package:super_collection/features/collection/collection_tag_modules_section.dart';
+import 'package:super_collection/features/collection/create_module_sheet.dart';
+import 'package:super_collection/features/collection/create_tag_sheet.dart';
 import 'package:super_collection/features/collection/items_browse_page.dart';
 import 'package:super_collection/features/collection/system_filter_list_page.dart';
 import 'package:super_collection/features/collection/system_filter_models.dart';
 import 'package:super_collection/features/collection/system_filters_repository.dart';
 import 'package:super_collection/features/collection/tag_models.dart';
+import 'package:super_collection/features/collection/tag_module_models.dart';
+import 'package:super_collection/features/collection/tag_modules_repository.dart';
+import 'package:super_collection/features/collection/tag_search_page.dart';
 import 'package:super_collection/features/collection/tags_repository.dart';
 import 'package:super_collection/features/shell/user_avatar_button.dart';
 
@@ -31,56 +38,37 @@ class CollectionPage extends StatefulWidget {
   State<CollectionPage> createState() => _CollectionPageState();
 }
 
-class _CollectionPageState extends State<CollectionPage>
-    with SingleTickerProviderStateMixin {
+class _CollectionPageState extends State<CollectionPage> {
   static const _bg = Color(0xFFF7F7FA);
   static const _text = Color(0xFF1F242E);
-  static const _muted = Color(0xFF737A85);
-  static const _inputBg = Color(0xFFF5F7FA);
-  static const _searchRadius = 20.0;
 
   final _tagsRepo = TagsRepository();
+  final _tagModulesRepo = TagModulesRepository();
   final _systemFiltersRepo = SystemFiltersRepository();
-  final _searchController = TextEditingController();
-  final _searchFocus = FocusNode();
-  final _searchFieldKey = GlobalKey();
-  final _bodyStackKey = GlobalKey();
+  final _scrollController = ScrollController();
+  final _tagsHeaderKey = GlobalKey();
 
-  late final AnimationController _searchAnim;
-  late final Animation<double> _searchExpand;
-
-  List<Tag> _tags = const [];
+  List<TagModule> _modules = const [];
+  List<Tag> _ungrouped = const [];
   List<SystemFilter> _systemFilters = const [];
   bool _loading = true;
   String? _error;
-  /// 搜索栏挂载中（含收起动画）
-  bool _tagSearchMounted = false;
-  /// 已展开：可输入 / 显示结果
-  bool _tagSearchOpen = false;
-  /// 浮层与搜索框对齐的 left / width（相对 body Stack）
-  double? _overlayLeft;
-  double? _overlayWidth;
+  /// 归类标签区顶到顶栏：切换顶栏形态
+  bool _tagsFocused = false;
+  /// 归类标签编辑态（仅删除 / 新建）
+  bool _editingTags = false;
 
   @override
   void initState() {
     super.initState();
-    _searchAnim = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 280),
-    );
-    _searchExpand = CurvedAnimation(
-      parent: _searchAnim,
-      curve: Curves.easeOutCubic,
-      reverseCurve: Curves.easeInCubic,
-    );
+    _scrollController.addListener(_onScrollForTagsFocus);
     _load();
   }
 
   @override
   void dispose() {
-    _searchAnim.dispose();
-    _searchController.dispose();
-    _searchFocus.dispose();
+    _scrollController.removeListener(_onScrollForTagsFocus);
+    _scrollController.dispose();
     super.dispose();
   }
 
@@ -90,93 +78,17 @@ class _CollectionPageState extends State<CollectionPage>
     if (widget.isActive && !oldWidget.isActive) {
       _load(quiet: true);
     }
-    if (!widget.isActive && oldWidget.isActive && _tagSearchMounted) {
-      _closeTagSearch();
-    }
     if (widget.refreshTick != oldWidget.refreshTick) {
       _load(quiet: true);
     }
   }
 
-  List<Tag> get _visibleTags => List<Tag>.from(_tags);
-
-  bool get _showSearchOverlay {
-    if (!_tagSearchOpen) return false;
-    return _searchController.text.trim().isNotEmpty;
-  }
-
-  List<Tag> get _filteredTags {
-    final q = _searchController.text.trim().toLowerCase();
-    if (q.isEmpty) return const [];
-    return _visibleTags
-        .where((t) => t.name.toLowerCase().contains(q))
-        .toList()
-      ..sort((a, b) => a.name.compareTo(b.name));
-  }
-
   void _openTagSearch() {
-    if (_tagSearchMounted && _searchAnim.isAnimating) return;
-    setState(() {
-      _tagSearchMounted = true;
-      _tagSearchOpen = true;
-    });
-    _searchAnim.forward().whenComplete(() {
-      if (!mounted || !_tagSearchOpen) return;
-      _searchFocus.requestFocus();
-    });
-  }
-
-  Future<void> _closeTagSearch() async {
-    if (!_tagSearchMounted) return;
-    _searchController.clear();
-    _searchFocus.unfocus();
-    if (mounted) setState(() => _tagSearchOpen = false);
-    await _searchAnim.reverse();
-    if (!mounted) return;
-    setState(() => _tagSearchMounted = false);
-  }
-
-  void _onSearchChanged(String _) {
-    setState(() {});
-    _scheduleSyncOverlayGeometry();
-  }
-
-  void _scheduleSyncOverlayGeometry() {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      _syncOverlayGeometry();
-    });
-  }
-
-  void _syncOverlayGeometry() {
-    if (!_showSearchOverlay) {
-      if (_overlayLeft != null || _overlayWidth != null) {
-        setState(() {
-          _overlayLeft = null;
-          _overlayWidth = null;
-        });
-      }
-      return;
-    }
-    final fieldBox =
-        _searchFieldKey.currentContext?.findRenderObject() as RenderBox?;
-    final stackBox =
-        _bodyStackKey.currentContext?.findRenderObject() as RenderBox?;
-    if (fieldBox == null ||
-        stackBox == null ||
-        !fieldBox.hasSize ||
-        !stackBox.hasSize) {
-      return;
-    }
-    final fieldOrigin = fieldBox.localToGlobal(Offset.zero);
-    final stackOrigin = stackBox.localToGlobal(Offset.zero);
-    final left = fieldOrigin.dx - stackOrigin.dx;
-    final width = fieldBox.size.width;
-    if (_overlayLeft == left && _overlayWidth == width) return;
-    setState(() {
-      _overlayLeft = left;
-      _overlayWidth = width;
-    });
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => const TagSearchPage(),
+      ),
+    );
   }
 
   Future<void> _load({bool quiet = false}) async {
@@ -189,17 +101,23 @@ class _CollectionPageState extends State<CollectionPage>
     }
     try {
       final results = await Future.wait([
-        _tagsRepo.listTags(),
+        _tagModulesRepo.listModules(),
         _systemFiltersRepo.listFilters(),
       ]);
       if (!mounted) return;
+      final modulesResult =
+          results[0] as ({List<TagModule> modules, List<Tag> ungrouped});
       final filterResult =
           results[1] as ({List<SystemFilter> filters, List<SystemFilter> others});
       setState(() {
-        _tags = results[0] as List<Tag>;
+        _modules = modulesResult.modules;
+        _ungrouped = modulesResult.ungrouped;
         _systemFilters = filterResult.filters;
         _loading = false;
         _error = null;
+      });
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _onScrollForTagsFocus();
       });
     } on ApiException catch (e) {
       if (!mounted) return;
@@ -213,6 +131,69 @@ class _CollectionPageState extends State<CollectionPage>
         _loading = false;
         if (!quiet) _error = '加载失败，请检查网络或后端是否启动';
       });
+    }
+  }
+
+  void _onScrollForTagsFocus() {
+    final ctx = _tagsHeaderKey.currentContext;
+    if (ctx == null) return;
+    final box = ctx.findRenderObject() as RenderBox?;
+    if (box == null || !box.hasSize) return;
+    final top = box.localToGlobal(Offset.zero).dy;
+    final threshold = MediaQuery.paddingOf(context).top + kToolbarHeight;
+    // 滞回：避免顶栏切换时 header 高度变化导致焦点抖动
+    final focused = _tagsFocused
+        ? top <= threshold + 28
+        : top <= threshold + 4;
+    if (focused == _tagsFocused) return;
+    setState(() {
+      _tagsFocused = focused;
+      if (!focused) _editingTags = false;
+    });
+  }
+
+  Future<void> _exitTagsFocus() async {
+    setState(() {
+      _tagsFocused = false;
+      _editingTags = false;
+    });
+    if (!_scrollController.hasClients) return;
+    await _scrollController.animateTo(
+      0,
+      duration: const Duration(milliseconds: 320),
+      curve: Curves.easeOutCubic,
+    );
+  }
+
+  Future<void> _createModule() async {
+    final module = await showCreateModuleSheet(context);
+    if (module == null || !mounted) return;
+    await _load(quiet: true);
+  }
+
+  Future<void> _addTagToModule(int? moduleId) async {
+    final tag = await showCreateTagSheet(context, moduleId: moduleId);
+    if (tag == null || !mounted) return;
+    await _load(quiet: true);
+  }
+
+  Future<void> _deleteTag(Tag tag) async {
+    final ok = await showAppConfirmDialog(
+      context,
+      title: '删除标签',
+      message: '确定删除标签「${tag.name}」？仅解除关联，不会删除条目。',
+      confirmLabel: '删除',
+    );
+    if (ok != true || !mounted) return;
+    try {
+      await _tagsRepo.deleteTag(tag.id);
+      if (!mounted) return;
+      await _load(quiet: true);
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.message)),
+      );
     }
   }
 
@@ -232,15 +213,6 @@ class _CollectionPageState extends State<CollectionPage>
   }
 
   void _openTag(Tag tag) {
-    if (_tagSearchMounted) {
-      _searchController.clear();
-      _searchFocus.unfocus();
-      _searchAnim.value = 0;
-      setState(() {
-        _tagSearchOpen = false;
-        _tagSearchMounted = false;
-      });
-    }
     Navigator.of(context)
         .push(
       MaterialPageRoute<void>(
@@ -261,6 +233,52 @@ class _CollectionPageState extends State<CollectionPage>
   }
 
   PreferredSizeWidget _buildAppBar() {
+    if (_tagsFocused) {
+      return AppBar(
+        backgroundColor: Colors.white,
+        surfaceTintColor: Colors.transparent,
+        elevation: 0,
+        scrolledUnderElevation: 0,
+        toolbarHeight: 56,
+        automaticallyImplyLeading: false,
+        leading: IconButton(
+          tooltip: '返回',
+          onPressed: _exitTagsFocus,
+          icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20),
+        ),
+        title: const Text(
+          '归类标签',
+          style: TextStyle(
+            fontSize: 17,
+            fontWeight: FontWeight.w700,
+            color: _text,
+          ),
+        ),
+        centerTitle: true,
+        actions: [
+          IconButton(
+            tooltip: '新建模块',
+            onPressed: _createModule,
+            icon: const Icon(
+              Icons.add_rounded,
+              size: 24,
+              color: Color(0xFF2F6FED),
+            ),
+          ),
+          IconButton(
+            tooltip: _editingTags ? '完成' : '编辑',
+            onPressed: () => setState(() => _editingTags = !_editingTags),
+            icon: Icon(
+              _editingTags ? Icons.check_rounded : Icons.draw_outlined,
+              size: 22,
+              color: const Color(0xFF2F6FED),
+            ),
+          ),
+          const SizedBox(width: 4),
+        ],
+      );
+    }
+
     return AppBar(
       backgroundColor: Colors.white,
       surfaceTintColor: Colors.transparent,
@@ -271,369 +289,121 @@ class _CollectionPageState extends State<CollectionPage>
       actionsPadding: EdgeInsets.zero,
       automaticallyImplyLeading: false,
       centerTitle: false,
-      // 左头像 + 标签搜索（从标签右缘展开）
-      title: AnimatedBuilder(
-        animation: _searchExpand,
-        child: _tagSearchMounted ? _buildHeaderSearchField() : null,
-        builder: (context, searchField) {
-          final t = _searchExpand.value;
-          final showCancel = t > 0.7;
-          return SizedBox(
-            width: MediaQuery.sizeOf(context).width,
-            height: 40,
-            child: Padding(
-              padding: const EdgeInsets.only(left: 12),
-              child: Row(
-                children: [
-                  Expanded(
-                    key: _searchFieldKey,
-                    child: Stack(
-                      alignment: Alignment.centerLeft,
-                      children: [
-                        IgnorePointer(
-                          ignoring: t > 0.05,
-                          child: Opacity(
-                            opacity: (1 - t * 1.4).clamp(0.0, 1.0),
-                            child: Row(
-                              children: [
-                                UserAvatarButton(
-                                  onPressed: widget.onOpenAccount ?? () {},
-                                ),
-                                const Spacer(),
-                                IconButton(
-                                  tooltip: '搜索标签',
-                                  padding: EdgeInsets.zero,
-                                  constraints: const BoxConstraints(
-                                    minWidth: 36,
-                                    minHeight: 36,
-                                  ),
-                                  onPressed:
-                                      t > 0.01 ? null : _openTagSearch,
-                                  icon: SvgPicture.asset(
-                                    'assets/icons/tags_inactive.svg',
-                                    width: 26,
-                                    height: 26,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                        if (searchField != null)
-                          Align(
-                            alignment: Alignment.centerRight,
-                            child: LayoutBuilder(
-                              builder: (context, constraints) {
-                                // fullW：用户图标左边 → 标签右缘
-                                final fullW = constraints.maxWidth;
-                                final width =
-                                    (fullW * t).clamp(0.0, fullW);
-                                if (width < 1) {
-                                  return const SizedBox.shrink();
-                                }
-                                return ClipRRect(
-                                  borderRadius: BorderRadius.circular(
-                                    _searchRadius,
-                                  ),
-                                  child: SizedBox(
-                                    width: width,
-                                    height: 40,
-                                    child: OverflowBox(
-                                      alignment: Alignment.centerRight,
-                                      minWidth: fullW,
-                                      maxWidth: fullW,
-                                      child: SizedBox(
-                                        width: fullW,
-                                        height: 40,
-                                        child: searchField,
-                                      ),
-                                    ),
-                                  ),
-                                );
-                              },
-                            ),
-                          ),
-                      ],
-                    ),
-                  ),
-                  if (showCancel)
-                    Opacity(
-                      opacity: ((t - 0.7) / 0.3).clamp(0.0, 1.0),
-                      child: TextButton(
-                        onPressed: _closeTagSearch,
-                        style: TextButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 8,
-                          ),
-                          minimumSize: const Size(0, 36),
-                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                        ),
-                        child: const Text(
-                          '取消',
-                          style: TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w500,
-                            color: _text,
-                          ),
-                        ),
-                      ),
-                    ),
-                  const SizedBox(width: 8),
-                ],
+      title: SizedBox(
+        width: MediaQuery.sizeOf(context).width,
+        height: 40,
+        child: Padding(
+          padding: const EdgeInsets.only(left: 12, right: 8),
+          child: Row(
+            children: [
+              UserAvatarButton(
+                onPressed: widget.onOpenAccount ?? () {},
               ),
-            ),
-          );
-        },
+              const Spacer(),
+              IconButton(
+                tooltip: '搜索标签',
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(
+                  minWidth: 36,
+                  minHeight: 36,
+                ),
+                onPressed: _openTagSearch,
+                icon: SvgPicture.asset(
+                  'assets/icons/search.svg',
+                  width: 24,
+                  height: 24,
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
       actions: const <Widget>[],
     );
   }
 
-  Widget _buildHeaderSearchField() {
-    return TextField(
-      controller: _searchController,
-      focusNode: _searchFocus,
-      onChanged: _onSearchChanged,
-      onSubmitted: (_) {},
-      textInputAction: TextInputAction.search,
-      style: const TextStyle(fontSize: 15, color: _text, height: 1.2),
-      decoration: InputDecoration(
-        hintText: '搜索标签',
-        hintStyle: const TextStyle(fontSize: 15, color: _muted),
-        prefixIcon:
-            const Icon(Icons.search_rounded, color: _muted, size: 24),
-        suffixIcon: _searchController.text.isEmpty
-            ? null
-            : IconButton(
-                icon: const Icon(Icons.close_rounded, color: _muted, size: 22),
-                onPressed: () {
-                  _searchController.clear();
-                  _onSearchChanged('');
-                  _searchFocus.requestFocus();
-                },
-              ),
-        filled: true,
-        fillColor: _inputBg,
-        isDense: true,
-        contentPadding: const EdgeInsets.symmetric(vertical: 10),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(_searchRadius),
-          borderSide: const BorderSide(color: Color(0xFFB8CCFA), width: 1),
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(_searchRadius),
-          borderSide: const BorderSide(color: Color(0xFFB8CCFA), width: 1),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(_searchRadius),
-          borderSide: const BorderSide(color: Color(0xFFB8CCFA), width: 1),
-        ),
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
-    if (_showSearchOverlay &&
-        (_overlayLeft == null || _overlayWidth == null)) {
-      _scheduleSyncOverlayGeometry();
-    }
-
     return Scaffold(
       backgroundColor: _bg,
       appBar: _buildAppBar(),
-      body: Stack(
-        key: _bodyStackKey,
-        clipBehavior: Clip.none,
-        children: [
-          RefreshIndicator(
-            onRefresh: _load,
-            child: ListView(
-              physics: const AlwaysScrollableScrollPhysics(),
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
-              children: [
-                if (_loading && _systemFilters.isEmpty)
-                  const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 40),
-                    child: Center(
-                      child: SizedBox(
-                        width: 22,
-                        height: 22,
-                        child: CircularProgressIndicator(strokeWidth: 2.4),
-                      ),
-                    ),
-                  )
-                else if (_error != null && _systemFilters.isEmpty)
-                  _ErrorCard(message: _error!, onRetry: _load)
-                else if (_systemFilters.isNotEmpty)
-                  Column(
-                    children: [
-                      if (_systemFilters.any((e) => e.code == 'unread'))
-                        _EntityGroup(
-                          entries: [
-                            for (final f in _systemFilters
-                                .where((e) => e.code == 'unread'))
-                              _EntityEntry(
-                                title: f.name,
-                                countLabel: f.countLabel,
-                                icon: _CollectionNavIcon.forSystemCode(
-                                  f.code,
-                                ),
-                                onTap: () => _openSystemFilter(f),
-                              ),
-                          ],
-                        ),
-                      if (_systemFilters.any((f) => f.code != 'unread')) ...[
-                        if (_systemFilters.any((e) => e.code == 'unread'))
-                          const SizedBox(height: 16),
-                        _EntityGroup(
-                          entries: [
-                            for (final f in _systemFilters
-                                .where((e) => e.code != 'unread'))
-                              _EntityEntry(
-                                title: f.name,
-                                countLabel: f.countLabel,
-                                icon: _CollectionNavIcon.forSystemCode(
-                                  f.code,
-                                ),
-                                onTap: () => _openSystemFilter(f),
-                              ),
-                          ],
-                        ),
-                      ],
-                    ],
-                  ),
-              ],
-            ),
-          ),
-          if (_showSearchOverlay) ...[
-            Positioned.fill(
-              child: GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: _closeTagSearch,
-                child: const ColoredBox(color: Color(0x33000000)),
-              ),
-            ),
-            Positioned(
-              left: (_overlayLeft ?? 20) + 4,
-              width: (_overlayWidth ??
-                      (MediaQuery.sizeOf(context).width - 20 - 44)) -
-                  8,
-              top: -4,
-              child: _TagSearchOverlay(
-                query: _searchController.text.trim(),
-                tags: _filteredTags,
-                onTap: _openTag,
-              ),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-}
-class _TagSearchOverlay extends StatelessWidget {
-  const _TagSearchOverlay({
-    required this.query,
-    required this.tags,
-    required this.onTap,
-  });
-
-  final String query;
-  final List<Tag> tags;
-  final ValueChanged<Tag> onTap;
-
-  static const _text = Color(0xFF1F242E);
-  static const _muted = Color(0xFF737A85);
-  static const _maxHeight = 280.0;
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: Colors.transparent,
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: const Color(0xFFE8ECF0)),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.16),
-              blurRadius: 28,
-              offset: const Offset(0, 10),
-            ),
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.08),
-              blurRadius: 8,
-              offset: const Offset(0, 2),
-            ),
-          ],
-        ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(12),
-          child: tags.isEmpty
-              ? Padding(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
-                  child: Text(
-                    '没有「$query」相关的标签',
-                    style: const TextStyle(
-                      fontSize: 13,
-                      color: _muted,
-                      height: 1.4,
-                    ),
-                  ),
-                )
-              : ConstrainedBox(
-                  constraints: const BoxConstraints(maxHeight: _maxHeight),
-                  child: ListView.separated(
-                    shrinkWrap: true,
-                    padding: EdgeInsets.zero,
-                    primary: false,
-                    physics: const ClampingScrollPhysics(),
-                    itemCount: tags.length,
-                    separatorBuilder: (context, _) =>
-                        const Divider(
-                      height: 1,
-                      indent: 12,
-                      endIndent: 12,
-                      color: Color(0xFFF0F2F5),
-                    ),
-                    itemBuilder: (context, index) {
-                      final tag = tags[index];
-                      return InkWell(
-                        onTap: () => onTap(tag),
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 14,
-                            vertical: 12,
-                          ),
-                          child: Row(
-                            children: [
-                              Expanded(
-                                child: Text(
-                                  '#${tag.name}',
-                                  style: const TextStyle(
-                                    fontSize: 15,
-                                    fontWeight: FontWeight.w500,
-                                    color: _text,
-                                  ),
-                                ),
-                              ),
-                              Text(
-                                tag.countLabel,
-                                style: const TextStyle(
-                                  fontSize: 14,
-                                  color: _muted,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      );
-                    },
+      body: RefreshIndicator(
+        onRefresh: _load,
+        child: ListView(
+          controller: _scrollController,
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+          children: [
+            if (_loading && _systemFilters.isEmpty)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 40),
+                child: Center(
+                  child: SizedBox(
+                    width: 22,
+                    height: 22,
+                    child: CircularProgressIndicator(strokeWidth: 2.4),
                   ),
                 ),
+              )
+            else if (_error != null && _systemFilters.isEmpty)
+              _ErrorCard(message: _error!, onRetry: _load)
+            else ...[
+              if (_systemFilters.isNotEmpty)
+                Column(
+                  children: [
+                    if (_systemFilters.any((e) => e.code == 'unread'))
+                      _EntityGroup(
+                        entries: [
+                          for (final f in _systemFilters
+                              .where((e) => e.code == 'unread'))
+                            _EntityEntry(
+                              title: f.name,
+                              countLabel: f.countLabel,
+                              icon: _CollectionNavIcon.forSystemCode(
+                                f.code,
+                              ),
+                              onTap: () => _openSystemFilter(f),
+                            ),
+                        ],
+                      ),
+                    if (_systemFilters.any((f) => f.code != 'unread')) ...[
+                      if (_systemFilters.any((e) => e.code == 'unread'))
+                        const SizedBox(height: 16),
+                      _EntityGroup(
+                        entries: [
+                          for (final f in _systemFilters
+                              .where((e) => e.code != 'unread'))
+                            _EntityEntry(
+                              title: f.name,
+                              countLabel: f.countLabel,
+                              icon: _CollectionNavIcon.forSystemCode(
+                                f.code,
+                              ),
+                              onTap: () => _openSystemFilter(f),
+                            ),
+                        ],
+                      ),
+                    ],
+                  ],
+                ),
+              if (_systemFilters.isNotEmpty) const SizedBox(height: 28),
+              CollectionTagModulesSection(
+                headerKey: _tagsHeaderKey,
+                modules: _modules,
+                ungrouped: _ungrouped,
+                editing: _editingTags,
+                showInlineHeader: !_tagsFocused,
+                onToggleEdit: () =>
+                    setState(() => _editingTags = !_editingTags),
+                onOpenTag: _openTag,
+                onDeleteTag: _deleteTag,
+                onAddTag: _addTagToModule,
+                onCreateModule: _createModule,
+              ),
+              // 便于上滑把归类标签顶到顶栏
+              SizedBox(height: MediaQuery.sizeOf(context).height * 0.45),
+            ],
+          ],
         ),
       ),
     );
@@ -665,11 +435,6 @@ class _CollectionNavIcon {
         return const _CollectionNavIcon(
           icon: Icons.calendar_today_rounded,
           background: Color(0xFFFF9F43),
-        );
-      case 'parsed':
-        return const _CollectionNavIcon(
-          icon: Icons.article_rounded,
-          background: Color(0xFF56CC8C),
         );
       case 'annotated':
         return const _CollectionNavIcon(

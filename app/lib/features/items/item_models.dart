@@ -1,6 +1,24 @@
 import 'package:super_collection/features/items/ai_meta_models.dart';
 import 'package:super_collection/features/items/transcript_models.dart';
 
+/// 列表展示用标签摘要（id + 名称）
+class ItemTagBrief {
+  const ItemTagBrief({
+    required this.id,
+    required this.name,
+  });
+
+  final int id;
+  final String name;
+
+  factory ItemTagBrief.fromJson(Map<String, dynamic> json) {
+    return ItemTagBrief(
+      id: (json['id'] as num).toInt(),
+      name: (json['name'] as String? ?? '').trim(),
+    );
+  }
+}
+
 class CollectionItem {
   const CollectionItem({
     required this.id,
@@ -27,6 +45,7 @@ class CollectionItem {
     this.lastReadAt,
     this.deletedAt,
     this.annotationCount,
+    this.tags = const [],
   });
 
   final int id;
@@ -55,6 +74,8 @@ class CollectionItem {
   final DateTime? lastReadAt;
   final DateTime? deletedAt;
   final int? annotationCount;
+  /// 用户自建标签（列表接口批量附带）
+  final List<ItemTagBrief> tags;
 
   bool get hasUserEditedContent => contentEditedAt != null;
   bool get isPending => status == 'pending';
@@ -153,6 +174,7 @@ class CollectionItem {
       lastReadAt: lastReadAt,
       deletedAt: deletedAt,
       annotationCount: annotationCount,
+      tags: tags,
     );
   }
 
@@ -184,6 +206,7 @@ class CollectionItem {
       lastReadAt: lastReadAt,
       deletedAt: deletedAt,
       annotationCount: annotationCount,
+      tags: tags,
     );
   }
 
@@ -268,6 +291,19 @@ class CollectionItem {
         if (s != null && s.isNotEmpty) images.add(s);
       }
     }
+    final tags = <ItemTagBrief>[];
+    final rawTags = json['tags'];
+    if (rawTags is List) {
+      for (final e in rawTags) {
+        if (e is Map<String, dynamic>) {
+          tags.add(ItemTagBrief.fromJson(e));
+        } else if (e is Map) {
+          tags.add(
+            ItemTagBrief.fromJson(e.map((k, v) => MapEntry(k.toString(), v))),
+          );
+        }
+      }
+    }
     return CollectionItem(
       id: (json['id'] as num).toInt(),
       url: json['url'] as String? ?? '',
@@ -301,6 +337,7 @@ class CollectionItem {
       lastReadAt: _parseTime(json['lastReadAt']),
       deletedAt: _parseTime(json['deletedAt']),
       annotationCount: (json['annotationCount'] as num?)?.toInt(),
+      tags: tags,
     );
   }
 

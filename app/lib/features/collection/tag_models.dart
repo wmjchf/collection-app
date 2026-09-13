@@ -6,6 +6,7 @@ class Tag {
     required this.itemCount,
     required this.sortOrder,
     this.code,
+    this.moduleId,
   });
 
   final int id;
@@ -14,10 +15,12 @@ class Tag {
   final bool isSystem;
   final int itemCount;
   final int sortOrder;
+  final int? moduleId;
 
   String get countLabel => '$itemCount';
 
   factory Tag.fromJson(Map<String, dynamic> json) {
+    final mid = json['moduleId'];
     return Tag(
       id: (json['id'] as num).toInt(),
       name: json['name'] as String? ?? '',
@@ -25,6 +28,7 @@ class Tag {
       isSystem: json['isSystem'] as bool? ?? false,
       itemCount: (json['itemCount'] as num?)?.toInt() ?? 0,
       sortOrder: (json['sortOrder'] as num?)?.toInt() ?? 0,
+      moduleId: mid == null ? null : (mid as num).toInt(),
     );
   }
 }

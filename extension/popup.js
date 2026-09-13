@@ -75,8 +75,6 @@ const ICON = {
   unread: { bg: '#5B8FF9', svg: '<circle cx="12" cy="12" r="4.5" fill="none" stroke="currentColor" stroke-width="2.4"/><circle cx="12" cy="12" r="1.6"/>' },
   all: { bg: '#6E788C', svg: '<path d="M5 7h14v1.8H5V7zm0 4.1h14v1.8H5v-1.8zm0 4.1h14V17H5v-1.8z"/>' },
   today: { bg: '#FF9F43', svg: '<rect x="4.5" y="6" width="15" height="13.5" rx="2"/><path d="M8 4.5v3M16 4.5v3M4.5 10h15" fill="none" stroke="#fff" stroke-width="1.6"/>' },
-  starred: { bg: '#FFC43D', svg: '<path d="M12 4.2 14.1 9l5.2.4-4 3.4 1.2 5.1L12 15.4 7.5 17.9l1.2-5.1-4-3.4 5.2-.4z"/>' },
-  parsed: { bg: '#56CC8C', svg: '<path d="M7 4.5h7l4 4V19.5H7z"/><path d="M14 4.5V9h4.5" fill="none" stroke="#fff" stroke-width="1.4"/>' },
   annotated: { bg: '#A270F5', svg: '<path d="M5 18.5 7.2 12 16 3.2l4.8 4.8L12 16.8z"/><path d="M14.2 5l4.8 4.8" fill="none" stroke="#fff" stroke-width="1.2"/>' },
   recent_read: { bg: '#40BAC4', svg: '<circle cx="12" cy="12" r="7.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 8v4.5l3 1.8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>' },
   archived: { bg: '#96A0AF', svg: '<path d="M4.5 7.5h15v3h-15z"/><path d="M6 10.5h12V19H6z"/>' },

@@ -4,7 +4,6 @@ const SYSTEM_CODES = [
   'unread',
   'all',
   'today',
-  'parsed',
   'annotated',
   'recent_read',
 ];
@@ -31,8 +30,6 @@ function filterClause(code, range = {}) {
       return baseWhere();
     case 'today':
       return `${baseWhere()} AND i.created_at >= :dayStart AND i.created_at < :dayEnd`;
-    case 'parsed':
-      return `${baseWhere()} AND i.status = 'success'`;
     case 'annotated':
       return `${baseWhere()} AND EXISTS (
         SELECT 1 FROM annotations a WHERE a.item_id = i.id

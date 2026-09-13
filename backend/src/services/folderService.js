@@ -218,11 +218,11 @@ async function listFolderItems(
     { userId, folderId: folder.id },
   );
 
-  const { mapItem } = require('./itemService');
+  const { mapItem, attachTagsToItems } = require('./itemService');
   return {
     folder: mapFolder({ ...folder, item_count: total }),
     total,
-    items: rows.map(mapItem),
+    items: await attachTagsToItems(userId, rows.map(mapItem)),
     limit: safeLimit,
     offset: safeOffset,
   };

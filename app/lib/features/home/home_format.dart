@@ -45,6 +45,7 @@ HomeItemPreview previewForUnread(CollectionItem item) {
     subtitle: subtitle,
     coverImageUrl: item.coverImageUrl,
     pageUrl: item.sourcePageUrl,
+    tags: item.tags,
   );
 }
 
@@ -58,5 +59,6 @@ HomeItemPreview previewForRecentRead(CollectionItem item) {
     subtitle: subtitle,
     coverImageUrl: item.coverImageUrl,
     pageUrl: item.sourcePageUrl,
+    tags: item.tags,
   );
 }

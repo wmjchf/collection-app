@@ -1,14 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:super_collection/core/network/api_client.dart';
-import 'package:super_collection/features/collection/tag_models.dart';
-import 'package:super_collection/features/collection/tags_repository.dart';
+import 'package:super_collection/features/collection/tag_module_models.dart';
+import 'package:super_collection/features/collection/tag_modules_repository.dart';
 
-/// 弹出「新建标签」弹框；成功返回 [Tag]，关闭返回 null。
-Future<Tag?> showCreateTagSheet(
-  BuildContext context, {
-  int? moduleId,
-}) {
-  return showModalBottomSheet<Tag>(
+/// 弹出「新建模块」弹框；成功返回 [TagModule]。
+Future<TagModule?> showCreateModuleSheet(BuildContext context) {
+  return showModalBottomSheet<TagModule>(
     context: context,
     isScrollControlled: true,
     backgroundColor: Colors.transparent,
@@ -18,77 +15,30 @@ Future<Tag?> showCreateTagSheet(
         padding: EdgeInsets.only(
           bottom: MediaQuery.viewInsetsOf(context).bottom,
         ),
-        child: _TagNameSheet(moduleId: moduleId),
+        child: const _CreateModuleSheet(),
       );
     },
   );
 }
 
-/// 弹出「编辑标签名」弹框；成功返回更新后的 [Tag]。
-Future<Tag?> showEditTagSheet(
-  BuildContext context, {
-  required int tagId,
-  required String initialName,
-}) {
-  return showModalBottomSheet<Tag>(
-    context: context,
-    isScrollControlled: true,
-    backgroundColor: Colors.transparent,
-    barrierColor: const Color(0x59000000),
-    builder: (context) {
-      return Padding(
-        padding: EdgeInsets.only(
-          bottom: MediaQuery.viewInsetsOf(context).bottom,
-        ),
-        child: _TagNameSheet(
-          tagId: tagId,
-          initialName: initialName,
-        ),
-      );
-    },
-  );
-}
-
-class _TagNameSheet extends StatefulWidget {
-  const _TagNameSheet({
-    this.tagId,
-    this.initialName,
-    this.moduleId,
-  });
-
-  final int? tagId;
-  final String? initialName;
-  final int? moduleId;
-
-  bool get isEdit => tagId != null;
+class _CreateModuleSheet extends StatefulWidget {
+  const _CreateModuleSheet();
 
   @override
-  State<_TagNameSheet> createState() => _TagNameSheetState();
+  State<_CreateModuleSheet> createState() => _CreateModuleSheetState();
 }
 
-class _TagNameSheetState extends State<_TagNameSheet> {
+class _CreateModuleSheetState extends State<_CreateModuleSheet> {
   static const _text = Color(0xFF1F242E);
   static const _muted = Color(0xFF737A85);
   static const _fieldBg = Color(0xFFF5F7FA);
   static const _blue = Color(0xFF2F6FED);
   static const _handle = Color(0xFFE5E8ED);
 
-  late final TextEditingController _controller;
-  final _tags = TagsRepository();
+  final _controller = TextEditingController();
+  final _repo = TagModulesRepository();
   String? _error;
   bool _submitting = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = TextEditingController(text: widget.initialName ?? '');
-    if (widget.isEdit) {
-      _controller.selection = TextSelection(
-        baseOffset: 0,
-        extentOffset: _controller.text.length,
-      );
-    }
-  }
 
   @override
   void dispose() {
@@ -105,7 +55,7 @@ class _TagNameSheetState extends State<_TagNameSheet> {
     if (_submitting) return;
     final name = _controller.text.trim();
     if (name.isEmpty) {
-      setState(() => _error = '请输入标签名称');
+      setState(() => _error = '请输入模块名称');
       return;
     }
     if (name.length > 64) {
@@ -119,11 +69,9 @@ class _TagNameSheetState extends State<_TagNameSheet> {
     });
 
     try {
-      final tag = widget.isEdit
-          ? await _tags.renameTag(widget.tagId!, name)
-          : await _tags.createTag(name, moduleId: widget.moduleId);
+      final module = await _repo.createModule(name);
       if (!mounted) return;
-      Navigator.of(context).pop(tag);
+      Navigator.of(context).pop(module);
     } on ApiException catch (e) {
       if (!mounted) return;
       setState(() {
@@ -134,9 +82,7 @@ class _TagNameSheetState extends State<_TagNameSheet> {
       if (!mounted) return;
       setState(() {
         _submitting = false;
-        _error = widget.isEdit
-            ? '保存失败，请检查网络或后端是否启动'
-            : '创建失败，请检查网络或后端是否启动';
+        _error = '创建失败，请检查网络或后端是否启动';
       });
     }
   }
@@ -144,8 +90,6 @@ class _TagNameSheetState extends State<_TagNameSheet> {
   @override
   Widget build(BuildContext context) {
     final bottom = MediaQuery.paddingOf(context).bottom;
-    final title = widget.isEdit ? '编辑标签名' : '新建标签';
-    final action = widget.isEdit ? '保存' : '创建';
 
     return Padding(
       padding: EdgeInsets.fromLTRB(16, 0, 16, 16 + (bottom > 0 ? bottom : 0)),
@@ -171,9 +115,9 @@ class _TagNameSheetState extends State<_TagNameSheet> {
                 height: 27,
                 child: Row(
                   children: [
-                    Text(
-                      title,
-                      style: const TextStyle(
+                    const Text(
+                      '新建模块',
+                      style: TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.w700,
                         color: _text,
@@ -208,7 +152,7 @@ class _TagNameSheetState extends State<_TagNameSheet> {
                 },
                 onSubmitted: (_) => _onSubmit(),
                 decoration: InputDecoration(
-                  hintText: '例如：读书',
+                  hintText: '例如：工作 / 学习',
                   hintStyle: const TextStyle(fontSize: 15, color: _muted),
                   filled: true,
                   fillColor: _fieldBg,
@@ -268,9 +212,9 @@ class _TagNameSheetState extends State<_TagNameSheet> {
                             color: Colors.white,
                           ),
                         )
-                      : Text(
-                          action,
-                          style: const TextStyle(
+                      : const Text(
+                          '创建',
+                          style: TextStyle(
                             fontSize: 15,
                             fontWeight: FontWeight.w500,
                           ),

@@ -13,8 +13,6 @@ import 'package:super_collection/core/ui/parse_progress_tracker.dart';
 import 'package:super_collection/features/collection/tag_models.dart';
 import 'package:super_collection/features/home/home_format.dart';
 import 'package:super_collection/features/items/ai_meta_models.dart';
-import 'package:super_collection/features/items/ai_mindmap_panel.dart';
-import 'package:super_collection/features/items/ai_summary_panel.dart';
 import 'package:super_collection/features/items/article_body_text.dart';
 import 'package:super_collection/features/items/article_content_blocks.dart';
 import 'package:super_collection/features/items/article_markdown.dart';
@@ -25,11 +23,12 @@ import 'package:super_collection/features/items/items_repository.dart';
 import 'package:super_collection/features/items/reading_media_controller.dart';
 import 'package:super_collection/features/items/reading_annotation_sheet.dart';
 import 'package:super_collection/features/items/reading_delete_confirm_dialog.dart';
-import 'package:super_collection/features/items/reading_regenerate_confirm_dialog.dart';
 import 'package:super_collection/features/items/reading_more_sheet.dart';
 import 'package:super_collection/features/items/reading_content_edit_page.dart';
+import 'package:super_collection/features/items/reading_mindmap_sheet.dart';
 import 'package:super_collection/features/items/reading_note_sheet.dart';
 import 'package:super_collection/features/items/reading_reparse_confirm_dialog.dart';
+import 'package:super_collection/features/items/reading_summary_sheet.dart';
 import 'package:super_collection/features/settings/quota_gate.dart';
 import 'package:super_collection/features/settings/usage_repository.dart';
 import 'package:super_collection/features/items/reading_tags_sheet.dart';
@@ -37,7 +36,7 @@ import 'package:super_collection/features/items/transcript_models.dart';
 import 'package:super_collection/features/items/transcript_picker_sheet.dart';
 import 'package:super_collection/features/items/transcript_segment_panel.dart';
 
-/// 本地阅读页：标题 + 可读正文（含标注高亮）；顶栏更多；底栏 AI 总结 / 标签 / 思维导图 / 感想（或转写条目下的「更多」）。
+/// 本地阅读页：标题 + 可读正文（含标注高亮）；顶栏更多；底栏 AI 总结 / 标签 / 思维导图 / 感想（或转写条目下的「更多」）；总结与思维导图为底部弹层。
 class ItemReadingPage extends StatefulWidget {
   const ItemReadingPage({
     super.key,
@@ -81,6 +80,8 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
   bool _pageLoading = false;
   String? _pageError;
   bool _markedRead = false;
+  int _summaryPollGen = 0;
+  int _mindmapPollGen = 0;
   late final DateTime _openedAt;
 
   @override
@@ -126,6 +127,8 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
     }
     unawaited(Analytics.instance.flush());
     _itemPollTimer?.cancel();
+    _summaryPollGen++;
+    _mindmapPollGen++;
     _scrollController.dispose();
     _pageAudio.dispose();
     super.dispose();
@@ -305,24 +308,6 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
     }
   }
 
-  void _scrollToArticleEnd() {
-    void jump() {
-      if (!mounted || !_scrollController.hasClients) return;
-      final max = _scrollController.position.maxScrollExtent;
-      if (max.isFinite) {
-        _scrollController.jumpTo(max);
-      }
-    }
-
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      jump();
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        jump();
-        WidgetsBinding.instance.addPostFrameCallback((_) => jump());
-      });
-    });
-  }
-
   void _toggleReadingChrome() {
     if (_bodyHasSelection) return;
     final now = DateTime.now();
@@ -424,51 +409,28 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
     }
   }
 
-  Future<void> _onSummary({bool force = false}) async {
-    if (_item.hasAnyTranscriptPending && !_item.aiMeta.summary.awaitTranscript) {
-      AppToast.show(context, '转写进行中，请稍候再生成 AI 总结');
-      return;
-    }
-    if (!_item.canRequestAiSuggest && !_item.shouldAutoTranscribeBeforeMindmap) {
-      AppToast.show(context, '内容不足，无法生成 AI 总结');
-      return;
-    }
-    if (_item.hasSummaryPending) {
-      AppToast.show(context, 'AI 总结生成中，请稍候');
-      return;
-    }
-
-    final isRegen = force ||
-        (_item.aiMeta.summary.isSuccess && _item.aiMeta.summary.hasText);
-    if (isRegen) {
-      final ok = await showReadingRegenerateConfirmDialog(
-        context,
-        ReadingRegenerateKind.summary,
-      );
-      if (ok != true || !mounted) return;
-      force = true;
-    }
-
+  Future<void> _openSummarySheet() async {
+    _summaryPollGen++;
+    await showReadingSummarySheet(
+      context,
+      itemId: _item.id,
+      initialItem: _item,
+      onItemUpdated: (item) {
+        if (mounted) setState(() => _item = item);
+      },
+    );
+    if (!mounted) return;
     try {
-      Analytics.instance.aiSummaryRequest(
-        itemId: _item.id,
-        force: force,
-      );
-      final updated = await _repo.requestSummary(
-        _item.id,
-        force: force,
-      );
-      if (!mounted) return;
-      setState(() => _item = updated);
-      _scrollToArticleEnd();
-      _pollSummary();
-    } on ApiException catch (e) {
-      if (!mounted) return;
-      await handleApiException(context, e);
+      final item = await _repo.getItem(_item.id);
+      if (mounted) setState(() => _item = item);
+    } catch (_) {}
+    if (_item.hasSummaryPending) {
+      unawaited(_pollSummary());
     }
   }
 
   Future<void> _pollSummary() async {
+    final gen = ++_summaryPollGen;
     final awaitingTranscript = _item.aiMeta.summary.awaitTranscript;
     final maxAttempts = awaitingTranscript ? 90 : 45;
     final interval = awaitingTranscript
@@ -477,12 +439,14 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
     String? lastPhaseFingerprint;
     for (var i = 0; i < maxAttempts; i++) {
       await Future<void>.delayed(interval);
-      if (!mounted) return;
+      if (!mounted || gen != _summaryPollGen) return;
       try {
         final st = await _repo.getSummaryStatus(_item.id);
+        if (!mounted || gen != _summaryPollGen) return;
         if (st.summary.isPending) {
           if (st.summary.awaitTranscript) {
             final ts = await _repo.getTranscriptStatus(_item.id);
+            if (!mounted || gen != _summaryPollGen) return;
             final merged = Map<String, TranscriptSegment>.from(
               _item.transcriptSegments,
             );
@@ -492,12 +456,11 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
             final fp = ts.segments.entries
                 .map((e) => '${e.key}:${e.value.phase}:${e.value.phaseLabel}')
                 .join('|');
-            if (!mounted) return;
             if (fp != lastPhaseFingerprint ||
                 _item.aiMeta.summary.status != 'pending') {
               lastPhaseFingerprint = fp;
               final item = await _repo.getItem(_item.id);
-              if (!mounted) return;
+              if (!mounted || gen != _summaryPollGen) return;
               setState(
                 () => _item = item
                     .withAiMeta(
@@ -510,7 +473,6 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
                     )
                     .withTranscriptSegments(merged),
               );
-              _scrollToArticleEnd();
             }
           } else if (_item.aiMeta.summary.status != 'pending') {
             setState(
@@ -523,14 +485,12 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
                 ),
               ),
             );
-            _scrollToArticleEnd();
           }
           continue;
         }
         final item = await _repo.getItem(_item.id);
-        if (!mounted) return;
+        if (!mounted || gen != _summaryPollGen) return;
         setState(() => _item = item);
-        _scrollToArticleEnd();
         if (st.summary.isSuccess) {
           AppToast.show(
             context,
@@ -880,51 +840,30 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
     await _loadItemTags();
   }
 
-  Future<void> _onMindmap({bool force = false}) async {
-    if (_item.hasAnyTranscriptPending && !_item.aiMeta.mindmap.awaitTranscript) {
-      AppToast.show(context, '转写进行中，请稍候再生成思维导图');
-      return;
-    }
-    if (!_item.canRequestAiSuggest && !_item.shouldAutoTranscribeBeforeMindmap) {
-      AppToast.show(context, '内容不足，无法生成思维导图');
-      return;
-    }
-    if (_item.hasMindmapPending) {
-      AppToast.show(context, '思维导图生成中，请稍候');
-      return;
-    }
-
-    final isRegen = force ||
-        (_item.aiMeta.mindmap.isSuccess && _item.aiMeta.mindmap.hasTree);
-    if (isRegen) {
-      final ok = await showReadingRegenerateConfirmDialog(
-        context,
-        ReadingRegenerateKind.mindmap,
-      );
-      if (ok != true || !mounted) return;
-      force = true;
-    }
-
+  Future<void> _openMindmapSheet() async {
+    _mindmapPollGen++;
+    final title = (_item.title ?? '').trim();
+    await showReadingMindmapSheet(
+      context,
+      itemId: _item.id,
+      initialItem: _item,
+      sourceTitle: title.isEmpty ? null : title,
+      onItemUpdated: (item) {
+        if (mounted) setState(() => _item = item);
+      },
+    );
+    if (!mounted) return;
     try {
-      Analytics.instance.aiMindmapRequest(
-        itemId: _item.id,
-        force: force,
-      );
-      final updated = await _repo.requestMindmap(
-        _item.id,
-        force: force,
-      );
-      if (!mounted) return;
-      setState(() => _item = updated);
-      _scrollToArticleEnd();
-      _pollMindmap();
-    } on ApiException catch (e) {
-      if (!mounted) return;
-      await handleApiException(context, e);
+      final item = await _repo.getItem(_item.id);
+      if (mounted) setState(() => _item = item);
+    } catch (_) {}
+    if (_item.hasMindmapPending) {
+      unawaited(_pollMindmap());
     }
   }
 
   Future<void> _pollMindmap() async {
+    final gen = ++_mindmapPollGen;
     final awaitingTranscript = _item.aiMeta.mindmap.awaitTranscript;
     final maxAttempts = awaitingTranscript ? 90 : 45;
     final interval = awaitingTranscript
@@ -933,12 +872,14 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
     String? lastPhaseFingerprint;
     for (var i = 0; i < maxAttempts; i++) {
       await Future<void>.delayed(interval);
-      if (!mounted) return;
+      if (!mounted || gen != _mindmapPollGen) return;
       try {
         final st = await _repo.getMindmapStatus(_item.id);
+        if (!mounted || gen != _mindmapPollGen) return;
         if (st.mindmap.isPending) {
           if (st.mindmap.awaitTranscript) {
             final ts = await _repo.getTranscriptStatus(_item.id);
+            if (!mounted || gen != _mindmapPollGen) return;
             final merged = Map<String, TranscriptSegment>.from(
               _item.transcriptSegments,
             );
@@ -948,23 +889,23 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
             final fp = ts.segments.entries
                 .map((e) => '${e.key}:${e.value.phase}:${e.value.phaseLabel}')
                 .join('|');
-            if (!mounted) return;
             if (fp != lastPhaseFingerprint ||
                 _item.aiMeta.mindmap.status != 'pending') {
               lastPhaseFingerprint = fp;
               final item = await _repo.getItem(_item.id);
-              if (!mounted) return;
+              if (!mounted || gen != _mindmapPollGen) return;
               setState(
-                () => _item = item.withAiMeta(
-                  AiMeta(
-                    tags: item.aiMeta.tags,
-                    mindmap: st.mindmap,
-                    summary: item.aiMeta.summary,
-                    model: st.model ?? item.aiMeta.model,
-                  ),
-                ).withTranscriptSegments(merged),
+                () => _item = item
+                    .withAiMeta(
+                      AiMeta(
+                        tags: item.aiMeta.tags,
+                        mindmap: st.mindmap,
+                        summary: item.aiMeta.summary,
+                        model: st.model ?? item.aiMeta.model,
+                      ),
+                    )
+                    .withTranscriptSegments(merged),
               );
-              _scrollToArticleEnd();
             }
           } else if (_item.aiMeta.mindmap.status != 'pending') {
             setState(
@@ -977,14 +918,12 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
                 ),
               ),
             );
-            _scrollToArticleEnd();
           }
           continue;
         }
         final item = await _repo.getItem(_item.id);
-        if (!mounted) return;
+        if (!mounted || gen != _mindmapPollGen) return;
         setState(() => _item = item);
-        _scrollToArticleEnd();
         if (st.mindmap.isSuccess) {
           AppToast.show(
             context,
@@ -1493,15 +1432,6 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
                   ],
                   if (_itemTags.isNotEmpty)
                     _ArticleTagHashtags(tags: _itemTags),
-                  AiSummaryPanel(
-                    summaryMeta: _item.aiMeta.summary,
-                    onRetry: () => _onSummary(force: true),
-                  ),
-                  AiMindmapPanel(
-                    mindmapMeta: _item.aiMeta.mindmap,
-                    sourceTitle: title,
-                    onRetry: () => _onMindmap(force: true),
-                  ),
                   ],
                 ],
               ),
@@ -1568,7 +1498,7 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
                                         ? _blue
                                         : _text)
                                     : _muted,
-                                onTap: _onSummary,
+                                onTap: _openSummarySheet,
                               ),
                               _ActionItem(
                                 icon: Icons.tag_outlined,
@@ -1585,7 +1515,7 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
                                         !_item.hasMindmapPending
                                     ? _text
                                     : _muted,
-                                onTap: _onMindmap,
+                                onTap: _openMindmapSheet,
                               ),
                               if (_hasTranscriptEntry)
                                 _ActionItem(

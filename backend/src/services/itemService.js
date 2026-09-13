@@ -63,7 +63,53 @@ function mapItem(row) {
     annotationCount:
       row.annotation_count != null ? Number(row.annotation_count) : undefined,
     aiMeta: aiMeta.mapAiMetaForApi(row.ai_meta),
+    tags: Array.isArray(row._tags) ? row._tags : [],
   };
+}
+
+/**
+ * 为已 map 的条目批量挂上用户标签（仅 id/name，供列表展示）
+ */
+async function attachTagsToItems(userId, mappedItems) {
+  const items = Array.isArray(mappedItems) ? mappedItems.filter(Boolean) : [];
+  if (items.length === 0) return items;
+
+  const idParams = { userId };
+  const placeholders = items
+    .map((it, i) => {
+      idParams[`iid${i}`] = it.id;
+      return `:iid${i}`;
+    })
+    .join(', ');
+
+  const [rows] = await pool.execute(
+    `SELECT
+       it.item_id AS item_id,
+       c.id AS id,
+       c.name AS name
+     FROM item_tags it
+     INNER JOIN categories c ON c.id = it.category_id
+     WHERE it.item_id IN (${placeholders})
+       AND c.section = 'tag'
+       AND c.user_id = :userId
+     ORDER BY c.sort_order ASC, c.id ASC`,
+    idParams,
+  );
+
+  const byItem = new Map();
+  for (const row of rows) {
+    const itemId = Number(row.item_id);
+    if (!byItem.has(itemId)) byItem.set(itemId, []);
+    byItem.get(itemId).push({
+      id: Number(row.id),
+      name: row.name,
+    });
+  }
+
+  return items.map((it) => ({
+    ...it,
+    tags: byItem.get(it.id) || [],
+  }));
 }
 
 async function getUncategorizedFolderId() {
@@ -104,7 +150,10 @@ async function getByIdForUser(userId, itemId, opts = {}) {
      LIMIT 1`,
     { itemId, userId },
   );
-  return mapItem(rows[0] || null);
+  const mapped = mapItem(rows[0] || null);
+  if (!mapped) return null;
+  const [withTags] = await attachTagsToItems(userId, [mapped]);
+  return withTags;
 }
 
 /**
@@ -652,9 +701,13 @@ async function listBySystemFilter(userId, code, options = {}) {
     code,
     options,
   );
+  const items = await attachTagsToItems(
+    userId,
+    result.items.map(mapItem),
+  );
   return {
     ...result,
-    items: result.items.map(mapItem),
+    items,
   };
 }
 
@@ -1486,10 +1539,12 @@ async function searchItems(userId, rawQuery, { limit = 50, offset = 0 } = {}) {
     };
   });
 
+  const withTags = await attachTagsToItems(userId, items);
+
   return {
     query,
     total,
-    items,
+    items: withTags,
     limit: safeLimit,
     offset: safeOffset,
   };
@@ -1505,6 +1560,7 @@ module.exports = {
   runContentParse,
   parseWithClientHtml,
   mapItem,
+  attachTagsToItems,
   listBySystemFilter,
   markAsRead,
   setStarred,
