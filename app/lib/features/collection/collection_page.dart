@@ -190,6 +190,56 @@ class _CollectionPageState extends State<CollectionPage> {
     }
   }
 
+  Future<void> _placeTag(Tag tag, int? moduleId) async {
+    if (tag.moduleId == moduleId) return;
+
+    final moved = moduleId == null
+        ? tag.copyWith(clearModuleId: true)
+        : tag.copyWith(moduleId: moduleId);
+
+    setState(() {
+      var nextUngrouped = List<Tag>.from(_ungrouped);
+      var nextModules = _modules
+          .map((m) => m.copyWith(tags: List<Tag>.from(m.tags)))
+          .toList();
+
+      if (tag.moduleId == null) {
+        nextUngrouped.removeWhere((t) => t.id == tag.id);
+      } else {
+        nextModules = nextModules.map((m) {
+          if (m.id != tag.moduleId) return m;
+          return m.copyWith(
+            tags: m.tags.where((t) => t.id != tag.id).toList(),
+          );
+        }).toList();
+      }
+
+      if (moduleId == null) {
+        nextUngrouped = [...nextUngrouped, moved];
+      } else {
+        nextModules = nextModules.map((m) {
+          if (m.id != moduleId) return m;
+          return m.copyWith(tags: [...m.tags, moved]);
+        }).toList();
+      }
+
+      _ungrouped = nextUngrouped;
+      _modules = nextModules;
+    });
+
+    try {
+      await _tagsRepo.placeTag(tag.id, moduleId: moduleId);
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      AppToast.show(context, e.message);
+      await _load(quiet: true);
+    } catch (_) {
+      if (!mounted) return;
+      AppToast.show(context, '移动失败');
+      await _load(quiet: true);
+    }
+  }
+
   Future<void> _aiOrganize() async {
     final tagCount = _ungrouped.length +
         _modules.fold<int>(0, (n, m) => n + m.tags.length);
@@ -408,6 +458,7 @@ class _CollectionPageState extends State<CollectionPage> {
                 onDeleteModule: _deleteModule,
                 onCreateModule: _createModule,
                 onAiOrganize: _aiOrganize,
+                onPlaceTag: _placeTag,
               ),
               // 便于上滑把归类标签顶到顶栏
               SizedBox(height: MediaQuery.sizeOf(context).height * 0.45),

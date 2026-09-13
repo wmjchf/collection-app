@@ -31,4 +31,16 @@ class Tag {
       moduleId: mid == null ? null : (mid as num).toInt(),
     );
   }
+
+  Tag copyWith({int? moduleId, bool clearModuleId = false}) {
+    return Tag(
+      id: id,
+      name: name,
+      code: code,
+      isSystem: isSystem,
+      itemCount: itemCount,
+      sortOrder: sortOrder,
+      moduleId: clearModuleId ? null : (moduleId ?? this.moduleId),
+    );
+  }
 }
