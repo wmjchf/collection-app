@@ -105,7 +105,9 @@ class _CollectionPageState extends State<CollectionPage> {
       setState(() {
         _modules = modulesResult.modules;
         _ungrouped = modulesResult.ungrouped;
-        _systemFilters = filterResult.filters;
+        _systemFilters = filterResult.filters
+            .where((f) => f.code != 'unread' && f.code != 'recent_read')
+            .toList(growable: false);
         _loading = false;
         _error = null;
       });
@@ -295,6 +297,26 @@ class _CollectionPageState extends State<CollectionPage> {
     });
   }
 
+  void _openModule(TagModule module) {
+    Navigator.of(context)
+        .push(
+      MaterialPageRoute<void>(
+        builder: (_) => ItemsBrowsePage(
+          title: module.name,
+          loader: ({required limit, required offset}) =>
+              _tagModulesRepo.listModuleItems(
+            module.id,
+            limit: limit,
+            offset: offset,
+          ),
+        ),
+      ),
+    )
+        .then((_) {
+      if (mounted) _load(quiet: true);
+    });
+  }
+
   PreferredSizeWidget _buildAppBar() {
     return AppBar(
       backgroundColor: Colors.white,
@@ -409,41 +431,15 @@ class _CollectionPageState extends State<CollectionPage> {
               _ErrorCard(message: _error!, onRetry: _load)
             else ...[
               if (_systemFilters.isNotEmpty)
-                Column(
-                  children: [
-                    if (_systemFilters.any((e) => e.code == 'unread'))
-                      _EntityGroup(
-                        entries: [
-                          for (final f in _systemFilters
-                              .where((e) => e.code == 'unread'))
-                            _EntityEntry(
-                              title: f.name,
-                              countLabel: f.countLabel,
-                              icon: _CollectionNavIcon.forSystemCode(
-                                f.code,
-                              ),
-                              onTap: () => _openSystemFilter(f),
-                            ),
-                        ],
+                _EntityGroup(
+                  entries: [
+                    for (final f in _systemFilters)
+                      _EntityEntry(
+                        title: f.name,
+                        countLabel: f.countLabel,
+                        icon: _CollectionNavIcon.forSystemCode(f.code),
+                        onTap: () => _openSystemFilter(f),
                       ),
-                    if (_systemFilters.any((f) => f.code != 'unread')) ...[
-                      if (_systemFilters.any((e) => e.code == 'unread'))
-                        const SizedBox(height: 16),
-                      _EntityGroup(
-                        entries: [
-                          for (final f in _systemFilters
-                              .where((e) => e.code != 'unread'))
-                            _EntityEntry(
-                              title: f.name,
-                              countLabel: f.countLabel,
-                              icon: _CollectionNavIcon.forSystemCode(
-                                f.code,
-                              ),
-                              onTap: () => _openSystemFilter(f),
-                            ),
-                        ],
-                      ),
-                    ],
                   ],
                 ),
               if (_systemFilters.isNotEmpty) const SizedBox(height: 28),
@@ -453,6 +449,7 @@ class _CollectionPageState extends State<CollectionPage> {
                 ungrouped: _ungrouped,
                 headerCollapse: _tagsFocusT,
                 onOpenTag: _openTag,
+                onOpenModule: _openModule,
                 onAddTag: _addTagToModule,
                 onRenameModule: _renameModule,
                 onDeleteModule: _deleteModule,
@@ -495,6 +492,11 @@ class _CollectionNavIcon {
         return const _CollectionNavIcon(
           icon: Icons.calendar_today_rounded,
           background: Color(0xFFFF9F43),
+        );
+      case 'untagged':
+        return const _CollectionNavIcon(
+          icon: Icons.label_off_outlined,
+          background: Color(0xFF8B929C),
         );
       case 'annotated':
         return const _CollectionNavIcon(

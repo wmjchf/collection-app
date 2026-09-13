@@ -30,6 +30,7 @@ const MIGRATION_FILES = [
   '020_drop_ai_preference_events.sql',
   '021_remove_parsed_filter.sql',
   '022_tag_modules.sql',
+  '023_untagged_system_filter.sql',
 ];
 
 async function getConnection() {

@@ -78,12 +78,18 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
   DateTime? _lastChromeToggleAt;
   late final ReadingMediaController _pageAudio = ReadingMediaController();
   Timer? _itemPollTimer;
+  Timer? _markReadTimer;
   bool _pageLoading = false;
   String? _pageError;
   bool _markedRead = false;
+  bool _handlingBack = false;
+  bool _tagLeaveNudgeDone = false;
   int _summaryPollGen = 0;
   int _mindmapPollGen = 0;
   late final DateTime _openedAt;
+
+  /// 停留满此时长才标已读，避免误点进阅读页就从「未读」消失。
+  static const _markReadDelay = Duration(seconds: 5);
 
   @override
   void initState() {
@@ -105,7 +111,7 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
     if (initial != null) {
       _syncItemPolling(initial);
       if (initial.isSuccess) {
-        unawaited(_markReadIfNeeded());
+        _scheduleMarkReadIfNeeded();
         _onItemReadyForReading(initial);
       }
     }
@@ -127,6 +133,7 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
       );
     }
     unawaited(Analytics.instance.flush());
+    _markReadTimer?.cancel();
     _itemPollTimer?.cancel();
     _summaryPollGen++;
     _mindmapPollGen++;
@@ -147,7 +154,7 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
       });
       _syncItemPolling(item);
       if (item.isSuccess && !wasSuccess) {
-        unawaited(_markReadIfNeeded());
+        _scheduleMarkReadIfNeeded();
         _onItemReadyForReading(item);
       }
     } on ApiException catch (e) {
@@ -183,7 +190,7 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
         _itemPollTimer?.cancel();
       }
       if (item.isSuccess && !wasSuccess) {
-        unawaited(_markReadIfNeeded());
+        _scheduleMarkReadIfNeeded();
         _onItemReadyForReading(item);
       }
     } catch (_) {
@@ -209,8 +216,17 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
     }
   }
 
+  void _scheduleMarkReadIfNeeded() {
+    if (_markedRead || !_item.isSuccess || !_item.isUnread) return;
+    _markReadTimer?.cancel();
+    _markReadTimer = Timer(_markReadDelay, () {
+      unawaited(_markReadIfNeeded());
+    });
+  }
+
   Future<void> _markReadIfNeeded() async {
-    if (_markedRead || !_item.isSuccess) return;
+    _markReadTimer = null;
+    if (_markedRead || !_item.isSuccess || !_item.isUnread) return;
     _markedRead = true;
     try {
       final item = await _repo.markAsRead(widget.itemId);
@@ -218,6 +234,61 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
       setState(() => _item = item);
     } catch (_) {
       _markedRead = false;
+    }
+  }
+
+  Future<void> _markAsUnread() async {
+    _markReadTimer?.cancel();
+    _markReadTimer = null;
+    // 本页停留期间不再自动标已读；下次进入会重新计时。
+    _markedRead = true;
+    try {
+      final item = await _repo.markAsUnread(widget.itemId);
+      if (!mounted) return;
+      setState(() => _item = item);
+      AppToast.show(context, '已标为未读');
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      _markedRead = false;
+      AppToast.show(context, e.message);
+    } catch (_) {
+      if (!mounted) return;
+      _markedRead = false;
+      AppToast.show(context, '操作失败');
+    }
+  }
+
+  /// 离开阅读页：若已认真看过且仍无标签，轻推打标（可跳过）。
+  /// PopScope(canPop: false) 下须用 [Navigator.pop] 强制出栈，不可用 maybePop。
+  Future<void> _handleBack() async {
+    if (_handlingBack) return;
+    _handlingBack = true;
+    try {
+      final engaged = _markedRead ||
+          DateTime.now().difference(_openedAt) >= _markReadDelay;
+      final shouldNudge = _item.isSuccess &&
+          _itemTags.isEmpty &&
+          !_tagLeaveNudgeDone &&
+          engaged;
+      if (shouldNudge) {
+        _tagLeaveNudgeDone = true;
+        final goTag = await showAppConfirmDialog(
+          context,
+          title: '还没有标签',
+          message: '给这篇加个标签，之后更好找。',
+          cancelLabel: '暂不',
+          confirmLabel: '去打标',
+          dangerConfirm: false,
+        );
+        if (!mounted) return;
+        if (goTag == true) {
+          await _openTagsSheet();
+          if (!mounted) return;
+        }
+      }
+      if (mounted) Navigator.of(context).pop();
+    } finally {
+      _handlingBack = false;
     }
   }
 
@@ -253,7 +324,7 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
             setState(() => _item = refreshed);
             _syncItemPolling(refreshed);
             if (refreshed.isSuccess && !wasSuccess) {
-              unawaited(_markReadIfNeeded());
+              _scheduleMarkReadIfNeeded();
               _onItemReadyForReading(refreshed);
             }
           } catch (_) {}
@@ -1343,7 +1414,13 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
     final topChrome = mq.padding.top + _topBarHeight;
     final bottomChrome = mq.padding.bottom + _bottomBarHeight;
 
-    return Scaffold(
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+        unawaited(_handleBack());
+      },
+      child: Scaffold(
       backgroundColor: Colors.white,
       body: Stack(
         children: [
@@ -1489,13 +1566,15 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
                   offset:
                       _chromeVisible ? Offset.zero : const Offset(0, -1),
                   child: _ReadingTopBar(
-                    onBack: () => Navigator.of(context).maybePop(),
+                    onBack: _handleBack,
                     menuEnabled: true,
                     editEnabled: canRead,
+                    showMarkUnread: !_item.isUnread,
                     onEditContent: _onEditContent,
                     onCopyLink: _copyLink,
                     onReparse: _reparseItem,
                     onDelete: _confirmDelete,
+                    onMarkUnread: _markAsUnread,
                   ),
                 ),
               ),
@@ -1581,6 +1660,7 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
           ),
         ],
       ),
+    ),
     );
   }
 }
@@ -2298,8 +2378,10 @@ class _ReadingTopBar extends StatelessWidget {
     required this.onReparse,
     required this.onDelete,
     required this.onEditContent,
+    this.onMarkUnread,
     this.menuEnabled = true,
     this.editEnabled = false,
+    this.showMarkUnread = false,
   });
 
   final VoidCallback onBack;
@@ -2307,8 +2389,10 @@ class _ReadingTopBar extends StatelessWidget {
   final VoidCallback onReparse;
   final VoidCallback onDelete;
   final VoidCallback onEditContent;
+  final VoidCallback? onMarkUnread;
   final bool menuEnabled;
   final bool editEnabled;
+  final bool showMarkUnread;
 
   static const _text = Color(0xFF1F242E);
   static const _danger = Color(0xFFE34D59);
@@ -2353,6 +2437,7 @@ class _ReadingTopBar extends StatelessWidget {
                       const BoxConstraints(minWidth: 148, maxWidth: 168),
                   onSelected: (value) {
                     if (value == 'edit') onEditContent();
+                    if (value == 'unread') onMarkUnread?.call();
                     if (value == 'copy') onCopyLink();
                     if (value == 'reparse') onReparse();
                     if (value == 'delete') onDelete();
@@ -2364,6 +2449,19 @@ class _ReadingTopBar extends StatelessWidget {
                         height: 44,
                         child: Text(
                           '编辑正文',
+                          style: TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w500,
+                            color: _text,
+                          ),
+                        ),
+                      ),
+                    if (showMarkUnread)
+                      const PopupMenuItem<String>(
+                        value: 'unread',
+                        height: 44,
+                        child: Text(
+                          '标为未读',
                           style: TextStyle(
                             fontSize: 15,
                             fontWeight: FontWeight.w500,

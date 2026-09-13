@@ -3,6 +3,7 @@ import 'package:super_collection/features/auth/auth_repository.dart';
 import 'package:super_collection/features/collection/ai_organize_models.dart';
 import 'package:super_collection/features/collection/tag_models.dart';
 import 'package:super_collection/features/collection/tag_module_models.dart';
+import 'package:super_collection/features/items/item_models.dart';
 
 class TagModulesRepository {
   TagModulesRepository({
@@ -61,6 +62,27 @@ class TagModulesRepository {
   Future<void> deleteModule(int id) async {
     final token = await _token();
     await _api.delete('/api/tag-modules/$id', accessToken: token);
+  }
+
+  /// 归类下挂有任一组内标签的条目（去重分页）。
+  Future<({List<CollectionItem> items, int total})> listModuleItems(
+    int moduleId, {
+    int limit = 50,
+    int offset = 0,
+  }) async {
+    final token = await _token();
+    final json = await _api.get(
+      '/api/tag-modules/$moduleId/items?limit=$limit&offset=$offset',
+      accessToken: token,
+    );
+    final list = json['items'] as List<dynamic>? ?? const [];
+    return (
+      items: list
+          .whereType<Map<String, dynamic>>()
+          .map(CollectionItem.fromJson)
+          .toList(),
+      total: (json['total'] as num?)?.toInt() ?? 0,
+    );
   }
 
   /// AI 归类建议（同步）；不落库。

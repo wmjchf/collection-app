@@ -8,6 +8,28 @@ Future<Tag?> showCreateTagSheet(
   BuildContext context, {
   int? moduleId,
 }) {
+  return _showTagNameSheet(context, moduleId: moduleId);
+}
+
+/// 弹出「修改标签名」弹框；成功返回更新后的 [Tag]。
+Future<Tag?> showRenameTagSheet(
+  BuildContext context, {
+  required int tagId,
+  required String name,
+}) {
+  return _showTagNameSheet(
+    context,
+    tagId: tagId,
+    initialName: name,
+  );
+}
+
+Future<Tag?> _showTagNameSheet(
+  BuildContext context, {
+  int? moduleId,
+  int? tagId,
+  String? initialName,
+}) {
   return showModalBottomSheet<Tag>(
     context: context,
     isScrollControlled: true,
@@ -20,32 +42,50 @@ Future<Tag?> showCreateTagSheet(
           bottom: MediaQuery.viewInsetsOf(context).bottom +
               MediaQuery.paddingOf(context).bottom,
         ),
-        child: _CreateTagSheet(moduleId: moduleId),
+        child: _TagNameSheet(
+          moduleId: moduleId,
+          tagId: tagId,
+          initialName: initialName,
+        ),
       );
     },
   );
 }
 
-class _CreateTagSheet extends StatefulWidget {
-  const _CreateTagSheet({this.moduleId});
+class _TagNameSheet extends StatefulWidget {
+  const _TagNameSheet({
+    this.moduleId,
+    this.tagId,
+    this.initialName,
+  });
 
   final int? moduleId;
+  final int? tagId;
+  final String? initialName;
 
   @override
-  State<_CreateTagSheet> createState() => _CreateTagSheetState();
+  State<_TagNameSheet> createState() => _TagNameSheetState();
 }
 
-class _CreateTagSheetState extends State<_CreateTagSheet> {
+class _TagNameSheetState extends State<_TagNameSheet> {
   static const _text = Color(0xFF1F242E);
   static const _muted = Color(0xFF737A85);
   static const _fieldBg = Color(0xFFF5F7FA);
   static const _blue = Color(0xFF2F6FED);
   static const _handle = Color(0xFFE5E8ED);
 
-  final _controller = TextEditingController();
+  late final TextEditingController _controller;
   final _tags = TagsRepository();
   String? _error;
   bool _submitting = false;
+
+  bool get _isRename => widget.tagId != null;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: widget.initialName ?? '');
+  }
 
   @override
   void dispose() {
@@ -76,7 +116,12 @@ class _CreateTagSheetState extends State<_CreateTagSheet> {
     });
 
     try {
-      final tag = await _tags.createTag(name, moduleId: widget.moduleId);
+      final Tag tag;
+      if (_isRename) {
+        tag = await _tags.renameTag(widget.tagId!, name);
+      } else {
+        tag = await _tags.createTag(name, moduleId: widget.moduleId);
+      }
       if (!mounted) return;
       Navigator.of(context).pop(tag);
     } on ApiException catch (e) {
@@ -89,7 +134,9 @@ class _CreateTagSheetState extends State<_CreateTagSheet> {
       if (!mounted) return;
       setState(() {
         _submitting = false;
-        _error = '创建失败，请检查网络或后端是否启动';
+        _error = _isRename
+            ? '修改失败，请检查网络或后端是否启动'
+            : '创建失败，请检查网络或后端是否启动';
       });
     }
   }
@@ -122,9 +169,9 @@ class _CreateTagSheetState extends State<_CreateTagSheet> {
                 height: 27,
                 child: Row(
                   children: [
-                    const Text(
-                      '新建标签',
-                      style: TextStyle(
+                    Text(
+                      _isRename ? '修改名称' : '新建标签',
+                      style: const TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.w700,
                         color: _text,
@@ -184,7 +231,10 @@ class _CreateTagSheetState extends State<_CreateTagSheet> {
                   alignment: Alignment.centerLeft,
                   child: Text(
                     _error!,
-                    style: const TextStyle(fontSize: 13, color: Color(0xFFD14343)),
+                    style: const TextStyle(
+                      fontSize: 13,
+                      color: Color(0xFFD14343),
+                    ),
                   ),
                 ),
               ],
@@ -211,9 +261,9 @@ class _CreateTagSheetState extends State<_CreateTagSheet> {
                             color: Colors.white,
                           ),
                         )
-                      : const Text(
-                          '创建',
-                          style: TextStyle(
+                      : Text(
+                          _isRename ? '保存' : '创建',
+                          style: const TextStyle(
                             fontSize: 16,
                             fontWeight: FontWeight.w600,
                           ),

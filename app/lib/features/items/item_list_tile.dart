@@ -75,6 +75,93 @@ class ItemListTile extends StatelessWidget {
     final tagsLine = _tagsLine(tags);
     final hasTags = tagsLine != null;
 
+    final body = Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        CoverImage(
+          key: coverKey,
+          url: coverUrl,
+          pageUrl: pageUrl,
+          width: 64,
+          height: 64,
+          borderRadius: 8,
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: hasTags
+              ? Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w500,
+                        height: 20 / 15,
+                        color: _text,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      tagsLine,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
+                        height: 16 / 12,
+                        color: _tag,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      subtitle,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w400,
+                        color: _muted,
+                      ),
+                    ),
+                  ],
+                )
+              : SizedBox(
+                  height: 64,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        title,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w500,
+                          height: 20 / 15,
+                          color: _text,
+                        ),
+                      ),
+                      Text(
+                        subtitle,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w400,
+                          color: _muted,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+        ),
+      ],
+    );
+
     return Material(
       color: Colors.white,
       borderRadius: BorderRadius.circular(12),
@@ -83,92 +170,7 @@ class ItemListTile extends StatelessWidget {
         borderRadius: BorderRadius.circular(12),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              CoverImage(
-                key: coverKey,
-                url: coverUrl,
-                pageUrl: pageUrl,
-                width: 64,
-                height: 64,
-                borderRadius: 8,
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: hasTags
-                    ? Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            title,
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              fontSize: 15,
-                              fontWeight: FontWeight.w500,
-                              height: 20 / 15,
-                              color: _text,
-                            ),
-                          ),
-                          const SizedBox(height: 6),
-                          Text(
-                            tagsLine!,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w500,
-                              height: 16 / 12,
-                              color: _tag,
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            subtitle,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w400,
-                              color: _muted,
-                            ),
-                          ),
-                        ],
-                      )
-                    : SizedBox(
-                        height: 64,
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text(
-                              title,
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                fontSize: 15,
-                                fontWeight: FontWeight.w500,
-                                height: 20 / 15,
-                                color: _text,
-                              ),
-                            ),
-                            Text(
-                              subtitle,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w400,
-                                color: _muted,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-              ),
-            ],
-          ),
+          child: body,
         ),
       ),
     );

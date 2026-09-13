@@ -174,6 +174,75 @@ async function renameModule(userId, moduleId, rawName) {
 }
 
 /**
+ * 归类下全部条目：挂有该模块内任一标签的活跃条目（去重分页）。
+ */
+async function listModuleItems(userId, moduleId, { limit = 50, offset = 0 } = {}) {
+  const mid = Number(moduleId);
+  if (!Number.isFinite(mid) || mid <= 0) {
+    throw Object.assign(new Error('无效的归类 ID'), { status: 400 });
+  }
+  const safeLimit = Math.min(Math.max(Number(limit) || 50, 1), 100);
+  const safeOffset = Math.max(Number(offset) || 0, 0);
+
+  const moduleRow = await getOwnedModule(userId, mid);
+
+  const [tagRows] = await pool.execute(
+    `SELECT id FROM categories
+     WHERE section = 'tag' AND user_id = :userId AND module_id = :moduleId`,
+    { userId, moduleId: mid },
+  );
+  const tagIds = tagRows.map((r) => Number(r.id)).filter((id) => id > 0);
+  if (tagIds.length === 0) {
+    return {
+      module: mapModule(moduleRow),
+      total: 0,
+      items: [],
+      limit: safeLimit,
+      offset: safeOffset,
+    };
+  }
+
+  const { mapItem, attachTagsToItems } = require('./itemService');
+  const placeholders = tagIds.map((_, i) => `:t${i}`).join(', ');
+  const idParams = Object.fromEntries(
+    tagIds.map((id, i) => [`t${i}`, id]),
+  );
+  idParams.userId = userId;
+
+  const [countRows] = await pool.execute(
+    `SELECT COUNT(DISTINCT i.id) AS cnt
+     FROM items i
+     INNER JOIN item_tags it ON it.item_id = i.id
+     WHERE i.user_id = :userId
+       AND i.deleted_at IS NULL
+       AND it.category_id IN (${placeholders})`,
+    idParams,
+  );
+  const total = Number(countRows[0]?.cnt || 0);
+
+  const [rows] = await pool.execute(
+    `SELECT i.*
+     FROM items i
+     INNER JOIN item_tags it ON it.item_id = i.id
+     WHERE i.user_id = :userId
+       AND i.deleted_at IS NULL
+       AND it.category_id IN (${placeholders})
+     GROUP BY i.id
+     ORDER BY i.created_at DESC, i.id DESC
+     LIMIT ${safeLimit} OFFSET ${safeOffset}`,
+    idParams,
+  );
+
+  return {
+    module: mapModule(moduleRow),
+    total,
+    items: await attachTagsToItems(userId, rows.map(mapItem)),
+    limit: safeLimit,
+    offset: safeOffset,
+  };
+}
+
+/**
  * 删除模块；组内标签 module_id 由 FK ON DELETE SET NULL 回到未归类。
  */
 async function deleteModule(userId, moduleId) {
@@ -197,6 +266,7 @@ module.exports = {
   listModules,
   createModule,
   renameModule,
+  listModuleItems,
   deleteModule,
   getOwnedModule,
   mapModule,

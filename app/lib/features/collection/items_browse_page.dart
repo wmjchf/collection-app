@@ -5,6 +5,7 @@ import 'package:super_collection/core/ui/app_confirm_dialog.dart';
 import 'package:super_collection/core/ui/app_subpage_app_bar.dart';
 import 'package:super_collection/core/ui/app_toast.dart';
 import 'package:super_collection/core/ui/paged_list.dart';
+import 'package:super_collection/features/collection/create_tag_sheet.dart';
 import 'package:super_collection/features/collection/tags_repository.dart';
 import 'package:super_collection/features/home/home_format.dart';
 import 'package:super_collection/features/items/item_list_tile.dart';
@@ -26,7 +27,7 @@ class ItemsBrowsePage extends StatefulWidget {
   final String title;
   final ItemsBrowseLoader loader;
 
-  /// 非空且为自建标签时，右上角显示删除图标。
+  /// 非空且为自建标签时，右上角可修改名称 / 删除。
   final int? tagId;
 
   @override
@@ -36,7 +37,6 @@ class ItemsBrowsePage extends StatefulWidget {
 class _ItemsBrowsePageState extends State<ItemsBrowsePage> with ScreenDwellMixin {
   static const _bg = Color(0xFFF7F7FA);
   static const _muted = Color(0xFF737A85);
-  static const _danger = Color(0xFFF56C6C);
 
   final _tagsRepo = TagsRepository();
   final _scroll = ScrollController();
@@ -75,6 +75,21 @@ class _ItemsBrowsePageState extends State<ItemsBrowsePage> with ScreenDwellMixin
 
   void _onScroll() {
     if (shouldLoadMore(_scroll)) _loadMore();
+  }
+
+  Future<void> _onRenameTag() async {
+    final tagId = widget.tagId;
+    if (tagId == null || _busy) return;
+
+    final updated = await showRenameTagSheet(
+      context,
+      tagId: tagId,
+      name: _title,
+    );
+    if (updated == null || !mounted) return;
+
+    setState(() => _title = updated.name);
+    AppToast.show(context, '已修改名称');
   }
 
   Future<void> _onDeleteTag() async {
@@ -170,17 +185,104 @@ class _ItemsBrowsePageState extends State<ItemsBrowsePage> with ScreenDwellMixin
     return '$platform · $day';
   }
 
+  Future<void> _showTagActionsMenu(BuildContext anchorContext) async {
+    if (_busy) return;
+
+    final box = anchorContext.findRenderObject() as RenderBox?;
+    final overlay =
+        Overlay.of(anchorContext).context.findRenderObject() as RenderBox?;
+    if (box == null || !box.hasSize || overlay == null) return;
+
+    final topLeft = box.localToGlobal(Offset.zero, ancestor: overlay);
+    final size = box.size;
+    const menuWidth = 160.0;
+    final left = (topLeft.dx + size.width - menuWidth)
+        .clamp(12.0, overlay.size.width - menuWidth - 12.0);
+    final position = RelativeRect.fromLTRB(
+      left,
+      topLeft.dy + size.height + 4,
+      overlay.size.width - left - menuWidth,
+      overlay.size.height - (topLeft.dy + size.height + 4),
+    );
+
+    const text = Color(0xFF1F242E);
+    const danger = Color(0xFFD14343);
+
+    final action = await showMenu<_TagAction>(
+      context: anchorContext,
+      position: position,
+      elevation: 8,
+      color: Colors.white,
+      shadowColor: Colors.black.withValues(alpha: 0.14),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: const BorderSide(color: Color(0xFFE6E8EB)),
+      ),
+      constraints: const BoxConstraints(minWidth: 160, maxWidth: 160),
+      items: const [
+        PopupMenuItem(
+          value: _TagAction.rename,
+          height: 44,
+          child: Row(
+            children: [
+              Icon(Icons.edit_outlined, size: 20, color: text),
+              SizedBox(width: 10),
+              Text(
+                '修改名称',
+                style: TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w500,
+                  color: text,
+                ),
+              ),
+            ],
+          ),
+        ),
+        PopupMenuItem(
+          value: _TagAction.delete,
+          height: 44,
+          child: Row(
+            children: [
+              Icon(Icons.delete_outline_rounded, size: 20, color: danger),
+              SizedBox(width: 10),
+              Text(
+                '删除标签',
+                style: TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w500,
+                  color: danger,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+
+    if (action == null || !mounted) return;
+    switch (action) {
+      case _TagAction.rename:
+        await _onRenameTag();
+      case _TagAction.delete:
+        await _onDeleteTag();
+    }
+  }
+
   List<Widget>? _buildActions() {
     if (!_canManageTag) return null;
     return [
-      IconButton(
-        tooltip: '删除标签',
-        onPressed: _busy ? null : _onDeleteTag,
-        icon: Icon(
-          Icons.delete_outline_rounded,
-          size: 24,
-          color: _busy ? _muted : _danger,
-        ),
+      Builder(
+        builder: (anchorContext) {
+          return IconButton(
+            tooltip: '更多',
+            onPressed: _busy ? null : () => _showTagActionsMenu(anchorContext),
+            icon: Icon(
+              Icons.more_horiz,
+              size: 24,
+              color: _busy ? _muted : const Color(0xFF1F242E),
+            ),
+          );
+        },
       ),
     ];
   }
@@ -283,3 +385,5 @@ class _ItemsBrowsePageState extends State<ItemsBrowsePage> with ScreenDwellMixin
     );
   }
 }
+
+enum _TagAction { rename, delete }

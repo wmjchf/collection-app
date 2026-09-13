@@ -7,23 +7,17 @@ class CollectionNavItem {
   });
 
   final String title;
-  /// 右侧数量文案；未读无数据时用「无」
+  /// 右侧数量文案
   final String countLabel;
   final String? code;
 }
 
 class CollectionMockData {
-  static const unread = CollectionNavItem(
-    title: '未读',
-    countLabel: '无',
-    code: 'unread',
-  );
-
   static const systemFilters = [
     CollectionNavItem(title: '所有', countLabel: '4', code: 'all'),
     CollectionNavItem(title: '今天', countLabel: '4', code: 'today'),
+    CollectionNavItem(title: '未打标', countLabel: '2', code: 'untagged'),
     CollectionNavItem(title: '标注', countLabel: '1', code: 'annotated'),
-    CollectionNavItem(title: '最近阅读', countLabel: '0', code: 'recent_read'),
   ];
 
   static const tags = [
