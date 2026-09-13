@@ -230,17 +230,17 @@ async function applyOrganize(userId, body) {
   for (const row of modulesIn) {
     let name = String(row?.name || '').trim();
     if (!name) {
-      throw Object.assign(new Error('模块名称不能为空'), { status: 400 });
+      throw Object.assign(new Error('归类名称不能为空'), { status: 400 });
     }
     if (name.length > 64) {
-      throw Object.assign(new Error('模块名称最多 64 个字'), { status: 400 });
+      throw Object.assign(new Error('归类名称最多 64 个字'), { status: 400 });
     }
 
     let moduleId = null;
     if (row?.existingModuleId != null && row.existingModuleId !== '') {
       const mid = Number(row.existingModuleId);
       if (!Number.isFinite(mid) || !moduleById.has(mid)) {
-        throw Object.assign(new Error(`模块不存在：${row.existingModuleId}`), {
+        throw Object.assign(new Error(`归类不存在：${row.existingModuleId}`), {
           status: 400,
         });
       }

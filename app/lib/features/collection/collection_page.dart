@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_svg/flutter_svg.dart';
 import 'package:super_collection/core/network/api_client.dart';
 import 'package:super_collection/core/ui/app_confirm_dialog.dart';
 import 'package:super_collection/core/ui/app_toast.dart';
@@ -14,7 +13,6 @@ import 'package:super_collection/features/collection/system_filters_repository.d
 import 'package:super_collection/features/collection/tag_models.dart';
 import 'package:super_collection/features/collection/tag_module_models.dart';
 import 'package:super_collection/features/collection/tag_modules_repository.dart';
-import 'package:super_collection/features/collection/tag_search_page.dart';
 import 'package:super_collection/features/collection/tags_repository.dart';
 import 'package:super_collection/features/shell/user_avatar_button.dart';
 
@@ -55,9 +53,9 @@ class _CollectionPageState extends State<CollectionPage> {
   List<SystemFilter> _systemFilters = const [];
   bool _loading = true;
   String? _error;
-  /// 归类标签区顶到顶栏：切换顶栏形态
-  bool _tagsFocused = false;
-  /// 归类标签编辑态：显示删模块 / 组内 +标签
+  /// 归类标签收进顶栏：0 未贴顶，1 完全收起
+  final _tagsFocusT = ValueNotifier<double>(0);
+  /// 归类标签编辑态：显示删归类 / 组内 +标签
   bool _tagsEditing = false;
 
   @override
@@ -71,6 +69,7 @@ class _CollectionPageState extends State<CollectionPage> {
   void dispose() {
     _scrollController.removeListener(_onScrollForTagsFocus);
     _scrollController.dispose();
+    _tagsFocusT.dispose();
     super.dispose();
   }
 
@@ -83,14 +82,6 @@ class _CollectionPageState extends State<CollectionPage> {
     if (widget.refreshTick != oldWidget.refreshTick) {
       _load(quiet: true);
     }
-  }
-
-  void _openTagSearch() {
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => const TagSearchPage(),
-      ),
-    );
   }
 
   Future<void> _load({bool quiet = false}) async {
@@ -142,25 +133,19 @@ class _CollectionPageState extends State<CollectionPage> {
     final box = ctx.findRenderObject() as RenderBox?;
     if (box == null || !box.hasSize) return;
     final top = box.localToGlobal(Offset.zero).dy;
-    final threshold = MediaQuery.paddingOf(context).top + kToolbarHeight;
-    // 滞回：避免顶栏切换时 header 高度变化导致焦点抖动
-    final focused = _tagsFocused
-        ? top <= threshold + 28
-        : top <= threshold + 4;
-    if (focused == _tagsFocused) return;
-    setState(() {
-      _tagsFocused = focused;
-    });
+    final dock = MediaQuery.paddingOf(context).top + kToolbarHeight;
+    // 贴顶前约一栏高度内完成过渡，避免布尔切换的硬切
+    const range = 56.0;
+    final next = ((dock + 8 - top) / range).clamp(0.0, 1.0);
+    if ((next - _tagsFocusT.value).abs() < 0.008) return;
+    _tagsFocusT.value = next;
   }
 
   Future<void> _exitTagsFocus() async {
-    setState(() {
-      _tagsFocused = false;
-    });
     if (!_scrollController.hasClients) return;
     await _scrollController.animateTo(
       0,
-      duration: const Duration(milliseconds: 320),
+      duration: const Duration(milliseconds: 420),
       curve: Curves.easeOutCubic,
     );
   }
@@ -180,15 +165,15 @@ class _CollectionPageState extends State<CollectionPage> {
   Future<void> _deleteModule(TagModule module) async {
     final ok = await showAppConfirmDialog(
       context,
-      title: '删除模块',
-      message: '确定删除模块「${module.name}」？组内标签会回到未归类，不会删除标签。',
+      title: '删除归类',
+      message: '确定删除归类「${module.name}」？组内标签会回到未归类，不会删除标签。',
       confirmLabel: '删除',
     );
     if (ok != true || !mounted) return;
     try {
       await _tagModulesRepo.deleteModule(module.id);
       if (!mounted) return;
-      AppToast.show(context, '已删除模块「${module.name}」');
+      AppToast.show(context, '已删除归类「${module.name}」');
       await _load(quiet: true);
     } on ApiException catch (e) {
       if (!mounted) return;
@@ -248,40 +233,6 @@ class _CollectionPageState extends State<CollectionPage> {
   }
 
   PreferredSizeWidget _buildAppBar() {
-    if (_tagsFocused) {
-      return AppBar(
-        backgroundColor: Colors.white,
-        surfaceTintColor: Colors.transparent,
-        elevation: 0,
-        scrolledUnderElevation: 0,
-        toolbarHeight: 56,
-        automaticallyImplyLeading: false,
-        leading: IconButton(
-          tooltip: '返回',
-          onPressed: _exitTagsFocus,
-          icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20),
-        ),
-        title: const Text(
-          '归类标签',
-          style: TextStyle(
-            fontSize: 17,
-            fontWeight: FontWeight.w700,
-            color: _text,
-          ),
-        ),
-        centerTitle: true,
-        actions: [
-          CollectionTagsActionsMenu(
-            editing: _tagsEditing,
-            onToggleEditing: () =>
-                setState(() => _tagsEditing = !_tagsEditing),
-            onCreateModule: _createModule,
-            iconPadding: const EdgeInsets.symmetric(horizontal: 12),
-          ),
-        ],
-      );
-    }
-
     return AppBar(
       backgroundColor: Colors.white,
       surfaceTintColor: Colors.transparent,
@@ -292,34 +243,76 @@ class _CollectionPageState extends State<CollectionPage> {
       actionsPadding: EdgeInsets.zero,
       automaticallyImplyLeading: false,
       centerTitle: false,
-      title: SizedBox(
-        width: MediaQuery.sizeOf(context).width,
-        height: 40,
-        child: Padding(
-          padding: const EdgeInsets.only(left: 12, right: 8),
-          child: Row(
-            children: [
-              UserAvatarButton(
-                onPressed: widget.onOpenAccount ?? () {},
-              ),
-              const Spacer(),
-              IconButton(
-                tooltip: '搜索标签',
-                padding: EdgeInsets.zero,
-                constraints: const BoxConstraints(
-                  minWidth: 36,
-                  minHeight: 36,
+      title: AnimatedBuilder(
+        animation: _tagsFocusT,
+        builder: (context, _) {
+          final t = Curves.easeInOutCubic.transform(_tagsFocusT.value);
+          return SizedBox(
+            width: double.infinity,
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                IgnorePointer(
+                  ignoring: t > 0.45,
+                  child: Opacity(
+                    opacity: (1 - t).clamp(0.0, 1.0),
+                    child: Padding(
+                      padding: const EdgeInsets.only(left: 12, right: 8),
+                      child: Align(
+                        alignment: Alignment.centerLeft,
+                        child: UserAvatarButton(
+                          onPressed: widget.onOpenAccount ?? () {},
+                        ),
+                      ),
+                    ),
+                  ),
                 ),
-                onPressed: _openTagSearch,
-                icon: SvgPicture.asset(
-                  'assets/icons/search.svg',
-                  width: 24,
-                  height: 24,
+                IgnorePointer(
+                  ignoring: t < 0.45,
+                  child: Opacity(
+                    opacity: t,
+                    child: Transform.translate(
+                      offset: Offset(0, 10 * (1 - t)),
+                      child: Row(
+                        children: [
+                          IconButton(
+                            tooltip: '返回',
+                            onPressed: _exitTagsFocus,
+                            icon: const Icon(
+                              Icons.arrow_back_ios_new_rounded,
+                              size: 20,
+                            ),
+                          ),
+                          const Expanded(
+                            child: Text(
+                              '归类标签',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                fontSize: 17,
+                                fontWeight: FontWeight.w700,
+                                color: _text,
+                              ),
+                            ),
+                          ),
+                          CollectionTagsActionsMenu(
+                            editing: _tagsEditing,
+                            onToggleEditing: () => setState(
+                              () => _tagsEditing = !_tagsEditing,
+                            ),
+                            onCreateModule: _createModule,
+                            iconPadding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
                 ),
-              ),
-            ],
-          ),
-        ),
+              ],
+            ),
+          );
+        },
       ),
       actions: const <Widget>[],
     );
@@ -335,7 +328,12 @@ class _CollectionPageState extends State<CollectionPage> {
         child: ListView(
           controller: _scrollController,
           physics: const AlwaysScrollableScrollPhysics(),
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+          padding: EdgeInsets.fromLTRB(
+            16,
+            12,
+            16,
+            24 + MediaQuery.paddingOf(context).bottom,
+          ),
           children: [
             if (_loading && _systemFilters.isEmpty)
               const Padding(
@@ -394,7 +392,7 @@ class _CollectionPageState extends State<CollectionPage> {
                 headerKey: _tagsHeaderKey,
                 modules: _modules,
                 ungrouped: _ungrouped,
-                showInlineHeader: !_tagsFocused,
+                headerCollapse: _tagsFocusT,
                 editing: _tagsEditing,
                 onToggleEditing: () =>
                     setState(() => _tagsEditing = !_tagsEditing),

@@ -62,7 +62,7 @@ async function createTag(userId, rawName, { moduleId } = {}) {
   if (moduleId != null && moduleId !== '') {
     const mid = Number(moduleId);
     if (!Number.isFinite(mid) || mid <= 0) {
-      throw Object.assign(new Error('无效的模块 ID'), { status: 400 });
+      throw Object.assign(new Error('无效的归类 ID'), { status: 400 });
     }
     const { getOwnedModule } = require('./tagModuleService');
     await getOwnedModule(userId, mid);
@@ -207,7 +207,7 @@ async function placeTag(userId, tagId, { moduleId, beforeTagId } = {}) {
   if (moduleId != null && moduleId !== '') {
     const mid = Number(moduleId);
     if (!Number.isFinite(mid) || mid <= 0) {
-      throw Object.assign(new Error('无效的模块 ID'), { status: 400 });
+      throw Object.assign(new Error('无效的归类 ID'), { status: 400 });
     }
     const { getOwnedModule } = require('./tagModuleService');
     await getOwnedModule(userId, mid);
@@ -247,7 +247,7 @@ async function placeTag(userId, tagId, { moduleId, beforeTagId } = {}) {
   if (beforeId != null) {
     const idx = orderedIds.indexOf(beforeId);
     if (idx < 0) {
-      throw Object.assign(new Error('插入位置不在目标模块内'), { status: 400 });
+      throw Object.assign(new Error('插入位置不在目标归类内'), { status: 400 });
     }
     insertAt = idx;
   }

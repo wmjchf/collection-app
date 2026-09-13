@@ -3,7 +3,7 @@ import 'package:super_collection/core/network/api_client.dart';
 import 'package:super_collection/features/collection/tag_module_models.dart';
 import 'package:super_collection/features/collection/tag_modules_repository.dart';
 
-/// 弹出「新建模块」弹框；成功返回 [TagModule]。
+/// 弹出「新建归类」弹框；成功返回 [TagModule]。
 Future<TagModule?> showCreateModuleSheet(BuildContext context) {
   return showModalBottomSheet<TagModule>(
     context: context,

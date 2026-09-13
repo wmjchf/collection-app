@@ -11,6 +11,7 @@ import 'package:super_collection/core/ui/parse_progress_controller.dart';
 import 'package:super_collection/core/ui/parse_progress_tracker.dart';
 import 'package:super_collection/features/collection/collection_page.dart';
 import 'package:super_collection/features/home/home_page.dart';
+import 'package:super_collection/features/search/search_page.dart';
 import 'package:super_collection/features/settings/account_drawer.dart';
 import 'package:super_collection/features/shell/app_bottom_nav_bar.dart';
 import 'package:super_collection/features/shortcuts/shortcut_inbound.dart';
@@ -58,6 +59,12 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
 
   void _openAccountDrawer() {
     _scaffoldKey.currentState?.openDrawer();
+  }
+
+  void _openSearch() {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(builder: (_) => const SearchPage()),
+    );
   }
 
   @override
@@ -130,38 +137,58 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
   @override
   Widget build(BuildContext context) {
     ClientPageFetch.overlayContext = context;
+    final navH = AppBottomNavBar.heightOf(context);
+    final mq = MediaQuery.of(context);
     return Scaffold(
       key: _scaffoldKey,
       onDrawerChanged: _onDrawerChanged,
       drawer: const AccountDrawer(),
-      body: Stack(
-        children: [
-          IndexedStack(
-            index: _index,
-            children: [
-              HomePage(
-                isActive: _index == 0,
-                refreshTick: _homeRefreshTick,
-                onOpenAccount: _openAccountDrawer,
-              ),
-              CollectionPage(
-                isActive: _index == 1,
-                refreshTick: _homeRefreshTick,
-                onOpenAccount: _openAccountDrawer,
-              ),
-            ],
-          ),
-          Positioned(
-            left: 16,
-            right: 16,
-            bottom: 10,
-            child: ParseProgressBanner(controller: _parseProgress),
-          ),
-        ],
+      extendBody: true,
+      body: MediaQuery(
+        data: mq.copyWith(
+          padding: mq.padding.copyWith(bottom: navH),
+        ),
+        child: Stack(
+          children: [
+            IndexedStack(
+              index: _index,
+              children: [
+                HomePage(
+                  isActive: _index == 0,
+                  refreshTick: _homeRefreshTick,
+                  onOpenAccount: _openAccountDrawer,
+                ),
+                CollectionPage(
+                  isActive: _index == 1,
+                  refreshTick: _homeRefreshTick,
+                  onOpenAccount: _openAccountDrawer,
+                ),
+              ],
+            ),
+            Positioned(
+              left: 16,
+              right: 16,
+              bottom: navH + 10,
+              child: ParseProgressBanner(controller: _parseProgress),
+            ),
+          ],
+        ),
       ),
-      bottomNavigationBar: AppBottomNavBar(
-        currentIndex: _index,
-        onChanged: _switchTab,
+      floatingActionButton: AppBottomNavSearchFab(onTap: _openSearch),
+      floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
+      bottomNavigationBar: BottomAppBar(
+        color: Colors.white,
+        elevation: 0,
+        shadowColor: Colors.black.withValues(alpha: 0.08),
+        surfaceTintColor: Colors.transparent,
+        shape: const CircularNotchedRectangle(),
+        notchMargin: AppBottomNavBar.notchMargin,
+        height: AppBottomNavBar.barH,
+        padding: EdgeInsets.zero,
+        child: AppBottomNavBar(
+          currentIndex: _index,
+          onChanged: _switchTab,
+        ),
       ),
     );
   }

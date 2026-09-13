@@ -1,9 +1,10 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:super_collection/features/collection/tag_models.dart';
 import 'package:super_collection/features/collection/tag_module_models.dart';
 
-/// 归类标签：按模块分组展示；可新建模块、组内加标签。
+/// 归类标签：按归类分组展示；可新建归类、组内加标签。
 class CollectionTagModulesSection extends StatelessWidget {
   const CollectionTagModulesSection({
     super.key,
@@ -17,7 +18,7 @@ class CollectionTagModulesSection extends StatelessWidget {
     this.editing = false,
     this.onToggleEditing,
     this.headerKey,
-    this.showInlineHeader = true,
+    this.headerCollapse,
   });
 
   final List<TagModule> modules;
@@ -30,18 +31,20 @@ class CollectionTagModulesSection extends StatelessWidget {
   final bool editing;
   final VoidCallback? onToggleEditing;
   final Key? headerKey;
-  final bool showInlineHeader;
+  /// 0 展开页内标题，1 收进顶栏；为 null 则始终展开。
+  final ValueListenable<double>? headerCollapse;
 
   static const ink = Color(0xFF1F242E);
   static const muted = Color(0xFF8B929C);
   static const hairline = Color(0xFFD5DAE2);
   static const brand = Color(0xFF2F6FED);
   static const brandSoft = Color(0xFFE5EDFF);
-  /// AI 归类入口色（与标签主题蓝区分）
-  static const aiAccent = Color(0xFF6B5CE7);
   static const panel = Color(0xFFFFFFFF);
   static const ungroupedFill = Color(0xFFF4F6F9);
   static const ungroupedLine = Color(0xFFC5CAD3);
+  /// 未归类标签色（与主题蓝 / AI 入口区分）
+  static const ungroupedTag = Color(0xFF5C6675);
+  static const ungroupedTagSoft = Color(0xFFECEEF2);
 
   @override
   Widget build(BuildContext context) {
@@ -80,24 +83,16 @@ class CollectionTagModulesSection extends StatelessWidget {
           borderRadius: BorderRadius.circular(16),
         ),
         child: Padding(
-          padding: EdgeInsets.fromLTRB(
-            16,
-            showInlineHeader ? 14 : 16,
-            12,
-            18,
-          ),
+          padding: const EdgeInsets.fromLTRB(16, 14, 12, 18),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              if (showInlineHeader)
-                _SectionHeader(
-                  editing: editing,
-                  onToggleEditing: onToggleEditing,
-                  onCreateModule: onCreateModule,
-                )
-              else
-                const SizedBox(height: 1),
-              if (showInlineHeader) const SizedBox(height: 8),
+              _CollapsingSectionHeader(
+                collapse: headerCollapse,
+                editing: editing,
+                onToggleEditing: onToggleEditing,
+                onCreateModule: onCreateModule,
+              ),
               if (!hasContent)
                 const Padding(
                   padding: EdgeInsets.only(bottom: 12),
@@ -115,6 +110,59 @@ class CollectionTagModulesSection extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+class _CollapsingSectionHeader extends StatelessWidget {
+  const _CollapsingSectionHeader({
+    required this.onCreateModule,
+    this.collapse,
+    this.editing = false,
+    this.onToggleEditing,
+  });
+
+  final ValueListenable<double>? collapse;
+  final VoidCallback onCreateModule;
+  final bool editing;
+  final VoidCallback? onToggleEditing;
+
+  @override
+  Widget build(BuildContext context) {
+    final header = Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _SectionHeader(
+          editing: editing,
+          onToggleEditing: onToggleEditing,
+          onCreateModule: onCreateModule,
+        ),
+        const SizedBox(height: 8),
+      ],
+    );
+    final listenable = collapse;
+    if (listenable == null) return header;
+    return ValueListenableBuilder<double>(
+      valueListenable: listenable,
+      builder: (context, raw, child) {
+        final t = Curves.easeInOutCubic.transform(raw.clamp(0.0, 1.0));
+        final reveal = 1.0 - t;
+        if (reveal <= 0.001) return const SizedBox.shrink();
+        return ClipRect(
+          child: Align(
+            alignment: Alignment.bottomCenter,
+            heightFactor: reveal,
+            child: Opacity(
+              opacity: reveal,
+              child: Transform.translate(
+                offset: Offset(0, -12 * t),
+                child: child,
+              ),
+            ),
+          ),
+        );
+      },
+      child: header,
     );
   }
 }
@@ -340,7 +388,7 @@ class _ModuleBlock extends StatelessWidget {
                           Icon(
                             Icons.auto_awesome_outlined,
                             size: 15,
-                            color: CollectionTagModulesSection.aiAccent,
+                            color: CollectionTagModulesSection.brand,
                           ),
                           SizedBox(width: 4),
                           Text(
@@ -348,7 +396,7 @@ class _ModuleBlock extends StatelessWidget {
                             style: TextStyle(
                               fontSize: 13,
                               fontWeight: FontWeight.w600,
-                              color: CollectionTagModulesSection.aiAccent,
+                              color: CollectionTagModulesSection.brand,
                             ),
                           ),
                         ],
@@ -396,6 +444,7 @@ class _ModuleBlock extends StatelessWidget {
                 _TagChip(
                   label: tag.name,
                   count: tag.itemCount,
+                  muted: ungrouped,
                   onTap: () => onOpenTag(tag),
                 ),
             ],
@@ -433,7 +482,7 @@ class _DeleteModuleButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Tooltip(
-      message: '删除模块',
+      message: '删除归类',
       child: Material(
         color: Colors.transparent,
         child: InkWell(
@@ -512,11 +561,13 @@ class _TagChip extends StatefulWidget {
     required this.label,
     required this.count,
     required this.onTap,
+    this.muted = false,
   });
 
   final String label;
   final int count;
   final VoidCallback onTap;
+  final bool muted;
 
   @override
   State<_TagChip> createState() => _TagChipState();
@@ -539,6 +590,12 @@ class _TagChipState extends State<_TagChip> {
   @override
   Widget build(BuildContext context) {
     final text = _hashLabel(widget.label);
+    final color = widget.muted
+        ? CollectionTagModulesSection.ungroupedTag
+        : CollectionTagModulesSection.brand;
+    final soft = widget.muted
+        ? CollectionTagModulesSection.ungroupedTagSoft
+        : CollectionTagModulesSection.brandSoft;
 
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
@@ -558,9 +615,7 @@ class _TagChipState extends State<_TagChip> {
           curve: Curves.easeOutCubic,
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
           decoration: BoxDecoration(
-            color: _pressed
-                ? CollectionTagModulesSection.brandSoft
-                : Colors.transparent,
+            color: _pressed ? soft : Colors.transparent,
             borderRadius: BorderRadius.circular(8),
           ),
           child: Row(
@@ -572,11 +627,11 @@ class _TagChipState extends State<_TagChip> {
                   text,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.w500,
                     height: 1.25,
-                    color: CollectionTagModulesSection.brand,
+                    color: color,
                   ),
                 ),
               ),
@@ -588,8 +643,7 @@ class _TagChipState extends State<_TagChip> {
                     fontSize: 12,
                     fontWeight: FontWeight.w600,
                     height: 1.25,
-                    color: CollectionTagModulesSection.brand
-                        .withValues(alpha: 0.65),
+                    color: color.withValues(alpha: 0.65),
                   ),
                 ),
               ],

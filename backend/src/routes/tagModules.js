@@ -62,7 +62,7 @@ router.post('/', async (req, res, next) => {
 router.delete('/:id', async (req, res, next) => {
   try {
     await tagModuleService.deleteModule(req.auth.userId, req.params.id);
-    return res.json({ message: '已删除模块' });
+    return res.json({ message: '已删除归类' });
   } catch (err) {
     return next(err);
   }

@@ -34,7 +34,6 @@ class _AiOrganizeSheetState extends State<_AiOrganizeSheet> {
   static const _text = Color(0xFF1F242E);
   static const _muted = Color(0xFF737A85);
   static const _blue = Color(0xFF2F6FED);
-  static const _aiAccent = Color(0xFF6B5CE7);
   static const _handle = Color(0xFFE5E8ED);
   static const _divider = Color(0xFFF0F1F4);
 
@@ -141,7 +140,7 @@ class _AiOrganizeSheetState extends State<_AiOrganizeSheet> {
                       const Icon(
                         Icons.auto_awesome_outlined,
                         size: 18,
-                        color: _aiAccent,
+                        color: _blue,
                       ),
                       const SizedBox(width: 6),
                       const Text(
@@ -275,7 +274,7 @@ class _AiOrganizeSheetState extends State<_AiOrganizeSheet> {
         const SizedBox(height: 4),
         const Divider(height: 24, color: _divider),
         const Text(
-          '确认后会新建建议的模块，并按方案调整标签归属。未出现在方案中的标签保持原位。',
+          '确认后会新建建议的归类，并按方案调整标签归属。未出现在方案中的标签保持原位。',
           style: TextStyle(fontSize: 12, height: 1.4, color: _muted),
         ),
       ],
