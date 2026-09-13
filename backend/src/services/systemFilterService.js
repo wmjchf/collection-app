@@ -40,7 +40,8 @@ function filterClause(code, range = {}) {
         SELECT 1 FROM annotations a WHERE a.item_id = i.id
       )`;
     case 'recent_read':
-      return `${baseWhere()} AND i.last_read_at IS NOT NULL`;
+      // 未读优先出现在「未读」；最近阅读只展示已读足迹，避免首页两区重复
+      return `${baseWhere()} AND i.last_read_at IS NOT NULL AND i.is_unread = 0`;
     case 'archived':
       return `i.user_id = :userId AND i.deleted_at IS NULL AND i.is_archived = 1`;
     default:
