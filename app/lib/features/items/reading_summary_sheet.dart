@@ -109,6 +109,22 @@ class _ReadingSummarySheetState extends State<_ReadingSummarySheet> {
       return;
     }
 
+    final needs = <PlanFeatureRequirement>[
+      (has: (f) => f.aiSummary, tier: UsagePlan.prince),
+    ];
+    if (_item.shouldAutoTranscribeBeforeMindmap) {
+      needs.add((has: (f) => f.transcript, tier: UsagePlan.emperor));
+    }
+    final allowed = await ensurePlanFeatures(
+      context,
+      hasResultOrPending: false,
+      requirements: needs,
+    );
+    if (!allowed || !mounted) {
+      if (mounted) setState(() => _requesting = false);
+      return;
+    }
+
     final isRegen = force || _hasResult;
     if (isRegen) {
       final ok = await showReadingRegenerateConfirmDialog(

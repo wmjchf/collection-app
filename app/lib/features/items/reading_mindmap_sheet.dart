@@ -116,6 +116,18 @@ class _ReadingMindmapSheetState extends State<_ReadingMindmapSheet> {
       return;
     }
 
+    final allowed = await ensurePlanFeatures(
+      context,
+      hasResultOrPending: false,
+      requirements: [
+        (has: (f) => f.aiMindmap, tier: UsagePlan.emperor),
+      ],
+    );
+    if (!allowed || !mounted) {
+      if (mounted) setState(() => _requesting = false);
+      return;
+    }
+
     final isRegen = force || _hasResult;
     if (isRegen) {
       final ok = await showReadingRegenerateConfirmDialog(

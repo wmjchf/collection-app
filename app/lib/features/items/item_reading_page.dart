@@ -30,7 +30,6 @@ import 'package:super_collection/features/items/reading_note_sheet.dart';
 import 'package:super_collection/features/items/reading_reparse_confirm_dialog.dart';
 import 'package:super_collection/features/items/reading_summary_sheet.dart';
 import 'package:super_collection/features/settings/quota_gate.dart';
-import 'package:super_collection/features/settings/upgrade_pro_page.dart';
 import 'package:super_collection/features/settings/usage_repository.dart';
 import 'package:super_collection/features/items/reading_tags_sheet.dart';
 import 'package:super_collection/features/items/transcript_models.dart';
@@ -411,43 +410,20 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
     }
   }
 
-  Future<void> _openUpgrade({String? initialTier}) async {
-    await Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => UpgradeProPage(
-          from: 'feature_gate',
-          initialTier: initialTier,
-        ),
-      ),
-    );
-  }
-
-  /// 档位不够且没有可看的结果时，跳过 AI 弹层，直达订阅页。
-  Future<bool> _gateAiSheet({
-    required bool Function(UsageFeatures f) hasFeature,
-    required bool hasResultOrPending,
-    required String upgradeTier,
-  }) async {
-    if (hasResultOrPending) return true;
-    try {
-      final usage = await _usageRepo.fetchUsage();
-      if (!usage.enforcing) return true;
-      if (hasFeature(usage.features)) return true;
-      if (!mounted) return false;
-      await _openUpgrade(initialTier: upgradeTier);
-      return false;
-    } catch (_) {
-      return true;
-    }
-  }
-
   Future<void> _openSummarySheet() async {
     final summary = _item.aiMeta.summary;
-    final ok = await _gateAiSheet(
-      hasFeature: (f) => f.aiSummary,
+    final needs = <PlanFeatureRequirement>[
+      (has: (f) => f.aiSummary, tier: UsagePlan.prince),
+    ];
+    if (_item.shouldAutoTranscribeBeforeMindmap) {
+      needs.add((has: (f) => f.transcript, tier: UsagePlan.emperor));
+    }
+    final ok = await ensurePlanFeatures(
+      context,
+      usageRepo: _usageRepo,
       hasResultOrPending:
           summary.hasText || summary.isPending || summary.isFailed,
-      upgradeTier: UsagePlan.prince,
+      requirements: needs,
     );
     if (!ok || !mounted) return;
 
@@ -875,6 +851,7 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
       transcriptPending: _item.hasAnyTranscriptPending &&
           !_item.aiMeta.tags.awaitTranscript,
       autoStartAiSuggest: autoStartAiSuggest,
+      needsAutoTranscript: _item.shouldAutoTranscribeBeforeMindmap,
       onTagsMetaChanged: _syncItemTagsMeta,
     );
     if (!mounted) return;
@@ -883,11 +860,14 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
 
   Future<void> _openMindmapSheet() async {
     final mindmap = _item.aiMeta.mindmap;
-    final ok = await _gateAiSheet(
-      hasFeature: (f) => f.aiMindmap,
+    final ok = await ensurePlanFeatures(
+      context,
+      usageRepo: _usageRepo,
       hasResultOrPending:
           mindmap.hasTree || mindmap.isPending || mindmap.isFailed,
-      upgradeTier: UsagePlan.emperor,
+      requirements: [
+        (has: (f) => f.aiMindmap, tier: UsagePlan.emperor),
+      ],
     );
     if (!ok || !mounted) return;
 
@@ -990,6 +970,15 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
   }
 
   Future<void> _onTranscript() async {
+    final allowed = await ensurePlanFeatures(
+      context,
+      usageRepo: _usageRepo,
+      requirements: [
+        (has: (f) => f.transcript, tier: UsagePlan.emperor),
+      ],
+    );
+    if (!allowed || !mounted) return;
+
     if (_item.hasAnyTranscriptPending) {
       AppToast.show(context, '请等当前转写完成');
       return;

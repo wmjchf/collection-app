@@ -14,6 +14,8 @@ import 'package:super_collection/features/collection/tag_models.dart';
 import 'package:super_collection/features/collection/tag_module_models.dart';
 import 'package:super_collection/features/collection/tag_modules_repository.dart';
 import 'package:super_collection/features/collection/tags_repository.dart';
+import 'package:super_collection/features/settings/quota_gate.dart';
+import 'package:super_collection/features/settings/usage_repository.dart';
 import 'package:super_collection/features/shell/user_avatar_button.dart';
 
 /// 我的收藏（系统分类 + 标签）
@@ -191,6 +193,13 @@ class _CollectionPageState extends State<CollectionPage> {
       AppToast.show(context, '至少需要 2 个标签才能 AI 归类');
       return;
     }
+    final allowed = await ensurePlanFeatures(
+      context,
+      requirements: [
+        (has: (f) => f.aiOrganize, tier: UsagePlan.prince),
+      ],
+    );
+    if (!allowed || !mounted) return;
     final ok = await showAiOrganizeSheet(context);
     if (ok == true && mounted) {
       await _load(quiet: true);
