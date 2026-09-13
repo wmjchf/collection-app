@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:super_collection/core/network/api_client.dart';
-import 'package:super_collection/core/ui/app_confirm_dialog.dart';
 import 'package:super_collection/features/collection/collection_tag_modules_section.dart';
 import 'package:super_collection/features/collection/create_module_sheet.dart';
 import 'package:super_collection/features/collection/create_tag_sheet.dart';
@@ -55,8 +54,6 @@ class _CollectionPageState extends State<CollectionPage> {
   String? _error;
   /// 归类标签区顶到顶栏：切换顶栏形态
   bool _tagsFocused = false;
-  /// 归类标签编辑态（仅删除 / 新建）
-  bool _editingTags = false;
 
   @override
   void initState() {
@@ -148,14 +145,12 @@ class _CollectionPageState extends State<CollectionPage> {
     if (focused == _tagsFocused) return;
     setState(() {
       _tagsFocused = focused;
-      if (!focused) _editingTags = false;
     });
   }
 
   Future<void> _exitTagsFocus() async {
     setState(() {
       _tagsFocused = false;
-      _editingTags = false;
     });
     if (!_scrollController.hasClients) return;
     await _scrollController.animateTo(
@@ -175,26 +170,6 @@ class _CollectionPageState extends State<CollectionPage> {
     final tag = await showCreateTagSheet(context, moduleId: moduleId);
     if (tag == null || !mounted) return;
     await _load(quiet: true);
-  }
-
-  Future<void> _deleteTag(Tag tag) async {
-    final ok = await showAppConfirmDialog(
-      context,
-      title: '删除标签',
-      message: '确定删除标签「${tag.name}」？仅解除关联，不会删除条目。',
-      confirmLabel: '删除',
-    );
-    if (ok != true || !mounted) return;
-    try {
-      await _tagsRepo.deleteTag(tag.id);
-      if (!mounted) return;
-      await _load(quiet: true);
-    } on ApiException catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.message)),
-      );
-    }
   }
 
   void _openSystemFilter(SystemFilter filter) {
@@ -263,15 +238,6 @@ class _CollectionPageState extends State<CollectionPage> {
               Icons.add_rounded,
               size: 24,
               color: Color(0xFF2F6FED),
-            ),
-          ),
-          IconButton(
-            tooltip: _editingTags ? '完成' : '编辑',
-            onPressed: () => setState(() => _editingTags = !_editingTags),
-            icon: Icon(
-              _editingTags ? Icons.check_rounded : Icons.draw_outlined,
-              size: 22,
-              color: const Color(0xFF2F6FED),
             ),
           ),
           const SizedBox(width: 4),
@@ -391,12 +357,8 @@ class _CollectionPageState extends State<CollectionPage> {
                 headerKey: _tagsHeaderKey,
                 modules: _modules,
                 ungrouped: _ungrouped,
-                editing: _editingTags,
                 showInlineHeader: !_tagsFocused,
-                onToggleEdit: () =>
-                    setState(() => _editingTags = !_editingTags),
                 onOpenTag: _openTag,
-                onDeleteTag: _deleteTag,
                 onAddTag: _addTagToModule,
                 onCreateModule: _createModule,
               ),
