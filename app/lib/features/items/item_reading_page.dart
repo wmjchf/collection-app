@@ -30,13 +30,14 @@ import 'package:super_collection/features/items/reading_note_sheet.dart';
 import 'package:super_collection/features/items/reading_reparse_confirm_dialog.dart';
 import 'package:super_collection/features/items/reading_summary_sheet.dart';
 import 'package:super_collection/features/settings/quota_gate.dart';
+import 'package:super_collection/features/settings/upgrade_pro_page.dart';
 import 'package:super_collection/features/settings/usage_repository.dart';
 import 'package:super_collection/features/items/reading_tags_sheet.dart';
 import 'package:super_collection/features/items/transcript_models.dart';
 import 'package:super_collection/features/items/transcript_picker_sheet.dart';
 import 'package:super_collection/features/items/transcript_segment_panel.dart';
 
-/// 本地阅读页：标题 + 可读正文（含标注高亮）；顶栏更多；底栏 AI 总结 / 标签 / 思维导图 / 感想（或转写条目下的「更多」）；总结与思维导图为底部弹层。
+/// 本地阅读页：标题 + 可读正文（含标注高亮）；顶栏更多；底栏 AI 总结 / 思维导图 / 标签 / 感想（或转写条目下的「更多」）；总结与思维导图为底部弹层。
 class ItemReadingPage extends StatefulWidget {
   const ItemReadingPage({
     super.key,
@@ -67,6 +68,7 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
   static const _bottomBarHeight = 56.0;
 
   final _repo = ItemsRepository();
+  final _usageRepo = UsageRepository();
   final _scrollController = ScrollController();
   late CollectionItem _item;
   List<Tag> _itemTags = const [];
@@ -409,7 +411,46 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
     }
   }
 
+  Future<void> _openUpgrade({String? initialTier}) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => UpgradeProPage(
+          from: 'feature_gate',
+          initialTier: initialTier,
+        ),
+      ),
+    );
+  }
+
+  /// 档位不够且没有可看的结果时，跳过 AI 弹层，直达订阅页。
+  Future<bool> _gateAiSheet({
+    required bool Function(UsageFeatures f) hasFeature,
+    required bool hasResultOrPending,
+    required String upgradeTier,
+  }) async {
+    if (hasResultOrPending) return true;
+    try {
+      final usage = await _usageRepo.fetchUsage();
+      if (!usage.enforcing) return true;
+      if (hasFeature(usage.features)) return true;
+      if (!mounted) return false;
+      await _openUpgrade(initialTier: upgradeTier);
+      return false;
+    } catch (_) {
+      return true;
+    }
+  }
+
   Future<void> _openSummarySheet() async {
+    final summary = _item.aiMeta.summary;
+    final ok = await _gateAiSheet(
+      hasFeature: (f) => f.aiSummary,
+      hasResultOrPending:
+          summary.hasText || summary.isPending || summary.isFailed,
+      upgradeTier: UsagePlan.prince,
+    );
+    if (!ok || !mounted) return;
+
     _summaryPollGen++;
     await showReadingSummarySheet(
       context,
@@ -841,6 +882,15 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
   }
 
   Future<void> _openMindmapSheet() async {
+    final mindmap = _item.aiMeta.mindmap;
+    final ok = await _gateAiSheet(
+      hasFeature: (f) => f.aiMindmap,
+      hasResultOrPending:
+          mindmap.hasTree || mindmap.isPending || mindmap.isFailed,
+      upgradeTier: UsagePlan.emperor,
+    );
+    if (!ok || !mounted) return;
+
     _mindmapPollGen++;
     final title = (_item.title ?? '').trim();
     await showReadingMindmapSheet(
@@ -1501,11 +1551,6 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
                                 onTap: _openSummarySheet,
                               ),
                               _ActionItem(
-                                icon: Icons.tag_outlined,
-                                label: '标签',
-                                onTap: _openTagsSheet,
-                              ),
-                              _ActionItem(
                                 icon: Icons.account_tree_outlined,
                                 iconSize: 20,
                                 label: _item.hasMindmapPending
@@ -1516,6 +1561,11 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
                                     ? _text
                                     : _muted,
                                 onTap: _openMindmapSheet,
+                              ),
+                              _ActionItem(
+                                icon: Icons.tag_outlined,
+                                label: '标签',
+                                onTap: _openTagsSheet,
                               ),
                               if (_hasTranscriptEntry)
                                 _ActionItem(

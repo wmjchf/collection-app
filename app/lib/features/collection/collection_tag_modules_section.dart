@@ -37,11 +37,12 @@ class CollectionTagModulesSection extends StatelessWidget {
   static const hairline = Color(0xFFD5DAE2);
   static const brand = Color(0xFF2F6FED);
   static const brandSoft = Color(0xFFE5EDFF);
-  /// AI 归类入口色（与标签主题蓝区分）
-  static const aiAccent = Color(0xFF6B5CE7);
   static const panel = Color(0xFFFFFFFF);
   static const ungroupedFill = Color(0xFFF4F6F9);
   static const ungroupedLine = Color(0xFFC5CAD3);
+  /// 未归类标签色（与主题蓝 / AI 入口区分）
+  static const ungroupedTag = Color(0xFF5C6675);
+  static const ungroupedTagSoft = Color(0xFFECEEF2);
 
   @override
   Widget build(BuildContext context) {
@@ -340,7 +341,7 @@ class _ModuleBlock extends StatelessWidget {
                           Icon(
                             Icons.auto_awesome_outlined,
                             size: 15,
-                            color: CollectionTagModulesSection.aiAccent,
+                            color: CollectionTagModulesSection.brand,
                           ),
                           SizedBox(width: 4),
                           Text(
@@ -348,7 +349,7 @@ class _ModuleBlock extends StatelessWidget {
                             style: TextStyle(
                               fontSize: 13,
                               fontWeight: FontWeight.w600,
-                              color: CollectionTagModulesSection.aiAccent,
+                              color: CollectionTagModulesSection.brand,
                             ),
                           ),
                         ],
@@ -396,6 +397,7 @@ class _ModuleBlock extends StatelessWidget {
                 _TagChip(
                   label: tag.name,
                   count: tag.itemCount,
+                  muted: ungrouped,
                   onTap: () => onOpenTag(tag),
                 ),
             ],
@@ -512,11 +514,13 @@ class _TagChip extends StatefulWidget {
     required this.label,
     required this.count,
     required this.onTap,
+    this.muted = false,
   });
 
   final String label;
   final int count;
   final VoidCallback onTap;
+  final bool muted;
 
   @override
   State<_TagChip> createState() => _TagChipState();
@@ -539,6 +543,12 @@ class _TagChipState extends State<_TagChip> {
   @override
   Widget build(BuildContext context) {
     final text = _hashLabel(widget.label);
+    final color = widget.muted
+        ? CollectionTagModulesSection.ungroupedTag
+        : CollectionTagModulesSection.brand;
+    final soft = widget.muted
+        ? CollectionTagModulesSection.ungroupedTagSoft
+        : CollectionTagModulesSection.brandSoft;
 
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
@@ -558,9 +568,7 @@ class _TagChipState extends State<_TagChip> {
           curve: Curves.easeOutCubic,
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
           decoration: BoxDecoration(
-            color: _pressed
-                ? CollectionTagModulesSection.brandSoft
-                : Colors.transparent,
+            color: _pressed ? soft : Colors.transparent,
             borderRadius: BorderRadius.circular(8),
           ),
           child: Row(
@@ -572,11 +580,11 @@ class _TagChipState extends State<_TagChip> {
                   text,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.w500,
                     height: 1.25,
-                    color: CollectionTagModulesSection.brand,
+                    color: color,
                   ),
                 ),
               ),
@@ -588,8 +596,7 @@ class _TagChipState extends State<_TagChip> {
                     fontSize: 12,
                     fontWeight: FontWeight.w600,
                     height: 1.25,
-                    color: CollectionTagModulesSection.brand
-                        .withValues(alpha: 0.65),
+                    color: color.withValues(alpha: 0.65),
                   ),
                 ),
               ],
