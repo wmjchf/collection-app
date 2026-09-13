@@ -244,7 +244,7 @@ class _CollectionPageState extends State<CollectionPage> {
     final tagCount = _ungrouped.length +
         _modules.fold<int>(0, (n, m) => n + m.tags.length);
     if (tagCount < 2) {
-      AppToast.show(context, '至少需要 2 个标签才能 AI 归类');
+      AppToast.show(context, '至少需要 2 个标签才能 AI 标签归类');
       return;
     }
     final allowed = await ensurePlanFeatures(

@@ -104,7 +104,7 @@ class CollectionTagModulesSection extends StatelessWidget {
                 const Padding(
                   padding: EdgeInsets.only(bottom: 12),
                   child: Text(
-                    '还没有归类。可用未归类旁的 AI 归类，或点右侧 + 新建归类。',
+                    '还没有归类。可用未归类旁的 AI 标签归类，或点右侧 + 新建归类。',
                     style: TextStyle(
                       fontSize: 13,
                       height: 1.45,
@@ -468,7 +468,7 @@ class _ModuleBlock extends StatelessWidget {
                           ),
                           SizedBox(width: 4),
                           Text(
-                            'AI 归类',
+                            'AI 标签归类',
                             style: TextStyle(
                               fontSize: 14,
                               fontWeight: FontWeight.w600,

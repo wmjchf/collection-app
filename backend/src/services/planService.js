@@ -25,7 +25,7 @@ const FEATURE_MIN_PLAN = {
 const FEATURE_MESSAGES = {
   ai_tags: '订阅太子后可使用 AI 标签',
   ai_summary: '订阅太子后可使用 AI 解读',
-  ai_organize: '订阅太子后可使用 AI 归类',
+  ai_organize: '订阅太子后可使用 AI 标签归类',
   ai_mindmap: '订阅帝王后可使用 AI 思维导图',
   transcript: '订阅帝王后可使用视频转写',
   item_create: '收藏已达上限，订阅太子后可继续',

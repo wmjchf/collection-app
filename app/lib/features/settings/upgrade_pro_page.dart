@@ -393,7 +393,7 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
                   ),
                 _TierPlanCard(
                   title: '太子Pro',
-                  tagline: '智能整理：不限收藏，解锁 AI',
+                  tagline: '智能整理：不限收藏，解锁 AI 标签、解读与标签归类',
                   priceLabel: _isIos && !_productsLoading && _error == null
                       ? _priceLabelForTier(UsagePlan.prince)
                       : null,
@@ -498,6 +498,7 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
       const _PlanFeature('收藏不限条数', included: true),
       const _PlanFeature('AI 标签', included: true),
       const _PlanFeature('AI 解读', included: true),
+      const _PlanFeature('AI 标签归类', included: true),
       const _PlanFeature('AI 思维导图', included: false),
       const _PlanFeature('视频 / 音频转写', included: false),
       _PlanFeature(

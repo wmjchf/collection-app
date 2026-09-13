@@ -7,7 +7,7 @@ import 'package:super_collection/features/collection/ai_organize_models.dart';
 import 'package:super_collection/features/collection/tag_modules_repository.dart';
 import 'package:super_collection/features/settings/quota_gate.dart';
 
-/// 弹出 AI 归类：生成建议 → 预览 → 应用。成功返回 true。
+/// 弹出 AI 标签归类：生成建议 → 预览 → 应用。成功返回 true。
 Future<bool?> showAiOrganizeSheet(BuildContext context) {
   return showModalBottomSheet<bool>(
     context: context,
@@ -152,7 +152,7 @@ class _AiOrganizeSheetState extends State<_AiOrganizeSheet> {
                       ),
                       const SizedBox(width: 6),
                       const Text(
-                        'AI 归类',
+                        'AI 标签归类',
                         style: TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.w700,
