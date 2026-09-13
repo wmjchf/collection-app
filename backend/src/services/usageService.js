@@ -450,7 +450,7 @@ function aiFeatureLabel(feature) {
     case 'mindmap':
       return 'AI 思维导图';
     case 'organize':
-      return 'AI 归类';
+      return 'AI 标签归类';
     case 'tags':
       return 'AI 标签';
     default:

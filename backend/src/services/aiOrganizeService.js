@@ -152,7 +152,7 @@ async function suggestOrganize(userId, { hint } = {}) {
   const { modules, ungrouped } = await tagModuleService.listModules(userId);
   const tagById = collectUserTags(modules, ungrouped);
   if (tagById.size < 2) {
-    throw Object.assign(new Error('至少需要 2 个标签才能 AI 归类'), {
+    throw Object.assign(new Error('至少需要 2 个标签才能 AI 标签归类'), {
       status: 400,
     });
   }

@@ -41,13 +41,17 @@ class AppToast {
 
     _entry = OverlayEntry(
       builder: (ctx) {
-        final bottom = MediaQuery.paddingOf(ctx).bottom;
+        // 注册 InheritedWidget 依赖，键盘高度变化时重建；数值仍从 View 读取
+        //（Scaffold / sheet 子树常把 MediaQuery.viewInsets 清零）。
+        MediaQuery.viewInsetsOf(ctx);
+        final data = MediaQueryData.fromView(View.of(ctx));
+        final bottomInset = data.padding.bottom + data.viewInsets.bottom;
         return Stack(
           children: [
             Positioned(
               left: 24,
               right: 24,
-              bottom: 16 + bottom,
+              bottom: 16 + bottomInset,
               child: Center(
                 child: _ToastPill(
                   message: message,
@@ -84,13 +88,14 @@ class AppToast {
     final messenger = ScaffoldMessenger.maybeOf(context);
     if (messenger == null) return;
 
-    final bottom = MediaQuery.paddingOf(context).bottom;
+    final data = MediaQueryData.fromView(View.of(context));
+    final bottomInset = data.padding.bottom + data.viewInsets.bottom;
     messenger.showSnackBar(
       SnackBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
         behavior: SnackBarBehavior.floating,
-        margin: EdgeInsets.fromLTRB(24, 0, 24, 16 + bottom),
+        margin: EdgeInsets.fromLTRB(24, 0, 24, 16 + bottomInset),
         padding: EdgeInsets.zero,
         duration: duration ??
             (loading ? const Duration(days: 1) : const Duration(seconds: 2)),

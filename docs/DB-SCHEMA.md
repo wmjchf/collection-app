@@ -206,7 +206,7 @@ API：`GET …/transcript-targets`、`POST …/transcript`（body.segmentKey）�
 | `POST /api/tag-modules` | body `{ name }` 新建模块（仅标题） |
 | `PATCH /api/tag-modules/:id` | body `{ name }` 重命名 |
 | `DELETE /api/tag-modules/:id` | 删除模块；组内标签回未归类 |
-| `POST /api/tag-modules/ai-organize` | AI 归类建议（同步，不落库）；太子+；共享 AI token；body 可选 `{ hint }` |
+| `POST /api/tag-modules/ai-organize` | AI 标签归类建议（同步，不落库）；太子+；共享 AI token；body 可选 `{ hint }` |
 | `POST /api/tag-modules/ai-organize/apply` | 应用方案：新建模块 + `placeTag`；body `{ modules:[{ name, existingModuleId?, tagIds[] }], ungroupedTagIds[] }` |
 
 ## 系统筛选 API（约定）
