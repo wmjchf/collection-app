@@ -1,10 +1,12 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:super_collection/features/collection/tag_models.dart';
 import 'package:super_collection/features/collection/tag_module_models.dart';
 
-/// 归类标签：按归类分组展示；可新建归类、点归类名操作。
+/// 归类标签：按归类分组展示；可新建归类、点归类名操作；长按拖标签换模块。
 class CollectionTagModulesSection extends StatelessWidget {
   const CollectionTagModulesSection({
     super.key,
@@ -16,6 +18,7 @@ class CollectionTagModulesSection extends StatelessWidget {
     this.onRenameModule,
     this.onDeleteModule,
     this.onAiOrganize,
+    this.onPlaceTag,
     this.headerKey,
     this.headerCollapse,
   });
@@ -28,6 +31,8 @@ class CollectionTagModulesSection extends StatelessWidget {
   final ValueChanged<TagModule>? onRenameModule;
   final ValueChanged<TagModule>? onDeleteModule;
   final VoidCallback? onAiOrganize;
+  /// 拖放到目标归类（`null` = 未归类）。
+  final void Function(Tag tag, int? targetModuleId)? onPlaceTag;
   final Key? headerKey;
   /// 0 展开页内标题，1 收进顶栏；为 null 则始终展开。
   final ValueListenable<double>? headerCollapse;
@@ -50,12 +55,14 @@ class CollectionTagModulesSection extends StatelessWidget {
 
     final blocks = <Widget>[
       _ModuleBlock(
+        moduleId: null,
         title: '未归类',
         titleMuted: true,
         ungrouped: true,
         tags: ungrouped,
         onOpenTag: onOpenTag,
         onAiOrganize: onAiOrganize,
+        onPlaceTag: onPlaceTag,
       ),
     ];
 
@@ -63,6 +70,7 @@ class CollectionTagModulesSection extends StatelessWidget {
       blocks.add(const SizedBox(height: 26));
       blocks.add(
         _ModuleBlock(
+          moduleId: m.id,
           title: m.name,
           tags: m.tags,
           onOpenTag: onOpenTag,
@@ -71,6 +79,7 @@ class CollectionTagModulesSection extends StatelessWidget {
           onAddTag: () => onAddTag(m.id),
           onDeleteModule:
               onDeleteModule != null ? () => onDeleteModule!(m) : null,
+          onPlaceTag: onPlaceTag,
         ),
       );
     }
@@ -330,6 +339,7 @@ Future<void> _showModuleActionsMenu(
 
 class _ModuleBlock extends StatelessWidget {
   const _ModuleBlock({
+    required this.moduleId,
     required this.title,
     required this.tags,
     required this.onOpenTag,
@@ -337,10 +347,13 @@ class _ModuleBlock extends StatelessWidget {
     this.onAddTag,
     this.onDeleteModule,
     this.onAiOrganize,
+    this.onPlaceTag,
     this.titleMuted = false,
     this.ungrouped = false,
   });
 
+  /// `null` = 未归类。
+  final int? moduleId;
   final String title;
   final bool titleMuted;
   final bool ungrouped;
@@ -350,6 +363,7 @@ class _ModuleBlock extends StatelessWidget {
   final VoidCallback? onAddTag;
   final VoidCallback? onDeleteModule;
   final VoidCallback? onAiOrganize;
+  final void Function(Tag tag, int? targetModuleId)? onPlaceTag;
 
   bool get _hasActions =>
       !ungrouped &&
@@ -365,6 +379,8 @@ class _ModuleBlock extends StatelessWidget {
       onDelete: onDeleteModule,
     );
   }
+
+  bool _canAccept(Tag tag) => tag.moduleId != moduleId;
 
   @override
   Widget build(BuildContext context) {
@@ -484,48 +500,79 @@ class _ModuleBlock extends StatelessWidget {
             children: [
               for (final tag in tags)
                 _TagChip(
-                  label: tag.name,
-                  count: tag.itemCount,
+                  tag: tag,
                   muted: ungrouped,
                   onTap: () => onOpenTag(tag),
+                  draggable: onPlaceTag != null,
                 ),
             ],
           ),
       ],
     );
 
-    if (!ungrouped) return body;
-
-    return CustomPaint(
-      painter: const _DashedRRectPainter(
-        color: CollectionTagModulesSection.ungroupedLine,
-        radius: 14,
-      ),
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.fromLTRB(12, 12, 10, 14),
-        decoration: BoxDecoration(
-          color: CollectionTagModulesSection.ungroupedFill,
-          borderRadius: BorderRadius.circular(14),
-        ),
+    Widget block;
+    if (!ungrouped) {
+      // 悬停高亮时要留内边距，否则标题蓝点贴着高亮左缘。
+      block = Padding(
+        padding: const EdgeInsets.fromLTRB(10, 8, 8, 10),
         child: body,
-      ),
+      );
+    } else {
+      block = CustomPaint(
+        painter: const _DashedRRectPainter(
+          color: CollectionTagModulesSection.ungroupedLine,
+          radius: 14,
+        ),
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.fromLTRB(12, 12, 10, 14),
+          decoration: BoxDecoration(
+            color: CollectionTagModulesSection.ungroupedFill,
+            borderRadius: BorderRadius.circular(14),
+          ),
+          child: body,
+        ),
+      );
+    }
+
+    if (onPlaceTag == null) return block;
+
+    return DragTarget<Tag>(
+      onWillAcceptWithDetails: (details) => _canAccept(details.data),
+      onAcceptWithDetails: (details) {
+        if (!_canAccept(details.data)) return;
+        onPlaceTag!(details.data, moduleId);
+      },
+      builder: (context, candidateData, rejectedData) {
+        final hovering = candidateData.any((t) => t != null && _canAccept(t));
+        return AnimatedContainer(
+          duration: const Duration(milliseconds: 120),
+          curve: Curves.easeOutCubic,
+          decoration: BoxDecoration(
+            color: hovering
+                ? CollectionTagModulesSection.brandSoft.withValues(alpha: 0.55)
+                : Colors.transparent,
+            borderRadius: BorderRadius.circular(ungrouped ? 14 : 10),
+          ),
+          child: block,
+        );
+      },
     );
   }
 }
 
 class _TagChip extends StatefulWidget {
   const _TagChip({
-    required this.label,
-    required this.count,
+    required this.tag,
     required this.onTap,
     this.muted = false,
+    this.draggable = false,
   });
 
-  final String label;
-  final int count;
+  final Tag tag;
   final VoidCallback onTap;
   final bool muted;
+  final bool draggable;
 
   @override
   State<_TagChip> createState() => _TagChipState();
@@ -533,6 +580,8 @@ class _TagChip extends StatefulWidget {
 
 class _TagChipState extends State<_TagChip> {
   bool _pressed = false;
+  Timer? _autoScrollTimer;
+  double _autoScrollDelta = 0;
 
   static String _hashLabel(String name) {
     final n = name.trim();
@@ -545,9 +594,69 @@ class _TagChipState extends State<_TagChip> {
     setState(() => _pressed = value);
   }
 
+  void _stopAutoScroll() {
+    _autoScrollTimer?.cancel();
+    _autoScrollTimer = null;
+    _autoScrollDelta = 0;
+  }
+
+  /// 拖到列表可视区上下边缘时自动滚动，以便放到视野外的归类。
+  void _onDragUpdate(DragUpdateDetails details) {
+    final scrollable = Scrollable.maybeOf(context);
+    if (scrollable == null) {
+      _stopAutoScroll();
+      return;
+    }
+    final box = scrollable.context.findRenderObject() as RenderBox?;
+    if (box == null || !box.hasSize) {
+      _stopAutoScroll();
+      return;
+    }
+
+    const edge = 72.0;
+    final top = box.localToGlobal(Offset.zero).dy;
+    final bottom = top + box.size.height;
+    final y = details.globalPosition.dy;
+
+    var delta = 0.0;
+    if (y < top + edge) {
+      final t = ((top + edge - y) / edge).clamp(0.0, 1.0);
+      delta = -(6.0 + 20.0 * t);
+    } else if (y > bottom - edge) {
+      final t = ((y - (bottom - edge)) / edge).clamp(0.0, 1.0);
+      delta = 6.0 + 20.0 * t;
+    }
+
+    if (delta == 0) {
+      _stopAutoScroll();
+      return;
+    }
+
+    _autoScrollDelta = delta;
+    final position = scrollable.position;
+    _autoScrollTimer ??= Timer.periodic(const Duration(milliseconds: 16), (_) {
+      if (!position.hasContentDimensions) return;
+      final next = (position.pixels + _autoScrollDelta).clamp(
+        position.minScrollExtent,
+        position.maxScrollExtent,
+      );
+      if (next != position.pixels) {
+        position.jumpTo(next);
+      }
+    });
+  }
+
   @override
-  Widget build(BuildContext context) {
-    final text = _hashLabel(widget.label);
+  void dispose() {
+    _stopAutoScroll();
+    super.dispose();
+  }
+
+  Widget _buildVisual({
+    required bool pressed,
+    required bool feedback,
+  }) {
+    final text = _hashLabel(widget.tag.name);
     final color = widget.muted
         ? CollectionTagModulesSection.ungroupedTag
         : CollectionTagModulesSection.brand;
@@ -555,25 +664,17 @@ class _TagChipState extends State<_TagChip> {
         ? CollectionTagModulesSection.ungroupedTagSoft
         : CollectionTagModulesSection.brandSoft;
 
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTapDown: (_) {
-        _setPressed(true);
-        HapticFeedback.selectionClick();
-      },
-      onTapUp: (_) => _setPressed(false),
-      onTapCancel: () => _setPressed(false),
-      onTap: widget.onTap,
-      child: AnimatedScale(
-        scale: _pressed ? 0.92 : 1,
-        duration: const Duration(milliseconds: 90),
-        curve: Curves.easeOutCubic,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 90),
-          curve: Curves.easeOutCubic,
+    return Material(
+      color: Colors.transparent,
+      elevation: feedback ? 6 : 0,
+      shadowColor: Colors.black.withValues(alpha: 0.18),
+      borderRadius: BorderRadius.circular(8),
+      child: Transform.scale(
+        scale: feedback ? 1.06 : 1,
+        child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
           decoration: BoxDecoration(
-            color: _pressed ? soft : Colors.transparent,
+            color: feedback || pressed ? soft : Colors.transparent,
             borderRadius: BorderRadius.circular(8),
           ),
           child: Row(
@@ -593,10 +694,10 @@ class _TagChipState extends State<_TagChip> {
                   ),
                 ),
               ),
-              if (widget.count > 0) ...[
+              if (widget.tag.itemCount > 0) ...[
                 const SizedBox(width: 4),
                 Text(
-                  '${widget.count}',
+                  '${widget.tag.itemCount}',
                   style: TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w600,
@@ -609,6 +710,50 @@ class _TagChipState extends State<_TagChip> {
           ),
         ),
       ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final chip = GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTapDown: (_) {
+        _setPressed(true);
+        HapticFeedback.selectionClick();
+      },
+      onTapUp: (_) => _setPressed(false),
+      onTapCancel: () => _setPressed(false),
+      onTap: widget.onTap,
+      child: AnimatedScale(
+        scale: _pressed ? 0.92 : 1,
+        duration: const Duration(milliseconds: 90),
+        curve: Curves.easeOutCubic,
+        child: _buildVisual(pressed: _pressed, feedback: false),
+      ),
+    );
+
+    if (!widget.draggable) return chip;
+
+    return LongPressDraggable<Tag>(
+      data: widget.tag,
+      hapticFeedbackOnStart: true,
+      onDragStarted: () {
+        _setPressed(false);
+        HapticFeedback.mediumImpact();
+      },
+      onDragUpdate: _onDragUpdate,
+      onDragEnd: (_) => _stopAutoScroll(),
+      onDraggableCanceled: (_, __) => _stopAutoScroll(),
+      // Overlay 给的是松约束，Material 会撑满屏宽；再 scale 会以整屏中心为原点，
+      // 看起来像拖起后贴左、左边没 padding。用 UnconstrainedBox 保芯片固有尺寸。
+      feedback: UnconstrainedBox(
+        child: _buildVisual(pressed: false, feedback: true),
+      ),
+      childWhenDragging: Opacity(
+        opacity: 0.35,
+        child: _buildVisual(pressed: false, feedback: false),
+      ),
+      child: chip,
     );
   }
 }
