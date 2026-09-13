@@ -64,22 +64,13 @@ class TagModulesRepository {
   }
 
   /// AI 归类建议（同步）；不落库。
-  /// [force] 时附带 [previous] 快照，引导换划分。
   Future<({AiOrganizeProposal proposal, String message})> suggestAiOrganize({
     String? hint,
-    bool force = false,
-    AiOrganizeProposal? previous,
   }) async {
     final token = await _token();
     final body = <String, dynamic>{};
     final h = hint?.trim();
     if (h != null && h.isNotEmpty) body['hint'] = h;
-    if (force) {
-      body['force'] = true;
-      if (previous != null) {
-        body['previousProposal'] = previous.toRegenerateSnapshot();
-      }
-    }
     final json = await _api.post(
       '/api/tag-modules/ai-organize',
       body: body,

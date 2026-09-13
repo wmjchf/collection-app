@@ -54,20 +54,16 @@ class _AiOrganizeSheetState extends State<_AiOrganizeSheet> {
     unawaited(_generate());
   }
 
-  Future<void> _generate({bool force = false}) async {
+  Future<void> _generate() async {
     if (_generateInFlight || _applying) return;
-    final previous = force ? _proposal : null;
     setState(() {
       _generateInFlight = true;
       _loading = true;
       _error = null;
-      if (force) _proposal = null;
+      _proposal = null;
     });
     try {
-      final result = await _repo.suggestAiOrganize(
-        force: force,
-        previous: previous,
-      );
+      final result = await _repo.suggestAiOrganize();
       if (!mounted) return;
       setState(() {
         _loading = false;
@@ -122,8 +118,6 @@ class _AiOrganizeSheetState extends State<_AiOrganizeSheet> {
   Widget build(BuildContext context) {
     final bottom = MediaQuery.paddingOf(context).bottom;
     final maxH = MediaQuery.sizeOf(context).height * 0.78;
-    final showRegen =
-        _proposal != null && !_loading && !_applying && !_generateInFlight;
 
     return Padding(
       padding: EdgeInsets.fromLTRB(16, 0, 16, 16 + (bottom > 0 ? bottom : 0)),
@@ -166,21 +160,6 @@ class _AiOrganizeSheetState extends State<_AiOrganizeSheet> {
                         ),
                       ),
                       const Spacer(),
-                      if (showRegen) ...[
-                        GestureDetector(
-                          onTap: () => unawaited(_generate(force: true)),
-                          behavior: HitTestBehavior.opaque,
-                          child: const Padding(
-                            padding: EdgeInsets.all(4),
-                            child: Icon(
-                              Icons.refresh_rounded,
-                              size: 20,
-                              color: _muted,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 4),
-                      ],
                       GestureDetector(
                         onTap: _close,
                         behavior: HitTestBehavior.opaque,
@@ -273,7 +252,7 @@ class _AiOrganizeSheetState extends State<_AiOrganizeSheet> {
             ),
             const SizedBox(height: 12),
             GestureDetector(
-              onTap: () => unawaited(_generate(force: true)),
+              onTap: () => unawaited(_generate()),
               child: const Text(
                 '重试',
                 style: TextStyle(
