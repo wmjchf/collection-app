@@ -774,8 +774,8 @@ class _SearchModePicker extends StatelessWidget {
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       onSelected: onChanged,
       itemBuilder: (context) => [
-        _menuItem(_SearchMode.tags, '标签'),
         _menuItem(_SearchMode.content, '全文'),
+        _menuItem(_SearchMode.tags, '标签'),
       ],
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 10),
