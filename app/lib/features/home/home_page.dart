@@ -24,6 +24,7 @@ import 'package:super_collection/features/onboarding/home_coach_overlay.dart';
 import 'package:super_collection/features/onboarding/shortcuts_help_page.dart';
 import 'package:super_collection/features/search/search_page.dart';
 import 'package:super_collection/features/shell/user_avatar_button.dart';
+import 'package:super_collection/features/settings/trial_expiry_banner.dart';
 
 /// 一级页：首页 — 未读 / 最近阅读
 class HomePage extends StatefulWidget {
@@ -72,6 +73,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   /// 已处理过的剪贴板链接，避免反复保存
   String? _lastClipboardHandledUrl;
   bool _clipboardOfferRunning = false;
+  int _trialRefreshTick = 0;
 
   @override
   void initState() {
@@ -98,6 +100,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
           unawaited(_maybeOfferClipboardLink());
         }
       });
+      if (mounted) setState(() => _trialRefreshTick++);
     }
   }
 
@@ -732,6 +735,11 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                         physics: const AlwaysScrollableScrollPhysics(),
                         padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
                         children: [
+                          TrialExpiryBannerHost(
+                            margin: const EdgeInsets.only(bottom: 12),
+                            refreshTick:
+                                widget.refreshTick + _trialRefreshTick,
+                          ),
                           _HomeSection(
                             title: '未读',
                             emptyText: '暂无未读',

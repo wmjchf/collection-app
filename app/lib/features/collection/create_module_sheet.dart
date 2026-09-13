@@ -55,7 +55,7 @@ class _CreateModuleSheetState extends State<_CreateModuleSheet> {
     if (_submitting) return;
     final name = _controller.text.trim();
     if (name.isEmpty) {
-      setState(() => _error = '请输入模块名称');
+      setState(() => _error = '请输入归类名称');
       return;
     }
     if (name.length > 64) {
@@ -116,7 +116,7 @@ class _CreateModuleSheetState extends State<_CreateModuleSheet> {
                 child: Row(
                   children: [
                     const Text(
-                      '新建模块',
+                      '新建归类',
                       style: TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.w700,

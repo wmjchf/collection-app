@@ -15,11 +15,13 @@ const {
 
 const TAGS_SYSTEM_PROMPT =
   '你是收藏整理助手。根据本篇收藏的实际内容，建议 3～5 个简短中文标签（每个 2～8 字），帮助分类与检索。' +
+  '贴合正文是第一原则：标签必须能概括或索引本篇要点，不要为了「复用」硬套弱相关的已有标签。' +
   '用户已有标签可能带层级路径（用 › 连接，如「旅游 › 南京」）；› 左侧是整理用的父级，右侧才是标签名。' +
-  '强烈优先复用与本篇内容真正相关的已有标签（输出时只写短名，不要带路径）。' +
+  '在贴合内容的前提下，优先选用与本篇真正相关的已有标签（输出时只写短名，不要带路径），便于多篇归并；' +
+  '若已有标签无法准确覆盖本篇主题/实体/场景，应提出新标签名（将作为根级创建，用户可稍后整理）。' +
+  '通常可混用：若干贴合的已有标签 + 必要的新标签；不要整组都只挑已有、也不要无视已有全部新建。' +
   '不要因为某标签挂在某个父级下就连父级一起建议；父级关联由系统在用户采纳后自动处理。' +
   '是否建议某标签只看本篇在讲什么，不看它在树里挂在哪。' +
-  '仅当没有合适已有项时才建议新标签名（将作为根级创建，用户可稍后整理）。' +
   '不要建议「本篇已打标签」列表中的任何名称。' +
   '只输出 JSON：{"tags":["标签1","标签2"]}，其中为短标签名本身（不要带路径），不要其它字段或说明。';
 
@@ -247,7 +249,7 @@ async function requestAiSuggest(userId, itemId, { force = false } = {}) {
   const previewMessages = buildAiTaskMessages(inputText, [
     TAGS_SYSTEM_PROMPT,
     regenBlock,
-    '请为以上内容建议标签。',
+    '请根据正文建议标签：先判断内容需要什么标签，再决定复用已有还是新建。',
   ]);
   await usageService.assertAiQuota(userId, {
     estimatedTokens: usageService.estimateAiTokens({
@@ -314,10 +316,10 @@ async function runAiSuggestJob(itemId) {
     const regenBlock = formatRegenerateUserBlock(meta.tags.regenerateFrom);
     const messages = buildAiTaskMessages(inputText, [
       TAGS_SYSTEM_PROMPT,
-      `用户已有标签（请优先复用相关项；› 仅为整理路径，输出只要短名）：${existingNames}`,
+      `用户已有标签（仅当与正文确实贴合时才复用；› 仅为整理路径，输出只要短名）：${existingNames}`,
       `本篇已打标签（请勿重复建议）：${currentNames}`,
       regenBlock,
-      '请根据本篇实际内容建议标签；能复用已有短名则复用，不要为了树结构推荐父级。',
+      '请根据正文建议标签：先判断内容需要什么，再决定复用已有短名还是新建；不要为了树结构推荐父级。',
     ]);
 
     const usageService = require('./usageService');

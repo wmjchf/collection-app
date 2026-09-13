@@ -75,7 +75,7 @@ function formatRegenerateUserBlock(from) {
   }
   if (from.kind === 'tags') {
     return (
-      `【重新生成】换角度建议标签，与上一版明显不同。\n` +
+      `【重新生成】换角度建议标签，与上一版明显不同；仍须贴合正文，勿硬套弱相关已有标签。\n` +
       `上一版：${from.names.join('、')}`
     );
   }

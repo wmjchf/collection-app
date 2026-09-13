@@ -156,6 +156,45 @@ function assertValidTransaction(tx, { productId } = {}) {
   return tx;
 }
 
+function durationSuggestsFreeTrial(tx) {
+  const productId = String(tx?.productId || '');
+  const isMonthly =
+    /month/i.test(productId) && !/year|annual/i.test(productId);
+  if (!isMonthly) return false;
+  const purchase = Number(tx.purchaseDate);
+  const expires = Number(tx.expiresDate);
+  if (!Number.isFinite(purchase) || !Number.isFinite(expires)) return false;
+  const span = expires - purchase;
+  return span > 0 && span <= 8.5 * 24 * 60 * 60 * 1000;
+}
+
+/** 从 Apple Transaction 抽出试用相关 meta */
+function trialFieldsFromTx(tx) {
+  const offerType = tx.offerType != null ? Number(tx.offerType) : null;
+  const offerDiscountType = tx.offerDiscountType
+    ? String(tx.offerDiscountType)
+    : null;
+  let isTrial = offerDiscountType === 'FREE_TRIAL';
+  if (!isTrial && offerType === 1 && !offerDiscountType) {
+    isTrial = durationSuggestsFreeTrial(tx);
+  }
+  if (!isTrial && offerType == null && offerDiscountType == null) {
+    isTrial = durationSuggestsFreeTrial(tx);
+  }
+  // 正式续期 / 非 intro：明确标 false，避免旧 meta 残留
+  if (offerDiscountType && offerDiscountType !== 'FREE_TRIAL') {
+    isTrial = false;
+  }
+  if (offerType != null && offerType !== 1 && offerDiscountType !== 'FREE_TRIAL') {
+    isTrial = false;
+  }
+  return {
+    offerType: Number.isFinite(offerType) ? offerType : null,
+    offerDiscountType,
+    isTrial,
+  };
+}
+
 /**
  * 校验交易并为用户开通 / 续期 Pro
  * @param {{ userId: number, transactionId: string, productId?: string, jws?: string }}
@@ -195,6 +234,7 @@ async function verifyAndActivate({ userId, transactionId, productId, jws }) {
     throw Object.assign(new Error('未知的订阅商品'), { status: 400 });
   }
 
+  const trial = trialFieldsFromTx(tx);
   const sub = await subscriptionService.activateSubscription({
     userId,
     plan,
@@ -209,6 +249,7 @@ async function verifyAndActivate({ userId, transactionId, productId, jws }) {
       type: tx.type || null,
       purchaseDate: tx.purchaseDate || null,
       expiresDate: tx.expiresDate || null,
+      ...trial,
     },
   });
 
@@ -304,6 +345,7 @@ async function handleServerNotification(signedPayload) {
     const expiresAt =
       Number.isFinite(expiresMs) && expiresMs > 0 ? new Date(expiresMs) : null;
     if (expiresAt && expiresAt.getTime() > Date.now()) {
+      const trial = trialFieldsFromTx(tx);
       const updated = await subscriptionService.extendByExternalId({
         source: 'apple',
         externalId: originalId,
@@ -314,10 +356,26 @@ async function handleServerNotification(signedPayload) {
           productId: tx.productId,
           transactionId: String(tx.transactionId || ''),
           environment,
+          ...trial,
         },
       });
       return { handled: true, action: 'extend', updated };
     }
+  }
+
+  if (notificationType === 'DID_CHANGE_RENEWAL_STATUS') {
+    const autoRenewEnabled = subtype !== 'AUTO_RENEW_DISABLED';
+    const updated = await subscriptionService.patchMetaByExternalId({
+      source: 'apple',
+      externalId: originalId,
+      metaPatch: {
+        autoRenewEnabled,
+        lastNotificationType: notificationType,
+        subtype,
+        productId: tx.productId || decodedTx.productId || null,
+      },
+    });
+    return { handled: true, action: 'renewal_status', updated };
   }
 
   if (expireTypes.has(notificationType)) {

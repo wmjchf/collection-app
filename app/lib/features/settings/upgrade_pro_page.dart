@@ -42,6 +42,8 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
   final _usageRepo = UsageRepository();
 
   Map<String, ProductDetails> _products = {};
+  /// 月付 SKU → 是否仍有资格领取免费试用（StoreKit2）
+  Map<String, bool> _introEligible = {};
   PlanQuotasTable _quotas = PlanQuotasTable.defaults;
   BillingProductsConfig? _billing;
   String _selectedTier = UsagePlan.prince;
@@ -113,8 +115,11 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
     try {
       final result = await _iap.loadProducts(productIds: billing.allIds);
       if (!mounted) return;
+      final eligible = await _resolveIntroEligibility(result.products);
+      if (!mounted) return;
       setState(() {
         _products = result.products;
+        _introEligible = eligible;
         _productsLoading = false;
         _error = null;
       });
@@ -122,12 +127,14 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
       if (!mounted) return;
       setState(() {
         _productsLoading = false;
+        _introEligible = {};
         _error = e.message;
       });
     } catch (_) {
       if (!mounted) return;
       setState(() {
         _productsLoading = false;
+        _introEligible = {};
         _error = '无法加载订阅商品';
       });
     }
@@ -181,10 +188,40 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
     return null;
   }
 
+  Future<Map<String, bool>> _resolveIntroEligibility(
+    Map<String, ProductDetails> products,
+  ) async {
+    final out = <String, bool>{};
+    for (final entry in products.entries) {
+      final offer = freeTrialOfferOf(entry.value);
+      if (offer == null) continue;
+      out[entry.key] = await isIntroOfferEligible(entry.key);
+    }
+    return out;
+  }
+
+  /// 当前周期下该档位可展示的免费试用（仅月付 + ASC 已配 + 有资格）
+  AppleFreeTrialOffer? _trialForTier(String tier) {
+    if (_yearlyBilling) return null;
+    final p = _productForTier(tier);
+    if (p == null) return null;
+    final offer = freeTrialOfferOf(p);
+    if (offer == null) return null;
+    if (_introEligible[p.id] == false) return null;
+    return offer;
+  }
+
+  AppleFreeTrialOffer? get _selectedTrial => _trialForTier(_selectedTier);
+
   String? _priceLabelForTier(String tier) {
     final p = _productForTier(tier);
     if (p == null) return null;
-    return _yearlyBilling ? '${p.price}/年' : '${p.price}/月';
+    if (_yearlyBilling) return '${p.price}/年';
+    final trial = _trialForTier(tier);
+    if (trial != null) {
+      return '免费试用 ${trial.days} 天，之后 ${p.price}/月';
+    }
+    return '${p.price}/月';
   }
 
   void _setBillingPeriod(bool yearly) {
@@ -212,7 +249,9 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
     final p = _selected;
     if (p == null) return '选择方案';
     if (_isYearlyProduct(p)) return '订阅 ${p.price} / 年';
-    return '订阅 ${p.price}';
+    final trial = _selectedTrial;
+    if (trial != null) return '免费试用 ${trial.days} 天';
+    return '订阅 ${p.price} / 月';
   }
 
   void _setPhase(AppleIapPhase? phase) {
@@ -432,6 +471,8 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
             busy: _busy,
             restoreFlow: _restoreFlow,
             subscribeEnabled: _selected != null && _selectedTierProductsReady,
+            trialOffer: _selectedTrial,
+            selectedPrice: _selected?.price,
             onSubscribe: _buy,
             onRestore: _restore,
             onUserAgreement: () => _openLegal(
@@ -994,6 +1035,8 @@ class _BottomActionBar extends StatelessWidget {
     required this.onRestore,
     required this.onUserAgreement,
     required this.onPrivacy,
+    this.trialOffer,
+    this.selectedPrice,
   });
 
   final bool showPurchaseActions;
@@ -1006,6 +1049,8 @@ class _BottomActionBar extends StatelessWidget {
   final VoidCallback onRestore;
   final VoidCallback onUserAgreement;
   final VoidCallback onPrivacy;
+  final AppleFreeTrialOffer? trialOffer;
+  final String? selectedPrice;
 
   @override
   Widget build(BuildContext context) {
@@ -1047,6 +1092,8 @@ class _BottomActionBar extends StatelessWidget {
                 _SubscriptionLegalFooter(
                   onUserAgreement: onUserAgreement,
                   onPrivacy: onPrivacy,
+                  trialOffer: trialOffer,
+                  selectedPrice: selectedPrice,
                 ),
               ],
             ),
@@ -1061,10 +1108,14 @@ class _SubscriptionLegalFooter extends StatelessWidget {
   const _SubscriptionLegalFooter({
     required this.onUserAgreement,
     required this.onPrivacy,
+    this.trialOffer,
+    this.selectedPrice,
   });
 
   final VoidCallback onUserAgreement;
   final VoidCallback onPrivacy;
+  final AppleFreeTrialOffer? trialOffer;
+  final String? selectedPrice;
 
   @override
   Widget build(BuildContext context) {
@@ -1074,10 +1125,16 @@ class _SubscriptionLegalFooter extends StatelessWidget {
       color: Color(0xFF2A6B52),
       height: 1.55,
     );
+    final trial = trialOffer;
+    final price = selectedPrice;
+    final trialLead = trial != null && price != null
+        ? '符合条件的用户可免费试用 ${trial.days} 天，试用结束后将按 $price/月自动扣费并续订。'
+        : '';
     return Text.rich(
       TextSpan(
         style: style,
         children: [
+          if (trialLead.isNotEmpty) TextSpan(text: trialLead),
           const TextSpan(
             text:
                 '订阅会自动续费，除非您在当前订阅结束前 24 小时以上取消自动续订。订阅高级会员即表示你接受我们的',

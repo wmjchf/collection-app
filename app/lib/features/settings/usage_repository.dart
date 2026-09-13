@@ -98,6 +98,7 @@ class UsageSummary {
     this.itemCount = 0,
     this.itemLimit,
     this.features = UsageFeatures.none,
+    this.trialReminder,
   });
 
   final String plan;
@@ -114,6 +115,7 @@ class UsageSummary {
   final int itemCount;
   final int? itemLimit;
   final UsageFeatures features;
+  final TrialReminder? trialReminder;
 
   String get displayPlan => planLabel ?? UsagePlan.label(plan);
 
@@ -147,7 +149,52 @@ class UsageSummary {
       itemCount: (storage['itemCount'] as num?)?.toInt() ?? 0,
       itemLimit: (storage['limitItems'] as num?)?.toInt(),
       features: UsageFeatures.fromJson(features),
+      trialReminder: TrialReminder.fromJson(
+        json['trialReminder'] as Map<String, dynamic>?,
+      ),
     );
+  }
+}
+
+/// 免费试用即将结束（后端 48h 内才下发）
+class TrialReminder {
+  const TrialReminder({
+    required this.endsAt,
+    required this.hoursLeft,
+    required this.daysLeft,
+    this.autoRenewEnabled,
+  });
+
+  final String endsAt;
+  final int hoursLeft;
+  final int daysLeft;
+  final bool? autoRenewEnabled;
+
+  static TrialReminder? fromJson(Map<String, dynamic>? json) {
+    if (json == null) return null;
+    final endsAt = json['endsAt'] as String?;
+    if (endsAt == null || endsAt.isEmpty) return null;
+    return TrialReminder(
+      endsAt: endsAt,
+      hoursLeft: (json['hoursLeft'] as num?)?.toInt() ?? 1,
+      daysLeft: (json['daysLeft'] as num?)?.toInt() ?? 1,
+      autoRenewEnabled: json['autoRenewEnabled'] as bool?,
+    );
+  }
+
+  String get remainingLabel {
+    if (hoursLeft >= 24) {
+      return '还剩约 $daysLeft 天';
+    }
+    return '还剩约 $hoursLeft 小时';
+  }
+
+  String get bodyText {
+    final remain = remainingLabel;
+    if (autoRenewEnabled == false) {
+      return '免费试用$remain，到期后将恢复为普通方案。';
+    }
+    return '免费试用$remain，到期后将按月自动续订。';
   }
 }
 
