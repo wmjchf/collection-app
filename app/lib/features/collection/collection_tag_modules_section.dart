@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:super_collection/features/collection/tag_models.dart';
 import 'package:super_collection/features/collection/tag_module_models.dart';
 
@@ -26,7 +27,6 @@ class CollectionTagModulesSection extends StatelessWidget {
   static const ink = Color(0xFF1F242E);
   static const muted = Color(0xFF8B929C);
   static const hairline = Color(0xFFD5DAE2);
-  static const chipPress = Color(0xFFE8EEFB);
   static const brand = Color(0xFF2F6FED);
   static const brandSoft = Color(0xFFE5EDFF);
   static const panel = Color(0xFFFFFFFF);
@@ -226,7 +226,6 @@ class _ModuleBlock extends StatelessWidget {
                 _TagChip(
                   label: tag.name,
                   count: tag.itemCount,
-                  soft: ungrouped,
                   onTap: () => onOpenTag(tag),
                 ),
             ],
@@ -307,18 +306,23 @@ class _AddTagInModuleButton extends StatelessWidget {
   }
 }
 
-class _TagChip extends StatelessWidget {
+class _TagChip extends StatefulWidget {
   const _TagChip({
     required this.label,
     required this.count,
     required this.onTap,
-    this.soft = false,
   });
 
   final String label;
   final int count;
-  final bool soft;
   final VoidCallback onTap;
+
+  @override
+  State<_TagChip> createState() => _TagChipState();
+}
+
+class _TagChipState extends State<_TagChip> {
+  bool _pressed = false;
 
   static String _hashLabel(String name) {
     final n = name.trim();
@@ -326,22 +330,38 @@ class _TagChip extends StatelessWidget {
     return n.startsWith('#') ? n : '#$n';
   }
 
+  void _setPressed(bool value) {
+    if (_pressed == value) return;
+    setState(() => _pressed = value);
+  }
+
   @override
   Widget build(BuildContext context) {
-    final text = _hashLabel(label);
-    final color = soft
-        ? CollectionTagModulesSection.muted
-        : CollectionTagModulesSection.brand;
+    final text = _hashLabel(widget.label);
 
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(6),
-        splashColor: CollectionTagModulesSection.chipPress,
-        highlightColor: CollectionTagModulesSection.chipPress,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 2),
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTapDown: (_) {
+        _setPressed(true);
+        HapticFeedback.selectionClick();
+      },
+      onTapUp: (_) => _setPressed(false),
+      onTapCancel: () => _setPressed(false),
+      onTap: widget.onTap,
+      child: AnimatedScale(
+        scale: _pressed ? 0.92 : 1,
+        duration: const Duration(milliseconds: 90),
+        curve: Curves.easeOutCubic,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 90),
+          curve: Curves.easeOutCubic,
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+          decoration: BoxDecoration(
+            color: _pressed
+                ? CollectionTagModulesSection.brandSoft
+                : Colors.transparent,
+            borderRadius: BorderRadius.circular(8),
+          ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -351,26 +371,24 @@ class _TagChip extends StatelessWidget {
                   text,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
+                  style: const TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.w500,
                     height: 1.25,
-                    color: color,
+                    color: CollectionTagModulesSection.brand,
                   ),
                 ),
               ),
-              if (count > 0) ...[
+              if (widget.count > 0) ...[
                 const SizedBox(width: 4),
                 Text(
-                  '$count',
+                  '${widget.count}',
                   style: TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w600,
                     height: 1.25,
-                    color: soft
-                        ? CollectionTagModulesSection.muted
-                        : CollectionTagModulesSection.brand
-                            .withValues(alpha: 0.65),
+                    color: CollectionTagModulesSection.brand
+                        .withValues(alpha: 0.65),
                   ),
                 ),
               ],
