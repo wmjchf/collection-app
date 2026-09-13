@@ -46,11 +46,20 @@ function estimateAiTokens({ messages = [], feature = 'tags', extraChars = 0 } = 
   return Math.max(1, promptEst + reserve);
 }
 
-function quotasForPlan(plan) {
+function applyTrialQuota(fullValue, override) {
+  if (override != null && Number.isFinite(Number(override)) && Number(override) >= 0) {
+    return Math.floor(Number(override));
+  }
+  const frac = Number(config.usage?.trialQuotaFraction ?? 0.25);
+  const safeFrac = Number.isFinite(frac) && frac > 0 && frac <= 1 ? frac : 0.25;
+  return Math.max(0, Math.floor(Number(fullValue || 0) * safeFrac));
+}
+
+function quotasForPlan(plan, { isTrial = false } = {}) {
   const u = config.usage || {};
   const p = planService.normalizePlan(plan);
   if (p === planService.PLAN_EMPEROR) {
-    return {
+    const full = {
       transcriptMinutesPerMonth: Number(
         u.emperorTranscriptMinutesPerMonth ??
           u.proTranscriptMinutesPerMonth ??
@@ -61,12 +70,33 @@ function quotasForPlan(plan) {
       ),
       itemLimit: null,
     };
+    if (!isTrial) return full;
+    return {
+      transcriptMinutesPerMonth: applyTrialQuota(
+        full.transcriptMinutesPerMonth,
+        u.trialEmperorTranscriptMinutesPerMonth,
+      ),
+      aiTokensPerMonth: applyTrialQuota(
+        full.aiTokensPerMonth,
+        u.trialEmperorAiTokensPerMonth,
+      ),
+      itemLimit: null,
+    };
   }
   if (p === planService.PLAN_PRINCE) {
-    return {
+    const full = {
       transcriptMinutesPerMonth: 0,
       aiTokensPerMonth: Number(
         u.princeAiTokensPerMonth ?? u.proAiTokensPerMonth ?? 500000,
+      ),
+      itemLimit: null,
+    };
+    if (!isTrial) return full;
+    return {
+      transcriptMinutesPerMonth: 0,
+      aiTokensPerMonth: applyTrialQuota(
+        full.aiTokensPerMonth,
+        u.trialPrinceAiTokensPerMonth,
       ),
       itemLimit: null,
     };
@@ -371,6 +401,7 @@ function quotaExceededError(quotaKind, message) {
 async function assertQuota(userId, kind, { estimatedSeconds, estimatedTokens } = {}) {
   if (!isEnforcing()) return;
   const summary = await getUsageSummary(userId);
+  const periodWord = summary.isTrial ? '试用' : '本月';
   if (kind === KIND_TRANSCRIPT) {
     planService.assertFeature(summary.plan, 'transcript');
     const remainingSec = Number(summary.transcript.remainingMinutes) * 60;
@@ -381,13 +412,18 @@ async function assertQuota(userId, kind, { estimatedSeconds, estimatedTokens } =
         const leftMin = round1(summary.transcript.remainingMinutes);
         throw quotaExceededError(
           KIND_TRANSCRIPT,
-          `本段转写约需 ${needMin} 分钟，本月剩余 ${leftMin} 分钟不足，订阅后可继续`,
+          `本段转写约需 ${needMin} 分钟，${periodWord}剩余 ${leftMin} 分钟不足，订阅后可继续`,
         );
       }
       return;
     }
     if (remainingSec <= 0) {
-      throw quotaExceededError(KIND_TRANSCRIPT);
+      throw quotaExceededError(
+        KIND_TRANSCRIPT,
+        summary.isTrial
+          ? '试用转写分钟已用完，订阅后可继续'
+          : undefined,
+      );
     }
     return;
   }
@@ -401,13 +437,18 @@ async function assertQuota(userId, kind, { estimatedSeconds, estimatedTokens } =
       if (remaining < est) {
         throw quotaExceededError(
           KIND_AI,
-          `本次 AI 预估约需 ${est} token，本月剩余 ${remaining} 不足，订阅后可继续`,
+          `本次 AI 预估约需 ${est} token，${periodWord}剩余 ${remaining} 不足，订阅后可继续`,
         );
       }
       return;
     }
     if (remaining <= 0) {
-      throw quotaExceededError(KIND_AI);
+      throw quotaExceededError(
+        KIND_AI,
+        summary.isTrial
+          ? '试用 AI 额度已用完，订阅后可继续'
+          : undefined,
+      );
     }
   }
 }
@@ -565,7 +606,8 @@ async function getUsageSummary(userId) {
   const { yearMonth, start, end } = periodBounds();
   const { plan, subscription } = await subscriptionService.getPlanForUser(userId);
   const normalizedPlan = planService.normalizePlan(plan);
-  const quotas = quotasForPlan(normalizedPlan);
+  const isTrial = Boolean(subscription?.isTrial);
+  const quotas = quotasForPlan(normalizedPlan, { isTrial });
 
   const [transcriptSeconds, aiTokens, itemCount] = await Promise.all([
     sumAmount(userId, KIND_TRANSCRIPT, start, end),
@@ -577,6 +619,7 @@ async function getUsageSummary(userId) {
   const limitMinutes = quotas.transcriptMinutesPerMonth;
   const aiLimit = quotas.aiTokensPerMonth;
   const aiUsed = Math.round(aiTokens);
+  const baseLabel = planService.planLabel(normalizedPlan);
 
   return {
     period: {
@@ -586,8 +629,9 @@ async function getUsageSummary(userId) {
       timeZone: 'Asia/Shanghai',
     },
     plan: normalizedPlan,
-    planLabel: planService.planLabel(normalizedPlan),
+    planLabel: isTrial ? `${baseLabel}（试用）` : baseLabel,
     planExpiresAt: subscription?.expiresAt || null,
+    isTrial,
     subscription,
     trialReminder: subscriptionService.buildTrialReminder(subscription),
     enforcing: isEnforcing(),

@@ -300,10 +300,28 @@ class _AccountPageState extends State<AccountPage> with ScreenDwellMixin {
                 if (_usage != null) ...[
                   const SizedBox(height: 16),
                   _SectionLabel(
-                    _usage!.yearMonth.isEmpty
-                        ? '本月用量'
-                        : '本月用量（${_usage!.yearMonth}）',
+                    _usage!.isTrial
+                        ? (_usage!.yearMonth.isEmpty
+                            ? '试用额度'
+                            : '试用额度（${_usage!.yearMonth}）')
+                        : (_usage!.yearMonth.isEmpty
+                            ? '本月用量'
+                            : '本月用量（${_usage!.yearMonth}）'),
                   ),
+                  if (_usage!.isTrial) ...[
+                    const SizedBox(height: 6),
+                    const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 4),
+                      child: Text(
+                        '试用期间为正式月额度的约 1/4；订阅后按完整月额度计算。',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: _muted,
+                          height: 1.45,
+                        ),
+                      ),
+                    ),
+                  ],
                   const SizedBox(height: 8),
                   _CardGroup(
                     children: [

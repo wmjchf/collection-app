@@ -77,6 +77,29 @@ module.exports = {
       Number(process.env.EMPEROR_AI_TOKENS_PER_MONTH) || 1000000,
     emperorTranscriptMinutesPerMonth:
       Number(process.env.EMPEROR_TRANSCRIPT_MINUTES_PER_MONTH) || 200,
+    /**
+     * 月付免费试用额度占正式月额度的比例（默认 1/4）。
+     * 也可用 TRIAL_* 绝对值覆盖。
+     */
+    trialQuotaFraction: (() => {
+      const raw = Number(process.env.TRIAL_QUOTA_FRACTION);
+      return Number.isFinite(raw) && raw > 0 && raw <= 1 ? raw : 0.25;
+    })(),
+    trialPrinceAiTokensPerMonth:
+      process.env.TRIAL_PRINCE_AI_TOKENS_PER_MONTH != null &&
+      process.env.TRIAL_PRINCE_AI_TOKENS_PER_MONTH !== ''
+        ? Number(process.env.TRIAL_PRINCE_AI_TOKENS_PER_MONTH)
+        : null,
+    trialEmperorAiTokensPerMonth:
+      process.env.TRIAL_EMPEROR_AI_TOKENS_PER_MONTH != null &&
+      process.env.TRIAL_EMPEROR_AI_TOKENS_PER_MONTH !== ''
+        ? Number(process.env.TRIAL_EMPEROR_AI_TOKENS_PER_MONTH)
+        : null,
+    trialEmperorTranscriptMinutesPerMonth:
+      process.env.TRIAL_EMPEROR_TRANSCRIPT_MINUTES_PER_MONTH != null &&
+      process.env.TRIAL_EMPEROR_TRANSCRIPT_MINUTES_PER_MONTH !== ''
+        ? Number(process.env.TRIAL_EMPEROR_TRANSCRIPT_MINUTES_PER_MONTH)
+        : null,
     /** @deprecated 等同太子 AI */
     proAiTokensPerMonth:
       Number(process.env.PRO_AI_TOKENS_PER_MONTH) ||
