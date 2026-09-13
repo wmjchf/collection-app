@@ -1,5 +1,5 @@
 const systemFilterService = require('./systemFilterService');
-const { mapItem } = require('./itemService');
+const { mapItem, attachTagsToItems } = require('./itemService');
 
 async function section(userId, code, tzOffsetMinutes) {
   const result = await systemFilterService.listItemsBySystemFilter(userId, code, {
@@ -7,7 +7,7 @@ async function section(userId, code, tzOffsetMinutes) {
     limit: 3,
     offset: 0,
   });
-  const items = result.items.map(mapItem);
+  const items = await attachTagsToItems(userId, result.items.map(mapItem));
 
   return {
     total: result.total,

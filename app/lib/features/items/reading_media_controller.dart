@@ -4,7 +4,7 @@ import 'package:audio_session/audio_session.dart';
 import 'package:flutter/foundation.dart';
 import 'package:just_audio/just_audio.dart';
 
-/// 阅读页级音频播放（小宇宙等播客）：不依赖 ListView 内 Platform View，支持后台/息屏。
+/// 阅读页级音频播放（小宇宙等播客）：不依赖 ListView 内 Platform View；前台可续播（未声明 iOS 后台 audio）。
 class ReadingMediaController extends ChangeNotifier {
   ReadingMediaController() {
     player.playerStateStream.listen((_) => notifyListeners());

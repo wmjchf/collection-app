@@ -36,7 +36,7 @@ import 'package:super_collection/features/items/transcript_models.dart';
 import 'package:super_collection/features/items/transcript_picker_sheet.dart';
 import 'package:super_collection/features/items/transcript_segment_panel.dart';
 
-/// 本地阅读页：标题 + 可读正文（含标注高亮）；顶栏更多；底栏 AI 总结 / 思维导图 / 标签 / 感想（或转写条目下的「更多」）均为弹层入口。
+/// 本地阅读页：标题 + 可读正文（含标注高亮）；顶栏更多；底栏 AI 总结 / 标签 / 思维导图 / 感想（或转写条目下的「更多」）；总结与思维导图为底部弹层。
 class ItemReadingPage extends StatefulWidget {
   const ItemReadingPage({
     super.key,
@@ -1501,6 +1501,11 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
                                 onTap: _openSummarySheet,
                               ),
                               _ActionItem(
+                                icon: Icons.tag_outlined,
+                                label: '标签',
+                                onTap: _openTagsSheet,
+                              ),
+                              _ActionItem(
                                 icon: Icons.account_tree_outlined,
                                 iconSize: 20,
                                 label: _item.hasMindmapPending
@@ -1511,11 +1516,6 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
                                     ? _text
                                     : _muted,
                                 onTap: _openMindmapSheet,
-                              ),
-                              _ActionItem(
-                                icon: Icons.tag_outlined,
-                                label: '标签',
-                                onTap: _openTagsSheet,
                               ),
                               if (_hasTranscriptEntry)
                                 _ActionItem(

@@ -1,11 +1,22 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:super_collection/core/network/api_client.dart';
+import 'package:super_collection/core/ui/app_confirm_dialog.dart';
+import 'package:super_collection/features/collection/collection_tag_modules_section.dart';
+import 'package:super_collection/features/collection/create_module_sheet.dart';
+import 'package:super_collection/features/collection/create_tag_sheet.dart';
+import 'package:super_collection/features/collection/items_browse_page.dart';
 import 'package:super_collection/features/collection/system_filter_list_page.dart';
 import 'package:super_collection/features/collection/system_filter_models.dart';
 import 'package:super_collection/features/collection/system_filters_repository.dart';
+import 'package:super_collection/features/collection/tag_models.dart';
+import 'package:super_collection/features/collection/tag_module_models.dart';
+import 'package:super_collection/features/collection/tag_modules_repository.dart';
+import 'package:super_collection/features/collection/tag_search_page.dart';
+import 'package:super_collection/features/collection/tags_repository.dart';
 import 'package:super_collection/features/shell/user_avatar_button.dart';
 
-/// 我的收藏（系统分类；标签见「我的标签」Tab）
+/// 我的收藏（系统分类 + 标签）
 class CollectionPage extends StatefulWidget {
   const CollectionPage({
     super.key,
@@ -14,8 +25,13 @@ class CollectionPage extends StatefulWidget {
     this.onOpenAccount,
   });
 
+  /// 是否为当前 Tab；切回时静默刷新数量。
   final bool isActive;
+
+  /// 外部递增时静默刷新（分享入库、解析完成）。
   final int refreshTick;
+
+  /// 打开账户抽屉。
   final VoidCallback? onOpenAccount;
 
   @override
@@ -24,18 +40,36 @@ class CollectionPage extends StatefulWidget {
 
 class _CollectionPageState extends State<CollectionPage> {
   static const _bg = Color(0xFFF7F7FA);
-  static const _muted = Color(0xFF737A85);
+  static const _text = Color(0xFF1F242E);
 
+  final _tagsRepo = TagsRepository();
+  final _tagModulesRepo = TagModulesRepository();
   final _systemFiltersRepo = SystemFiltersRepository();
+  final _scrollController = ScrollController();
+  final _tagsHeaderKey = GlobalKey();
 
+  List<TagModule> _modules = const [];
+  List<Tag> _ungrouped = const [];
   List<SystemFilter> _systemFilters = const [];
   bool _loading = true;
   String? _error;
+  /// 归类标签区顶到顶栏：切换顶栏形态
+  bool _tagsFocused = false;
+  /// 归类标签编辑态（仅删除 / 新建）
+  bool _editingTags = false;
 
   @override
   void initState() {
     super.initState();
+    _scrollController.addListener(_onScrollForTagsFocus);
     _load();
+  }
+
+  @override
+  void dispose() {
+    _scrollController.removeListener(_onScrollForTagsFocus);
+    _scrollController.dispose();
+    super.dispose();
   }
 
   @override
@@ -49,6 +83,14 @@ class _CollectionPageState extends State<CollectionPage> {
     }
   }
 
+  void _openTagSearch() {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => const TagSearchPage(),
+      ),
+    );
+  }
+
   Future<void> _load({bool quiet = false}) async {
     final showSpinner = !quiet || _systemFilters.isEmpty;
     if (showSpinner) {
@@ -58,12 +100,24 @@ class _CollectionPageState extends State<CollectionPage> {
       });
     }
     try {
-      final filterResult = await _systemFiltersRepo.listFilters();
+      final results = await Future.wait([
+        _tagModulesRepo.listModules(),
+        _systemFiltersRepo.listFilters(),
+      ]);
       if (!mounted) return;
+      final modulesResult =
+          results[0] as ({List<TagModule> modules, List<Tag> ungrouped});
+      final filterResult =
+          results[1] as ({List<SystemFilter> filters, List<SystemFilter> others});
       setState(() {
+        _modules = modulesResult.modules;
+        _ungrouped = modulesResult.ungrouped;
         _systemFilters = filterResult.filters;
         _loading = false;
         _error = null;
+      });
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _onScrollForTagsFocus();
       });
     } on ApiException catch (e) {
       if (!mounted) return;
@@ -77,6 +131,69 @@ class _CollectionPageState extends State<CollectionPage> {
         _loading = false;
         if (!quiet) _error = '加载失败，请检查网络或后端是否启动';
       });
+    }
+  }
+
+  void _onScrollForTagsFocus() {
+    final ctx = _tagsHeaderKey.currentContext;
+    if (ctx == null) return;
+    final box = ctx.findRenderObject() as RenderBox?;
+    if (box == null || !box.hasSize) return;
+    final top = box.localToGlobal(Offset.zero).dy;
+    final threshold = MediaQuery.paddingOf(context).top + kToolbarHeight;
+    // 滞回：避免顶栏切换时 header 高度变化导致焦点抖动
+    final focused = _tagsFocused
+        ? top <= threshold + 28
+        : top <= threshold + 4;
+    if (focused == _tagsFocused) return;
+    setState(() {
+      _tagsFocused = focused;
+      if (!focused) _editingTags = false;
+    });
+  }
+
+  Future<void> _exitTagsFocus() async {
+    setState(() {
+      _tagsFocused = false;
+      _editingTags = false;
+    });
+    if (!_scrollController.hasClients) return;
+    await _scrollController.animateTo(
+      0,
+      duration: const Duration(milliseconds: 320),
+      curve: Curves.easeOutCubic,
+    );
+  }
+
+  Future<void> _createModule() async {
+    final module = await showCreateModuleSheet(context);
+    if (module == null || !mounted) return;
+    await _load(quiet: true);
+  }
+
+  Future<void> _addTagToModule(int? moduleId) async {
+    final tag = await showCreateTagSheet(context, moduleId: moduleId);
+    if (tag == null || !mounted) return;
+    await _load(quiet: true);
+  }
+
+  Future<void> _deleteTag(Tag tag) async {
+    final ok = await showAppConfirmDialog(
+      context,
+      title: '删除标签',
+      message: '确定删除标签「${tag.name}」？仅解除关联，不会删除条目。',
+      confirmLabel: '删除',
+    );
+    if (ok != true || !mounted) return;
+    try {
+      await _tagsRepo.deleteTag(tag.id);
+      if (!mounted) return;
+      await _load(quiet: true);
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.message)),
+      );
     }
   }
 
@@ -95,7 +212,73 @@ class _CollectionPageState extends State<CollectionPage> {
     });
   }
 
+  void _openTag(Tag tag) {
+    Navigator.of(context)
+        .push(
+      MaterialPageRoute<void>(
+        builder: (_) => ItemsBrowsePage(
+          title: tag.name,
+          tagId: tag.isSystem ? null : tag.id,
+          loader: ({required limit, required offset}) => _tagsRepo.listTagItems(
+            tag.id,
+            limit: limit,
+            offset: offset,
+          ),
+        ),
+      ),
+    )
+        .then((_) {
+      if (mounted) _load(quiet: true);
+    });
+  }
+
   PreferredSizeWidget _buildAppBar() {
+    if (_tagsFocused) {
+      return AppBar(
+        backgroundColor: Colors.white,
+        surfaceTintColor: Colors.transparent,
+        elevation: 0,
+        scrolledUnderElevation: 0,
+        toolbarHeight: 56,
+        automaticallyImplyLeading: false,
+        leading: IconButton(
+          tooltip: '返回',
+          onPressed: _exitTagsFocus,
+          icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20),
+        ),
+        title: const Text(
+          '归类标签',
+          style: TextStyle(
+            fontSize: 17,
+            fontWeight: FontWeight.w700,
+            color: _text,
+          ),
+        ),
+        centerTitle: true,
+        actions: [
+          IconButton(
+            tooltip: '新建模块',
+            onPressed: _createModule,
+            icon: const Icon(
+              Icons.add_rounded,
+              size: 24,
+              color: Color(0xFF2F6FED),
+            ),
+          ),
+          IconButton(
+            tooltip: _editingTags ? '完成' : '编辑',
+            onPressed: () => setState(() => _editingTags = !_editingTags),
+            icon: Icon(
+              _editingTags ? Icons.check_rounded : Icons.draw_outlined,
+              size: 22,
+              color: const Color(0xFF2F6FED),
+            ),
+          ),
+          const SizedBox(width: 4),
+        ],
+      );
+    }
+
     return AppBar(
       backgroundColor: Colors.white,
       surfaceTintColor: Colors.transparent,
@@ -103,14 +286,39 @@ class _CollectionPageState extends State<CollectionPage> {
       scrolledUnderElevation: 0,
       toolbarHeight: 56,
       titleSpacing: 0,
+      actionsPadding: EdgeInsets.zero,
       automaticallyImplyLeading: false,
-      title: Padding(
-        padding: const EdgeInsets.only(left: 12),
-        child: Align(
-          alignment: Alignment.centerLeft,
-          child: UserAvatarButton(onPressed: widget.onOpenAccount ?? () {}),
+      centerTitle: false,
+      title: SizedBox(
+        width: MediaQuery.sizeOf(context).width,
+        height: 40,
+        child: Padding(
+          padding: const EdgeInsets.only(left: 12, right: 8),
+          child: Row(
+            children: [
+              UserAvatarButton(
+                onPressed: widget.onOpenAccount ?? () {},
+              ),
+              const Spacer(),
+              IconButton(
+                tooltip: '搜索标签',
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(
+                  minWidth: 36,
+                  minHeight: 36,
+                ),
+                onPressed: _openTagSearch,
+                icon: SvgPicture.asset(
+                  'assets/icons/search.svg',
+                  width: 24,
+                  height: 24,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
+      actions: const <Widget>[],
     );
   }
 
@@ -122,6 +330,7 @@ class _CollectionPageState extends State<CollectionPage> {
       body: RefreshIndicator(
         onRefresh: _load,
         child: ListView(
+          controller: _scrollController,
           physics: const AlwaysScrollableScrollPhysics(),
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
           children: [
@@ -138,52 +347,67 @@ class _CollectionPageState extends State<CollectionPage> {
               )
             else if (_error != null && _systemFilters.isEmpty)
               _ErrorCard(message: _error!, onRetry: _load)
-            else if (_systemFilters.isNotEmpty) ...[
-              const Text(
-                '系统分类',
-                style: TextStyle(fontSize: 13, color: _muted),
+            else ...[
+              if (_systemFilters.isNotEmpty)
+                Column(
+                  children: [
+                    if (_systemFilters.any((e) => e.code == 'unread'))
+                      _EntityGroup(
+                        entries: [
+                          for (final f in _systemFilters
+                              .where((e) => e.code == 'unread'))
+                            _EntityEntry(
+                              title: f.name,
+                              countLabel: f.countLabel,
+                              icon: _CollectionNavIcon.forSystemCode(
+                                f.code,
+                              ),
+                              onTap: () => _openSystemFilter(f),
+                            ),
+                        ],
+                      ),
+                    if (_systemFilters.any((f) => f.code != 'unread')) ...[
+                      if (_systemFilters.any((e) => e.code == 'unread'))
+                        const SizedBox(height: 16),
+                      _EntityGroup(
+                        entries: [
+                          for (final f in _systemFilters
+                              .where((e) => e.code != 'unread'))
+                            _EntityEntry(
+                              title: f.name,
+                              countLabel: f.countLabel,
+                              icon: _CollectionNavIcon.forSystemCode(
+                                f.code,
+                              ),
+                              onTap: () => _openSystemFilter(f),
+                            ),
+                        ],
+                      ),
+                    ],
+                  ],
+                ),
+              if (_systemFilters.isNotEmpty) const SizedBox(height: 28),
+              CollectionTagModulesSection(
+                headerKey: _tagsHeaderKey,
+                modules: _modules,
+                ungrouped: _ungrouped,
+                editing: _editingTags,
+                showInlineHeader: !_tagsFocused,
+                onToggleEdit: () =>
+                    setState(() => _editingTags = !_editingTags),
+                onOpenTag: _openTag,
+                onDeleteTag: _deleteTag,
+                onAddTag: _addTagToModule,
+                onCreateModule: _createModule,
               ),
-              const SizedBox(height: 8),
-              if (_systemFilters.any((e) => e.code == 'unread'))
-                _EntityGroup(
-                  entries: [
-                    for (final f
-                        in _systemFilters.where((e) => e.code == 'unread'))
-                      _EntityEntry(
-                        title: f.name,
-                        countLabel: f.countLabel,
-                        icon: _CollectionNavIcon.forSystemCode(f.code),
-                        onTap: () => _openSystemFilter(f),
-                      ),
-                  ],
-                ),
-              if (_systemFilters.any((f) => f.code != 'unread')) ...[
-                if (_systemFilters.any((e) => e.code == 'unread'))
-                  const SizedBox(height: 16),
-                _EntityGroup(
-                  entries: [
-                    for (final f
-                        in _systemFilters.where((e) => e.code != 'unread'))
-                      _EntityEntry(
-                        title: f.name,
-                        countLabel: f.countLabel,
-                        icon: _CollectionNavIcon.forSystemCode(f.code),
-                        onTap: () => _openSystemFilter(f),
-                      ),
-                  ],
-                ),
-              ],
+              // 便于上滑把归类标签顶到顶栏
+              SizedBox(height: MediaQuery.sizeOf(context).height * 0.45),
             ],
           ],
         ),
       ),
     );
   }
-}
-
-class _CollectionColors {
-  static const muted = Color(0xFF737A85);
-  static const divider = Color(0xFFF0F2F5);
 }
 
 class _CollectionNavIcon {
@@ -211,11 +435,6 @@ class _CollectionNavIcon {
         return const _CollectionNavIcon(
           icon: Icons.calendar_today_rounded,
           background: Color(0xFFFF9F43),
-        );
-      case 'parsed':
-        return const _CollectionNavIcon(
-          icon: Icons.article_rounded,
-          background: Color(0xFF56CC8C),
         );
       case 'annotated':
         return const _CollectionNavIcon(
@@ -366,33 +585,41 @@ class _NavRow extends StatelessWidget {
                 height: 26,
                 decoration: BoxDecoration(
                   color: icon.background,
-                  borderRadius: BorderRadius.circular(8),
+                  borderRadius: BorderRadius.circular(7),
                 ),
-                child: Icon(icon.icon, size: 16, color: Colors.white),
+                alignment: Alignment.center,
+                child: Icon(
+                  icon.icon,
+                  size: 16,
+                  color: Colors.white,
+                ),
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: 10),
               Expanded(
                 child: Text(
                   title,
                   style: const TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w500,
-                    color: Color(0xFF1F242E),
+                    fontSize: 16,
+                    fontWeight: FontWeight.w400,
+                    color: _CollectionColors.text,
                   ),
                 ),
               ),
               Text(
                 countLabel,
                 style: const TextStyle(
-                  fontSize: 14,
+                  fontSize: 15,
                   color: _CollectionColors.muted,
                 ),
               ),
-              const SizedBox(width: 4),
-              const Icon(
-                Icons.chevron_right_rounded,
-                size: 20,
-                color: _CollectionColors.muted,
+              const SizedBox(width: 6),
+              const Text(
+                '›',
+                style: TextStyle(
+                  fontSize: 18,
+                  color: _CollectionColors.muted,
+                  height: 1,
+                ),
               ),
             ],
           ),
@@ -400,4 +627,10 @@ class _NavRow extends StatelessWidget {
       ),
     );
   }
+}
+
+abstract final class _CollectionColors {
+  static const text = Color(0xFF1F242E);
+  static const muted = Color(0xFF737A85);
+  static const divider = Color(0xFFF0F1F4);
 }

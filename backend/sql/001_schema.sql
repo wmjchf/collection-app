@@ -9,6 +9,7 @@ DROP TABLE IF EXISTS `annotations`;
 DROP TABLE IF EXISTS `item_tags`;
 DROP TABLE IF EXISTS `items`;
 DROP TABLE IF EXISTS `categories`;
+DROP TABLE IF EXISTS `tag_modules`;
 DROP TABLE IF EXISTS `sms_send_logs`;
 DROP TABLE IF EXISTS `user_sessions`;
 DROP TABLE IF EXISTS `users`;
@@ -59,14 +60,27 @@ CREATE TABLE `categories` (
   `name` VARCHAR(64) NOT NULL,
   `is_system` TINYINT(1) NOT NULL DEFAULT 0,
   `sort_order` INT NOT NULL DEFAULT 0,
-  `parent_id` BIGINT UNSIGNED DEFAULT NULL COMMENT '标签父级（仅 section=tag；可多层）',
+  `module_id` BIGINT UNSIGNED DEFAULT NULL COMMENT '标签所属模块；仅 section=tag',
   `created_at` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
   `updated_at` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
   PRIMARY KEY (`id`),
   UNIQUE KEY `uk_categories_user_section_name` (`user_id`, `section`, `name`),
   KEY `idx_categories_user_section_sort` (`user_id`, `section`, `sort_order`),
   KEY `idx_categories_user_section_code` (`user_id`, `section`, `code`),
-  KEY `idx_categories_parent` (`parent_id`)
+  KEY `idx_categories_module` (`module_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE `tag_modules` (
+  `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `user_id` BIGINT UNSIGNED NOT NULL,
+  `name` VARCHAR(64) NOT NULL,
+  `sort_order` INT NOT NULL DEFAULT 0,
+  `created_at` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  `updated_at` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_tag_modules_user_name` (`user_id`, `name`),
+  KEY `idx_tag_modules_user_sort` (`user_id`, `sort_order`),
+  CONSTRAINT `fk_tag_modules_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE `items` (
@@ -139,10 +153,13 @@ INSERT INTO `categories` (`user_id`, `section`, `code`, `name`, `is_system`, `so
   (0, 'system', 'unread',    '未读', 1, 10),
   (0, 'system', 'all',       '所有', 1, 20),
   (0, 'system', 'today',     '今天', 1, 30),
-  (0, 'system', 'parsed',    '解析', 1, 50),
   (0, 'system', 'annotated', '标注', 1, 60),
   (0, 'system', 'recent_read', '最近阅读', 1, 70),
   (0, 'folder', 'uncategorized', '未分类', 1, 10),
   (0, 'other',  'archived', '已归档', 1, 10);
+
+ALTER TABLE `categories`
+  ADD CONSTRAINT `fk_categories_module`
+    FOREIGN KEY (`module_id`) REFERENCES `tag_modules` (`id`) ON DELETE SET NULL;
 
 SET FOREIGN_KEY_CHECKS = 1;

@@ -5,7 +5,7 @@ import 'package:super_collection/core/ui/app_subpage_app_bar.dart';
 import 'package:super_collection/core/ui/paged_list.dart';
 import 'package:super_collection/features/collection/system_filters_repository.dart';
 import 'package:super_collection/features/home/home_format.dart';
-import 'package:super_collection/features/items/cover_image.dart';
+import 'package:super_collection/features/items/item_list_tile.dart';
 import 'package:super_collection/features/items/item_reading_page.dart';
 import 'package:super_collection/features/items/item_models.dart';
 
@@ -27,7 +27,6 @@ class SystemFilterListPage extends StatefulWidget {
 class _SystemFilterListPageState extends State<SystemFilterListPage>
     with ScreenDwellMixin {
   static const _bg = Color(0xFFF7F7FA);
-  static const _text = Color(0xFF1F242E);
   static const _muted = Color(0xFF737A85);
 
   final _repo = SystemFiltersRepository();
@@ -196,84 +195,29 @@ class _SystemFilterListPageState extends State<SystemFilterListPage>
                       return Padding(
                         key: ValueKey('item-${item.id}'),
                         padding: const EdgeInsets.only(bottom: 8),
-                        child: Material(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(12),
-                          child: InkWell(
-                            borderRadius: BorderRadius.circular(12),
-                            onTap: () async {
-                              final deleted = await Navigator.of(context).push<bool>(
-                                MaterialPageRoute(
-                                  builder: (_) => ItemReadingPage(
-                                    itemId: item.id,
-                                    initialItem: item,
-                                    openEntry: widget.code == 'unread'
-                                        ? 'unread'
-                                        : 'library',
-                                  ),
+                        child: ItemListTile.fromItem(
+                          item,
+                          subtitle: _subtitle(item),
+                          onTap: () async {
+                            final deleted =
+                                await Navigator.of(context).push<bool>(
+                              MaterialPageRoute(
+                                builder: (_) => ItemReadingPage(
+                                  itemId: item.id,
+                                  initialItem: item,
+                                  openEntry: widget.code == 'unread'
+                                      ? 'unread'
+                                      : 'library',
                                 ),
-                              );
-                              if (!mounted || deleted != true) return;
-                              setState(() {
-                                _items =
-                                    _items.where((e) => e.id != item.id).toList();
-                                _total = (_total - 1).clamp(0, 1 << 30);
-                              });
-                            },
-                            child: Padding(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 14,
-                                vertical: 12,
                               ),
-                              child: Row(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  CoverImage(
-                                    key: ValueKey('cover-${item.id}'),
-                                    url: item.coverImageUrl,
-                                    pageUrl: item.sourcePageUrl,
-                                    width: 64,
-                                    height: 64,
-                                    borderRadius: 8,
-                                  ),
-                                  const SizedBox(width: 12),
-                                  Expanded(
-                                    child: SizedBox(
-                                      height: 64,
-                                      child: Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        mainAxisAlignment:
-                                            MainAxisAlignment.spaceBetween,
-                                        children: [
-                                          Text(
-                                            item.title?.isNotEmpty == true
-                                                ? item.title!
-                                                : item.url,
-                                            maxLines: 2,
-                                            overflow: TextOverflow.ellipsis,
-                                            style: const TextStyle(
-                                              fontSize: 15,
-                                              fontWeight: FontWeight.w500,
-                                              height: 20 / 15,
-                                              color: _text,
-                                            ),
-                                          ),
-                                          Text(
-                                            _subtitle(item),
-                                            style: const TextStyle(
-                                              fontSize: 12,
-                                              color: _muted,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
+                            );
+                            if (!mounted || deleted != true) return;
+                            setState(() {
+                              _items =
+                                  _items.where((e) => e.id != item.id).toList();
+                              _total = (_total - 1).clamp(0, 1 << 30);
+                            });
+                          },
                         ),
                       );
                     },

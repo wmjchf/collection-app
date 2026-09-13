@@ -6,7 +6,7 @@ import 'package:super_collection/core/analytics/screen_dwell_tracker.dart';
 import 'package:super_collection/core/network/api_client.dart';
 import 'package:super_collection/core/ui/paged_list.dart';
 import 'package:super_collection/features/home/home_format.dart';
-import 'package:super_collection/features/items/cover_image.dart';
+import 'package:super_collection/features/items/item_list_tile.dart';
 import 'package:super_collection/features/items/item_reading_page.dart';
 import 'package:super_collection/features/items/item_models.dart';
 import 'package:super_collection/features/items/items_repository.dart';
@@ -381,9 +381,6 @@ class _SearchResultCard extends StatelessWidget {
   final SearchHit hit;
   final VoidCallback onTap;
 
-  static const _text = Color(0xFF1F242E);
-  static const _muted = Color(0xFF737A85);
-
   String _subtitle(CollectionItem item) {
     final platform = platformLabel(item.platform);
     final day = formatRelativeDay(item.createdAt);
@@ -394,63 +391,10 @@ class _SearchResultCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final item = hit.item;
-    final title = item.title?.isNotEmpty == true ? item.title! : item.url;
-
-    return Material(
-      color: Colors.white,
-      borderRadius: BorderRadius.circular(12),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(12),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              CoverImage(
-                key: ValueKey('cover-${item.id}'),
-                url: item.coverImageUrl,
-                pageUrl: item.sourcePageUrl,
-                width: 64,
-                height: 64,
-                borderRadius: 8,
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: SizedBox(
-                  height: 64,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        title,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w500,
-                          color: _text,
-                          height: 20 / 15,
-                        ),
-                      ),
-                      Text(
-                        _subtitle(item),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          fontSize: 12,
-                          color: _muted,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
+    return ItemListTile.fromItem(
+      item,
+      subtitle: _subtitle(item),
+      onTap: onTap,
     );
   }
 }

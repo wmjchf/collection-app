@@ -30,7 +30,7 @@
 
 | 第一层 | 第二层例子 | 一条 item 与第二层关系 |
 | --- | --- | --- |
-| system | 未读 / 所有 / 今天 / 星标 / 解析 / 标注 | **规则命中**（不算归属边） |
+| system | 未读 / 所有 / 今天 / 标注 / 最近阅读 | **规则命中**（不算归属边） |
 | folder | **未分类** / 用户自建夹 | **恰好一个**（`items.folder_id`） |
 | tag | （仅用户自建） | **0～N 个**（`item_tags`） |
 | other | 已归档 / 最近删除 | **状态字段**（`is_archived` / `deleted_at`） |
@@ -51,7 +51,8 @@
 | `users` | 用户（手机号） |
 | `user_sessions` | 登录会话 / refresh |
 | `sms_send_logs` | 发码流水（限流/审计；验证码本身不存） |
-| `categories` | 第二层分类 |
+| `categories` | 第二层分类（标签可挂 `module_id`） |
+| `tag_modules` | 归类标签模块（仅分组标题，无父子） |
 | `items` | 收藏条目（含 `transcript_segments` 分段转写） |
 | `item_tags` | 条目 ↔ 标签 |
 | `annotations` | 阅读标注 |
@@ -115,17 +116,26 @@
 | name | VARCHAR(64) NOT NULL | |
 | is_system | TINYINT(1) NOT NULL DEFAULT 0 | |
 | sort_order | INT NOT NULL DEFAULT 0 | |
-| parent_id | BIGINT UNSIGNED NULL | 标签父级（仅 `section=tag`；可多层嵌套）；整理视图 + 打标写入时自动关联祖先 |
+| module_id | BIGINT UNSIGNED NULL | 仅 `section=tag`；FK → `tag_modules`，模块删除时置 NULL |
 | created_at / updated_at | DATETIME(3) | |
 
-约束：`UNIQUE (user_id, section, name)`  
+约束：`UNIQUE (user_id, section, name)`
 系统 `code` 由 seed 保证唯一（`user_id=0`）。
+
+### `tag_modules`（迁移 `022`）
+
+归类标签的**展示分组**（有独立标题，无父子层级）。
+
+| 字段 | 说明 |
+| --- | --- |
+| id / user_id / name / sort_order | 用户维度唯一 `name` |
+| created_at / updated_at | |
 
 ### 预置（user_id = 0）
 
 | section | code | name |
 | --- | --- | --- |
-| system | unread / all / today / starred / parsed / annotated | 未读/所有/今天/星标/解析/标注 |
+| system | unread / all / today / annotated | 未读/所有/今天/标注 |
 | system | recent_read | 最近阅读（系统筛选；首页「查看更多」进入此列表） |
 | folder | uncategorized | 未分类 |
 | other | archived | 已归档（不在 App 导航展示；`filter=archived` API 仍可用） |
@@ -187,19 +197,24 @@ API：`GET …/transcript-targets`、`POST …/transcript`（body.segmentKey）�
 
 | 接口 | 说明 |
 | --- | --- |
-| `GET /api/tags` | 当前用户自建标签；含 `itemCount`、`parentId`（扁平列表） |
-| `POST /api/tags` | body `{ name, parentId? }` 新建（可选挂父级） |
-| `PUT /api/tags/reorder` | body `{ items:[{ id, parentId, sortOrder }] }` 须覆盖全部自建标签；可多层，防环 |
-| `PATCH /api/tags/:id` | body `{ name }` 重命名自建标签 |
-| `DELETE /api/tags/:id` | 仅自建标签；子标签接到被删节点的父级；解除 `item_tags` 关联，不删条目 |
+| `GET /api/tags` | 当前用户自建标签；含 `itemCount`、`moduleId` |
+| `GET /api/tags/search?q=` | 按名称匹配标签找条目；`tags` 为基集文章全部标签（命中靠前，`primaryTagId` 第一）；`filterTagIds` 二次 AND 筛选；`items` 含 `tags` |
+| `POST /api/tags` | body `{ name, moduleId? }` 新建；可选归入模块 |
+| `PATCH /api/tags/:id` | body `{ name }` 重命名；或 `{ moduleId, beforeTagId? }` 换模块/组内排序（`beforeTagId` 空=追加末尾） |
+| `DELETE /api/tags/:id` | 仅自建标签；解除 `item_tags` 关联，不删条目 |
+| `GET /api/tag-modules` | `{ modules:[{ id, name, tags[] }], ungrouped: Tag[] }` |
+| `POST /api/tag-modules` | body `{ name }` 新建模块（仅标题） |
 
 ## 系统筛选 API（约定）
 
 | 接口 | 说明 |
 | --- | --- |
-| `GET /api/system-filters` | 未读/所有/今天/星标/解析/标注/最近阅读 + 数量；`tzOffsetMinutes` 可选（默认 480） |
-| `GET /api/items?filter=` | 按系统筛选列条目；`filter` 同上；支持 `limit`/`offset`/`tzOffsetMinutes` |
-| `GET /api/home` | 首页两板块：未读 / 最近阅读（`recentRead`），各最多 3 条 |
+| `GET /api/system-filters` | 未读/所有/今天/标注/最近阅读 + 数量；`tzOffsetMinutes` 可选（默认 480） |
+| `GET /api/items?filter=` | 按系统筛选列条目；`filter` 同上；支持 `limit`/`offset`/`tzOffsetMinutes`；条目含 `tags:[{id,name}]` |
+| `GET /api/home` | 首页两板块：未读 / 最近阅读（`recentRead`），各最多 3 条；条目含 `tags` |
+| `GET /api/items/:id` | 单条详情；含 `tags` |
+| `GET /api/tags/:id/items` | 标签下条目列表；含 `tags` |
+| `GET /api/items/search` | 全文搜索；命中条目含 `tags` |
 
 未读无数据时 `countLabel` 为「无」；列表默认排除已删除与已归档。
 
@@ -225,7 +240,7 @@ API：`GET …/transcript-targets`、`POST …/transcript`（body.segmentKey）�
 
 ## 二期预留
 
-- 收藏夹嵌套（folder 的 `parent_id`；标签分组已用 `categories.parent_id`）
+- 收藏夹嵌套（`categories.parent_id`）
 - 一键登录（运营商取号，同属号码认证，可后加）
 - 支付校验与商店回调写入 `subscriptions`
 

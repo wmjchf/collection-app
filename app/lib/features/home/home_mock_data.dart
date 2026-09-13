@@ -1,3 +1,5 @@
+import 'package:super_collection/features/items/item_models.dart';
+
 /// 首页列表展示用
 class HomeItemPreview {
   const HomeItemPreview({
@@ -6,6 +8,7 @@ class HomeItemPreview {
     required this.subtitle,
     this.coverImageUrl,
     this.pageUrl,
+    this.tags = const [],
   });
 
   final int id;
@@ -13,4 +16,5 @@ class HomeItemPreview {
   final String subtitle;
   final String? coverImageUrl;
   final String? pageUrl;
+  final List<ItemTagBrief> tags;
 }
