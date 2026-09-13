@@ -103,6 +103,7 @@ class UsageSummary {
     this.itemLimit,
     this.features = UsageFeatures.none,
     this.trialReminder,
+    this.isTrial = false,
   });
 
   final String plan;
@@ -120,6 +121,8 @@ class UsageSummary {
   final int? itemLimit;
   final UsageFeatures features;
   final TrialReminder? trialReminder;
+  /// 月付免费试用中（额度约为正式月额度的 1/4）
+  final bool isTrial;
 
   String get displayPlan => planLabel ?? UsagePlan.label(plan);
 
@@ -156,6 +159,7 @@ class UsageSummary {
       trialReminder: TrialReminder.fromJson(
         json['trialReminder'] as Map<String, dynamic>?,
       ),
+      isTrial: json['isTrial'] as bool? ?? false,
     );
   }
 }
