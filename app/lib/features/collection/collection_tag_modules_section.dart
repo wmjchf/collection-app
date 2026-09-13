@@ -37,6 +37,8 @@ class CollectionTagModulesSection extends StatelessWidget {
   static const hairline = Color(0xFFD5DAE2);
   static const brand = Color(0xFF2F6FED);
   static const brandSoft = Color(0xFFE5EDFF);
+  /// AI 归类入口色（与标签主题蓝区分）
+  static const aiAccent = Color(0xFF6B5CE7);
   static const panel = Color(0xFFFFFFFF);
   static const ungroupedFill = Color(0xFFF4F6F9);
   static const ungroupedLine = Color(0xFFC5CAD3);
@@ -62,10 +64,10 @@ class CollectionTagModulesSection extends StatelessWidget {
           title: m.name,
           tags: m.tags,
           onOpenTag: onOpenTag,
-          onAddTag: editing ? () => onAddTag(m.id) : null,
-          onDeleteModule: editing && onDeleteModule != null
-              ? () => onDeleteModule!(m)
-              : null,
+          editing: editing,
+          onAddTag: () => onAddTag(m.id),
+          onDeleteModule:
+              onDeleteModule != null ? () => onDeleteModule!(m) : null,
         ),
       );
     }
@@ -261,6 +263,7 @@ class _ModuleBlock extends StatelessWidget {
     this.onAddTag,
     this.onDeleteModule,
     this.onAiOrganize,
+    this.editing = false,
     this.titleMuted = false,
     this.ungrouped = false,
   });
@@ -268,6 +271,7 @@ class _ModuleBlock extends StatelessWidget {
   final String title;
   final bool titleMuted;
   final bool ungrouped;
+  final bool editing;
   final List<Tag> tags;
   final ValueChanged<Tag> onOpenTag;
   final VoidCallback? onAddTag;
@@ -276,70 +280,102 @@ class _ModuleBlock extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final hasEditActions = !ungrouped &&
+        (onAddTag != null || onDeleteModule != null);
+
     final body = Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Row(
-          children: [
-            if (ungrouped) ...[
-              const Icon(
-                Icons.inbox_outlined,
-                size: 16,
-                color: CollectionTagModulesSection.muted,
-              ),
-              const SizedBox(width: 6),
-            ] else
-              Opacity(
-                opacity: titleMuted ? 0 : 1,
-                child: Container(
-                  width: 6,
-                  height: 6,
-                  margin: const EdgeInsets.only(right: 8),
-                  decoration: const BoxDecoration(
-                    color: CollectionTagModulesSection.brand,
-                    shape: BoxShape.circle,
+        SizedBox(
+          height: 28,
+          child: Row(
+            children: [
+              if (ungrouped) ...[
+                const Icon(
+                  Icons.inbox_outlined,
+                  size: 16,
+                  color: CollectionTagModulesSection.muted,
+                ),
+                const SizedBox(width: 6),
+              ] else
+                Opacity(
+                  opacity: titleMuted ? 0 : 1,
+                  child: Container(
+                    width: 6,
+                    height: 6,
+                    margin: const EdgeInsets.only(right: 8),
+                    decoration: const BoxDecoration(
+                      color: CollectionTagModulesSection.brand,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                ),
+              Expanded(
+                child: Text(
+                  title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: ungrouped ? 0.2 : 0.4,
+                    color: ungrouped || titleMuted
+                        ? CollectionTagModulesSection.muted
+                        : CollectionTagModulesSection.ink
+                            .withValues(alpha: 0.78),
                   ),
                 ),
               ),
-            Expanded(
-              child: Text(
-                title,
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                  letterSpacing: ungrouped ? 0.2 : 0.4,
-                  color: ungrouped || titleMuted
-                      ? CollectionTagModulesSection.muted
-                      : CollectionTagModulesSection.ink.withValues(alpha: 0.78),
-                ),
-              ),
-            ),
-            if (onAiOrganize != null)
-              Material(
-                color: Colors.transparent,
-                child: InkWell(
-                  onTap: onAiOrganize,
-                  borderRadius: BorderRadius.circular(8),
-                  child: const Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    child: Text(
-                      'AI 归类',
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                        color: CollectionTagModulesSection.brand,
+              if (onAiOrganize != null)
+                Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    onTap: onAiOrganize,
+                    borderRadius: BorderRadius.circular(8),
+                    child: const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.auto_awesome_outlined,
+                            size: 15,
+                            color: CollectionTagModulesSection.aiAccent,
+                          ),
+                          SizedBox(width: 4),
+                          Text(
+                            'AI 归类',
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              color: CollectionTagModulesSection.aiAccent,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ),
                 ),
-              ),
-            if (onDeleteModule != null) ...[
-              _DeleteModuleButton(onPressed: onDeleteModule!),
-              const SizedBox(width: 6),
+              if (hasEditActions)
+                Opacity(
+                  opacity: editing ? 1 : 0,
+                  child: IgnorePointer(
+                    ignoring: !editing,
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (onDeleteModule != null) ...[
+                          _DeleteModuleButton(onPressed: onDeleteModule!),
+                          const SizedBox(width: 6),
+                        ],
+                        if (onAddTag != null)
+                          _AddTagInModuleButton(onPressed: onAddTag!),
+                      ],
+                    ),
+                  ),
+                ),
             ],
-            if (onAddTag != null)
-              _AddTagInModuleButton(onPressed: onAddTag!),
-          ],
+          ),
         ),
         SizedBox(height: ungrouped ? 12 : 6),
         if (tags.isEmpty)

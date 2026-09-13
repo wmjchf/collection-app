@@ -34,6 +34,7 @@ class _AiOrganizeSheetState extends State<_AiOrganizeSheet> {
   static const _text = Color(0xFF1F242E);
   static const _muted = Color(0xFF737A85);
   static const _blue = Color(0xFF2F6FED);
+  static const _aiAccent = Color(0xFF6B5CE7);
   static const _handle = Color(0xFFE5E8ED);
   static const _divider = Color(0xFFF0F1F4);
 
@@ -137,6 +138,12 @@ class _AiOrganizeSheetState extends State<_AiOrganizeSheet> {
                   height: 27,
                   child: Row(
                     children: [
+                      const Icon(
+                        Icons.auto_awesome_outlined,
+                        size: 18,
+                        color: _aiAccent,
+                      ),
+                      const SizedBox(width: 6),
                       const Text(
                         'AI 归类',
                         style: TextStyle(
