@@ -263,10 +263,9 @@ class _AccountPageState extends State<AccountPage> with ScreenDwellMixin {
                     if (_usage != null)
                       _UsageRow(
                         title: '收藏条目',
-                        usedLabel: '${_usage!.itemCount} 条',
-                        limitLabel: _usage!.itemLimit != null
-                            ? '${_usage!.itemLimit} 条'
-                            : '不限',
+                        valueLabel: _usage!.itemLimit != null
+                            ? '${_usage!.itemCount} 条 / ${_usage!.itemLimit} 条'
+                            : '${_usage!.itemCount} 条 / 不限',
                         progress: _usage!.itemLimit != null &&
                                 _usage!.itemLimit! > 0
                             ? (_usage!.itemCount / _usage!.itemLimit!)
@@ -327,29 +326,23 @@ class _AccountPageState extends State<AccountPage> with ScreenDwellMixin {
                     children: [
                       _UsageRow(
                         title: 'AI',
-                        usedLabel:
-                            '${formatAiCredits(_usage!.aiUsedTokens)} 积分',
-                        limitLabel:
-                            '${formatAiCredits(_usage!.aiLimitTokens)} 积分',
+                        valueLabel: _aiUsageLabel(_usage!),
                         progress: _usage!.aiLimitTokens > 0
                             ? (_usage!.aiUsedTokens / _usage!.aiLimitTokens)
                                 .clamp(0.0, 1.0)
                             : 0,
-                        showProgress: true,
+                        showProgress: _usage!.aiLimitTokens > 0,
                         onTap: () => _openUsageEvents(UsageEventsKind.ai),
                       ),
                       _UsageRow(
                         title: '转写',
-                        usedLabel:
-                            '${_fmtMinutes(_usage!.transcriptUsedMinutes)} 分钟',
-                        limitLabel:
-                            '${_fmtMinutes(_usage!.transcriptLimitMinutes)} 分钟',
+                        valueLabel: _transcriptUsageLabel(_usage!),
                         progress: _usage!.transcriptLimitMinutes > 0
                             ? (_usage!.transcriptUsedMinutes /
                                     _usage!.transcriptLimitMinutes)
                                 .clamp(0.0, 1.0)
                             : 0,
-                        showProgress: true,
+                        showProgress: _usage!.transcriptLimitMinutes > 0,
                         onTap: () =>
                             _openUsageEvents(UsageEventsKind.transcript),
                       ),
@@ -359,6 +352,22 @@ class _AccountPageState extends State<AccountPage> with ScreenDwellMixin {
               ],
             ),
     );
+  }
+
+  String _aiUsageLabel(UsageSummary u) {
+    final used = '${formatAiCredits(u.aiUsedTokens)} 积分';
+    if (u.aiLimitTokens <= 0) {
+      return u.aiUsedTokens > 0 ? '本月已用 $used' : '需订阅后可用';
+    }
+    return '$used / ${formatAiCredits(u.aiLimitTokens)} 积分';
+  }
+
+  String _transcriptUsageLabel(UsageSummary u) {
+    final used = '${_fmtMinutes(u.transcriptUsedMinutes)} 分钟';
+    if (u.transcriptLimitMinutes <= 0) {
+      return u.transcriptUsedMinutes > 0 ? '本月已用 $used' : '需订阅后可用';
+    }
+    return '$used / ${_fmtMinutes(u.transcriptLimitMinutes)} 分钟';
   }
 }
 
@@ -436,16 +445,14 @@ class _InfoRow extends StatelessWidget {
 class _UsageRow extends StatelessWidget {
   const _UsageRow({
     required this.title,
-    required this.usedLabel,
-    required this.limitLabel,
+    required this.valueLabel,
     required this.progress,
     this.showProgress = true,
     this.onTap,
   });
 
   final String title;
-  final String usedLabel;
-  final String limitLabel;
+  final String valueLabel;
   final double progress;
   final bool showProgress;
   final VoidCallback? onTap;
@@ -473,7 +480,7 @@ class _UsageRow extends StatelessWidget {
                 ),
               ),
               Text(
-                '$usedLabel / $limitLabel',
+                valueLabel,
                 style: const TextStyle(fontSize: 14, color: _muted),
               ),
               if (onTap != null) ...[
