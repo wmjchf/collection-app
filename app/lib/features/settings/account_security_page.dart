@@ -5,7 +5,6 @@ import 'package:super_collection/core/ui/app_toast.dart';
 import 'package:super_collection/features/auth/auth_repository.dart';
 import 'package:super_collection/features/auth/login_page.dart';
 import 'package:super_collection/features/onboarding/onboarding_prefs.dart';
-import 'package:super_collection/features/onboarding/seed_tags_prefs.dart';
 import 'package:super_collection/features/settings/delete_account_confirm_dialog.dart';
 
 /// 账号安全页：设置外层不出现「注销」字样，注销操作仅在此页内。
@@ -40,7 +39,6 @@ class _AccountSecurityPageState extends State<AccountSecurityPage>
       await _auth.deleteAccount();
       if (userId != null) {
         await OnboardingPrefs.clear(userId: userId);
-        await SeedTagsPrefs.clear(userId: userId);
       }
       if (!mounted) return;
       Navigator.of(context).pushAndRemoveUntil(

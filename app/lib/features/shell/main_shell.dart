@@ -10,7 +10,6 @@ import 'package:super_collection/core/ui/parse_progress_banner.dart';
 import 'package:super_collection/core/ui/parse_progress_controller.dart';
 import 'package:super_collection/core/ui/parse_progress_tracker.dart';
 import 'package:super_collection/features/collection/collection_page.dart';
-import 'package:super_collection/features/collection/tags_page.dart';
 import 'package:super_collection/features/home/home_page.dart';
 import 'package:super_collection/features/settings/account_drawer.dart';
 import 'package:super_collection/features/shell/app_bottom_nav_bar.dart';
@@ -31,16 +30,8 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
   ScreenDwellTracker? _tabDwell;
   ScreenDwellTracker? _drawerDwell;
 
-  static String _tabScreen(int index) {
-    switch (index) {
-      case 1:
-        return AnalyticsScreens.tags;
-      case 2:
-        return AnalyticsScreens.library;
-      default:
-        return AnalyticsScreens.home;
-    }
-  }
+  static String _tabScreen(int index) =>
+      index == 0 ? AnalyticsScreens.home : AnalyticsScreens.library;
 
   void _startTabDwell(int index) {
     _tabDwell?.stop();
@@ -153,13 +144,8 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
                 refreshTick: _homeRefreshTick,
                 onOpenAccount: _openAccountDrawer,
               ),
-              TagsPage(
-                isActive: _index == 1,
-                refreshTick: _homeRefreshTick,
-                onOpenAccount: _openAccountDrawer,
-              ),
               CollectionPage(
-                isActive: _index == 2,
+                isActive: _index == 1,
                 refreshTick: _homeRefreshTick,
                 onOpenAccount: _openAccountDrawer,
               ),

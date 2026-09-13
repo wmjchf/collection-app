@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:super_collection/core/config/app_brand.dart';
 import 'package:super_collection/features/onboarding/onboarding_prefs.dart';
-import 'package:super_collection/features/onboarding/seed_tags_pick_page.dart';
 import 'package:super_collection/features/onboarding/shortcuts_help_page.dart';
+import 'package:super_collection/features/shell/main_shell.dart';
+import 'package:super_collection/features/shortcuts/shortcut_inbound.dart';
 
 /// 首次引导（对齐 Figma `22. 首次引导`）
 class OnboardingPage extends StatelessWidget {
@@ -18,10 +19,11 @@ class OnboardingPage extends StatelessWidget {
     await OnboardingPrefs.markSeen(userId: userId);
     if (!context.mounted) return;
     Navigator.of(context).pushReplacement(
-      MaterialPageRoute<void>(
-        builder: (_) => SeedTagsPickPage(userId: userId),
-      ),
+      MaterialPageRoute<void>(builder: (_) => const MainShell()),
     );
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ShortcutInbound.flushPending();
+    });
   }
 
   void _openShortcutsHelp(BuildContext context) {
