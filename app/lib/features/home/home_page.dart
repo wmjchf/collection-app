@@ -715,7 +715,12 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                               .clamp(140.0, 360.0);
                       return ListView(
                         physics: const AlwaysScrollableScrollPhysics(),
-                        padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+                        padding: EdgeInsets.fromLTRB(
+                          16,
+                          12,
+                          16,
+                          24 + MediaQuery.paddingOf(context).bottom,
+                        ),
                         children: [
                           TrialExpiryBannerHost(
                             margin: const EdgeInsets.only(bottom: 12),

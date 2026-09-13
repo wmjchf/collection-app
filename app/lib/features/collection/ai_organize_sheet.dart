@@ -274,7 +274,7 @@ class _AiOrganizeSheetState extends State<_AiOrganizeSheet> {
         const SizedBox(height: 4),
         const Divider(height: 24, color: _divider),
         const Text(
-          '确认后会新建建议的模块，并按方案调整标签归属。未出现在方案中的标签保持原位。',
+          '确认后会新建建议的归类，并按方案调整标签归属。未出现在方案中的标签保持原位。',
           style: TextStyle(fontSize: 12, height: 1.4, color: _muted),
         ),
       ],

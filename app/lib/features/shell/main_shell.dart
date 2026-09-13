@@ -137,39 +137,58 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
   @override
   Widget build(BuildContext context) {
     ClientPageFetch.overlayContext = context;
+    final navH = AppBottomNavBar.heightOf(context);
+    final mq = MediaQuery.of(context);
     return Scaffold(
       key: _scaffoldKey,
       onDrawerChanged: _onDrawerChanged,
       drawer: const AccountDrawer(),
-      body: Stack(
-        children: [
-          IndexedStack(
-            index: _index,
-            children: [
-              HomePage(
-                isActive: _index == 0,
-                refreshTick: _homeRefreshTick,
-                onOpenAccount: _openAccountDrawer,
-              ),
-              CollectionPage(
-                isActive: _index == 1,
-                refreshTick: _homeRefreshTick,
-                onOpenAccount: _openAccountDrawer,
-              ),
-            ],
-          ),
-          Positioned(
-            left: 16,
-            right: 16,
-            bottom: 10,
-            child: ParseProgressBanner(controller: _parseProgress),
-          ),
-        ],
+      extendBody: true,
+      body: MediaQuery(
+        data: mq.copyWith(
+          padding: mq.padding.copyWith(bottom: navH),
+        ),
+        child: Stack(
+          children: [
+            IndexedStack(
+              index: _index,
+              children: [
+                HomePage(
+                  isActive: _index == 0,
+                  refreshTick: _homeRefreshTick,
+                  onOpenAccount: _openAccountDrawer,
+                ),
+                CollectionPage(
+                  isActive: _index == 1,
+                  refreshTick: _homeRefreshTick,
+                  onOpenAccount: _openAccountDrawer,
+                ),
+              ],
+            ),
+            Positioned(
+              left: 16,
+              right: 16,
+              bottom: navH + 10,
+              child: ParseProgressBanner(controller: _parseProgress),
+            ),
+          ],
+        ),
       ),
-      bottomNavigationBar: AppBottomNavBar(
-        currentIndex: _index,
-        onChanged: _switchTab,
-        onSearchTap: _openSearch,
+      floatingActionButton: AppBottomNavSearchFab(onTap: _openSearch),
+      floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
+      bottomNavigationBar: BottomAppBar(
+        color: Colors.white,
+        elevation: 0,
+        shadowColor: Colors.black.withValues(alpha: 0.08),
+        surfaceTintColor: Colors.transparent,
+        shape: const CircularNotchedRectangle(),
+        notchMargin: AppBottomNavBar.notchMargin,
+        height: AppBottomNavBar.barH,
+        padding: EdgeInsets.zero,
+        child: AppBottomNavBar(
+          currentIndex: _index,
+          onChanged: _switchTab,
+        ),
       ),
     );
   }

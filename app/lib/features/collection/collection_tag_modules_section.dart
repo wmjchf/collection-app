@@ -1,9 +1,10 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:super_collection/features/collection/tag_models.dart';
 import 'package:super_collection/features/collection/tag_module_models.dart';
 
-/// 归类标签：按模块分组展示；可新建模块、组内加标签。
+/// 归类标签：按归类分组展示；可新建归类、组内加标签。
 class CollectionTagModulesSection extends StatelessWidget {
   const CollectionTagModulesSection({
     super.key,
@@ -17,7 +18,7 @@ class CollectionTagModulesSection extends StatelessWidget {
     this.editing = false,
     this.onToggleEditing,
     this.headerKey,
-    this.showInlineHeader = true,
+    this.headerCollapse,
   });
 
   final List<TagModule> modules;
@@ -30,7 +31,8 @@ class CollectionTagModulesSection extends StatelessWidget {
   final bool editing;
   final VoidCallback? onToggleEditing;
   final Key? headerKey;
-  final bool showInlineHeader;
+  /// 0 展开页内标题，1 收进顶栏；为 null 则始终展开。
+  final ValueListenable<double>? headerCollapse;
 
   static const ink = Color(0xFF1F242E);
   static const muted = Color(0xFF8B929C);
@@ -81,24 +83,16 @@ class CollectionTagModulesSection extends StatelessWidget {
           borderRadius: BorderRadius.circular(16),
         ),
         child: Padding(
-          padding: EdgeInsets.fromLTRB(
-            16,
-            showInlineHeader ? 14 : 16,
-            12,
-            18,
-          ),
+          padding: const EdgeInsets.fromLTRB(16, 14, 12, 18),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              if (showInlineHeader)
-                _SectionHeader(
-                  editing: editing,
-                  onToggleEditing: onToggleEditing,
-                  onCreateModule: onCreateModule,
-                )
-              else
-                const SizedBox(height: 1),
-              if (showInlineHeader) const SizedBox(height: 8),
+              _CollapsingSectionHeader(
+                collapse: headerCollapse,
+                editing: editing,
+                onToggleEditing: onToggleEditing,
+                onCreateModule: onCreateModule,
+              ),
               if (!hasContent)
                 const Padding(
                   padding: EdgeInsets.only(bottom: 12),
@@ -116,6 +110,59 @@ class CollectionTagModulesSection extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+class _CollapsingSectionHeader extends StatelessWidget {
+  const _CollapsingSectionHeader({
+    required this.onCreateModule,
+    this.collapse,
+    this.editing = false,
+    this.onToggleEditing,
+  });
+
+  final ValueListenable<double>? collapse;
+  final VoidCallback onCreateModule;
+  final bool editing;
+  final VoidCallback? onToggleEditing;
+
+  @override
+  Widget build(BuildContext context) {
+    final header = Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _SectionHeader(
+          editing: editing,
+          onToggleEditing: onToggleEditing,
+          onCreateModule: onCreateModule,
+        ),
+        const SizedBox(height: 8),
+      ],
+    );
+    final listenable = collapse;
+    if (listenable == null) return header;
+    return ValueListenableBuilder<double>(
+      valueListenable: listenable,
+      builder: (context, raw, child) {
+        final t = Curves.easeInOutCubic.transform(raw.clamp(0.0, 1.0));
+        final reveal = 1.0 - t;
+        if (reveal <= 0.001) return const SizedBox.shrink();
+        return ClipRect(
+          child: Align(
+            alignment: Alignment.bottomCenter,
+            heightFactor: reveal,
+            child: Opacity(
+              opacity: reveal,
+              child: Transform.translate(
+                offset: Offset(0, -12 * t),
+                child: child,
+              ),
+            ),
+          ),
+        );
+      },
+      child: header,
     );
   }
 }
@@ -435,7 +482,7 @@ class _DeleteModuleButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Tooltip(
-      message: '删除模块',
+      message: '删除归类',
       child: Material(
         color: Colors.transparent,
         child: InkWell(

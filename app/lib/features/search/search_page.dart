@@ -13,7 +13,9 @@ import 'package:super_collection/features/items/item_models.dart';
 import 'package:super_collection/features/items/item_reading_page.dart';
 import 'package:super_collection/features/items/items_repository.dart';
 
-/// 统一搜索：标签命中（可多选 AND）+ 全文内容结果
+enum _SearchMode { tags, content }
+
+/// 统一搜索：框内切换「标签 / 全文」；标签模式沿用原 TagSearchPage 逻辑。
 class SearchPage extends StatefulWidget {
   const SearchPage({super.key});
 
@@ -38,6 +40,7 @@ class _SearchPageState extends State<SearchPage> with ScreenDwellMixin {
   final _scroll = ScrollController();
 
   Timer? _debounce;
+  _SearchMode _mode = _SearchMode.content;
   String _query = '';
   List<Tag> _tags = const [];
   Set<int> _selectedTagIds = {};
@@ -50,13 +53,13 @@ class _SearchPageState extends State<SearchPage> with ScreenDwellMixin {
   String? _error;
   bool _searched = false;
 
-  bool get _filteringByTags => _selectedTagIds.isNotEmpty;
+  bool get _isTagMode => _mode == _SearchMode.tags;
 
-  int get _contentTotal =>
-      _filteringByTags ? _tagItemsTotal : _textTotal;
+  bool get _filteringByTags => _isTagMode && _selectedTagIds.isNotEmpty;
 
-  int get _contentCount =>
-      _filteringByTags ? _tagItems.length : _textHits.length;
+  int get _contentTotal => _isTagMode ? _tagItemsTotal : _textTotal;
+
+  int get _contentCount => _isTagMode ? _tagItems.length : _textHits.length;
 
   bool get _hasMore => _contentCount < _contentTotal;
 
@@ -102,6 +105,17 @@ class _SearchPageState extends State<SearchPage> with ScreenDwellMixin {
     _searched = false;
   }
 
+  void _onModeChanged(_SearchMode mode) {
+    if (mode == _mode) return;
+    setState(() => _mode = mode);
+    final q = _controller.text.trim();
+    if (q.isEmpty) {
+      setState(_clearResults);
+      return;
+    }
+    unawaited(_search(q));
+  }
+
   void _onQueryChanged(String value) {
     setState(() {});
     _debounce?.cancel();
@@ -116,11 +130,123 @@ class _SearchPageState extends State<SearchPage> with ScreenDwellMixin {
   }
 
   Future<void> _search(String q) async {
+    if (_isTagMode) {
+      await _searchTags(q, resetSelection: true);
+    } else {
+      await _searchContent(q);
+    }
+  }
+
+  /// 原 TagSearchPage：命中标签 + 内容同出，主命中默认选中，可点标签 AND 筛选。
+  Future<void> _searchTags(
+    String q, {
+    required bool resetSelection,
+  }) async {
     setState(() {
       _query = q;
       _loading = true;
       _error = null;
       _searched = true;
+      _tagItems = const [];
+      _tagItemsTotal = 0;
+      if (resetSelection) {
+        _tags = const [];
+        _selectedTagIds = {};
+      }
+    });
+
+    try {
+      final filterIds =
+          resetSelection ? const <int>[] : _selectedTagIds.toList();
+      final result = await _tagsRepo.searchTags(
+        q,
+        limit: kItemsPageSize,
+        offset: 0,
+        filterTagIds: filterIds,
+      );
+      if (!mounted || _controller.text.trim() != q) return;
+
+      final nextSelected = resetSelection
+          ? {
+              if (result.primaryTagId != null) result.primaryTagId!,
+            }
+          : Set<int>.from(_selectedTagIds);
+
+      final needPrimaryFilter = resetSelection &&
+          nextSelected.isNotEmpty &&
+          result.matchedTagIds.length > 1;
+      if (needPrimaryFilter) {
+        final filtered = await _tagsRepo.searchTags(
+          q,
+          limit: kItemsPageSize,
+          offset: 0,
+          filterTagIds: nextSelected.toList(),
+        );
+        if (!mounted || _controller.text.trim() != q) return;
+        setState(() {
+          _tags = filtered.tags;
+          _selectedTagIds = nextSelected;
+          _tagItems = filtered.items;
+          _tagItemsTotal = filtered.itemsTotal;
+          _loading = false;
+        });
+        Analytics.instance.searchSubmit(
+          hasResult: filtered.itemsTotal > 0 || filtered.tags.isNotEmpty,
+          resultCount: filtered.itemsTotal,
+        );
+        _scheduleFill();
+        return;
+      }
+
+      setState(() {
+        if (resetSelection) {
+          _tags = result.tags;
+          _selectedTagIds = nextSelected;
+        }
+        _tagItems = result.items;
+        _tagItemsTotal = result.itemsTotal;
+        _loading = false;
+      });
+      Analytics.instance.searchSubmit(
+        hasResult: result.itemsTotal > 0 || result.tags.isNotEmpty,
+        resultCount: result.itemsTotal,
+      );
+      _scheduleFill();
+    } on ApiException catch (e) {
+      if (!mounted || _controller.text.trim() != q) return;
+      setState(() {
+        _loading = false;
+        _error = e.message;
+        if (resetSelection) {
+          _tags = const [];
+          _selectedTagIds = {};
+          _tagItems = const [];
+          _tagItemsTotal = 0;
+        }
+      });
+      Analytics.instance.searchSubmit(hasResult: false, resultCount: 0);
+    } catch (_) {
+      if (!mounted || _controller.text.trim() != q) return;
+      setState(() {
+        _loading = false;
+        _error = '搜索失败';
+        if (resetSelection) {
+          _tags = const [];
+          _selectedTagIds = {};
+          _tagItems = const [];
+          _tagItemsTotal = 0;
+        }
+      });
+    }
+  }
+
+  Future<void> _searchContent(String q) async {
+    setState(() {
+      _query = q;
+      _loading = true;
+      _error = null;
+      _searched = true;
+      _tags = const [];
       _selectedTagIds = {};
       _tagItems = const [];
       _tagItemsTotal = 0;
@@ -129,30 +255,20 @@ class _SearchPageState extends State<SearchPage> with ScreenDwellMixin {
     });
 
     try {
-      final tagsFuture = _tagsRepo.searchTags(
-        q,
-        limit: kItemsPageSize,
-        offset: 0,
-        filterTagIds: const [],
-      );
-      final textFuture = _itemsRepo.search(
+      final result = await _itemsRepo.search(
         q,
         limit: kItemsPageSize,
         offset: 0,
       );
-      final tagsResult = await tagsFuture;
-      final textResult = await textFuture;
       if (!mounted || _controller.text.trim() != q) return;
-
       setState(() {
-        _tags = tagsResult.tags;
-        _textHits = textResult.items;
-        _textTotal = textResult.total;
+        _textHits = result.items;
+        _textTotal = result.total;
         _loading = false;
       });
       Analytics.instance.searchSubmit(
-        hasResult: textResult.total > 0 || tagsResult.tags.isNotEmpty,
-        resultCount: textResult.total,
+        hasResult: result.total > 0,
+        resultCount: result.total,
       );
       _scheduleFill();
     } on ApiException catch (e) {
@@ -160,7 +276,6 @@ class _SearchPageState extends State<SearchPage> with ScreenDwellMixin {
       setState(() {
         _loading = false;
         _error = e.message;
-        _tags = const [];
         _textHits = const [];
         _textTotal = 0;
       });
@@ -170,7 +285,6 @@ class _SearchPageState extends State<SearchPage> with ScreenDwellMixin {
       setState(() {
         _loading = false;
         _error = '搜索失败';
-        _tags = const [];
         _textHits = const [];
         _textTotal = 0;
       });
@@ -180,10 +294,10 @@ class _SearchPageState extends State<SearchPage> with ScreenDwellMixin {
   Future<void> _loadMore() async {
     if (_loading || _loadingMore || !_hasMore || _query.isEmpty) return;
     final q = _query;
-    final selected = _selectedTagIds.toList();
     setState(() => _loadingMore = true);
     try {
-      if (selected.isNotEmpty) {
+      if (_isTagMode) {
+        final selected = _selectedTagIds.toList();
         final result = await _tagsRepo.searchTags(
           q,
           limit: kItemsPageSize,
@@ -249,16 +363,6 @@ class _SearchPageState extends State<SearchPage> with ScreenDwellMixin {
       next.remove(tag.id);
     } else {
       next.add(tag.id);
-    }
-
-    if (next.isEmpty) {
-      setState(() {
-        _selectedTagIds = next;
-        _tagItems = const [];
-        _tagItemsTotal = 0;
-      });
-      _scheduleFill();
-      return;
     }
 
     setState(() {
@@ -335,6 +439,13 @@ class _SearchPageState extends State<SearchPage> with ScreenDwellMixin {
     return n.startsWith('#') ? n : '#$n';
   }
 
+  String get _hintText =>
+      _isTagMode ? '搜索标签' : '搜索标题、正文、感想…';
+
+  String get _idleHint => _isTagMode
+      ? '输入标签名，查看相关收藏'
+      : '输入关键词搜索收藏';
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -348,80 +459,82 @@ class _SearchPageState extends State<SearchPage> with ScreenDwellMixin {
               child: Row(
                 children: [
                   Expanded(
-                    child: SizedBox(
+                    child: Container(
                       height: 40,
-                      child: TextField(
-                        controller: _controller,
-                        focusNode: _focus,
-                        textInputAction: TextInputAction.search,
-                        onChanged: _onQueryChanged,
-                        onTapOutside: (_) => _unfocusSearch(),
-                        onSubmitted: (v) {
-                          _debounce?.cancel();
-                          final q = v.trim();
-                          if (q.isNotEmpty) unawaited(_search(q));
-                          _unfocusSearch();
-                        },
-                        style: const TextStyle(
-                          fontSize: 15,
-                          color: _text,
-                          height: 1.2,
+                      decoration: BoxDecoration(
+                        color: _inputBg,
+                        borderRadius: BorderRadius.circular(_searchRadius),
+                        border: Border.all(
+                          color: const Color(0xFFB8CCFA),
+                          width: 1,
                         ),
-                        decoration: InputDecoration(
-                          hintText: '搜索标签、标题、正文、感想…',
-                          hintStyle: const TextStyle(
-                            fontSize: 15,
-                            color: _muted,
+                      ),
+                      clipBehavior: Clip.antiAlias,
+                      child: Row(
+                        children: [
+                          _SearchModePicker(
+                            mode: _mode,
+                            onChanged: _onModeChanged,
                           ),
-                          prefixIcon: const Icon(
-                            Icons.search_rounded,
-                            color: _muted,
-                            size: 24,
+                          Container(
+                            width: 1,
+                            height: 18,
+                            color: _hairline,
                           ),
-                          suffixIcon: _controller.text.isEmpty
-                              ? null
-                              : IconButton(
-                                  icon: const Icon(
-                                    Icons.close_rounded,
-                                    color: _muted,
-                                    size: 22,
-                                  ),
-                                  onPressed: () {
-                                    _controller.clear();
-                                    _onQueryChanged('');
-                                    _focus.requestFocus();
-                                  },
+                          Expanded(
+                            child: TextField(
+                              controller: _controller,
+                              focusNode: _focus,
+                              textInputAction: TextInputAction.search,
+                              onChanged: _onQueryChanged,
+                              onTapOutside: (_) => _unfocusSearch(),
+                              onSubmitted: (v) {
+                                _debounce?.cancel();
+                                final q = v.trim();
+                                if (q.isNotEmpty) unawaited(_search(q));
+                                _unfocusSearch();
+                              },
+                              style: const TextStyle(
+                                fontSize: 15,
+                                color: _text,
+                                height: 1.2,
+                              ),
+                              decoration: InputDecoration(
+                                hintText: _hintText,
+                                hintStyle: const TextStyle(
+                                  fontSize: 15,
+                                  color: _muted,
                                 ),
-                          filled: true,
-                          fillColor: _inputBg,
-                          isDense: true,
-                          contentPadding:
-                              const EdgeInsets.symmetric(vertical: 10),
-                          border: OutlineInputBorder(
-                            borderRadius:
-                                BorderRadius.circular(_searchRadius),
-                            borderSide: const BorderSide(
-                              color: Color(0xFFB8CCFA),
-                              width: 1,
+                                border: InputBorder.none,
+                                enabledBorder: InputBorder.none,
+                                focusedBorder: InputBorder.none,
+                                isDense: true,
+                                contentPadding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 10,
+                                ),
+                              ),
                             ),
                           ),
-                          enabledBorder: OutlineInputBorder(
-                            borderRadius:
-                                BorderRadius.circular(_searchRadius),
-                            borderSide: const BorderSide(
-                              color: Color(0xFFB8CCFA),
-                              width: 1,
+                          if (_controller.text.isNotEmpty)
+                            IconButton(
+                              icon: const Icon(
+                                Icons.close_rounded,
+                                color: _muted,
+                                size: 22,
+                              ),
+                              padding: const EdgeInsets.only(right: 4),
+                              constraints: const BoxConstraints(
+                                minWidth: 36,
+                                minHeight: 36,
+                              ),
+                              onPressed: () {
+                                _controller.clear();
+                                _onQueryChanged('');
+                                _focus.requestFocus();
+                              },
                             ),
-                          ),
-                          focusedBorder: OutlineInputBorder(
-                            borderRadius:
-                                BorderRadius.circular(_searchRadius),
-                            borderSide: const BorderSide(
-                              color: Color(0xFFB8CCFA),
-                              width: 1,
-                            ),
-                          ),
-                        ),
+                        ],
                       ),
                     ),
                   ),
@@ -459,10 +572,10 @@ class _SearchPageState extends State<SearchPage> with ScreenDwellMixin {
 
   Widget _buildBody() {
     if (!_searched) {
-      return const Center(
+      return Center(
         child: Text(
-          '搜索标签与收藏内容',
-          style: TextStyle(fontSize: 14, color: _muted),
+          _idleHint,
+          style: const TextStyle(fontSize: 14, color: _muted),
         ),
       );
     }
@@ -483,103 +596,226 @@ class _SearchPageState extends State<SearchPage> with ScreenDwellMixin {
         ),
       );
     }
+
+    if (_isTagMode) {
+      return _buildTagModeBody();
+    }
+    return _buildContentModeBody();
+  }
+
+  Widget _buildTagModeBody() {
     if (_tags.isEmpty && _contentCount == 0 && !_loading) {
       return Center(
         child: Text(
-          '没有「$_query」相关结果',
+          '没有「$_query」相关的标签或内容',
           style: const TextStyle(fontSize: 14, color: _muted),
         ),
       );
+    }
+
+    return CustomScrollView(
+      controller: _scroll,
+      slivers: [
+        if (_tags.isNotEmpty)
+          SliverPadding(
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
+            sliver: SliverToBoxAdapter(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    '标签',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: _muted,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      for (final tag in _tags)
+                        _FilterTagChip(
+                          label: _hashName(tag.name),
+                          count: tag.itemCount,
+                          selected: _selectedTagIds.contains(tag.id),
+                          onTap: () => unawaited(_toggleTag(tag)),
+                        ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        if (_loading && _contentCount == 0)
+          const SliverFillRemaining(
+            hasScrollBody: false,
+            child: Center(child: CircularProgressIndicator()),
+          )
+        else if (_contentCount == 0)
+          const SliverFillRemaining(
+            hasScrollBody: false,
+            child: Center(
+              child: Text(
+                '没有相关标签的内容',
+                style: TextStyle(fontSize: 14, color: _muted),
+              ),
+            ),
+          )
+        else ...[
+          SliverPadding(
+            padding: const EdgeInsets.fromLTRB(16, 22, 16, 0),
+            sliver: SliverToBoxAdapter(
+              child: Text(
+                _filteringByTags
+                    ? '内容 · $_contentTotal（按所选标签）'
+                    : '内容 · $_contentTotal',
+                style: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: _muted,
+                ),
+              ),
+            ),
+          ),
+          SliverPadding(
+            padding: const EdgeInsets.fromLTRB(16, 10, 16, 24),
+            sliver: SliverList(
+              delegate: SliverChildBuilderDelegate(
+                (context, index) {
+                  if (index == _tagItems.length) {
+                    return pagedListFooter(
+                      loadingMore: _loadingMore,
+                      hasMore: _hasMore,
+                      isEmpty: false,
+                    );
+                  }
+                  final item = _tagItems[index];
+                  return Padding(
+                    key: ValueKey('unified-tag-item-${item.id}'),
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: ItemListTile.fromItem(
+                      item,
+                      subtitle: _subtitle(item),
+                      onTap: () => unawaited(
+                        _openItem(item, entry: 'tag_search'),
+                      ),
+                    ),
+                  );
+                },
+                childCount: _tagItems.length + 1,
+              ),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildContentModeBody() {
+    if (_contentCount == 0 && !_loading) {
+      return Center(
+        child: Text(
+          '没有「$_query」相关内容',
+          style: const TextStyle(fontSize: 14, color: _muted),
+        ),
+      );
+    }
+
+    if (_loading && _contentCount == 0) {
+      return const Center(child: CircularProgressIndicator());
     }
 
     return ListView(
       controller: _scroll,
       padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
       children: [
-        if (_tags.isNotEmpty) ...[
-          const Text(
-            '标签',
-            style: TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w600,
-              color: _muted,
-            ),
-          ),
-          const SizedBox(height: 10),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              for (final tag in _tags)
-                _FilterTagChip(
-                  label: _hashName(tag.name),
-                  count: tag.itemCount,
-                  selected: _selectedTagIds.contains(tag.id),
-                  onTap: () => unawaited(_toggleTag(tag)),
-                ),
-            ],
-          ),
-          const SizedBox(height: 22),
-        ],
-        Text(
-          _contentTotal > 0
-              ? (_filteringByTags
-                  ? '内容 · $_contentTotal（按所选标签）'
-                  : '内容 · $_contentTotal')
-              : '内容',
-          style: const TextStyle(
-            fontSize: 13,
-            fontWeight: FontWeight.w600,
-            color: _muted,
-          ),
-        ),
-        const SizedBox(height: 10),
-        if (_loading && _contentCount == 0)
-          const Padding(
-            padding: EdgeInsets.only(top: 32),
-            child: Center(child: CircularProgressIndicator()),
-          )
-        else if (_contentCount == 0)
+        for (final hit in _textHits)
           Padding(
-            padding: const EdgeInsets.only(top: 24),
-            child: Text(
-              _filteringByTags ? '没有同时带有所选标签的收藏' : '无匹配内容',
-              style: const TextStyle(fontSize: 14, color: _muted),
-            ),
-          )
-        else if (_filteringByTags)
-          for (final item in _tagItems)
-            Padding(
-              key: ValueKey('unified-tag-item-${item.id}'),
-              padding: const EdgeInsets.only(bottom: 8),
-              child: ItemListTile.fromItem(
-                item,
-                subtitle: _subtitle(item),
-                onTap: () => unawaited(
-                  _openItem(item, entry: 'tag_search'),
-                ),
-              ),
-            )
-        else
-          for (final hit in _textHits)
-            Padding(
-              key: ValueKey('unified-text-item-${hit.item.id}'),
-              padding: const EdgeInsets.only(bottom: 8),
-              child: ItemListTile.fromItem(
-                hit.item,
-                subtitle: _subtitle(hit.item),
-                onTap: () => unawaited(
-                  _openItem(hit.item, entry: 'search'),
-                ),
+            key: ValueKey('unified-text-item-${hit.item.id}'),
+            padding: const EdgeInsets.only(bottom: 8),
+            child: ItemListTile.fromItem(
+              hit.item,
+              subtitle: _subtitle(hit.item),
+              onTap: () => unawaited(
+                _openItem(hit.item, entry: 'search'),
               ),
             ),
-        if (_contentCount > 0)
-          pagedListFooter(
-            loadingMore: _loadingMore,
-            hasMore: _hasMore,
-            isEmpty: false,
           ),
+        pagedListFooter(
+          loadingMore: _loadingMore,
+          hasMore: _hasMore,
+          isEmpty: false,
+        ),
       ],
+    );
+  }
+}
+
+class _SearchModePicker extends StatelessWidget {
+  const _SearchModePicker({
+    required this.mode,
+    required this.onChanged,
+  });
+
+  final _SearchMode mode;
+  final ValueChanged<_SearchMode> onChanged;
+
+  String get _label => mode == _SearchMode.tags ? '标签' : '全文';
+
+  @override
+  Widget build(BuildContext context) {
+    return PopupMenuButton<_SearchMode>(
+      padding: EdgeInsets.zero,
+      offset: const Offset(0, 40),
+      color: Colors.white,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      onSelected: onChanged,
+      itemBuilder: (context) => [
+        _menuItem(_SearchMode.tags, '标签'),
+        _menuItem(_SearchMode.content, '全文'),
+      ],
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 10),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              _label,
+              style: const TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: _SearchPageState._brand,
+              ),
+            ),
+            const Icon(
+              Icons.expand_more_rounded,
+              size: 18,
+              color: _SearchPageState._brand,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  PopupMenuItem<_SearchMode> _menuItem(_SearchMode value, String label) {
+    final selected = mode == value;
+    return PopupMenuItem<_SearchMode>(
+      value: value,
+      height: 40,
+      child: Text(
+        label,
+        style: TextStyle(
+          fontSize: 15,
+          fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
+          color: selected
+              ? _SearchPageState._brand
+              : _SearchPageState._text,
+        ),
+      ),
     );
   }
 }

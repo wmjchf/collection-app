@@ -20,7 +20,7 @@ async function getOwnedModule(userId, moduleId) {
   );
   const row = rows[0];
   if (!row) {
-    throw Object.assign(new Error('模块不存在'), { status: 404 });
+    throw Object.assign(new Error('归类不存在'), { status: 404 });
   }
   return row;
 }
@@ -133,7 +133,7 @@ async function createModule(userId, rawName) {
 async function deleteModule(userId, moduleId) {
   const mid = Number(moduleId);
   if (!Number.isFinite(mid) || mid <= 0) {
-    throw Object.assign(new Error('无效的模块 ID'), { status: 400 });
+    throw Object.assign(new Error('无效的归类 ID'), { status: 400 });
   }
   await getOwnedModule(userId, mid);
   const [result] = await pool.execute(
@@ -142,7 +142,7 @@ async function deleteModule(userId, moduleId) {
     { moduleId: mid, userId },
   );
   if (!result.affectedRows) {
-    throw Object.assign(new Error('模块不存在'), { status: 404 });
+    throw Object.assign(new Error('归类不存在'), { status: 404 });
   }
   return { ok: true };
 }
