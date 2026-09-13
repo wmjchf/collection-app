@@ -36,6 +36,7 @@ Future<void> showReadingTagsSheet(
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       barrierColor: const Color(0x59000000),
+      useSafeArea: false,
       builder: (context) => _ReadingTagsSheet(
         itemId: itemId,
         session: session,
@@ -880,7 +881,9 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
       padding: EdgeInsets.only(
         left: 16,
         right: 16,
-        bottom: 16 + MediaQuery.viewInsetsOf(context).bottom,
+        bottom: 16 +
+            MediaQuery.paddingOf(context).bottom +
+            MediaQuery.viewInsetsOf(context).bottom,
       ),
       child: Align(
         alignment: Alignment.bottomCenter,

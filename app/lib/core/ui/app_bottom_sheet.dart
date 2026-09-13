@@ -13,11 +13,14 @@ class AppBottomSheetShell extends StatelessWidget {
     required this.child,
     this.onDismiss,
     this.padding = const EdgeInsets.fromLTRB(16, 0, 16, 16),
+    this.insetSafeArea = true,
   });
 
   final Widget child;
   final VoidCallback? onDismiss;
   final EdgeInsets padding;
+  /// 为 false 时不外垫底部安全区（全宽贴底白底 + 内部 SafeArea 用）。
+  final bool insetSafeArea;
 
   void _dismiss(BuildContext context) {
     if (onDismiss != null) {
@@ -30,8 +33,9 @@ class AppBottomSheetShell extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final media = MediaQuery.of(context);
+    final safeBottom = insetSafeArea ? media.padding.bottom : 0.0;
     final effectivePadding = padding.copyWith(
-      bottom: padding.bottom + media.viewInsets.bottom + media.padding.bottom,
+      bottom: padding.bottom + media.viewInsets.bottom + safeBottom,
     );
 
     return Stack(
@@ -63,6 +67,7 @@ Future<T?> showAppBottomSheet<T>({
   bool enableDrag = true,
   VoidCallback? onDismiss,
   EdgeInsets padding = const EdgeInsets.fromLTRB(16, 0, 16, 16),
+  bool insetSafeArea = true,
 }) {
   return showModalBottomSheet<T>(
     context: context,
@@ -71,9 +76,12 @@ Future<T?> showAppBottomSheet<T>({
     barrierColor: barrierColor,
     isDismissible: isDismissible,
     enableDrag: enableDrag,
+    // 关闭系统外垫；安全区由 [AppBottomSheetShell] / 白底内部 SafeArea 处理
+    useSafeArea: false,
     builder: (context) => AppBottomSheetShell(
       onDismiss: onDismiss,
       padding: padding,
+      insetSafeArea: insetSafeArea,
       child: builder(context),
     ),
   );

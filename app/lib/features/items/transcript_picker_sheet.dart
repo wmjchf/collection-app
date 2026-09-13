@@ -10,6 +10,7 @@ Future<TranscriptTarget?> showTranscriptPickerSheet(
     context: context,
     barrierColor: const Color(0x66000000),
     padding: EdgeInsets.zero,
+    insetSafeArea: false,
     builder: (context) => _TranscriptPickerSheet(targets: targets),
   );
 }

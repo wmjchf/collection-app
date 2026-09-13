@@ -26,6 +26,7 @@ Future<void> showAddLinkSheet(
     context: context,
     barrierColor: const Color(0x73000000),
     padding: EdgeInsets.zero,
+    insetSafeArea: false,
     builder: (context) => AddLinkSheet(initialUrl: url),
   );
 }
