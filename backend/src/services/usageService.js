@@ -63,10 +63,10 @@ function quotasForPlan(plan, { isTrial = false } = {}) {
       transcriptMinutesPerMonth: Number(
         u.emperorTranscriptMinutesPerMonth ??
           u.proTranscriptMinutesPerMonth ??
-          200,
+          400,
       ),
       aiTokensPerMonth: Number(
-        u.emperorAiTokensPerMonth ?? u.proAiTokensPerMonth ?? 1000000,
+        u.emperorAiTokensPerMonth ?? u.proAiTokensPerMonth ?? 800000,
       ),
       itemLimit: null,
     };

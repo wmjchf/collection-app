@@ -514,7 +514,7 @@ class PlanQuotasTable {
   static const defaults = PlanQuotasTable(
     free: PlanQuota(transcriptMinutes: 0, aiTokens: 0, itemLimit: 300),
     prince: PlanQuota(transcriptMinutes: 0, aiTokens: 500000),
-    emperor: PlanQuota(transcriptMinutes: 200, aiTokens: 1000000),
+    emperor: PlanQuota(transcriptMinutes: 400, aiTokens: 800000),
   );
 
   factory PlanQuotasTable.fromJson(Map<String, dynamic> json) {

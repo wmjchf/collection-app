@@ -74,9 +74,9 @@ module.exports = {
     princeAiTokensPerMonth:
       Number(process.env.PRINCE_AI_TOKENS_PER_MONTH) || 500000,
     emperorAiTokensPerMonth:
-      Number(process.env.EMPEROR_AI_TOKENS_PER_MONTH) || 1000000,
+      Number(process.env.EMPEROR_AI_TOKENS_PER_MONTH) || 800000,
     emperorTranscriptMinutesPerMonth:
-      Number(process.env.EMPEROR_TRANSCRIPT_MINUTES_PER_MONTH) || 200,
+      Number(process.env.EMPEROR_TRANSCRIPT_MINUTES_PER_MONTH) || 400,
     /**
      * 月付免费试用额度占正式月额度的比例（默认 1/4）。
      * 也可用 TRIAL_* 绝对值覆盖。
@@ -109,7 +109,7 @@ module.exports = {
     proTranscriptMinutesPerMonth:
       Number(process.env.PRO_TRANSCRIPT_MINUTES_PER_MONTH) ||
       Number(process.env.EMPEROR_TRANSCRIPT_MINUTES_PER_MONTH) ||
-      200,
+      400,
   },
   /**
    * Apple IAP（App Store Server API）
