@@ -1,27 +1,25 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
-/// 底部导航：阅读 | 凸起搜索 | 收藏
-///
-/// 配合 [MainShell] 的 `BottomAppBar` + `centerDocked` FAB：
-/// 中间凹槽托住搜索圆钮。
+/// 底部导航：阅读 | 搜索 | 收藏（齐平；搜索用原凸起圆钮样式，嵌入栏内）
 class AppBottomNavBar extends StatelessWidget {
   const AppBottomNavBar({
     super.key,
     required this.currentIndex,
     required this.onChanged,
+    required this.onSearch,
   });
 
   /// 0=阅读，1=收藏
   final int currentIndex;
   final ValueChanged<int> onChanged;
+  final VoidCallback onSearch;
 
   static const active = Color(0xFF2F6FED);
   static const _inactive = Color(0xFF737A85);
 
   static const barH = kBottomNavigationBarHeight;
-  static const fabSize = 62.0;
-  static const notchMargin = 8.0;
+  static const searchSize = 48.0;
 
   static double heightOf(BuildContext context) {
     return barH + MediaQuery.paddingOf(context).bottom;
@@ -42,7 +40,9 @@ class AppBottomNavBar extends StatelessWidget {
               onTap: () => onChanged(0),
             ),
           ),
-          SizedBox(width: fabSize + notchMargin * 2),
+          Expanded(
+            child: _SearchItem(onTap: onSearch),
+          ),
           Expanded(
             child: _TabItem(
               label: '收藏',
@@ -58,38 +58,35 @@ class AppBottomNavBar extends StatelessWidget {
   }
 }
 
-/// 中间搜索圆钮，由 Scaffold `floatingActionButton` + `centerDocked` 嵌入底栏凹槽。
-class AppBottomNavSearchFab extends StatelessWidget {
-  const AppBottomNavSearchFab({super.key, required this.onTap});
+/// 原凸起 FAB 的蓝底白图标，嵌在栏内齐平、无文案。
+class _SearchItem extends StatelessWidget {
+  const _SearchItem({required this.onTap});
 
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      width: AppBottomNavBar.fabSize,
-      height: AppBottomNavBar.fabSize,
-      child: FloatingActionButton(
-        onPressed: onTap,
-        elevation: 4,
-        highlightElevation: 6,
-        backgroundColor: AppBottomNavBar.active,
-        foregroundColor: Colors.white,
-        shape: const CircleBorder(),
-        child: const Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.search_rounded, size: 26),
-            SizedBox(height: 2),
-            Text(
-              '搜索',
-              style: TextStyle(
-                fontSize: 10,
-                fontWeight: FontWeight.w600,
-                height: 1,
-              ),
+    return InkWell(
+      onTap: onTap,
+      customBorder: const CircleBorder(),
+      overlayColor: WidgetStateProperty.all(Colors.transparent),
+      child: SizedBox(
+        height: AppBottomNavBar.barH,
+        child: Center(
+          child: Container(
+            width: AppBottomNavBar.searchSize,
+            height: AppBottomNavBar.searchSize,
+            decoration: const BoxDecoration(
+              color: AppBottomNavBar.active,
+              shape: BoxShape.circle,
             ),
-          ],
+            alignment: Alignment.center,
+            child: const Icon(
+              Icons.search_rounded,
+              size: 26,
+              color: Colors.white,
+            ),
+          ),
         ),
       ),
     );
