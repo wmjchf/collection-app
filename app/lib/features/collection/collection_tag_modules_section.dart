@@ -56,6 +56,8 @@ class CollectionTagModulesSection extends StatelessWidget {
   Widget build(BuildContext context) {
     final hasContent = modules.isNotEmpty || ungrouped.isNotEmpty;
 
+    // 归类间距放进各自 DragTarget（topInset），避免空隙落空接不住。
+    const moduleGap = 26.0;
     final blocks = <Widget>[
       _ModuleBlock(
         moduleId: null,
@@ -70,12 +72,12 @@ class CollectionTagModulesSection extends StatelessWidget {
     ];
 
     for (final m in modules) {
-      blocks.add(const SizedBox(height: 26));
       blocks.add(
         _ModuleBlock(
           moduleId: m.id,
           title: m.name,
           tags: m.tags,
+          topInset: moduleGap,
           onOpenTag: onOpenTag,
           onOpenModule:
               onOpenModule != null ? () => onOpenModule!(m) : null,
@@ -356,6 +358,7 @@ class _ModuleBlock extends StatelessWidget {
     this.onPlaceTag,
     this.titleMuted = false,
     this.ungrouped = false,
+    this.topInset = 0,
   });
 
   /// `null` = 未归类。
@@ -363,6 +366,8 @@ class _ModuleBlock extends StatelessWidget {
   final String title;
   final bool titleMuted;
   final bool ungrouped;
+  /// 并入本块 DragTarget 的上方间距（命中区含空隙）。
+  final double topInset;
   final List<Tag> tags;
   final ValueChanged<Tag> onOpenTag;
   final VoidCallback? onOpenModule;
@@ -517,12 +522,18 @@ class _ModuleBlock extends StatelessWidget {
         ),
         SizedBox(height: ungrouped ? 12 : 6),
         if (tags.isEmpty)
-          const Text(
-            '暂无标签',
-            style: TextStyle(
-              fontSize: 14,
-              height: 1.35,
-              color: CollectionTagModulesSection.muted,
+          const SizedBox(
+            height: 40,
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                '暂无标签',
+                style: TextStyle(
+                  fontSize: 14,
+                  height: 1.35,
+                  color: CollectionTagModulesSection.muted,
+                ),
+              ),
             ),
           )
         else
@@ -567,8 +578,14 @@ class _ModuleBlock extends StatelessWidget {
       );
     }
 
-    if (onPlaceTag == null) return block;
+    if (onPlaceTag == null) {
+      return topInset > 0
+          ? Padding(padding: EdgeInsets.only(top: topInset), child: block)
+          : block;
+    }
 
+    // DragTarget 命中按「指尖」而不是浮层芯片；间距须在带 decoration 的容器内，
+    // 否则纯 Padding 空隙不参与 hitTest，松手仍会落空。
     return DragTarget<Tag>(
       onWillAcceptWithDetails: (details) => _canAccept(details.data),
       onAcceptWithDetails: (details) {
@@ -580,6 +597,7 @@ class _ModuleBlock extends StatelessWidget {
         return AnimatedContainer(
           duration: const Duration(milliseconds: 120),
           curve: Curves.easeOutCubic,
+          padding: EdgeInsets.only(top: topInset),
           decoration: BoxDecoration(
             color: hovering
                 ? CollectionTagModulesSection.brandSoft.withValues(alpha: 0.55)
@@ -780,8 +798,8 @@ class _TagChipState extends State<_TagChip> {
     return LongPressDraggable<Tag>(
       data: widget.tag,
       hapticFeedbackOnStart: true,
-      // 浮层抬到指尖上方，真机指腹不会挡住「已可拖」的反馈。
-      feedbackOffset: const Offset(0, -56),
+      // 略抬高以免指腹挡住；不可过大——落点按指尖算，偏移过大会「看着在区、松手落空」。
+      feedbackOffset: const Offset(0, -28),
       onDragStarted: () {
         _setPressed(false);
         HapticFeedback.mediumImpact();

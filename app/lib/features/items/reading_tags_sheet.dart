@@ -3,12 +3,13 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:super_collection/core/analytics/analytics.dart';
 import 'package:super_collection/core/network/api_client.dart';
+import 'package:super_collection/core/ui/app_toast.dart';
 import 'package:super_collection/features/collection/create_tag_sheet.dart';
 import 'package:super_collection/features/collection/tag_models.dart';
-import 'package:super_collection/features/collection/tags_repository.dart';
+import 'package:super_collection/features/collection/tag_module_models.dart';
+import 'package:super_collection/features/collection/tag_modules_repository.dart';
 import 'package:super_collection/features/items/ai_meta_models.dart';
 import 'package:super_collection/features/items/items_repository.dart';
-import 'package:super_collection/core/ui/app_toast.dart';
 import 'package:super_collection/features/settings/quota_gate.dart';
 import 'package:super_collection/features/settings/usage_repository.dart';
 
@@ -92,18 +93,18 @@ class _ReadingTagsSheet extends StatefulWidget {
 class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
   static const _text = Color(0xFF1F242E);
   static const _muted = Color(0xFF737A85);
+  static const _sectionMuted = Color(0xFF8B929C);
   static const _blue = Color(0xFF2F6FED);
   static const _chipBg = Color(0xFFF5F7FA);
-  static const _chipOn = Color(0xFFE5EDFF);
+  static const _ungroupedTag = Color(0xFF5C6675);
+  static const _ungroupedTagSoft = Color(0xFFECEEF2);
   static const _handle = Color(0xFFE5E8ED);
 
-  final _tagsRepo = TagsRepository();
+  final _modulesRepo = TagModulesRepository();
   final _itemsRepo = ItemsRepository();
   final _searchController = TextEditingController();
-  final _searchFocus = FocusNode();
-  final _searchOverlayController = OverlayPortalController(debugLabel: 'tagSearch');
-  static final Object _searchTapGroup = Object();
-  List<Tag> _all = const [];
+  List<TagModule> _modules = const [];
+  List<Tag> _ungrouped = const [];
   final Set<int> _selected = {};
   bool _loading = true;
   bool _saving = false;
@@ -116,7 +117,6 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
   @override
   void initState() {
     super.initState();
-    _searchFocus.addListener(_onSearchFocusChanged);
     _tagsMeta = widget.initialTagsMeta;
     _aiSelected.addAll(_tagsMeta.items.map((e) => e.name));
     _load();
@@ -223,11 +223,19 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
       if (!mounted) return;
       _syncTagsMeta(updated.aiMeta.tags);
 
-      final all = await _tagsRepo.listTags();
+      final modulesResult = await _modulesRepo.listModules();
       final current = await _itemsRepo.listItemTags(widget.itemId);
       if (!mounted) return;
       setState(() {
-        _all = all.where((t) => !t.isSystem).toList();
+        _modules = modulesResult.modules
+            .map(
+              (m) => m.copyWith(
+                tags: m.tags.where((t) => !t.isSystem).toList(),
+              ),
+            )
+            .toList();
+        _ungrouped =
+            modulesResult.ungrouped.where((t) => !t.isSystem).toList();
         _selected
           ..clear()
           ..addAll(current.map((t) => t.id));
@@ -265,43 +273,28 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
     );
   }
 
-  void _unfocusSearch() {
-    _searchFocus.unfocus();
-  }
-
-  void _onSearchFocusChanged() {
-    setState(() {});
-    _syncSearchOverlayVisibility();
-  }
-
   @override
   void dispose() {
     _aiPollTimer?.cancel();
-    _searchFocus.removeListener(_onSearchFocusChanged);
-    _searchOverlayController.hide();
     _searchController.dispose();
-    _searchFocus.dispose();
     super.dispose();
   }
 
-  void _syncSearchOverlayVisibility() {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      if (_showSearchOverlay) {
-        _searchOverlayController.show();
-      } else {
-        _searchOverlayController.hide();
-      }
-    });
+  String get _query => _searchController.text.trim().toLowerCase();
+
+  bool _tagMatches(Tag tag) {
+    final q = _query;
+    if (q.isEmpty) return true;
+    return tag.name.toLowerCase().contains(q);
   }
 
-  void _onSearchChanged(String _) {
-    setState(() {});
-    _syncSearchOverlayVisibility();
-  }
+  List<Tag> get _allTags => [
+        ..._ungrouped,
+        for (final m in _modules) ...m.tags,
+      ];
 
   List<Tag> get _selectedTags {
-    final byId = {for (final t in _all) t.id: t};
+    final byId = {for (final t in _allTags) t.id: t};
     final tags = [
       for (final id in _selected)
         if (byId[id] != null) byId[id]!,
@@ -310,30 +303,25 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
     return tags;
   }
 
-  bool get _showSearchOverlay {
-    return _searchFocus.hasFocus && !_loading && _error == null;
-  }
-
-  List<Tag> get _filteredTags {
-    final q = _searchController.text.trim().toLowerCase();
-    final list = q.isEmpty
-        ? List<Tag>.from(_all)
-        : _all.where((t) => t.name.toLowerCase().contains(q)).toList();
-    list.sort((a, b) => a.name.compareTo(b.name));
-    return list;
-  }
-
   Future<void> _load() async {
     setState(() {
       _loading = true;
       _error = null;
     });
     try {
-      final all = await _tagsRepo.listTags();
+      final modulesResult = await _modulesRepo.listModules();
       final current = await _itemsRepo.listItemTags(widget.itemId);
       if (!mounted) return;
       setState(() {
-        _all = all.where((t) => !t.isSystem).toList();
+        _modules = modulesResult.modules
+            .map(
+              (m) => m.copyWith(
+                tags: m.tags.where((t) => !t.isSystem).toList(),
+              ),
+            )
+            .toList();
+        _ungrouped =
+            modulesResult.ungrouped.where((t) => !t.isSystem).toList();
         _selected
           ..clear()
           ..addAll(
@@ -344,7 +332,6 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
         _loading = false;
       });
       _syncSession();
-      _syncSearchOverlayVisibility();
     } on ApiException catch (e) {
       if (!mounted) return;
       setState(() {
@@ -620,23 +607,46 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
     );
   }
 
-  Widget _tagChip(Tag tag, {VoidCallback? onRemove}) {
+  static String _hashLabel(String name) {
+    final n = name.trim();
+    if (n.isEmpty) return '';
+    return n.startsWith('#') ? n : '#$n';
+  }
+
+  Widget _tagChip(
+    Tag tag, {
+    VoidCallback? onRemove,
+    bool muted = false,
+  }) {
     final on = _selected.contains(tag.id);
+    final Color fg;
+    final Color bg;
+    if (on) {
+      fg = Colors.white;
+      bg = _blue;
+    } else if (muted) {
+      fg = _ungroupedTag;
+      bg = _ungroupedTagSoft;
+    } else {
+      fg = _blue;
+      bg = _chipBg;
+    }
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
       decoration: BoxDecoration(
-        color: on ? _chipOn : _chipBg,
-        borderRadius: BorderRadius.circular(16),
+        color: bg,
+        borderRadius: BorderRadius.circular(999),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           Text(
-            tag.name,
+            _hashLabel(tag.name),
             style: TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w500,
-              color: on ? _blue : _text,
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              height: 1.25,
+              color: fg,
             ),
           ),
           if (onRemove != null) ...[
@@ -647,7 +657,7 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
               child: Icon(
                 Icons.close_rounded,
                 size: 18,
-                color: on ? _blue : _muted,
+                color: on ? Colors.white : _muted,
               ),
             ),
           ],
@@ -657,173 +667,151 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
   }
 
   Widget _buildSearchField() {
-    return TapRegion(
-      groupId: _searchTapGroup,
-      child: TextField(
-        controller: _searchController,
-        focusNode: _searchFocus,
-        onChanged: _onSearchChanged,
-        onSubmitted: (_) => _unfocusSearch(),
-        textInputAction: TextInputAction.search,
-        decoration: InputDecoration(
-          hintText: '搜索标签',
-          hintStyle: const TextStyle(fontSize: 15, color: _muted),
-          prefixIcon: const Icon(Icons.search_rounded, color: _muted, size: 24),
-          suffixIcon: _searchController.text.isEmpty
-              ? null
-              : IconButton(
-                  icon: const Icon(Icons.close_rounded, color: _muted, size: 22),
-                  onPressed: () {
-                    _searchController.clear();
-                    _onSearchChanged('');
-                  },
-                ),
-          filled: true,
-          fillColor: _chipBg,
-          contentPadding: const EdgeInsets.symmetric(vertical: 12),
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide.none,
-          ),
-          enabledBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide.none,
-          ),
-          focusedBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-            borderSide: const BorderSide(color: Color(0xFFB8CCFA), width: 1),
-          ),
+    return TextField(
+      controller: _searchController,
+      onChanged: (_) => setState(() {}),
+      textInputAction: TextInputAction.search,
+      decoration: InputDecoration(
+        hintText: '搜索标签',
+        hintStyle: const TextStyle(fontSize: 15, color: _muted),
+        prefixIcon: const Icon(Icons.search_rounded, color: _muted, size: 24),
+        suffixIcon: _searchController.text.isEmpty
+            ? null
+            : IconButton(
+                icon: const Icon(Icons.close_rounded, color: _muted, size: 22),
+                onPressed: () {
+                  _searchController.clear();
+                  setState(() {});
+                },
+              ),
+        filled: true,
+        fillColor: _chipBg,
+        contentPadding: const EdgeInsets.symmetric(vertical: 12),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(999),
+          borderSide: BorderSide.none,
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(999),
+          borderSide: BorderSide.none,
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(999),
+          borderSide: const BorderSide(color: Color(0xFFB8CCFA), width: 1),
         ),
       ),
     );
   }
 
-  Widget _buildSearchArea() {
-    return OverlayPortal.overlayChildLayoutBuilder(
-      controller: _searchOverlayController,
-      overlayLocation: OverlayChildLocation.rootOverlay,
-      overlayChildBuilder: (context, info) {
-        if (!_showSearchOverlay) return const SizedBox.shrink();
-
-        final query = _searchController.text.trim();
-        final filtered = _filteredTags;
-        final targetRect = MatrixUtils.transformRect(
-          info.childPaintTransform,
-          Offset.zero & info.childSize,
-        );
-
-        return SizedBox(
-          width: info.overlaySize.width,
-          height: info.overlaySize.height,
-          child: Stack(
-            clipBehavior: Clip.none,
-            children: [
-              Positioned(
-                left: targetRect.left + 4,
-                width: info.childSize.width - 8,
-                bottom: info.overlaySize.height - targetRect.top + 8,
-                child: TapRegion(
-                  groupId: _searchTapGroup,
-                  onTapOutside: (_) => _unfocusSearch(),
-                  child: _buildSearchOverlay(query, filtered),
-                ),
-              ),
-            ],
-          ),
-        );
-      },
-      child: _buildSearchField(),
+  Widget _buildSelectableChip(Tag tag, {bool muted = false}) {
+    return GestureDetector(
+      onTap: () => _toggleTag(tag.id),
+      behavior: HitTestBehavior.opaque,
+      child: _tagChip(tag, muted: muted),
     );
   }
 
-  Widget _buildSearchResultRow(Tag tag) {
-    final on = _selected.contains(tag.id);
-    return Material(
-      color: Colors.white,
-      child: InkWell(
-        onTap: () => _toggleTag(tag.id),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-          child: Row(
-            children: [
-              Expanded(
-                child: Text(
-                  '#${tag.name}',
-                  style: const TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w500,
-                    color: _text,
+  Widget _buildModuleSection({
+    required String title,
+    required List<Tag> tags,
+    bool muted = false,
+  }) {
+    final visible = tags.where(_tagMatches).toList();
+    if (visible.isEmpty) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          SizedBox(
+            height: 28,
+            child: Row(
+              children: [
+                if (muted) ...[
+                  const Icon(
+                    Icons.inbox_outlined,
+                    size: 16,
+                    color: _sectionMuted,
+                  ),
+                  const SizedBox(width: 6),
+                ] else
+                  Container(
+                    width: 6,
+                    height: 6,
+                    margin: const EdgeInsets.only(right: 8),
+                    decoration: const BoxDecoration(
+                      color: _blue,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                Expanded(
+                  child: Text(
+                    title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                      letterSpacing: muted ? 0.2 : 0.4,
+                      color: muted
+                          ? _sectionMuted
+                          : _text.withValues(alpha: 0.78),
+                    ),
                   ),
                 ),
-              ),
-              if (on)
-                const Icon(Icons.check_rounded, size: 22, color: _blue),
+              ],
+            ),
+          ),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (final tag in visible)
+                _buildSelectableChip(tag, muted: muted),
             ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  static const _overlayMaxHeight = 200.0;
-
-  Widget _buildSearchResultsList(List<Tag> filtered) {
-    return ConstrainedBox(
-      constraints: const BoxConstraints(maxHeight: _overlayMaxHeight),
-      child: ListView.separated(
-        shrinkWrap: true,
-        padding: EdgeInsets.zero,
-        primary: false,
-        physics: const ClampingScrollPhysics(),
-        itemCount: filtered.length,
-        separatorBuilder: (context, _) => const Divider(
-          height: 1,
-          indent: 12,
-          endIndent: 12,
-          color: Color(0xFFF0F2F5),
-        ),
-        itemBuilder: (context, index) =>
-            _buildSearchResultRow(filtered[index]),
-      ),
-    );
-  }
-
-  Widget _buildSearchOverlay(String query, List<Tag> filtered) {
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFFE8ECF0)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.16),
-            blurRadius: 28,
-            offset: const Offset(0, 10),
-          ),
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.08),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
           ),
         ],
       ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(12),
-        child: filtered.isEmpty
-            ? Padding(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
-                child: Text(
-                  query.isEmpty ? '暂无标签' : '没有「$query」相关的标签',
-                  style: const TextStyle(
-                    fontSize: 13,
-                    color: _muted,
-                    height: 1.4,
-                  ),
-                ),
-              )
-            : _buildSearchResultsList(filtered),
-      ),
+    );
+  }
+
+  Widget _buildGroupedTags() {
+    if (_allTags.isEmpty) {
+      return const Padding(
+        padding: EdgeInsets.only(top: 4),
+        child: Text(
+          '还没有标签，可点「新建」或使用 AI 建议',
+          style: TextStyle(fontSize: 13, color: _muted, height: 1.4),
+        ),
+      );
+    }
+
+    final hasMatch = _allTags.any(_tagMatches);
+    if (!hasMatch) {
+      return Padding(
+        padding: const EdgeInsets.only(top: 8),
+        child: Text(
+          '没有「${_searchController.text.trim()}」相关的标签',
+          style: const TextStyle(fontSize: 13, color: _muted, height: 1.4),
+        ),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _buildModuleSection(
+          title: '未归类',
+          tags: _ungrouped,
+          muted: true,
+        ),
+        for (final m in _modules)
+          _buildModuleSection(
+            title: m.name,
+            tags: m.tags,
+          ),
+      ],
     );
   }
 
@@ -839,8 +827,10 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
         separatorBuilder: (context, _) => const SizedBox(width: 8),
         itemBuilder: (context, index) {
           final tag = selected[index];
+          final muted = tag.moduleId == null;
           return _tagChip(
             tag,
+            muted: muted,
             onRemove: () => _toggleTag(tag.id),
           );
         },
@@ -878,15 +868,9 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
           _buildSelectedTagsRow(selected),
           const SizedBox(height: 12),
         ],
-        _buildSearchArea(),
-        if (_all.isEmpty)
-          const Padding(
-            padding: EdgeInsets.only(top: 8),
-            child: Text(
-              '还没有标签，可点「新建」或使用 AI 建议',
-              style: TextStyle(fontSize: 13, color: _muted, height: 1.4),
-            ),
-          ),
+        _buildSearchField(),
+        const SizedBox(height: 12),
+        _buildGroupedTags(),
       ],
     );
   }
@@ -894,32 +878,29 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
   @override
   Widget build(BuildContext context) {
     final maxSheetHeight = MediaQuery.sizeOf(context).height * 0.82;
+    final bottomInset = 16 +
+        MediaQuery.paddingOf(context).bottom +
+        MediaQuery.viewInsetsOf(context).bottom;
 
     return Padding(
       padding: EdgeInsets.only(
         left: 16,
         right: 16,
-        bottom: 16 +
-            MediaQuery.paddingOf(context).bottom +
-            MediaQuery.viewInsetsOf(context).bottom,
+        bottom: bottomInset,
       ),
       child: Align(
         alignment: Alignment.bottomCenter,
         child: Material(
           color: Colors.white,
-          clipBehavior: Clip.none,
+          clipBehavior: Clip.antiAlias,
           borderRadius: BorderRadius.circular(24),
-          child: ConstrainedBox(
-            constraints: BoxConstraints(maxHeight: maxSheetHeight),
+          child: SizedBox(
+            height: maxSheetHeight,
             child: Padding(
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
-              child: GestureDetector(
-                onTap: _unfocusSearch,
-                behavior: HitTestBehavior.translucent,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
                   Center(
                     child: Container(
                       width: 40,
@@ -946,7 +927,9 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
                       _HeaderActionButton(
                         icon: Icons.tips_and_updates_outlined,
                         label: _aiSuggestButtonLabel,
-                        onTap: _aiSuggestTapEnabled ? _onAiSuggest : _toastDisabledAi,
+                        onTap: _aiSuggestTapEnabled
+                            ? _onAiSuggest
+                            : _toastDisabledAi,
                         foreground:
                             _aiSuggestTapEnabled ? _blue : _muted,
                         borderColor: _aiSuggestTapEnabled
@@ -975,7 +958,11 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
                     ],
                   ),
                   const SizedBox(height: 12),
-                  _buildBody(),
+                  Expanded(
+                    child: SingleChildScrollView(
+                      child: _buildBody(),
+                    ),
+                  ),
                   const SizedBox(height: 16),
                   SizedBox(
                     width: double.infinity,
@@ -992,7 +979,6 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
                     ),
                   ),
                 ],
-                ),
               ),
             ),
           ),

@@ -318,6 +318,7 @@ class _CollectionPageState extends State<CollectionPage> {
   }
 
   PreferredSizeWidget _buildAppBar() {
+    // 头像放 leading，与阅读页同槽位，避免 Tab 切换时左右错位
     return AppBar(
       backgroundColor: Colors.white,
       surfaceTintColor: Colors.transparent,
@@ -327,75 +328,86 @@ class _CollectionPageState extends State<CollectionPage> {
       titleSpacing: 0,
       actionsPadding: EdgeInsets.zero,
       automaticallyImplyLeading: false,
-      centerTitle: false,
+      centerTitle: true,
+      leadingWidth: 56,
+      leading: AnimatedBuilder(
+        animation: _tagsFocusT,
+        builder: (context, _) {
+          final t = Curves.easeInOutCubic.transform(_tagsFocusT.value);
+          return Stack(
+            alignment: Alignment.center,
+            children: [
+              IgnorePointer(
+                ignoring: t > 0.45,
+                child: Opacity(
+                  opacity: (1 - t).clamp(0.0, 1.0),
+                  child: Padding(
+                    padding: const EdgeInsets.only(left: 12),
+                    child: UserAvatarButton(
+                      onPressed: widget.onOpenAccount ?? () {},
+                    ),
+                  ),
+                ),
+              ),
+              IgnorePointer(
+                ignoring: t < 0.45,
+                child: Opacity(
+                  opacity: t,
+                  child: IconButton(
+                    tooltip: '返回',
+                    onPressed: _exitTagsFocus,
+                    icon: const Icon(
+                      Icons.arrow_back_ios_new_rounded,
+                      size: 20,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          );
+        },
+      ),
       title: AnimatedBuilder(
         animation: _tagsFocusT,
         builder: (context, _) {
           final t = Curves.easeInOutCubic.transform(_tagsFocusT.value);
-          return SizedBox(
-            width: double.infinity,
-            child: Stack(
-              alignment: Alignment.center,
-              children: [
-                IgnorePointer(
-                  ignoring: t > 0.45,
-                  child: Opacity(
-                    opacity: (1 - t).clamp(0.0, 1.0),
-                    child: Padding(
-                      padding: const EdgeInsets.only(left: 12, right: 8),
-                      child: Align(
-                        alignment: Alignment.centerLeft,
-                        child: UserAvatarButton(
-                          onPressed: widget.onOpenAccount ?? () {},
-                        ),
-                      ),
-                    ),
+          return IgnorePointer(
+            ignoring: t < 0.45,
+            child: Opacity(
+              opacity: t,
+              child: Transform.translate(
+                offset: Offset(0, 10 * (1 - t)),
+                child: const Text(
+                  '归类标签',
+                  style: TextStyle(
+                    fontSize: 17,
+                    fontWeight: FontWeight.w700,
+                    color: _text,
                   ),
                 ),
-                IgnorePointer(
-                  ignoring: t < 0.45,
-                  child: Opacity(
-                    opacity: t,
-                    child: Transform.translate(
-                      offset: Offset(0, 10 * (1 - t)),
-                      child: Row(
-                        children: [
-                          IconButton(
-                            tooltip: '返回',
-                            onPressed: _exitTagsFocus,
-                            icon: const Icon(
-                              Icons.arrow_back_ios_new_rounded,
-                              size: 20,
-                            ),
-                          ),
-                          const Expanded(
-                            child: Text(
-                              '归类标签',
-                              textAlign: TextAlign.center,
-                              style: TextStyle(
-                                fontSize: 17,
-                                fontWeight: FontWeight.w700,
-                                color: _text,
-                              ),
-                            ),
-                          ),
-                          CollectionCreateModuleButton(
-                            onPressed: _createModule,
-                            iconPadding: const EdgeInsets.symmetric(
-                              horizontal: 12,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              ],
+              ),
             ),
           );
         },
       ),
-      actions: const <Widget>[],
+      actions: [
+        AnimatedBuilder(
+          animation: _tagsFocusT,
+          builder: (context, _) {
+            final t = Curves.easeInOutCubic.transform(_tagsFocusT.value);
+            return IgnorePointer(
+              ignoring: t < 0.45,
+              child: Opacity(
+                opacity: t,
+                child: CollectionCreateModuleButton(
+                  onPressed: _createModule,
+                  iconPadding: const EdgeInsets.symmetric(horizontal: 12),
+                ),
+              ),
+            );
+          },
+        ),
+      ],
     );
   }
 
@@ -541,6 +553,11 @@ class _EntityGroup extends StatelessWidget {
 
   final List<_EntityEntry> entries;
 
+  static const _panelRadius = 16.0;
+  static const _tileFill = Color(0xFFF4F6F9);
+  static const _ink = Color(0xFF1F242E);
+  static const _muted = Color(0xFF8B929C);
+
   @override
   Widget build(BuildContext context) {
     if (entries.isEmpty) {
@@ -549,7 +566,7 @@ class _EntityGroup extends StatelessWidget {
         padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
           color: Colors.white,
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(_panelRadius),
         ),
         child: const Text(
           '暂无内容',
@@ -561,30 +578,120 @@ class _EntityGroup extends StatelessWidget {
 
     return Container(
       width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(_panelRadius),
       ),
-      clipBehavior: Clip.antiAlias,
-      child: Column(
-        children: [
-          for (var i = 0; i < entries.length; i++) ...[
-            _NavRow(
-              title: entries[i].title,
-              countLabel: entries[i].countLabel,
-              icon: entries[i].icon,
-              onTap: entries[i].onTap,
-            ),
-            if (i < entries.length - 1)
-              const Divider(
-                height: 1,
-                thickness: 1,
-                indent: 14,
-                endIndent: 14,
-                color: _CollectionColors.divider,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          const gap = 10.0;
+          final tileW = (constraints.maxWidth - gap) / 2;
+          return Wrap(
+            spacing: gap,
+            runSpacing: gap,
+            children: [
+              for (final e in entries)
+                SizedBox(
+                  width: tileW,
+                  child: _FilterTile(
+                    title: e.title,
+                    countLabel: e.countLabel,
+                    icon: e.icon,
+                    onTap: e.onTap,
+                    fill: _tileFill,
+                    ink: _ink,
+                    muted: _muted,
+                  ),
+                ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _FilterTile extends StatelessWidget {
+  const _FilterTile({
+    required this.title,
+    required this.countLabel,
+    required this.icon,
+    required this.onTap,
+    required this.fill,
+    required this.ink,
+    required this.muted,
+  });
+
+  final String title;
+  final String countLabel;
+  final _CollectionNavIcon icon;
+  final VoidCallback onTap;
+  final Color fill;
+  final Color ink;
+  final Color muted;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: fill,
+      borderRadius: BorderRadius.circular(14),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(14),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(12, 12, 10, 12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    width: 28,
+                    height: 28,
+                    decoration: BoxDecoration(
+                      color: icon.background.withValues(alpha: 0.16),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    alignment: Alignment.center,
+                    child: Icon(
+                      icon.icon,
+                      size: 16,
+                      color: icon.background,
+                    ),
+                  ),
+                  const Spacer(),
+                  Icon(
+                    Icons.chevron_right_rounded,
+                    size: 22,
+                    color: ink.withValues(alpha: 0.28),
+                  ),
+                ],
               ),
-          ],
-        ],
+              const SizedBox(height: 10),
+              Text(
+                title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: 0.2,
+                  color: ink.withValues(alpha: 0.86),
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                countLabel,
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w400,
+                  color: muted,
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -603,7 +710,7 @@ class _ErrorCard extends StatelessWidget {
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(16),
       ),
       child: Column(
         children: [
@@ -619,80 +726,6 @@ class _ErrorCard extends StatelessWidget {
   }
 }
 
-class _NavRow extends StatelessWidget {
-  const _NavRow({
-    required this.title,
-    required this.countLabel,
-    required this.icon,
-    required this.onTap,
-  });
-
-  final String title;
-  final String countLabel;
-  final _CollectionNavIcon icon;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: Colors.white,
-      child: InkWell(
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
-          child: Row(
-            children: [
-              Container(
-                width: 26,
-                height: 26,
-                decoration: BoxDecoration(
-                  color: icon.background,
-                  borderRadius: BorderRadius.circular(7),
-                ),
-                alignment: Alignment.center,
-                child: Icon(
-                  icon.icon,
-                  size: 16,
-                  color: Colors.white,
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  title,
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w400,
-                    color: _CollectionColors.text,
-                  ),
-                ),
-              ),
-              Text(
-                countLabel,
-                style: const TextStyle(
-                  fontSize: 15,
-                  color: _CollectionColors.muted,
-                ),
-              ),
-              const SizedBox(width: 6),
-              const Text(
-                '›',
-                style: TextStyle(
-                  fontSize: 18,
-                  color: _CollectionColors.muted,
-                  height: 1,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 abstract final class _CollectionColors {
-  static const text = Color(0xFF1F242E);
   static const muted = Color(0xFF737A85);
-  static const divider = Color(0xFFF0F1F4);
 }

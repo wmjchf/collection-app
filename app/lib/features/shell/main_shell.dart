@@ -174,20 +174,17 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
           ],
         ),
       ),
-      floatingActionButton: AppBottomNavSearchFab(onTap: _openSearch),
-      floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
       bottomNavigationBar: BottomAppBar(
         color: Colors.white,
         elevation: 0,
         shadowColor: Colors.black.withValues(alpha: 0.08),
         surfaceTintColor: Colors.transparent,
-        shape: const CircularNotchedRectangle(),
-        notchMargin: AppBottomNavBar.notchMargin,
         height: AppBottomNavBar.barH,
         padding: EdgeInsets.zero,
         child: AppBottomNavBar(
           currentIndex: _index,
           onChanged: _switchTab,
+          onSearch: _openSearch,
         ),
       ),
     );
