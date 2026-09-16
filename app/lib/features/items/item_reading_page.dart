@@ -36,7 +36,7 @@ import 'package:super_collection/features/items/transcript_models.dart';
 import 'package:super_collection/features/items/transcript_picker_sheet.dart';
 import 'package:super_collection/features/items/transcript_segment_panel.dart';
 
-/// 本地阅读页：标题 + 可读正文（含标注高亮）；顶栏更多；底栏 AI 总结 / 思维导图 / 标签 / 感想（或转写条目下的「更多」）；总结与思维导图为底部弹层。
+/// 本地阅读页：标题 + 可读正文（含标注高亮）；顶栏更多；底栏 标签 / AI 总结 / 思维导图 / 感想（或转写条目下的「更多」）；总结与思维导图为底部弹层。
 class ItemReadingPage extends StatefulWidget {
   const ItemReadingPage({
     super.key,
@@ -1606,15 +1606,18 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
                           child: Row(
                             children: [
                               _ActionItem(
+                                icon: Icons.tag_outlined,
+                                label: '标签',
+                                onTap: _openTagsSheet,
+                              ),
+                              _ActionItem(
                                 icon: Icons.auto_awesome_outlined,
                                 label: _item.hasSummaryPending
                                     ? '生成中…'
                                     : 'AI总结',
                                 iconColor: _item.canTriggerSummary &&
                                         !_item.hasSummaryPending
-                                    ? (_item.aiMeta.summary.hasText
-                                        ? _blue
-                                        : _text)
+                                    ? null
                                     : _muted,
                                 onTap: _openSummarySheet,
                               ),
@@ -1626,14 +1629,9 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
                                     : '思维导图',
                                 iconColor: _item.canTriggerMindmap &&
                                         !_item.hasMindmapPending
-                                    ? _text
+                                    ? null
                                     : _muted,
                                 onTap: _openMindmapSheet,
-                              ),
-                              _ActionItem(
-                                icon: Icons.tag_outlined,
-                                label: '标签',
-                                onTap: _openTagsSheet,
                               ),
                               if (_hasTranscriptEntry)
                                 _ActionItem(
@@ -1645,7 +1643,6 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
                                 _ActionItem(
                                   icon: Icons.edit_note_outlined,
                                   label: '感想',
-                                  iconColor: _hasNote ? _blue : _text,
                                   onTap: _onNote,
                                 ),
                             ],
