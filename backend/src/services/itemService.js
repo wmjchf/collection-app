@@ -345,6 +345,11 @@ async function runContentParse(itemId) {
         ok: true,
         via: 'server',
       });
+      setImmediate(() => {
+        require('./aiSuggestService')
+          .maybeAutoTagAfterParse(row.user_id, itemId)
+          .catch(() => {});
+      });
       return;
     }
 
@@ -490,6 +495,11 @@ async function parseWithClientHtml(userId, itemId, html) {
       },
       { ok: true, via: 'client_html' },
     );
+    setImmediate(() => {
+      require('./aiSuggestService')
+        .maybeAutoTagAfterParse(userId, itemId)
+        .catch(() => {});
+    });
     return getByIdForUser(userId, itemId);
   }
 

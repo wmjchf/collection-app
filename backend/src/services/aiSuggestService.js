@@ -92,6 +92,7 @@ async function failAiSuggestJob(itemId, message) {
     error: String(message || '生成失败').slice(0, 500),
     generatedAt: new Date().toISOString(),
     regenerateFrom: null,
+    autoApply: false,
   });
   await saveAiMeta(itemId, meta);
 }
@@ -134,7 +135,7 @@ async function onTranscriptSettledForAiSuggest(itemId) {
   enqueueAiSuggest(itemId);
 }
 
-async function requestAiSuggest(userId, itemId, { force = false } = {}) {
+async function requestAiSuggest(userId, itemId, { force = false, autoApply = false } = {}) {
   if (!aliyunDashScope.isConfigured()) {
     throw Object.assign(
       new Error('AI 未配置：请设置 DASHSCOPE_API_KEY'),
@@ -173,6 +174,7 @@ async function requestAiSuggest(userId, itemId, { force = false } = {}) {
   await usageService.assertAiQuota(userId);
 
   const regenerateFrom = force ? snapshotRegenerateFrom(meta, 'tags') : null;
+  const autoApplyFlag = autoApply === true;
 
   if (transcriptSegments.shouldAutoTranscribeBeforeMindmap(row)) {
     await usageService.assertTranscriptQuota(userId);
@@ -198,6 +200,7 @@ async function requestAiSuggest(userId, itemId, { force = false } = {}) {
       error: null,
       generatedAt: null,
       regenerateFrom,
+      autoApply: autoApplyFlag,
     });
     meta.model = require('../config').aliyun.aiModel || 'qwen3.8-max';
     await saveAiMeta(itemId, meta);
@@ -241,6 +244,7 @@ async function requestAiSuggest(userId, itemId, { force = false } = {}) {
     error: null,
     generatedAt: null,
     regenerateFrom,
+    autoApply: autoApplyFlag,
   });
   meta.model = require('../config').aliyun.aiModel || 'qwen3.8-max';
   await saveAiMeta(itemId, meta);
@@ -380,6 +384,22 @@ async function runAiSuggestJob(itemId) {
     console.log(
       `[runAiSuggestJob] ok item=${itemId} count=${items.length} billable=${usageService.billableAiTokensFromUsage(modelUsage)} total=${modelUsage.totalTokens} cached=${modelUsage.cachedTokens || 0} ms=${Date.now() - started}`,
     );
+
+    if (meta.tags.autoApply) {
+      try {
+        await applyAiSuggest(row.user_id, itemId, {
+          names: items.map((it) => it.name),
+        });
+        console.log(
+          `[runAiSuggestJob] auto-applied item=${itemId} count=${items.length}`,
+        );
+      } catch (applyErr) {
+        console.warn(
+          `[runAiSuggestJob] auto-apply failed item=${itemId}`,
+          applyErr.message,
+        );
+      }
+    }
   } catch (err) {
     meta = aiMeta.withTagsState(meta, {
       status: 'failed',
@@ -470,10 +490,47 @@ async function applyAiSuggest(userId, itemId, { names = [] } = {}) {
     status: 'skipped',
     items: [],
     error: null,
+    autoApply: false,
   });
   await saveAiMeta(itemId, cleared);
 
   return itemService.getByIdForUser(userId, itemId);
+}
+
+/**
+ * 解析成功后：太子/帝王且尚无标签时，自动跑 AI 建议并写入标签。
+ * 失败不影响解析结果（额度不足、音视频无转写权限等静默跳过）。
+ */
+async function maybeAutoTagAfterParse(userId, itemId) {
+  try {
+    if (!aliyunDashScope.isConfigured()) return;
+
+    const guideItemService = require('./guideItemService');
+    const itemService = require('./itemService');
+    const row = await getItemRow(itemId, userId);
+    if (!row) return;
+    if (guideItemService.isGuideItem(row)) return;
+
+    const subscriptionService = require('./subscriptionService');
+    const planService = require('./planService');
+    const { plan } = await subscriptionService.getPlanForUser(userId);
+    if (!planService.hasPrince(plan)) return;
+
+    const currentTags = await itemService.listItemTags(userId, itemId);
+    if (currentTags.some((t) => !t.isSystem)) return;
+
+    const meta = aiMeta.parseAiMeta(row.ai_meta);
+    if (meta.tags.status === 'pending') return;
+    if (meta.tags.status === 'success' && meta.tags.items.length) return;
+
+    await requestAiSuggest(userId, itemId, { autoApply: true });
+    console.log(`[maybeAutoTagAfterParse] enqueued item=${itemId}`);
+  } catch (err) {
+    console.warn(
+      `[maybeAutoTagAfterParse] skip item=${itemId}`,
+      err.message || err,
+    );
+  }
 }
 
 module.exports = {
@@ -484,4 +541,5 @@ module.exports = {
   applyAiSuggest,
   failAiSuggestJob,
   onTranscriptSettledForAiSuggest,
+  maybeAutoTagAfterParse,
 };

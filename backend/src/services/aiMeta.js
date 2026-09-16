@@ -6,6 +6,8 @@ const DEFAULT_TAGS = {
   awaitTranscript: false,
   regenerateFrom: null,
   creditsUsed: null,
+  /** 解析后自动打标：建议生成成功后自动采纳全部 */
+  autoApply: false,
 };
 
 const DEFAULT_MINDMAP = {
@@ -104,6 +106,7 @@ function parseAiMeta(raw) {
       awaitTranscript: tags.awaitTranscript === true,
       regenerateFrom: normalizeRegenerateFrom(tags.regenerateFrom),
       creditsUsed: parseCreditsUsed(tags.creditsUsed),
+      autoApply: tags.autoApply === true,
     },
     mindmap: {
       status: mindmap.status || 'none',
