@@ -417,13 +417,37 @@ class _SearchPageState extends State<SearchPage> with ScreenDwellMixin {
         ),
       ),
     );
-    if (!mounted || deleted != true) return;
-    setState(() {
-      _textHits = _textHits.where((e) => e.item.id != item.id).toList();
-      _textTotal = (_textTotal - 1).clamp(0, 1 << 30);
-      _tagItems = _tagItems.where((e) => e.id != item.id).toList();
-      _tagItemsTotal = (_tagItemsTotal - 1).clamp(0, 1 << 30);
-    });
+    if (!mounted) return;
+    if (deleted == true) {
+      setState(() {
+        _textHits = _textHits.where((e) => e.item.id != item.id).toList();
+        _textTotal = (_textTotal - 1).clamp(0, 1 << 30);
+        _tagItems = _tagItems.where((e) => e.id != item.id).toList();
+        _tagItemsTotal = (_tagItemsTotal - 1).clamp(0, 1 << 30);
+      });
+      return;
+    }
+    await _refreshOpenedItem(item.id);
+  }
+
+  Future<void> _refreshOpenedItem(int itemId) async {
+    try {
+      final updated = await _itemsRepo.getItem(itemId);
+      if (!mounted) return;
+      setState(() {
+        _tagItems = [
+          for (final e in _tagItems)
+            if (e.id == itemId) updated else e,
+        ];
+        _textHits = [
+          for (final hit in _textHits)
+            if (hit.item.id == itemId)
+              SearchHit(item: updated, matchedLabels: hit.matchedLabels)
+            else
+              hit,
+        ];
+      });
+    } catch (_) {}
   }
 
   String _subtitle(CollectionItem item) {

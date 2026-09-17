@@ -622,7 +622,10 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
           recentRead: strip(data.recentRead),
         );
       });
+      return;
     }
+    // 阅读页可能改了标签 / 已读等，静默拉首页以刷新卡片标签
+    await _load(quiet: true);
   }
 
   @override
