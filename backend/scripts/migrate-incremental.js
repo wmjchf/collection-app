@@ -31,6 +31,7 @@ const MIGRATION_FILES = [
   '021_remove_parsed_filter.sql',
   '022_tag_modules.sql',
   '023_untagged_system_filter.sql',
+  '024_tag_description.sql',
 ];
 
 async function getConnection() {
@@ -221,6 +222,16 @@ async function apply019(conn) {
   );
 }
 
+async function apply024(conn, dbName) {
+  if (await columnExists(conn, dbName, 'categories', 'description')) {
+    console.log('[db:migrate] 024: description 已存在，跳过');
+    return;
+  }
+  await conn.query(
+    "ALTER TABLE `categories` ADD COLUMN `description` VARCHAR(80) DEFAULT NULL COMMENT '标签短说明（可选）' AFTER `name`",
+  );
+}
+
 async function applyMigration(conn, dbName, file) {
   if (file === '002_last_read_at.sql') {
     await apply002(conn, dbName);
@@ -248,6 +259,10 @@ async function applyMigration(conn, dbName, file) {
   }
   if (file === '019_seed_guide_items.sql') {
     await apply019(conn);
+    return;
+  }
+  if (file === '024_tag_description.sql') {
+    await apply024(conn, dbName);
     return;
   }
   await runSqlFile(conn, file);

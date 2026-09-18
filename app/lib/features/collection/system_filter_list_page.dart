@@ -155,8 +155,26 @@ class _SystemFilterListPageState extends State<SystemFilterListPage>
       });
       return;
     }
+    // 阅读页改标签后同步列表卡；未打标列表则若已打标则移除
     if (_isUntagged) {
       await _removeIfTagged(item.id);
+      return;
+    }
+    await _refreshItem(item.id);
+  }
+
+  Future<void> _refreshItem(int itemId) async {
+    try {
+      final updated = await _itemsRepo.getItem(itemId);
+      if (!mounted) return;
+      setState(() {
+        _items = [
+          for (final e in _items)
+            if (e.id == itemId) updated else e,
+        ];
+      });
+    } catch (_) {
+      // 拉取失败时保留旧数据，下拉刷新即可
     }
   }
 

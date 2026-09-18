@@ -31,10 +31,15 @@ class TagsRepository {
         .toList();
   }
 
-  Future<Tag> createTag(String name, {int? moduleId}) async {
+  Future<Tag> createTag(
+    String name, {
+    int? moduleId,
+    String? description,
+  }) async {
     final token = await _token();
     final body = <String, dynamic>{'name': name};
     if (moduleId != null) body['moduleId'] = moduleId;
+    if (description != null) body['description'] = description;
     final json = await _api.post(
       '/api/tags',
       body: body,
@@ -93,15 +98,27 @@ class TagsRepository {
     );
   }
 
-  Future<Tag> renameTag(int id, String name) async {
+  Future<Tag> updateTag(
+    int id, {
+    String? name,
+    String? description,
+  }) async {
     final token = await _token();
+    final body = <String, dynamic>{};
+    if (name != null) body['name'] = name;
+    if (description != null) body['description'] = description;
     final json = await _api.patch(
       '/api/tags/$id',
-      body: {'name': name},
+      body: body,
       accessToken: token,
     );
     final tagJson = json['tag'] as Map<String, dynamic>? ?? {};
     return Tag.fromJson(tagJson);
+  }
+
+  /// [description] 传空字符串可清空说明
+  Future<Tag> renameTag(int id, String name, {String description = ''}) async {
+    return updateTag(id, name: name, description: description);
   }
 
   Future<Tag> placeTag(

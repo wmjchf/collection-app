@@ -11,6 +11,7 @@ import 'package:super_collection/features/home/home_format.dart';
 import 'package:super_collection/features/items/item_list_tile.dart';
 import 'package:super_collection/features/items/item_reading_page.dart';
 import 'package:super_collection/features/items/item_models.dart';
+import 'package:super_collection/features/items/items_repository.dart';
 
 typedef ItemsBrowseLoader = Future<({List<CollectionItem> items, int total})>
     Function({required int limit, required int offset});
@@ -39,6 +40,7 @@ class _ItemsBrowsePageState extends State<ItemsBrowsePage> with ScreenDwellMixin
   static const _muted = Color(0xFF737A85);
 
   final _tagsRepo = TagsRepository();
+  final _itemsRepo = ItemsRepository();
   final _scroll = ScrollController();
   late String _title;
   List<CollectionItem> _items = const [];
@@ -81,15 +83,28 @@ class _ItemsBrowsePageState extends State<ItemsBrowsePage> with ScreenDwellMixin
     final tagId = widget.tagId;
     if (tagId == null || _busy) return;
 
+    String? description;
+    try {
+      final tags = await _tagsRepo.listTags();
+      for (final t in tags) {
+        if (t.id == tagId) {
+          description = t.description;
+          break;
+        }
+      }
+    } catch (_) {}
+
+    if (!mounted) return;
     final updated = await showRenameTagSheet(
       context,
       tagId: tagId,
       name: _title,
+      description: description,
     );
     if (updated == null || !mounted) return;
 
     setState(() => _title = updated.name);
-    AppToast.show(context, '已修改名称');
+    AppToast.show(context, '已保存');
   }
 
   Future<void> _onDeleteTag() async {
@@ -152,6 +167,26 @@ class _ItemsBrowsePageState extends State<ItemsBrowsePage> with ScreenDwellMixin
         _error = '加载失败';
       });
     }
+  }
+
+  Future<void> _refreshItem(int itemId) async {
+    try {
+      final updated = await _itemsRepo.getItem(itemId);
+      if (!mounted) return;
+      final stillMatches = widget.tagId == null ||
+          updated.tags.any((t) => t.id == widget.tagId);
+      setState(() {
+        if (!stillMatches) {
+          _items = _items.where((e) => e.id != itemId).toList();
+          _total = (_total - 1).clamp(0, 1 << 30);
+          return;
+        }
+        _items = [
+          for (final e in _items)
+            if (e.id == itemId) updated else e,
+        ];
+      });
+    } catch (_) {}
   }
 
   Future<void> _loadMore() async {
@@ -369,13 +404,17 @@ class _ItemsBrowsePageState extends State<ItemsBrowsePage> with ScreenDwellMixin
                                 ),
                               ),
                             );
-                            if (!mounted || deleted != true) return;
-                            setState(() {
-                              _items = _items
-                                  .where((e) => e.id != item.id)
-                                  .toList();
-                              _total = (_total - 1).clamp(0, 1 << 30);
-                            });
+                            if (!mounted) return;
+                            if (deleted == true) {
+                              setState(() {
+                                _items = _items
+                                    .where((e) => e.id != item.id)
+                                    .toList();
+                                _total = (_total - 1).clamp(0, 1 << 30);
+                              });
+                              return;
+                            }
+                            await _refreshItem(item.id);
                           },
                         ),
                       );

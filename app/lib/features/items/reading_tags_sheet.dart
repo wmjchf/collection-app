@@ -1,19 +1,19 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:super_collection/core/analytics/analytics.dart';
 import 'package:super_collection/core/network/api_client.dart';
+import 'package:super_collection/core/ui/app_bottom_sheet.dart';
 import 'package:super_collection/core/ui/app_toast.dart';
-import 'package:super_collection/features/collection/create_tag_sheet.dart';
 import 'package:super_collection/features/collection/tag_models.dart';
 import 'package:super_collection/features/collection/tag_module_models.dart';
 import 'package:super_collection/features/collection/tag_modules_repository.dart';
+import 'package:super_collection/features/collection/tags_repository.dart';
 import 'package:super_collection/features/items/ai_meta_models.dart';
 import 'package:super_collection/features/items/items_repository.dart';
 import 'package:super_collection/features/settings/quota_gate.dart';
 import 'package:super_collection/features/settings/usage_repository.dart';
-
-enum ReadingTagsSheetResult { createTag }
 
 class _TagsSheetSession {
   final Set<int> selectedIds = {};
@@ -32,37 +32,23 @@ Future<void> showReadingTagsSheet(
   final session = _TagsSheetSession();
   var meta = tagsMeta;
 
-  while (true) {
-    if (!context.mounted) return;
-    final result = await showModalBottomSheet<ReadingTagsSheetResult>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      barrierColor: const Color(0x59000000),
-      useSafeArea: false,
-      builder: (context) => _ReadingTagsSheet(
-        itemId: itemId,
-        session: session,
-        initialTagsMeta: meta,
-        aiSuggestEnabled: aiSuggestEnabled,
-        transcriptPending: transcriptPending,
-        autoStartAiSuggest: autoStartAiSuggest,
-        needsAutoTranscript: needsAutoTranscript,
-        onTagsMetaChanged: (updated) {
-          meta = updated;
-          onTagsMetaChanged?.call(updated);
-        },
-      ),
-    );
-    if (result != ReadingTagsSheetResult.createTag) {
-      return;
-    }
-    if (!context.mounted) return;
-    final created = await showCreateTagSheet(context);
-    if (created != null) {
-      session.selectedIds.add(created.id);
-    }
-  }
+  if (!context.mounted) return;
+  await showAppBottomSheet<void>(
+    context: context,
+    builder: (context) => _ReadingTagsSheet(
+      itemId: itemId,
+      session: session,
+      initialTagsMeta: meta,
+      aiSuggestEnabled: aiSuggestEnabled,
+      transcriptPending: transcriptPending,
+      autoStartAiSuggest: autoStartAiSuggest,
+      needsAutoTranscript: needsAutoTranscript,
+      onTagsMetaChanged: (updated) {
+        meta = updated;
+        onTagsMetaChanged?.call(updated);
+      },
+    ),
+  );
 }
 
 class _ReadingTagsSheet extends StatefulWidget {
@@ -96,29 +82,33 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
   static const _sectionMuted = Color(0xFF8B929C);
   static const _blue = Color(0xFF2F6FED);
   static const _chipBg = Color(0xFFF5F7FA);
-  static const _ungroupedTag = Color(0xFF5C6675);
-  static const _ungroupedTagSoft = Color(0xFFECEEF2);
+  static const _surface = Color(0xFFF3F6FA);
   static const _handle = Color(0xFFE5E8ED);
 
   final _modulesRepo = TagModulesRepository();
+  final _tagsRepo = TagsRepository();
   final _itemsRepo = ItemsRepository();
   final _searchController = TextEditingController();
+  final _searchFocus = FocusNode();
   List<TagModule> _modules = const [];
   List<Tag> _ungrouped = const [];
   final Set<int> _selected = {};
+  /// AI 建议名（生成后默认全选；可点掉）
+  final Set<String> _aiSelected = {};
   bool _loading = true;
   bool _saving = false;
+  bool _creating = false;
   String? _error;
   late AiTagsMeta _tagsMeta;
-  final _aiSelected = <String>{};
-  bool _aiApplying = false;
   Timer? _aiPollTimer;
 
   @override
   void initState() {
     super.initState();
     _tagsMeta = widget.initialTagsMeta;
-    _aiSelected.addAll(_tagsMeta.items.map((e) => e.name));
+    if (_tagsMeta.hasSuggestions) {
+      _aiSelected.addAll(_tagsMeta.items.map((e) => e.name));
+    }
     _load();
     if (_tagsMeta.isPending) {
       _startAiPoll();
@@ -136,6 +126,10 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
         _aiSelected
           ..clear()
           ..addAll(meta.items.map((e) => e.name));
+        for (final item in meta.items) {
+          final id = item.existingTagId;
+          if (id != null) _selected.add(id);
+        }
       }
     });
     widget.onTagsMetaChanged?.call(meta);
@@ -161,9 +155,7 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
       }
       _aiPollTimer?.cancel();
       _syncTagsMeta(st.tags);
-    } catch (_) {
-      // ignore poll errors
-    }
+    } catch (_) {}
   }
 
   Future<void> _triggerAiSuggest({bool force = false}) async {
@@ -208,60 +200,6 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
     }
   }
 
-  Future<void> _applyAiSelected() async {
-    if (_aiApplying || _aiSelected.isEmpty) return;
-    setState(() => _aiApplying = true);
-    try {
-      final updated = await _itemsRepo.applyAiSuggest(
-        widget.itemId,
-        _aiSelected.toList(),
-      );
-      Analytics.instance.aiTagsApply(
-        itemId: widget.itemId,
-        count: _aiSelected.length,
-      );
-      if (!mounted) return;
-      _syncTagsMeta(updated.aiMeta.tags);
-
-      final modulesResult = await _modulesRepo.listModules();
-      final current = await _itemsRepo.listItemTags(widget.itemId);
-      if (!mounted) return;
-      setState(() {
-        _modules = modulesResult.modules
-            .map(
-              (m) => m.copyWith(
-                tags: m.tags.where((t) => !t.isSystem).toList(),
-              ),
-            )
-            .toList();
-        _ungrouped =
-            modulesResult.ungrouped.where((t) => !t.isSystem).toList();
-        _selected
-          ..clear()
-          ..addAll(current.map((t) => t.id));
-      });
-
-      if (!mounted) return;
-      AppToast.show(context, '已采纳标签');
-    } on ApiException catch (e) {
-      if (!mounted) return;
-      AppToast.show(context, e.message);
-    } finally {
-      if (mounted) setState(() => _aiApplying = false);
-    }
-  }
-
-  Future<void> _dismissAi() async {
-    try {
-      final updated = await _itemsRepo.dismissAiSuggest(widget.itemId);
-      if (!mounted) return;
-      _syncTagsMeta(updated.aiMeta.tags);
-    } on ApiException catch (e) {
-      if (!mounted) return;
-      AppToast.show(context, e.message);
-    }
-  }
-
   void _toastDisabledAi() {
     AppToast.show(
       context,
@@ -277,13 +215,16 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
   void dispose() {
     _aiPollTimer?.cancel();
     _searchController.dispose();
+    _searchFocus.dispose();
     super.dispose();
   }
 
-  String get _query => _searchController.text.trim().toLowerCase();
+  String get _query => _searchController.text.trim();
+
+  String get _queryKey => _query.toLowerCase().replaceFirst(RegExp(r'^#'), '');
 
   bool _tagMatches(Tag tag) {
-    final q = _query;
+    final q = _queryKey;
     if (q.isEmpty) return true;
     return tag.name.toLowerCase().contains(q);
   }
@@ -295,12 +236,56 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
 
   List<Tag> get _selectedTags {
     final byId = {for (final t in _allTags) t.id: t};
-    final tags = [
+    return [
       for (final id in _selected)
         if (byId[id] != null) byId[id]!,
     ];
-    tags.sort((a, b) => a.name.compareTo(b.name));
-    return tags;
+  }
+
+  /// 已选展示顺序：先跟 AI 推荐顺序，再接其余手选标签。
+  List<({String name, int? tagId})> get _selectedDisplayItems {
+    final byId = {for (final t in _allTags) t.id: t};
+    final byName = {
+      for (final t in _allTags) t.name.toLowerCase(): t,
+    };
+    final shown = <String>{};
+    final out = <({String name, int? tagId})>[];
+
+    if (_tagsMeta.hasSuggestions) {
+      for (final item in _tagsMeta.items) {
+        if (!_aiSelected.contains(item.name)) continue;
+        final key = item.name.toLowerCase();
+        if (!shown.add(key)) continue;
+        final tag = item.existingTagId != null
+            ? byId[item.existingTagId!]
+            : byName[key];
+        out.add((name: item.name, tagId: tag?.id));
+      }
+    }
+
+    for (final id in _selected) {
+      final tag = byId[id];
+      if (tag == null) continue;
+      final key = tag.name.toLowerCase();
+      if (!shown.add(key)) continue;
+      out.add((name: tag.name, tagId: tag.id));
+    }
+
+    return out;
+  }
+
+  int get _selectedCount {
+    final names = <String>{
+      for (final t in _selectedTags) t.name.toLowerCase(),
+      for (final n in _aiSelected) n.toLowerCase(),
+    };
+    return names.length;
+  }
+
+  bool get _canCreateFromQuery {
+    final q = _queryKey;
+    if (q.isEmpty) return false;
+    return !_allTags.any((t) => t.name.toLowerCase() == q);
   }
 
   Future<void> _load() async {
@@ -329,6 +314,14 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
                 ? widget.session.selectedIds
                 : current.map((t) => t.id),
           );
+        if (_tagsMeta.hasSuggestions) {
+          for (final item in _tagsMeta.items) {
+            final id = item.existingTagId;
+            if (id != null && _aiSelected.contains(item.name)) {
+              _selected.add(id);
+            }
+          }
+        }
         _loading = false;
       });
       _syncSession();
@@ -353,15 +346,15 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
       ..addAll(_selected);
   }
 
-  void _createTag() {
-    _syncSession();
-    Navigator.pop(context, ReadingTagsSheetResult.createTag);
-  }
-
   void _toggleTag(int id) {
     setState(() {
       if (_selected.contains(id)) {
         _selected.remove(id);
+        final tag = _allTags.cast<Tag?>().firstWhere(
+              (t) => t?.id == id,
+              orElse: () => null,
+            );
+        if (tag != null) _aiSelected.remove(tag.name);
       } else {
         _selected.add(id);
       }
@@ -369,11 +362,121 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
     });
   }
 
+  void _toggleAiSuggestion(AiTagSuggestion item) {
+    setState(() {
+      if (_aiSelected.contains(item.name)) {
+        _aiSelected.remove(item.name);
+        final id = item.existingTagId;
+        if (id != null) _selected.remove(id);
+      } else {
+        _aiSelected.add(item.name);
+        final id = item.existingTagId;
+        if (id != null) _selected.add(id);
+      }
+      _syncSession();
+    });
+  }
+
+  Future<void> _createFromQuery() async {
+    final name = _queryKey;
+    if (name.isEmpty || _creating) return;
+    setState(() => _creating = true);
+    try {
+      final created = await _tagsRepo.createTag(name);
+      if (!mounted) return;
+      HapticFeedback.selectionClick();
+      _searchController.clear();
+      _searchFocus.unfocus();
+      await _load();
+      if (!mounted) return;
+      setState(() {
+        _selected.add(created.id);
+        _syncSession();
+      });
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      AppToast.show(context, e.message);
+    } catch (_) {
+      if (!mounted) return;
+      AppToast.show(context, '创建失败');
+    } finally {
+      if (mounted) setState(() => _creating = false);
+    }
+  }
+
+  Future<void> _onSearchSubmitted(String _) async {
+    final q = _queryKey;
+    if (q.isEmpty) return;
+    final exact = _allTags.cast<Tag?>().firstWhere(
+          (t) => t!.name.toLowerCase() == q,
+          orElse: () => null,
+        );
+    if (exact != null) {
+      setState(() {
+        _selected.add(exact.id);
+        _searchController.clear();
+        _syncSession();
+      });
+      _searchFocus.unfocus();
+      return;
+    }
+    await _createFromQuery();
+  }
+
   Future<void> _save() async {
     if (_saving) return;
     setState(() => _saving = true);
     try {
-      await _itemsRepo.setItemTags(widget.itemId, _selected.toList());
+      final desiredNames = <String>{
+        for (final t in _selectedTags) t.name,
+        ..._aiSelected,
+      };
+
+      if (_aiSelected.isNotEmpty && _tagsMeta.hasSuggestions) {
+        final updated = await _itemsRepo.applyAiSuggest(
+          widget.itemId,
+          _aiSelected.toList(),
+        );
+        Analytics.instance.aiTagsApply(
+          itemId: widget.itemId,
+          count: _aiSelected.length,
+        );
+        if (!mounted) return;
+        _tagsMeta = updated.aiMeta.tags;
+        widget.onTagsMetaChanged?.call(_tagsMeta);
+      }
+
+      final modulesResult = await _modulesRepo.listModules();
+      if (!mounted) return;
+      final all = <Tag>[
+        ...modulesResult.ungrouped.where((t) => !t.isSystem),
+        for (final m in modulesResult.modules)
+          ...m.tags.where((t) => !t.isSystem),
+      ];
+      final byName = {
+        for (final t in all) t.name.toLowerCase(): t.id,
+      };
+      final descByName = {
+        for (final item in _tagsMeta.items)
+          if ((item.description ?? '').trim().isNotEmpty)
+            item.name.toLowerCase(): item.description!.trim(),
+      };
+      final ids = <int>{};
+      for (final name in desiredNames) {
+        final key = name.toLowerCase();
+        var id = byName[key];
+        if (id == null) {
+          final created = await _tagsRepo.createTag(
+            name,
+            description: descByName[key],
+          );
+          id = created.id;
+          byName[key] = id;
+        }
+        ids.add(id);
+      }
+
+      await _itemsRepo.setItemTags(widget.itemId, ids.toList());
       if (!mounted) return;
       Navigator.pop(context);
     } on ApiException catch (e) {
@@ -387,388 +490,366 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
     }
   }
 
-  void _onAiSuggest() {
-    unawaited(_triggerAiSuggest());
-  }
-
-  String get _aiSuggestButtonLabel {
-    if (widget.transcriptPending) return '转写中…';
-    if (_tagsMeta.isPending) return 'AI 生成中…';
-    return 'AI 建议标签';
-  }
-
-  bool get _aiSuggestTapEnabled =>
-      widget.aiSuggestEnabled || _tagsMeta.isPending;
-
-  Widget _buildAiSuggestSection() {
-    final meta = _tagsMeta;
-    if (meta.status == 'none' || meta.status == 'skipped') {
-      return const SizedBox.shrink();
-    }
-
-    if (meta.isPending) {
-      final title = meta.awaitTranscript
-          ? '正在转写，完成后生成标签建议…'
-          : '正在生成标签建议…';
-      return Padding(
-        padding: const EdgeInsets.only(bottom: 12),
-        child: Container(
-          width: double.infinity,
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: const Color(0xFFF3F6FA),
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Row(
-            children: [
-              SizedBox(
-                width: 18,
-                height: 18,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  color: _blue.withValues(alpha: 0.85),
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  title,
-                  style: const TextStyle(fontSize: 13, color: _muted),
-                ),
-              ),
-            ],
-          ),
-        ),
-      );
-    }
-
-    if (meta.isFailed) {
-      final err = (meta.error ?? '').trim();
-      return Padding(
-        padding: const EdgeInsets.only(bottom: 12),
-        child: Container(
-          width: double.infinity,
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: const Color(0xFFF3F6FA),
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                err.isEmpty ? '标签建议生成失败' : '标签建议失败：$err',
-                style: const TextStyle(fontSize: 13, color: _muted, height: 1.4),
-              ),
-              const SizedBox(height: 8),
-              GestureDetector(
-                onTap: () => unawaited(_triggerAiSuggest(force: true)),
-                child: const Text(
-                  '重试',
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    color: _blue,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      );
-    }
-
-    if (meta.isEmpty) {
-      return Padding(
-        padding: const EdgeInsets.only(bottom: 12),
-        child: Container(
-          width: double.infinity,
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: const Color(0xFFF3F6FA),
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                'AI 建议标签',
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: _text,
-                ),
-              ),
-              const SizedBox(height: 6),
-              const Text(
-                '本篇标签已较完整，暂无新的建议',
-                style: TextStyle(fontSize: 13, color: _muted, height: 1.4),
-              ),
-              const SizedBox(height: 8),
-              GestureDetector(
-                onTap: () => unawaited(_dismissAi()),
-                child: const Text(
-                  '知道了',
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    color: _blue,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      );
-    }
-
-    if (!meta.hasSuggestions) return const SizedBox.shrink();
-
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: const Color(0xFFF3F6FA),
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'AI 建议标签',
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-                color: _text,
-              ),
-            ),
-            const SizedBox(height: 10),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                for (final item in meta.items)
-                  GestureDetector(
-                    onTap: _aiApplying
-                        ? null
-                        : () => setState(() {
-                              if (_aiSelected.contains(item.name)) {
-                                _aiSelected.remove(item.name);
-                              } else {
-                                _aiSelected.add(item.name);
-                              }
-                            }),
-                    child: _AiSuggestChip(
-                      label: item.name,
-                      isExisting: item.existingTagId != null,
-                      selected: _aiSelected.contains(item.name),
-                    ),
-                  ),
-              ],
-            ),
-            const SizedBox(height: 10),
-            Row(
-              children: [
-                GestureDetector(
-                  onTap: _aiApplying || _aiSelected.isEmpty
-                      ? null
-                      : () => unawaited(_applyAiSelected()),
-                  child: Text(
-                    _aiApplying ? '采纳中…' : '采纳所选',
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                      color: _aiSelected.isEmpty || _aiApplying
-                          ? _muted
-                          : _blue,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 16),
-                GestureDetector(
-                  onTap: _aiApplying ? null : () => unawaited(_dismissAi()),
-                  child: const Text(
-                    '忽略',
-                    style: TextStyle(fontSize: 14, color: _muted),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 6),
-            const Text(
-              '带 ＋ 为新建建议，其余为已有标签（可复用）',
-              style: TextStyle(fontSize: 12, color: _muted, height: 1.4),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
   static String _hashLabel(String name) {
     final n = name.trim();
     if (n.isEmpty) return '';
     return n.startsWith('#') ? n : '#$n';
   }
 
-  Widget _tagChip(
-    Tag tag, {
+  bool _isNewSuggestionName(String name) {
+    final key = name.trim().toLowerCase();
+    if (key.isEmpty) return false;
+    return !_allTags.any((t) => t.name.toLowerCase() == key);
+  }
+
+  Widget _pill({
+    required String label,
+    required bool selected,
+    VoidCallback? onTap,
     VoidCallback? onRemove,
-    bool muted = false,
+    bool isNew = false,
   }) {
-    final on = _selected.contains(tag.id);
-    final Color fg;
-    final Color bg;
-    if (on) {
-      fg = Colors.white;
-      bg = _blue;
-    } else if (muted) {
-      fg = _ungroupedTag;
-      bg = _ungroupedTagSoft;
-    } else {
-      fg = _blue;
-      bg = _chipBg;
-    }
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-      decoration: BoxDecoration(
-        color: bg,
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(
-            _hashLabel(tag.name),
-            style: TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
-              height: 1.25,
-              color: fg,
-            ),
-          ),
-          if (onRemove != null) ...[
-            const SizedBox(width: 4),
-            GestureDetector(
-              onTap: onRemove,
-              behavior: HitTestBehavior.opaque,
-              child: Icon(
-                Icons.close_rounded,
-                size: 18,
-                color: on ? Colors.white : _muted,
+    final fg = selected ? Colors.white : _text;
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: Container(
+        // 略放大但仍保证常见「三个四字标签」一排放下
+        padding: EdgeInsets.fromLTRB(isNew ? 6 : 10, 7, onRemove != null ? 7 : 10, 7),
+        decoration: BoxDecoration(
+          color: selected ? _blue : _chipBg,
+          borderRadius: BorderRadius.circular(999),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (isNew) ...[
+              Container(
+                width: 17,
+                height: 17,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: selected
+                      ? Colors.white.withValues(alpha: 0.22)
+                      : const Color(0xFFE8F0FE),
+                  borderRadius: BorderRadius.circular(5),
+                ),
+                child: Text(
+                  '+',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w800,
+                    height: 1,
+                    color: selected ? Colors.white : _blue,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 5),
+            ],
+            Text(
+              _hashLabel(label),
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                height: 1.2,
+                color: fg,
               ),
             ),
+            if (onRemove != null) ...[
+              const SizedBox(width: 3),
+              GestureDetector(
+                onTap: onRemove,
+                behavior: HitTestBehavior.opaque,
+                child: Icon(
+                  Icons.close_rounded,
+                  size: 15,
+                  color: selected ? Colors.white : _muted,
+                ),
+              ),
+            ],
           ],
-        ],
+        ),
       ),
+    );
+  }
+
+  Widget _buildTitleRow() {
+    return Row(
+      children: [
+        const Expanded(
+          child: Text(
+            '选择标签',
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w700,
+              color: _text,
+            ),
+          ),
+        ),
+        GestureDetector(
+          onTap: () => Navigator.pop(context),
+          child: const Text(
+            '关闭',
+            style: TextStyle(fontSize: 14, color: _muted),
+          ),
+        ),
+      ],
     );
   }
 
   Widget _buildSearchField() {
-    return TextField(
-      controller: _searchController,
-      onChanged: (_) => setState(() {}),
-      textInputAction: TextInputAction.search,
-      decoration: InputDecoration(
-        hintText: '搜索标签',
-        hintStyle: const TextStyle(fontSize: 15, color: _muted),
-        prefixIcon: const Icon(Icons.search_rounded, color: _muted, size: 24),
-        suffixIcon: _searchController.text.isEmpty
-            ? null
-            : IconButton(
-                icon: const Icon(Icons.close_rounded, color: _muted, size: 22),
-                onPressed: () {
-                  _searchController.clear();
-                  setState(() {});
-                },
-              ),
-        filled: true,
-        fillColor: _chipBg,
-        contentPadding: const EdgeInsets.symmetric(vertical: 12),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(999),
-          borderSide: BorderSide.none,
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(999),
-          borderSide: BorderSide.none,
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(999),
-          borderSide: const BorderSide(color: Color(0xFFB8CCFA), width: 1),
+    return SizedBox(
+      height: 40,
+      child: TextField(
+        controller: _searchController,
+        focusNode: _searchFocus,
+        onChanged: (_) => setState(() {}),
+        onSubmitted: _onSearchSubmitted,
+        textInputAction: TextInputAction.done,
+        style: const TextStyle(fontSize: 14, color: _text),
+        decoration: InputDecoration(
+          hintText: '搜索或新建标签',
+          hintStyle: const TextStyle(fontSize: 14, color: _muted),
+          prefixIcon: const Icon(
+            Icons.search_rounded,
+            color: _muted,
+            size: 20,
+          ),
+          prefixIconConstraints: const BoxConstraints(
+            minWidth: 36,
+            minHeight: 36,
+          ),
+          suffixIcon: _query.isEmpty
+              ? null
+              : IconButton(
+                  icon: const Icon(
+                    Icons.close_rounded,
+                    color: _muted,
+                    size: 18,
+                  ),
+                  onPressed: () {
+                    _searchController.clear();
+                    setState(() {});
+                  },
+                ),
+          filled: true,
+          fillColor: _surface,
+          contentPadding: const EdgeInsets.symmetric(vertical: 0),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(999),
+            borderSide: BorderSide.none,
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(999),
+            borderSide: BorderSide.none,
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(999),
+            borderSide: const BorderSide(
+              color: Color(0xFFB8CCFA),
+              width: 1,
+            ),
+          ),
         ),
       ),
     );
   }
 
-  Widget _buildSelectableChip(Tag tag, {bool muted = false}) {
-    return GestureDetector(
-      onTap: () => _toggleTag(tag.id),
-      behavior: HitTestBehavior.opaque,
-      child: _tagChip(tag, muted: muted),
+  Widget _buildSelectedSection() {
+    final items = _selectedDisplayItems;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          children: [
+            const Text(
+              '已选标签',
+              style: TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w700,
+                color: _text,
+              ),
+            ),
+            const Spacer(),
+            Text(
+              '$_selectedCount',
+              style: const TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: _muted,
+              ),
+            ),
+          ],
+        ),
+        if (items.isNotEmpty) ...[
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 6,
+            runSpacing: 8,
+            children: [
+              for (final item in items)
+                _pill(
+                  label: item.name,
+                  selected: true,
+                  onRemove: () {
+                    final id = item.tagId;
+                    if (id != null) {
+                      _toggleTag(id);
+                    } else {
+                      setState(() => _aiSelected.remove(item.name));
+                    }
+                  },
+                ),
+            ],
+          ),
+        ],
+        const SizedBox(height: 14),
+        _buildAiRecommendBlock(),
+      ],
+    );
+  }
+
+  Widget _buildAiRecommendBlock() {
+    final meta = _tagsMeta;
+    final enabled = widget.aiSuggestEnabled || meta.isPending;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Material(
+              color: Colors.transparent,
+              child: InkWell(
+                onTap: !enabled
+                    ? _toastDisabledAi
+                    : meta.isPending
+                        ? null
+                        : () => unawaited(
+                              _triggerAiSuggest(
+                                force: meta.hasSuggestions || meta.isFailed,
+                              ),
+                            ),
+                borderRadius: BorderRadius.circular(999),
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                  decoration: BoxDecoration(
+                    color: _chipBg,
+                    borderRadius: BorderRadius.circular(999),
+                    border: Border.all(color: const Color(0xFFE8ECF0)),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.auto_awesome_outlined,
+                        size: 16,
+                        color: enabled ? _blue : _muted,
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        meta.isPending
+                            ? (meta.awaitTranscript ? '转写中…' : '生成中…')
+                            : meta.hasSuggestions || meta.isFailed
+                                ? '重新推荐'
+                                : 'AI 推荐',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: enabled ? _blue : _muted,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 10),
+            const Expanded(
+              child: Text(
+                '点击生成 AI 推荐标签，生成后默认为选择，可点击相应标签取消选择',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: _muted,
+                  height: 1.35,
+                ),
+              ),
+            ),
+          ],
+        ),
+        if (meta.isPending) ...[
+          const SizedBox(height: 10),
+          const Text(
+            '正在生成推荐…',
+            style: TextStyle(fontSize: 13, color: _muted),
+          ),
+        ] else if (meta.isFailed) ...[
+          const SizedBox(height: 10),
+          Text(
+            (meta.error ?? '').trim().isEmpty
+                ? '推荐生成失败，可重试'
+                : '推荐失败：${meta.error}',
+            style: const TextStyle(fontSize: 13, color: _muted, height: 1.4),
+          ),
+        ] else if (meta.isEmpty) ...[
+          const SizedBox(height: 10),
+          const Text(
+            '暂无新的推荐',
+            style: TextStyle(fontSize: 13, color: _muted),
+          ),
+        ] else if (meta.hasSuggestions) ...[
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 6,
+            runSpacing: 8,
+            children: [
+              for (final item in meta.items)
+                _pill(
+                  label: item.name,
+                  selected: _aiSelected.contains(item.name),
+                  isNew: item.existingTagId == null &&
+                      _isNewSuggestionName(item.name),
+                  onTap: () => _toggleAiSuggestion(item),
+                ),
+            ],
+          ),
+        ],
+      ],
     );
   }
 
   Widget _buildModuleSection({
     required String title,
     required List<Tag> tags,
-    bool muted = false,
   }) {
     final visible = tags.where(_tagMatches).toList();
     if (visible.isEmpty) return const SizedBox.shrink();
     return Padding(
-      padding: const EdgeInsets.only(bottom: 20),
+      padding: const EdgeInsets.only(bottom: 16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          SizedBox(
-            height: 28,
-            child: Row(
-              children: [
-                if (muted) ...[
-                  const Icon(
-                    Icons.inbox_outlined,
-                    size: 16,
-                    color: _sectionMuted,
-                  ),
-                  const SizedBox(width: 6),
-                ] else
-                  Container(
-                    width: 6,
-                    height: 6,
-                    margin: const EdgeInsets.only(right: 8),
-                    decoration: const BoxDecoration(
-                      color: _blue,
-                      shape: BoxShape.circle,
-                    ),
-                  ),
-                Expanded(
-                  child: Text(
-                    title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w600,
-                      letterSpacing: muted ? 0.2 : 0.4,
-                      color: muted
-                          ? _sectionMuted
-                          : _text.withValues(alpha: 0.78),
-                    ),
-                  ),
-                ),
-              ],
+          Text(
+            title,
+            style: const TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              color: _sectionMuted,
             ),
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 8),
           Wrap(
-            spacing: 8,
+            spacing: 6,
             runSpacing: 8,
             children: [
               for (final tag in visible)
-                _buildSelectableChip(tag, muted: muted),
+                _pill(
+                  label: tag.name,
+                  selected: _selected.contains(tag.id),
+                  onTap: () => _toggleTag(tag.id),
+                ),
             ],
           ),
         ],
@@ -776,101 +857,100 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
     );
   }
 
-  Widget _buildGroupedTags() {
-    if (_allTags.isEmpty) {
-      return const Padding(
-        padding: EdgeInsets.only(top: 4),
-        child: Text(
-          '还没有标签，可点「新建」或使用 AI 建议',
-          style: TextStyle(fontSize: 13, color: _muted, height: 1.4),
-        ),
-      );
-    }
-
-    final hasMatch = _allTags.any(_tagMatches);
-    if (!hasMatch) {
-      return Padding(
-        padding: const EdgeInsets.only(top: 8),
-        child: Text(
-          '没有「${_searchController.text.trim()}」相关的标签',
-          style: const TextStyle(fontSize: 13, color: _muted, height: 1.4),
-        ),
-      );
-    }
-
+  Widget _buildMyTags() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _buildModuleSection(
-          title: '未归类',
-          tags: _ungrouped,
-          muted: true,
-        ),
-        for (final m in _modules)
-          _buildModuleSection(
-            title: m.name,
-            tags: m.tags,
+        const Text(
+          '我的标签',
+          style: TextStyle(
+            fontSize: 15,
+            fontWeight: FontWeight.w700,
+            color: _text,
           ),
+        ),
+        const SizedBox(height: 12),
+        if (_canCreateFromQuery)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: GestureDetector(
+              onTap: _creating ? null : () => unawaited(_createFromQuery()),
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                decoration: BoxDecoration(
+                  color: _chipBg,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.add_rounded,
+                      size: 20,
+                      color: _creating ? _muted : _blue,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        _creating
+                            ? '创建中…'
+                            : '新建 ${_hashLabel(_queryKey)}',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: _creating ? _muted : _blue,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        if (_allTags.isEmpty)
+          const Text(
+            '还没有标签，可搜索新建或使用 AI 推荐',
+            style: TextStyle(fontSize: 13, color: _muted, height: 1.4),
+          )
+        else if (!_allTags.any(_tagMatches) && !_canCreateFromQuery)
+          Text(
+            '没有「$_query」相关的标签',
+            style: const TextStyle(fontSize: 13, color: _muted, height: 1.4),
+          )
+        else ...[
+          _buildModuleSection(title: '未归类', tags: _ungrouped),
+          for (final m in _modules)
+            _buildModuleSection(title: m.name, tags: m.tags),
+        ],
       ],
-    );
-  }
-
-  Widget _buildSelectedTagsRow(List<Tag> selected) {
-    return SizedBox(
-      height: 36,
-      child: ListView.separated(
-        scrollDirection: Axis.horizontal,
-        padding: EdgeInsets.zero,
-        primary: false,
-        physics: const ClampingScrollPhysics(),
-        itemCount: selected.length,
-        separatorBuilder: (context, _) => const SizedBox(width: 8),
-        itemBuilder: (context, index) {
-          final tag = selected[index];
-          final muted = tag.moduleId == null;
-          return _tagChip(
-            tag,
-            muted: muted,
-            onRemove: () => _toggleTag(tag.id),
-          );
-        },
-      ),
     );
   }
 
   Widget _buildBody() {
     if (_loading) {
       return const Padding(
-        padding: EdgeInsets.symmetric(vertical: 24),
+        padding: EdgeInsets.symmetric(vertical: 48),
         child: Center(child: CircularProgressIndicator(strokeWidth: 2.4)),
       );
     }
     if (_error != null) {
       return Padding(
-        padding: const EdgeInsets.symmetric(vertical: 16),
-        child: Text(_error!, style: const TextStyle(color: _muted)),
+        padding: const EdgeInsets.symmetric(vertical: 24),
+        child: Column(
+          children: [
+            Text(_error!, style: const TextStyle(color: _muted)),
+            TextButton(onPressed: _load, child: const Text('重试')),
+          ],
+        ),
       );
     }
 
-    final selected = _selectedTags;
-
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
-      mainAxisSize: MainAxisSize.min,
       children: [
-        _buildAiSuggestSection(),
-        if (selected.isNotEmpty) ...[
-          const Text(
-            '已选',
-            style: TextStyle(fontSize: 12, color: _muted, height: 1.2),
-          ),
-          const SizedBox(height: 8),
-          _buildSelectedTagsRow(selected),
-          const SizedBox(height: 12),
-        ],
-        _buildSearchField(),
-        const SizedBox(height: 12),
-        _buildGroupedTags(),
+        _buildSelectedSection(),
+        const SizedBox(height: 20),
+        _buildMyTags(),
       ],
     );
   }
@@ -878,219 +958,61 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
   @override
   Widget build(BuildContext context) {
     final maxSheetHeight = MediaQuery.sizeOf(context).height * 0.82;
-    final bottomInset = 16 +
-        MediaQuery.paddingOf(context).bottom +
-        MediaQuery.viewInsetsOf(context).bottom;
 
-    return Padding(
-      padding: EdgeInsets.only(
-        left: 16,
-        right: 16,
-        bottom: bottomInset,
-      ),
-      child: Align(
-        alignment: Alignment.bottomCenter,
-        child: Material(
-          color: Colors.white,
-          clipBehavior: Clip.antiAlias,
-          borderRadius: BorderRadius.circular(24),
-          child: SizedBox(
-            height: maxSheetHeight,
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Center(
-                    child: Container(
-                      width: 40,
-                      height: 4,
-                      decoration: BoxDecoration(
-                        color: _handle,
-                        borderRadius: BorderRadius.circular(2),
-                      ),
-                    ),
+    return Material(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(24),
+      clipBehavior: Clip.antiAlias,
+      child: SizedBox(
+        height: maxSheetHeight,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: _handle,
+                    borderRadius: BorderRadius.circular(2),
                   ),
-                  const SizedBox(height: 12),
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    children: [
-                      const Text(
-                        '选择标签',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w700,
-                          color: _text,
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      _HeaderActionButton(
-                        icon: Icons.tips_and_updates_outlined,
-                        label: _aiSuggestButtonLabel,
-                        onTap: _aiSuggestTapEnabled
-                            ? _onAiSuggest
-                            : _toastDisabledAi,
-                        foreground:
-                            _aiSuggestTapEnabled ? _blue : _muted,
-                        borderColor: _aiSuggestTapEnabled
-                            ? const Color(0xFFB8CCFA)
-                            : const Color(0xFFE8ECF0),
-                      ),
-                      const SizedBox(width: 6),
-                      _HeaderActionButton(
-                        icon: Icons.add,
-                        label: '新建',
-                        onTap: _createTag,
-                        foreground: _text,
-                        borderColor: const Color(0xFFE8ECF0),
-                      ),
-                      const Spacer(),
-                      GestureDetector(
-                        onTap: () => Navigator.pop(context),
-                        child: const Text(
-                          '关闭',
-                          style: TextStyle(
-                            fontSize: 14,
-                            color: _muted,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  Expanded(
-                    child: SingleChildScrollView(
-                      child: _buildBody(),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  SizedBox(
-                    width: double.infinity,
-                    height: 48,
-                    child: FilledButton(
-                      onPressed: _loading || _saving ? null : _save,
-                      style: FilledButton.styleFrom(
-                        backgroundColor: _blue,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                      child: Text(_saving ? '保存中…' : '完成'),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _HeaderActionButton extends StatelessWidget {
-  const _HeaderActionButton({
-    required this.icon,
-    required this.label,
-    required this.onTap,
-    required this.foreground,
-    required this.borderColor,
-  });
-
-  final IconData icon;
-  final String label;
-  final VoidCallback onTap;
-  final Color foreground;
-  final Color borderColor;
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      behavior: HitTestBehavior.opaque,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: borderColor, width: 1),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, size: 16, color: foreground),
-            const SizedBox(width: 3),
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w500,
-                color: foreground,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _AiSuggestChip extends StatelessWidget {
-  const _AiSuggestChip({
-    required this.label,
-    required this.isExisting,
-    required this.selected,
-  });
-
-  final String label;
-  final bool isExisting;
-  final bool selected;
-
-  static const _chipOn = Color(0xFFE5EDFF);
-  static const _chipBg = Color(0xFFF5F7FA);
-  static const _chipNewBorder = Color(0xFFD9DBE0);
-  static const _brand = Color(0xFF2F6FED);
-  static const _text = Color(0xFF1F242E);
-  static const _muted = Color(0xFF737A85);
-
-  @override
-  Widget build(BuildContext context) {
-    final bg = selected
-        ? _chipOn
-        : (isExisting ? _chipBg : Colors.white);
-    final fg = selected ? _brand : _text;
-    final borderColor = selected
-        ? _chipOn
-        : (isExisting ? _chipBg : _chipNewBorder);
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-      decoration: BoxDecoration(
-        color: bg,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: borderColor, width: 1),
-      ),
-      child: Text.rich(
-        TextSpan(
-          children: [
-            if (!isExisting)
-              const TextSpan(
-                text: '＋ ',
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w500,
-                  color: _muted,
                 ),
               ),
-            TextSpan(
-              text: label,
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w500,
-                color: fg,
+              const SizedBox(height: 12),
+              _buildTitleRow(),
+              const SizedBox(height: 12),
+              _buildSearchField(),
+              const SizedBox(height: 12),
+              Expanded(
+                child: SingleChildScrollView(
+                  child: _buildBody(),
+                ),
               ),
-            ),
-          ],
+              const SizedBox(height: 12),
+              SizedBox(
+                width: double.infinity,
+                height: 48,
+                child: FilledButton(
+                  onPressed: _loading || _saving ? null : _save,
+                  style: FilledButton.styleFrom(
+                    backgroundColor: _blue,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  child: Text(
+                    _saving ? '保存中…' : '完成 ($_selectedCount)',
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
