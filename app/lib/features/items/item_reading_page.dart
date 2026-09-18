@@ -1964,7 +1964,8 @@ class _InlineArticleBody extends StatelessWidget {
   }
 }
 
-/// 正文插图：与正文同宽（含左右边距对齐），按比例定高。
+/// 正文插图：有原文宽高且小于栏宽时按声明尺寸展示；
+/// 否则与正文同宽，按比例定高。
 class _ReadingInlineImage extends StatefulWidget {
   const _ReadingInlineImage({
     required this.url,
@@ -2042,20 +2043,27 @@ class _ReadingInlineImageState extends State<_ReadingInlineImage> {
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        final width = constraints.maxWidth;
+        final maxW = constraints.maxWidth;
         final declaredW = widget.hintWidth;
+        final declaredH = widget.hintHeight;
         final aspect = (declaredW != null &&
-                widget.hintHeight != null &&
+                declaredH != null &&
                 declaredW > 0 &&
-                widget.hintHeight! > 0)
-            ? widget.hintHeight! / declaredW
+                declaredH > 0)
+            ? declaredH / declaredW
             : (_decodedW != null &&
                     _decodedH != null &&
                     _decodedW! > 0)
                 ? _decodedH! / _decodedW!
                 : null;
+        // 原文声明宽度小于栏宽：按 CSS 像素展示；否则铺满栏宽。
+        final width = (declaredW != null &&
+                declaredW > 0 &&
+                declaredW < maxW)
+            ? declaredW
+            : maxW;
         final height = aspect != null ? width * aspect : null;
-        return Image.network(
+        final image = Image.network(
           widget.url,
           width: width,
           height: height,
@@ -2064,9 +2072,10 @@ class _ReadingInlineImageState extends State<_ReadingInlineImage> {
           headers: mediaHttpHeadersFor(widget.url, pageUrl: widget.pageUrl),
           filterQuality: FilterQuality.medium,
           gaplessPlayback: true,
-          errorBuilder: (_, __, ___) => const SizedBox(
-            height: 72,
-            child: Center(
+          errorBuilder: (_, __, ___) => SizedBox(
+            width: width,
+            height: height ?? 72,
+            child: const Center(
               child: Icon(
                 Icons.broken_image_outlined,
                 color: Color(0xFFB2B8BF),
@@ -2089,6 +2098,8 @@ class _ReadingInlineImageState extends State<_ReadingInlineImage> {
             );
           },
         );
+        if (width >= maxW) return image;
+        return Align(alignment: Alignment.centerLeft, child: image);
       },
     );
   }
