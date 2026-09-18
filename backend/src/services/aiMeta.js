@@ -135,17 +135,19 @@ function parseAiMeta(raw) {
 
 function mapAiMetaForApi(meta) {
   const m = parseAiMeta(meta);
+  // 推荐标签列表不落库对外暴露：仅 pending/failed 保留；success/empty 在条目接口视为 none
+  const tagsStatus =
+    m.tags.status === 'success' || m.tags.status === 'empty'
+      ? 'none'
+      : m.tags.status;
   return {
     tags: {
-      status: m.tags.status,
-      items: m.tags.items.map((it) => ({
-        name: it.name,
-        existingTagId: it.existingTagId,
-      })),
-      error: m.tags.error,
-      generatedAt: m.tags.generatedAt,
+      status: tagsStatus,
+      items: [],
+      error: tagsStatus === 'failed' ? m.tags.error : null,
+      generatedAt: tagsStatus === 'failed' ? m.tags.generatedAt : null,
       awaitTranscript: m.tags.awaitTranscript,
-      creditsUsed: m.tags.creditsUsed,
+      creditsUsed: null,
     },
     mindmap: {
       status: m.mindmap.status,

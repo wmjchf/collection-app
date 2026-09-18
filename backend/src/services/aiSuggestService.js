@@ -21,6 +21,21 @@ const TAGS_SYSTEM_PROMPT =
   '不要建议「本篇已打标签」列表中的任何名称。' +
   '只输出 JSON：{"tags":["标签1","标签2"]}，不要其它字段或说明。';
 
+/** 进程内临时推荐结果：不写入 ai_meta.items，退出进程即失效 */
+const ephemeralTagSuggestions = new Map();
+
+function setEphemeralSuggestions(itemId, payload) {
+  ephemeralTagSuggestions.set(Number(itemId), payload);
+}
+
+function peekEphemeralSuggestions(itemId) {
+  return ephemeralTagSuggestions.get(Number(itemId)) || null;
+}
+
+function clearEphemeralSuggestions(itemId) {
+  ephemeralTagSuggestions.delete(Number(itemId));
+}
+
 async function listUserTagsForMatch(userId) {
   const [rows] = await pool.execute(
     `SELECT id, name FROM categories
@@ -84,6 +99,7 @@ async function failAiSuggestJob(itemId, message) {
     { itemId },
   );
   if (!rows[0]) return;
+  clearEphemeralSuggestions(itemId);
   let meta = aiMeta.parseAiMeta(rows[0].ai_meta);
   meta = aiMeta.withTagsState(meta, {
     status: 'failed',
@@ -160,21 +176,27 @@ async function requestAiSuggest(userId, itemId, { force = false, autoApply = fal
     );
   }
 
-  if (
-    meta.tags.status === 'success' &&
-    meta.tags.items.length &&
-    !force
-  ) {
-    const itemService = require('./itemService');
-    return itemService.getByIdForUser(userId, itemId);
-  }
+  // 不复用进程内旧推荐：离开阅读页后再点「AI 推荐」应重新生成，
+  // 否则条目接口无 items、轮询却吐出旧 ephemeral，表现为先无反应再冒出旧标签。
+  const ephemeral = peekEphemeralSuggestions(itemId);
 
   const usageService = require('./usageService');
   await usageService.assertPlanFeatureForUser(userId, 'ai_tags');
   await usageService.assertAiQuota(userId);
 
-  const regenerateFrom = force ? snapshotRegenerateFrom(meta, 'tags') : null;
+  const regenerateFrom = force
+    ? snapshotRegenerateFrom(
+        ephemeral?.items?.length
+          ? aiMeta.withTagsState(meta, {
+              status: 'success',
+              items: ephemeral.items,
+            })
+          : meta,
+        'tags',
+      )
+    : null;
   const autoApplyFlag = autoApply === true;
+  clearEphemeralSuggestions(itemId);
 
   if (transcriptSegments.shouldAutoTranscribeBeforeMindmap(row)) {
     await usageService.assertTranscriptQuota(userId);
@@ -262,6 +284,25 @@ async function getAiSuggestStatus(userId, itemId) {
     throw Object.assign(new Error('条目不存在'), { status: 404 });
   }
   const meta = aiMeta.parseAiMeta(row.ai_meta);
+  const ephemeral = peekEphemeralSuggestions(itemId);
+  if (ephemeral) {
+    return {
+      id: row.id,
+      tags: {
+        status: ephemeral.status || (ephemeral.items?.length ? 'success' : 'empty'),
+        items: (ephemeral.items || []).map((it) => ({
+          name: it.name,
+          existingTagId: it.existingTagId ?? null,
+        })),
+        error: null,
+        generatedAt: ephemeral.generatedAt || null,
+        awaitTranscript: false,
+        creditsUsed: ephemeral.creditsUsed ?? null,
+      },
+      model: meta.model,
+      updatedAt: row.updated_at,
+    };
+  }
   return {
     id: row.id,
     tags: aiMeta.mapAiMetaForApi(meta).tags,
@@ -319,14 +360,21 @@ async function runAiSuggestJob(itemId) {
     if (!items.length) {
       const generatedAt = new Date().toISOString();
       const creditsUsed = usageService.creditsFromModelUsage(modelUsage);
-      meta = aiMeta.withTagsState(meta, {
+      setEphemeralSuggestions(itemId, {
         status: 'empty',
+        items: [],
+        generatedAt,
+        creditsUsed: creditsUsed || null,
+      });
+      meta = aiMeta.withTagsState(meta, {
+        status: 'none',
         awaitTranscript: false,
         items: [],
         error: null,
         generatedAt,
         regenerateFrom: null,
         creditsUsed: creditsUsed || null,
+        autoApply: false,
       });
       await saveAiMeta(itemId, meta);
       require('./analyticsService').trackAiJobOutcome(row, 'tags', {
@@ -354,14 +402,21 @@ async function runAiSuggestJob(itemId) {
 
     const generatedAt = new Date().toISOString();
     const creditsUsed = usageService.creditsFromModelUsage(modelUsage);
-    meta = aiMeta.withTagsState(meta, {
+    setEphemeralSuggestions(itemId, {
       status: 'success',
-      awaitTranscript: false,
       items,
+      generatedAt,
+      creditsUsed: creditsUsed || null,
+    });
+    meta = aiMeta.withTagsState(meta, {
+      status: 'none',
+      awaitTranscript: false,
+      items: [],
       error: null,
       generatedAt,
       regenerateFrom: null,
       creditsUsed: creditsUsed || null,
+      autoApply: meta.tags.autoApply,
     });
     await saveAiMeta(itemId, meta);
     require('./analyticsService').trackAiJobOutcome(row, 'tags', {
@@ -401,6 +456,7 @@ async function runAiSuggestJob(itemId) {
       }
     }
   } catch (err) {
+    clearEphemeralSuggestions(itemId);
     meta = aiMeta.withTagsState(meta, {
       status: 'failed',
       awaitTranscript: false,
@@ -408,6 +464,7 @@ async function runAiSuggestJob(itemId) {
       error: (err.message || '生成失败').slice(0, 500),
       generatedAt: new Date().toISOString(),
       regenerateFrom: null,
+      autoApply: false,
     });
     await saveAiMeta(itemId, meta);
     require('./analyticsService').trackAiJobOutcome(row, 'tags', {
@@ -426,11 +483,13 @@ async function dismissAiSuggest(userId, itemId) {
   if (!row) {
     throw Object.assign(new Error('条目不存在'), { status: 404 });
   }
+  clearEphemeralSuggestions(itemId);
   let meta = aiMeta.parseAiMeta(row.ai_meta);
   meta = aiMeta.withTagsState(meta, {
-    status: 'skipped',
+    status: 'none',
     items: [],
     error: null,
+    autoApply: false,
   });
   await saveAiMeta(itemId, meta);
   const itemService = require('./itemService');
@@ -451,8 +510,13 @@ async function applyAiSuggest(userId, itemId, { names = [] } = {}) {
     throw Object.assign(new Error('请选择要采纳的标签'), { status: 400 });
   }
 
+  const ephemeral = peekEphemeralSuggestions(itemId);
+  const suggestionItems =
+    ephemeral?.items?.length
+      ? ephemeral.items
+      : meta.tags.items;
   const suggestionMap = new Map(
-    meta.tags.items.map((it) => [it.name.toLowerCase(), it]),
+    suggestionItems.map((it) => [it.name.toLowerCase(), it]),
   );
   const userTags = await listUserTagsForMatch(userId);
 
@@ -486,8 +550,9 @@ async function applyAiSuggest(userId, itemId, { names = [] } = {}) {
 
   await itemService.setItemTags(userId, itemId, [...tagIdSet]);
 
+  clearEphemeralSuggestions(itemId);
   const cleared = aiMeta.withTagsState(meta, {
-    status: 'skipped',
+    status: 'none',
     items: [],
     error: null,
     autoApply: false,
@@ -521,7 +586,6 @@ async function maybeAutoTagAfterParse(userId, itemId) {
 
     const meta = aiMeta.parseAiMeta(row.ai_meta);
     if (meta.tags.status === 'pending') return;
-    if (meta.tags.status === 'success' && meta.tags.items.length) return;
 
     await requestAiSuggest(userId, itemId, { autoApply: true });
     console.log(`[maybeAutoTagAfterParse] enqueued item=${itemId}`);

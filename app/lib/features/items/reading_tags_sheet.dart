@@ -239,27 +239,51 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
 
   List<Tag> get _selectedTags {
     final byId = {for (final t in _allTags) t.id: t};
-    final tags = [
+    return [
       for (final id in _selected)
         if (byId[id] != null) byId[id]!,
     ];
-    tags.sort((a, b) => a.name.compareTo(b.name));
-    return tags;
   }
 
-  /// 已选里展示的「尚未入库」的 AI 新标签名
-  List<String> get _selectedAiNewNames {
-    final existing = {
-      for (final t in _allTags) t.name.toLowerCase(),
+  /// 已选展示顺序：先跟 AI 推荐顺序，再接其余手选标签。
+  List<({String name, int? tagId})> get _selectedDisplayItems {
+    final byId = {for (final t in _allTags) t.id: t};
+    final byName = {
+      for (final t in _allTags) t.name.toLowerCase(): t,
     };
-    final names = _aiSelected
-        .where((n) => !existing.contains(n.toLowerCase()))
-        .toList();
-    names.sort();
-    return names;
+    final shown = <String>{};
+    final out = <({String name, int? tagId})>[];
+
+    if (_tagsMeta.hasSuggestions) {
+      for (final item in _tagsMeta.items) {
+        if (!_aiSelected.contains(item.name)) continue;
+        final key = item.name.toLowerCase();
+        if (!shown.add(key)) continue;
+        final tag = item.existingTagId != null
+            ? byId[item.existingTagId!]
+            : byName[key];
+        out.add((name: item.name, tagId: tag?.id));
+      }
+    }
+
+    for (final id in _selected) {
+      final tag = byId[id];
+      if (tag == null) continue;
+      final key = tag.name.toLowerCase();
+      if (!shown.add(key)) continue;
+      out.add((name: tag.name, tagId: tag.id));
+    }
+
+    return out;
   }
 
-  int get _selectedCount => _selected.length + _selectedAiNewNames.length;
+  int get _selectedCount {
+    final names = <String>{
+      for (final t in _selectedTags) t.name.toLowerCase(),
+      for (final n in _aiSelected) n.toLowerCase(),
+    };
+    return names.length;
+  }
 
   bool get _canCreateFromQuery {
     final q = _queryKey;
@@ -467,17 +491,25 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
     return n.startsWith('#') ? n : '#$n';
   }
 
+  bool _isNewSuggestionName(String name) {
+    final key = name.trim().toLowerCase();
+    if (key.isEmpty) return false;
+    return !_allTags.any((t) => t.name.toLowerCase() == key);
+  }
+
   Widget _pill({
     required String label,
     required bool selected,
     VoidCallback? onTap,
     VoidCallback? onRemove,
+    bool isNew = false,
   }) {
+    final fg = selected ? Colors.white : _text;
     return GestureDetector(
       onTap: onTap,
       behavior: HitTestBehavior.opaque,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+        padding: EdgeInsets.fromLTRB(isNew ? 6 : 12, 7, 12, 7),
         decoration: BoxDecoration(
           color: selected ? _blue : _chipBg,
           borderRadius: BorderRadius.circular(999),
@@ -485,13 +517,36 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
+            if (isNew) ...[
+              Container(
+                width: 18,
+                height: 18,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: selected
+                      ? Colors.white.withValues(alpha: 0.22)
+                      : const Color(0xFFE8F0FE),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Text(
+                  '+',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w800,
+                    height: 1,
+                    color: selected ? Colors.white : _blue,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 6),
+            ],
             Text(
               _hashLabel(label),
               style: TextStyle(
                 fontSize: 14,
                 fontWeight: FontWeight.w600,
                 height: 1.25,
-                color: selected ? Colors.white : _text,
+                color: fg,
               ),
             ),
             if (onRemove != null) ...[
@@ -592,8 +647,7 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
   }
 
   Widget _buildSelectedSection() {
-    final selected = _selectedTags;
-    final aiNew = _selectedAiNewNames;
+    final items = _selectedDisplayItems;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -618,23 +672,24 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
             ),
           ],
         ),
-        if (selected.isNotEmpty || aiNew.isNotEmpty) ...[
+        if (items.isNotEmpty) ...[
           const SizedBox(height: 10),
           Wrap(
             spacing: 8,
             runSpacing: 8,
             children: [
-              for (final tag in selected)
+              for (final item in items)
                 _pill(
-                  label: tag.name,
+                  label: item.name,
                   selected: true,
-                  onRemove: () => _toggleTag(tag.id),
-                ),
-              for (final name in aiNew)
-                _pill(
-                  label: name,
-                  selected: true,
-                  onRemove: () => setState(() => _aiSelected.remove(name)),
+                  onRemove: () {
+                    final id = item.tagId;
+                    if (id != null) {
+                      _toggleTag(id);
+                    } else {
+                      setState(() => _aiSelected.remove(item.name));
+                    }
+                  },
                 ),
             ],
           ),
@@ -745,6 +800,8 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
                 _pill(
                   label: item.name,
                   selected: _aiSelected.contains(item.name),
+                  isNew: item.existingTagId == null &&
+                      _isNewSuggestionName(item.name),
                   onTap: () => _toggleAiSuggestion(item),
                 ),
             ],
