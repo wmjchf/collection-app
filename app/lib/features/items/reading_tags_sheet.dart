@@ -617,7 +617,7 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
           unawaited(_onSearchSubmitted(value));
         },
         onTapOutside: (_) => _dismissSearchFocus(),
-        textInputAction: TextInputAction.done,
+        textInputAction: TextInputAction.search,
         style: const TextStyle(fontSize: 14, color: _text),
         decoration: InputDecoration(
           hintText: '搜索或新建标签',
