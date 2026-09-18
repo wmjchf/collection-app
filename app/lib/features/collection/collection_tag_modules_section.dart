@@ -184,14 +184,25 @@ class _SectionHeader extends StatelessWidget {
       padding: const EdgeInsets.only(right: 4),
       child: Row(
         children: [
+          const Text(
+            '归类标签',
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 0.2,
+              color: CollectionTagModulesSection.ink,
+            ),
+          ),
+          const SizedBox(width: 8),
           const Expanded(
             child: Text(
-              '归类标签',
+              '长按标签可拖动归类',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
               style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w700,
-                letterSpacing: 0.2,
-                color: CollectionTagModulesSection.ink,
+                fontSize: 12,
+                height: 1.2,
+                color: CollectionTagModulesSection.muted,
               ),
             ),
           ),
