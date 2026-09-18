@@ -1462,6 +1462,10 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
                       height: 1.4,
                     ),
                   ),
+                  if (canRead && _itemTags.isNotEmpty) ...[
+                    const SizedBox(height: 14),
+                    _ArticleTagHashtags(tags: _itemTags),
+                  ],
                   const SizedBox(height: 22),
                   if (!canRead) ...[
                     _ReadingStatusChip(status: _item.status),
@@ -1546,8 +1550,6 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
                       ),
                     ),
                   ],
-                  if (_itemTags.isNotEmpty)
-                    _ArticleTagHashtags(tags: _itemTags),
                   ],
                 ],
               ),
@@ -1672,37 +1674,36 @@ class _ArticleTagHashtags extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(top: 20),
-      child: Wrap(
-        spacing: 10,
-        runSpacing: 8,
-        children: [
-          for (final tag in tags)
-            Text.rich(
-              TextSpan(
-                children: [
-                  const TextSpan(
-                    text: '#',
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w500,
-                      color: _brand,
-                    ),
+    if (tags.isEmpty) return const SizedBox.shrink();
+
+    return Wrap(
+      spacing: 10,
+      runSpacing: 6,
+      children: [
+        for (final tag in tags)
+          Text.rich(
+            TextSpan(
+              children: [
+                const TextSpan(
+                  text: '#',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: _brand,
                   ),
-                  TextSpan(
-                    text: tag.name,
-                    style: const TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w500,
-                      color: _muted,
-                    ),
+                ),
+                TextSpan(
+                  text: tag.name,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                    color: _muted,
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
-        ],
-      ),
+          ),
+      ],
     );
   }
 }
