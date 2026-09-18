@@ -10,7 +10,9 @@ import 'package:super_collection/core/network/media_http_headers.dart';
 import 'package:super_collection/core/ui/app_confirm_dialog.dart';
 import 'package:super_collection/core/ui/app_toast.dart';
 import 'package:super_collection/core/ui/parse_progress_tracker.dart';
+import 'package:super_collection/features/collection/items_browse_page.dart';
 import 'package:super_collection/features/collection/tag_models.dart';
+import 'package:super_collection/features/collection/tags_repository.dart';
 import 'package:super_collection/features/home/home_format.dart';
 import 'package:super_collection/features/items/ai_meta_models.dart';
 import 'package:super_collection/features/items/article_body_text.dart';
@@ -67,6 +69,7 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
   static const _bottomBarHeight = 56.0;
 
   final _repo = ItemsRepository();
+  final _tagsRepo = TagsRepository();
   final _usageRepo = UsageRepository();
   final _scrollController = ScrollController();
   late CollectionItem _item;
@@ -913,6 +916,22 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
     }
   }
 
+  void _openTagList(Tag tag) {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => ItemsBrowsePage(
+          title: tag.name,
+          tagId: tag.isSystem ? null : tag.id,
+          loader: ({required limit, required offset}) => _tagsRepo.listTagItems(
+            tag.id,
+            limit: limit,
+            offset: offset,
+          ),
+        ),
+      ),
+    );
+  }
+
   Future<void> _openTagsSheet({bool autoStartAiSuggest = false}) async {
     await showReadingTagsSheet(
       context,
@@ -1464,7 +1483,10 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
                   ),
                   if (canRead && _itemTags.isNotEmpty) ...[
                     const SizedBox(height: 14),
-                    _ArticleTagHashtags(tags: _itemTags),
+                    _ArticleTagHashtags(
+                      tags: _itemTags,
+                      onTap: _openTagList,
+                    ),
                   ],
                   const SizedBox(height: 22),
                   if (!canRead) ...[
@@ -1665,9 +1687,13 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
 }
 
 class _ArticleTagHashtags extends StatelessWidget {
-  const _ArticleTagHashtags({required this.tags});
+  const _ArticleTagHashtags({
+    required this.tags,
+    required this.onTap,
+  });
 
   final List<Tag> tags;
+  final ValueChanged<Tag> onTap;
 
   static const _brand = Color(0xFF2F6FED);
 
@@ -1680,26 +1706,30 @@ class _ArticleTagHashtags extends StatelessWidget {
       runSpacing: 6,
       children: [
         for (final tag in tags)
-          Text.rich(
-            TextSpan(
-              children: [
-                const TextSpan(
-                  text: '#',
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    color: _brand,
+          GestureDetector(
+            onTap: () => onTap(tag),
+            behavior: HitTestBehavior.opaque,
+            child: Text.rich(
+              TextSpan(
+                children: [
+                  const TextSpan(
+                    text: '#',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: _brand,
+                    ),
                   ),
-                ),
-                TextSpan(
-                  text: tag.name,
-                  style: const TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w500,
-                    color: _brand,
+                  TextSpan(
+                    text: tag.name,
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                      color: _brand,
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
       ],
