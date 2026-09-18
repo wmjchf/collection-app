@@ -346,7 +346,14 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
       ..addAll(_selected);
   }
 
+  void _dismissSearchFocus() {
+    if (_searchFocus.hasFocus) {
+      _searchFocus.unfocus();
+    }
+  }
+
   void _toggleTag(int id) {
+    _dismissSearchFocus();
     setState(() {
       if (_selected.contains(id)) {
         _selected.remove(id);
@@ -363,6 +370,7 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
   }
 
   void _toggleAiSuggestion(AiTagSuggestion item) {
+    _dismissSearchFocus();
     setState(() {
       if (_aiSelected.contains(item.name)) {
         _aiSelected.remove(item.name);
@@ -604,7 +612,11 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
         controller: _searchController,
         focusNode: _searchFocus,
         onChanged: (_) => setState(() {}),
-        onSubmitted: _onSearchSubmitted,
+        onSubmitted: (value) {
+          _dismissSearchFocus();
+          unawaited(_onSearchSubmitted(value));
+        },
+        onTapOutside: (_) => _dismissSearchFocus(),
         textInputAction: TextInputAction.done,
         style: const TextStyle(fontSize: 14, color: _text),
         decoration: InputDecoration(
@@ -957,7 +969,7 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final maxSheetHeight = MediaQuery.sizeOf(context).height * 0.82;
+    final maxSheetHeight = MediaQuery.sizeOf(context).height * 0.72;
 
     return Material(
       color: Colors.white,
@@ -986,8 +998,21 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
               _buildSearchField(),
               const SizedBox(height: 12),
               Expanded(
-                child: SingleChildScrollView(
-                  child: _buildBody(),
+                child: NotificationListener<ScrollNotification>(
+                  onNotification: (n) {
+                    if (n is ScrollStartNotification &&
+                        n.dragDetails != null) {
+                      _dismissSearchFocus();
+                    }
+                    return false;
+                  },
+                  child: GestureDetector(
+                    onTap: _dismissSearchFocus,
+                    behavior: HitTestBehavior.translucent,
+                    child: SingleChildScrollView(
+                      child: _buildBody(),
+                    ),
+                  ),
                 ),
               ),
               const SizedBox(height: 12),
@@ -995,7 +1020,12 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
                 width: double.infinity,
                 height: 48,
                 child: FilledButton(
-                  onPressed: _loading || _saving ? null : _save,
+                  onPressed: _loading || _saving
+                      ? null
+                      : () {
+                          _dismissSearchFocus();
+                          unawaited(_save());
+                        },
                   style: FilledButton.styleFrom(
                     backgroundColor: _blue,
                     shape: RoundedRectangleBorder(
