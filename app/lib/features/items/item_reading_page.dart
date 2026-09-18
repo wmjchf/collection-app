@@ -1669,7 +1669,6 @@ class _ArticleTagHashtags extends StatelessWidget {
 
   final List<Tag> tags;
 
-  static const _muted = Color(0xFF737A85);
   static const _brand = Color(0xFF2F6FED);
 
   @override
@@ -1677,30 +1676,37 @@ class _ArticleTagHashtags extends StatelessWidget {
     if (tags.isEmpty) return const SizedBox.shrink();
 
     return Wrap(
-      spacing: 10,
-      runSpacing: 6,
+      spacing: 8,
+      runSpacing: 8,
       children: [
         for (final tag in tags)
-          Text.rich(
-            TextSpan(
-              children: [
-                const TextSpan(
-                  text: '#',
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    color: _brand,
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+            decoration: BoxDecoration(
+              color: _brand,
+              borderRadius: BorderRadius.circular(999),
+            ),
+            child: Text.rich(
+              TextSpan(
+                children: [
+                  const TextSpan(
+                    text: '#',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.white,
+                    ),
                   ),
-                ),
-                TextSpan(
-                  text: tag.name,
-                  style: const TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w500,
-                    color: _muted,
+                  TextSpan(
+                    text: tag.name,
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                      color: Colors.white,
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
       ],
