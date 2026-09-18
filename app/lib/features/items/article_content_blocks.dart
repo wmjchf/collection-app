@@ -22,6 +22,10 @@ class ArticleImageBlock extends ArticleBlock {
   /// 原文声明的展示宽高（CSS 像素）；解码后可再校正。
   final double? width;
   final double? height;
+
+  /// 微信表情：跟后面的文字同一行。
+  bool get isInlineEmoji =>
+      ArticleContentBlocks.isInlineEmojiSize(width, height);
 }
 
 /// 正文内嵌视频：`!v[posterUrl](playUrl)`
@@ -53,6 +57,32 @@ class ArticleContentBlocks {
   static final RegExp headingLine = RegExp(r'^(#{1,4})\s+(.+)$');
   static final RegExp _altSize = RegExp(r'^(\d+)x(\d+)$');
 
+  /// 声明宽高都不超过此值时，视为行内表情。
+  static const double inlineEmojiMax = 48;
+
+  static bool isInlineEmojiSize(double? w, double? h) {
+    if (w == null || h == null || w <= 0 || h <= 0) return false;
+    return w <= inlineEmojiMax && h <= inlineEmojiMax;
+  }
+
+  static bool isInlineEmojiMarkdown(String line) {
+    final m = imageLine.firstMatch(line.trim());
+    if (m == null) return false;
+    final size = sizeFromAlt(m.group(1));
+    return isInlineEmojiSize(size.$1, size.$2);
+  }
+
+  /// 占位符，和阅读页 WidgetSpan 占一位对齐。
+  static const String emojiPlaceholder = '\uFFFC';
+
+  static bool isEmojiPlaceholder(String text) {
+    if (text.isEmpty) return false;
+    for (final r in text.runes) {
+      if (r != 0xFFFC) return false;
+    }
+    return true;
+  }
+
   static ArticleImageBlock _imageFromMatch(RegExpMatch m) {
     final url = (m.group(2) ?? '').trim();
     final size = _sizeFromAlt(m.group(1));
@@ -76,6 +106,8 @@ class ArticleContentBlocks {
     final h = double.parse(m.group(2)!);
     return (w > 0 ? w : null, h > 0 ? h : null);
   }
+
+  static (double?, double?) sizeFromAlt(String? alt) => _sizeFromAlt(alt);
 
   /// 去掉图片与 Markdown 标记后的可见纯文字（标注偏移用）。
   static String plainText(String content) {
@@ -147,8 +179,13 @@ class ArticleContentBlocks {
 
       final m = imageLine.firstMatch(trimmed);
       if (m != null) {
-        flushText();
         final media = _mediaFromImageMatch(m);
+        // 表情留在文字里，后面由 splitParagraphs 接到下一句。
+        if (media is ArticleImageBlock && media.isInlineEmoji) {
+          buffer.writeln(trimmed);
+          continue;
+        }
+        flushText();
         if (media is ArticleImageBlock) {
           if (media.url.isNotEmpty) blocks.add(media);
         } else {
@@ -177,6 +214,12 @@ class ArticleContentBlocks {
             buffer.writeln(rest);
             break;
           }
+          final media = _mediaFromImageMatch(im);
+          if (media is ArticleImageBlock && media.isInlineEmoji) {
+            buffer.write(rest.substring(0, im.end));
+            rest = rest.substring(im.end);
+            continue;
+          }
           final before = rest.substring(0, im.start);
           if (before.trim().isNotEmpty) {
             buffer.write(before);
@@ -184,7 +227,6 @@ class ArticleContentBlocks {
           } else if (buffer.isNotEmpty) {
             flushText();
           }
-          final media = _mediaFromImageMatch(im);
           if (media is ArticleImageBlock) {
             if (media.url.isNotEmpty) blocks.add(media);
           } else {

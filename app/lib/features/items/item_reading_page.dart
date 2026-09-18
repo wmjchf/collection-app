@@ -1933,6 +1933,15 @@ class _InlineArticleBody extends StatelessWidget {
             for (final a in localAnns) (start: a.start, end: a.end),
           ],
           highlightColor: _highlight,
+          imageBuilder: (url, w, h) => WidgetSpan(
+            alignment: PlaceholderAlignment.middle,
+            child: _InlineEmoji(
+              url: url,
+              width: w,
+              height: h,
+              pageUrl: pageUrl,
+            ),
+          ),
         );
 
         children.add(
@@ -1964,7 +1973,8 @@ class _InlineArticleBody extends StatelessWidget {
   }
 }
 
-/// 正文插图：与正文同宽（含左右边距对齐），按比例定高。
+/// 正文插图：有原文宽高且小于栏宽时按声明尺寸展示；
+/// 否则与正文同宽，按比例定高。
 class _ReadingInlineImage extends StatefulWidget {
   const _ReadingInlineImage({
     required this.url,
@@ -2042,20 +2052,27 @@ class _ReadingInlineImageState extends State<_ReadingInlineImage> {
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        final width = constraints.maxWidth;
+        final maxW = constraints.maxWidth;
         final declaredW = widget.hintWidth;
+        final declaredH = widget.hintHeight;
         final aspect = (declaredW != null &&
-                widget.hintHeight != null &&
+                declaredH != null &&
                 declaredW > 0 &&
-                widget.hintHeight! > 0)
-            ? widget.hintHeight! / declaredW
+                declaredH > 0)
+            ? declaredH / declaredW
             : (_decodedW != null &&
                     _decodedH != null &&
                     _decodedW! > 0)
                 ? _decodedH! / _decodedW!
                 : null;
+        // 原文声明宽度小于栏宽：按 CSS 像素展示；否则铺满栏宽。
+        final width = (declaredW != null &&
+                declaredW > 0 &&
+                declaredW < maxW)
+            ? declaredW
+            : maxW;
         final height = aspect != null ? width * aspect : null;
-        return Image.network(
+        final image = Image.network(
           widget.url,
           width: width,
           height: height,
@@ -2064,9 +2081,10 @@ class _ReadingInlineImageState extends State<_ReadingInlineImage> {
           headers: mediaHttpHeadersFor(widget.url, pageUrl: widget.pageUrl),
           filterQuality: FilterQuality.medium,
           gaplessPlayback: true,
-          errorBuilder: (_, __, ___) => const SizedBox(
-            height: 72,
-            child: Center(
+          errorBuilder: (_, __, ___) => SizedBox(
+            width: width,
+            height: height ?? 72,
+            child: const Center(
               child: Icon(
                 Icons.broken_image_outlined,
                 color: Color(0xFFB2B8BF),
@@ -2089,7 +2107,40 @@ class _ReadingInlineImageState extends State<_ReadingInlineImage> {
             );
           },
         );
+        if (width >= maxW) return image;
+        return Align(alignment: Alignment.centerLeft, child: image);
       },
+    );
+  }
+}
+
+/// 行内表情：跟后面的文字同一行。
+class _InlineEmoji extends StatelessWidget {
+  const _InlineEmoji({
+    required this.url,
+    required this.width,
+    required this.height,
+    this.pageUrl,
+  });
+
+  final String url;
+  final double width;
+  final double height;
+  final String? pageUrl;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 6),
+      child: Image.network(
+        url,
+        width: width,
+        height: height,
+        fit: BoxFit.contain,
+        headers: mediaHttpHeadersFor(url, pageUrl: pageUrl),
+        gaplessPlayback: true,
+        errorBuilder: (_, __, ___) => SizedBox(width: width, height: height),
+      ),
     );
   }
 }
@@ -2263,7 +2314,12 @@ class _AnnotatedBodyStackState extends State<_AnnotatedBodyStack> {
           _laidOutWidth = w;
         }
         // 每帧后按真实 RenderEditable 量一次，避免 TextPainter 与真机排版不一致
-        _scheduleMeasure();
+        final hasEmoji = widget.spans.any((s) => s is WidgetSpan);
+        if (!hasEmoji) _scheduleMeasure();
+        final rich = TextSpan(
+          style: widget.textStyle ?? _AnnotatedBodyStack.bodyStyle,
+          children: widget.spans,
+        );
         return Stack(
           clipBehavior: Clip.none,
           children: [
@@ -2272,20 +2328,20 @@ class _AnnotatedBodyStackState extends State<_AnnotatedBodyStack> {
                 selectionColor: _AnnotatedBodyStack._highlight,
                 selectionHandleColor: _AnnotatedBodyStack._blue,
               ),
-              child: SelectableText.rich(
-                TextSpan(
-                  style: widget.textStyle ?? _AnnotatedBodyStack.bodyStyle,
-                  children: widget.spans,
-                ),
-                key: _textKey,
-                textAlign: TextAlign.justify,
-                contextMenuBuilder: widget.contextMenuBuilder,
-                onTap: widget.onBodyTap,
-                onSelectionChanged: widget.onSelectionChanged == null
-                    ? null
-                    : (selection, _) =>
-                        widget.onSelectionChanged!(selection),
-              ),
+              // SelectableText 不绘制 WidgetSpan，表情段改用 Text.rich。
+              child: hasEmoji
+                  ? Text.rich(rich, textAlign: TextAlign.start)
+                  : SelectableText.rich(
+                      rich,
+                      key: _textKey,
+                      textAlign: TextAlign.justify,
+                      contextMenuBuilder: widget.contextMenuBuilder,
+                      onTap: widget.onBodyTap,
+                      onSelectionChanged: widget.onSelectionChanged == null
+                          ? null
+                          : (selection, _) =>
+                              widget.onSelectionChanged!(selection),
+                    ),
             ),
             // 透明热区盖住高亮，稳定响应点击（不与选区手势打架）
             for (final hit in _hits)
