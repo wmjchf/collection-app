@@ -412,25 +412,6 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
     }
   }
 
-  Future<void> _onSearchSubmitted(String _) async {
-    final q = _queryKey;
-    if (q.isEmpty) return;
-    final exact = _allTags.cast<Tag?>().firstWhere(
-          (t) => t!.name.toLowerCase() == q,
-          orElse: () => null,
-        );
-    if (exact != null) {
-      setState(() {
-        _selected.add(exact.id);
-        _searchController.clear();
-        _syncSession();
-      });
-      _searchFocus.unfocus();
-      return;
-    }
-    await _createFromQuery();
-  }
-
   Future<void> _save() async {
     if (_saving) return;
     setState(() => _saving = true);
@@ -612,10 +593,7 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
         controller: _searchController,
         focusNode: _searchFocus,
         onChanged: (_) => setState(() {}),
-        onSubmitted: (value) {
-          _dismissSearchFocus();
-          unawaited(_onSearchSubmitted(value));
-        },
+        onSubmitted: (_) => _dismissSearchFocus(),
         onTapOutside: (_) => _dismissSearchFocus(),
         textInputAction: TextInputAction.search,
         style: const TextStyle(fontSize: 14, color: _text),
