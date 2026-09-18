@@ -109,6 +109,7 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
     if (_tagsMeta.hasSuggestions) {
       _aiSelected.addAll(_tagsMeta.items.map((e) => e.name));
     }
+    _searchFocus.addListener(_onSearchFocusChanged);
     _load();
     if (_tagsMeta.isPending) {
       _startAiPoll();
@@ -118,6 +119,12 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
       });
     }
   }
+
+  void _onSearchFocusChanged() {
+    if (mounted) setState(() {});
+  }
+
+  bool get _searching => _searchFocus.hasFocus;
 
   void _syncTagsMeta(AiTagsMeta meta) {
     setState(() {
@@ -214,6 +221,7 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
   @override
   void dispose() {
     _aiPollTimer?.cancel();
+    _searchFocus.removeListener(_onSearchFocusChanged);
     _searchController.dispose();
     _searchFocus.dispose();
     super.dispose();
@@ -960,8 +968,11 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _buildSelectedSection(),
-        const SizedBox(height: 20),
+        // 搜索聚焦时收起已选 + AI 推荐，把空间留给标签列表。
+        if (!_searching) ...[
+          _buildSelectedSection(),
+          const SizedBox(height: 20),
+        ],
         _buildMyTags(),
       ],
     );
@@ -969,82 +980,93 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final maxSheetHeight = MediaQuery.sizeOf(context).height * 0.72;
+    final screenH = MediaQuery.sizeOf(context).height;
+    final keyboard = MediaQuery.viewInsetsOf(context).bottom;
+    final preferred = screenH * 0.82;
 
-    return Material(
-      color: Colors.white,
-      borderRadius: BorderRadius.circular(24),
-      clipBehavior: Clip.antiAlias,
-      child: SizedBox(
-        height: maxSheetHeight,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Center(
-                child: Container(
-                  width: 40,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: _handle,
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 12),
-              _buildTitleRow(),
-              const SizedBox(height: 12),
-              _buildSearchField(),
-              const SizedBox(height: 12),
-              Expanded(
-                child: NotificationListener<ScrollNotification>(
-                  onNotification: (n) {
-                    if (n is ScrollStartNotification &&
-                        n.dragDetails != null) {
-                      _dismissSearchFocus();
-                    }
-                    return false;
-                  },
-                  child: GestureDetector(
-                    onTap: _dismissSearchFocus,
-                    behavior: HitTestBehavior.translucent,
-                    child: SingleChildScrollView(
-                      child: _buildBody(),
+    // Shell 已用 viewInsets 把 sheet 顶到键盘上方；有键盘时拉满剩余高度。
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final height = keyboard > 0
+            ? constraints.maxHeight
+            : preferred.clamp(0.0, constraints.maxHeight);
+
+        return Material(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(24),
+          clipBehavior: Clip.antiAlias,
+          child: SizedBox(
+            height: height,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Center(
+                    child: Container(
+                      width: 40,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: _handle,
+                        borderRadius: BorderRadius.circular(2),
+                      ),
                     ),
                   ),
-                ),
-              ),
-              const SizedBox(height: 12),
-              SizedBox(
-                width: double.infinity,
-                height: 48,
-                child: FilledButton(
-                  onPressed: _loading || _saving
-                      ? null
-                      : () {
+                  const SizedBox(height: 12),
+                  _buildTitleRow(),
+                  const SizedBox(height: 12),
+                  _buildSearchField(),
+                  const SizedBox(height: 12),
+                  Expanded(
+                    child: NotificationListener<ScrollNotification>(
+                      onNotification: (n) {
+                        if (n is ScrollStartNotification &&
+                            n.dragDetails != null) {
                           _dismissSearchFocus();
-                          unawaited(_save());
-                        },
-                  style: FilledButton.styleFrom(
-                    backgroundColor: _blue,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
+                        }
+                        return false;
+                      },
+                      child: GestureDetector(
+                        onTap: _dismissSearchFocus,
+                        behavior: HitTestBehavior.translucent,
+                        child: SingleChildScrollView(
+                          child: _buildBody(),
+                        ),
+                      ),
                     ),
                   ),
-                  child: Text(
-                    _saving ? '保存中…' : '完成 ($_selectedCount)',
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 48,
+                    child: FilledButton(
+                      onPressed: _loading || _saving
+                          ? null
+                          : () {
+                              _dismissSearchFocus();
+                              unawaited(_save());
+                            },
+                      style: FilledButton.styleFrom(
+                        backgroundColor: _blue,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      child: Text(
+                        _saving ? '保存中…' : '完成 ($_selectedCount)',
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
                     ),
                   ),
-                ),
+                ],
               ),
-            ],
+            ),
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 }
