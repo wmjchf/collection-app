@@ -1,9 +1,20 @@
 const { pool } = require('../db');
 
+const DESCRIPTION_MAX = 80;
+
+function normalizeDescription(raw) {
+  if (raw == null) return null;
+  const text = String(raw).trim().replace(/\s+/g, ' ');
+  if (!text) return null;
+  return text.slice(0, DESCRIPTION_MAX);
+}
+
 function mapTag(row) {
+  const desc = row.description != null ? String(row.description).trim() : '';
   return {
     id: row.id,
     name: row.name,
+    description: desc || null,
     code: row.code,
     isSystem: !!row.is_system,
     sortOrder: row.sort_order,
@@ -25,6 +36,7 @@ async function listTags(userId) {
        c.section,
        c.code,
        c.name,
+       c.description,
        c.is_system,
        c.sort_order,
        c.module_id,
@@ -46,7 +58,7 @@ async function listTags(userId) {
   return rows.map(mapTag);
 }
 
-async function createTag(userId, rawName, { moduleId } = {}) {
+async function createTag(userId, rawName, { moduleId, description: rawDescription } = {}) {
   const name = String(rawName || '').trim();
   if (!name) {
     throw Object.assign(new Error('请输入标签名称'), { status: 400 });
@@ -57,6 +69,7 @@ async function createTag(userId, rawName, { moduleId } = {}) {
   if (name === '无标签') {
     throw Object.assign(new Error('不能使用系统预留名称'), { status: 400 });
   }
+  const description = normalizeDescription(rawDescription);
 
   let resolvedModuleId = null;
   if (moduleId != null && moduleId !== '') {
@@ -96,10 +109,16 @@ async function createTag(userId, rawName, { moduleId } = {}) {
   try {
     const [result] = await pool.execute(
       `INSERT INTO categories
-         (user_id, section, code, name, is_system, sort_order, module_id)
+         (user_id, section, code, name, description, is_system, sort_order, module_id)
        VALUES
-         (:userId, 'tag', NULL, :name, 0, :sortOrder, :moduleId)`,
-      { userId, name, sortOrder, moduleId: resolvedModuleId },
+         (:userId, 'tag', NULL, :name, :description, 0, :sortOrder, :moduleId)`,
+      {
+        userId,
+        name,
+        description,
+        sortOrder,
+        moduleId: resolvedModuleId,
+      },
     );
 
     const [rows] = await pool.execute(
@@ -133,22 +152,42 @@ async function getOwnedTag(userId, tagId) {
 }
 
 /**
- * 重命名用户自建标签
+ * 更新用户自建标签（名称 / 描述）
  */
-async function renameTag(userId, tagId, rawName) {
-  const name = String(rawName || '').trim();
-  if (!name) {
-    throw Object.assign(new Error('请输入标签名称'), { status: 400 });
-  }
-  if (name.length > 64) {
-    throw Object.assign(new Error('名称最多 64 个字'), { status: 400 });
-  }
-  if (name === '无标签') {
-    throw Object.assign(new Error('不能使用系统预留名称'), { status: 400 });
+async function updateTag(userId, tagId, { name: rawName, description: rawDescription } = {}) {
+  const hasName = rawName !== undefined;
+  const hasDescription = rawDescription !== undefined;
+  if (!hasName && !hasDescription) {
+    throw Object.assign(new Error('请提供 name 或 description'), { status: 400 });
   }
 
   const tag = await getOwnedTag(userId, tagId);
-  if (tag.name === name) {
+  let name = tag.name;
+  if (hasName) {
+    name = String(rawName || '').trim();
+    if (!name) {
+      throw Object.assign(new Error('请输入标签名称'), { status: 400 });
+    }
+    if (name.length > 64) {
+      throw Object.assign(new Error('名称最多 64 个字'), { status: 400 });
+    }
+    if (name === '无标签') {
+      throw Object.assign(new Error('不能使用系统预留名称'), { status: 400 });
+    }
+  }
+  const description = hasDescription
+    ? normalizeDescription(rawDescription)
+    : tag.description != null
+      ? String(tag.description).trim() || null
+      : null;
+
+  const nameChanged = hasName && name !== tag.name;
+  const descChanged =
+    hasDescription &&
+    (description || null) !==
+      (tag.description != null ? String(tag.description).trim() || null : null);
+
+  if (!nameChanged && !descChanged) {
     const [rows] = await pool.execute(
       `SELECT c.*,
          (SELECT COUNT(*) FROM item_tags it
@@ -161,22 +200,24 @@ async function renameTag(userId, tagId, rawName) {
     return mapTag(rows[0]);
   }
 
-  const [existing] = await pool.execute(
-    `SELECT id FROM categories
-     WHERE user_id = :userId AND section = 'tag' AND name = :name AND id <> :tagId
-     LIMIT 1`,
-    { userId, name, tagId: tag.id },
-  );
-  if (existing[0]) {
-    throw Object.assign(new Error('同名标签已存在'), { status: 409 });
+  if (nameChanged) {
+    const [existing] = await pool.execute(
+      `SELECT id FROM categories
+       WHERE user_id = :userId AND section = 'tag' AND name = :name AND id <> :tagId
+       LIMIT 1`,
+      { userId, name, tagId: tag.id },
+    );
+    if (existing[0]) {
+      throw Object.assign(new Error('同名标签已存在'), { status: 409 });
+    }
   }
 
   try {
     await pool.execute(
       `UPDATE categories
-       SET name = :name, updated_at = CURRENT_TIMESTAMP(3)
+       SET name = :name, description = :description, updated_at = CURRENT_TIMESTAMP(3)
        WHERE id = :tagId AND user_id = :userId AND section = 'tag'`,
-      { name, tagId: tag.id, userId },
+      { name, description, tagId: tag.id, userId },
     );
   } catch (err) {
     if (err && err.code === 'ER_DUP_ENTRY') {
@@ -195,6 +236,11 @@ async function renameTag(userId, tagId, rawName) {
     { id: tag.id, userId },
   );
   return mapTag(rows[0]);
+}
+
+/** @deprecated 用 updateTag；保留兼容 */
+async function renameTag(userId, tagId, rawName) {
+  return updateTag(userId, tagId, { name: rawName });
 }
 
 /**
@@ -392,6 +438,7 @@ async function searchTagsAndItems(
        c.section,
        c.code,
        c.name,
+       c.description,
        c.is_system,
        c.sort_order,
        c.module_id,
@@ -406,7 +453,7 @@ async function searchTagsAndItems(
       AND i.deleted_at IS NULL
      WHERE c.section = 'tag'
        AND c.user_id = :userId
-       AND c.name LIKE :like
+       AND (c.name LIKE :like OR IFNULL(c.description, '') LIKE :like)
      GROUP BY c.id
      ORDER BY c.sort_order ASC, c.id ASC
      LIMIT 50`,
@@ -476,6 +523,7 @@ async function searchTagsAndItems(
        c.section,
        c.code,
        c.name,
+       c.description,
        c.is_system,
        c.sort_order,
        c.module_id,
@@ -534,8 +582,11 @@ async function searchTagsAndItems(
 
 module.exports = {
   mapTag,
+  normalizeDescription,
+  DESCRIPTION_MAX,
   listTags,
   createTag,
+  updateTag,
   renameTag,
   placeTag,
   deleteTag,

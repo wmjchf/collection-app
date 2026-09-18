@@ -5,10 +5,10 @@ const usageService = require('./usageService');
 
 const ORGANIZE_SYSTEM_PROMPT =
   '你是收藏整理助手。用户有一批标签，以及可选的已有归类（模块）。' +
-  '你只能根据标签名与已有归类来划分，看不到文章正文；结果是草稿，允许用户之后微调。' +
+  '你根据标签名、可选的标签说明（description）与已有归类来划分，看不到文章正文；结果是草稿，允许用户之后微调。' +
   '核心目标：逐个理解每一个标签「它是什么」，再把同类放进同一归类；每一个标签都必须归入某个归类，不允许留在未归类。' +
   '规则：' +
-  '1. 先对输入里的标签逐个弄清含义，不要跳过或批量糊弄；再按含义归并，不是看字面像不像；想清楚后再起归类名、再分配。' +
+  '1. 先对输入里的标签逐个弄清含义（有说明时以说明消歧，勿只看字面），不要跳过或批量糊弄；再按含义归并；想清楚后再起归类名、再分配。' +
   '2. 可以复用已有归类（填写 existingModuleId），也可以建议新建（existingModuleId 为 null，并给出 name）。' +
   '3. 归类名只表达一个大方向，简短中文 2～8 字，例如「人物」「公司」「职场」「育儿」；禁止用「与/及/和/、」把两类不同主题拼成一名（如不要「职场与成长」）；主题不同就拆成多个归类。' +
   '4. 专有名词按「它是什么」归（如人物、公司/品牌、作品、地点、事件等），不要凭行业常识硬套职能或话题桶（如管理、领导力、财金、投资）。' +
@@ -20,6 +20,15 @@ const ORGANIZE_SYSTEM_PROMPT =
   '10. 归类数量通常 2～8 个（标签很少或需单列时可更少/略多）；不要输出空归类。' +
   '只输出 JSON：{"modules":[{"name":"归类名","existingModuleId":null,"tagIds":[1,2]}],"ungroupedTagIds":[]}';
 
+function formatTagLine(t) {
+  const name = String(t.name || '').trim();
+  const id = t.id;
+  const desc =
+    t.description != null ? String(t.description).trim() : '';
+  if (desc) return `${name}(id=${id}，说明：${desc})`;
+  return `${name}(id=${id})`;
+}
+
 function buildCatalogText(modules, ungrouped) {
   const lines = [];
   if (modules.length) {
@@ -28,7 +37,7 @@ function buildCatalogText(modules, ungrouped) {
       const tags =
         (m.tags || [])
           .filter((t) => !t.isSystem)
-          .map((t) => `${t.name}(id=${t.id})`)
+          .map((t) => formatTagLine(t))
           .join('、') || '（空）';
       lines.push(`- 模块 id=${m.id}「${m.name}」← ${tags}`);
     }
@@ -40,7 +49,7 @@ function buildCatalogText(modules, ungrouped) {
   if (ug.length) {
     lines.push('未归类标签：');
     for (const t of ug) {
-      lines.push(`- ${t.name}(id=${t.id})`);
+      lines.push(`- ${formatTagLine(t)}`);
     }
   } else {
     lines.push('未归类标签：（无）');

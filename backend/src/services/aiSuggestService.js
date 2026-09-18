@@ -19,7 +19,8 @@ const TAGS_SYSTEM_PROMPT =
   '在贴合内容的前提下，优先选用用户已有标签（便于多篇归并）；若已有标签无法准确覆盖本篇主题/实体/场景，应提出新标签名。' +
   '通常可混用：若干贴合的已有标签 + 必要的新标签；不要整组都只挑已有、也不要无视已有全部新建。' +
   '不要建议「本篇已打标签」列表中的任何名称。' +
-  '只输出 JSON：{"tags":["标签1","标签2"]}，不要其它字段或说明。';
+  '对每个建议给出一句不超过 40 字的 description：说明该标签在本篇语境下指什么，消除歧义；复用已有标签时也可写。' +
+  '只输出 JSON：{"tags":[{"name":"标签1","description":"一句话说明"}]}，不要其它字段或说明。';
 
 /** 进程内临时推荐结果：不写入 ai_meta.items，退出进程即失效 */
 const ephemeralTagSuggestions = new Map();
@@ -38,7 +39,7 @@ function clearEphemeralSuggestions(itemId) {
 
 async function listUserTagsForMatch(userId) {
   const [rows] = await pool.execute(
-    `SELECT id, name FROM categories
+    `SELECT id, name, description FROM categories
      WHERE user_id = :userId AND section = 'tag' AND is_system = 0
      ORDER BY sort_order ASC, id ASC`,
     { userId },
@@ -52,24 +53,40 @@ async function listItemTagNames(userId, itemId) {
   return tags.filter((t) => !t.isSystem).map((t) => String(t.name).trim()).filter(Boolean);
 }
 
-function matchSuggestedTags(rawNames, userTags, excludeNames = []) {
+function matchSuggestedTags(rawTags, userTags, excludeNames = []) {
   const byName = new Map(
-    userTags.map((t) => [String(t.name).trim().toLowerCase(), t.id]),
+    userTags.map((t) => [
+      String(t.name).trim().toLowerCase(),
+      {
+        id: t.id,
+        description:
+          t.description != null ? String(t.description).trim() || null : null,
+      },
+    ]),
   );
   const exclude = new Set(
     excludeNames.map((n) => String(n).trim().toLowerCase()).filter(Boolean),
   );
   const out = [];
   const seen = new Set();
-  for (const raw of rawNames || []) {
-    const name = String(raw || '').trim();
+  for (const raw of rawTags || []) {
+    const name =
+      typeof raw === 'string'
+        ? String(raw || '').trim()
+        : String(raw?.name || '').trim();
     if (!name || name.length > 64) continue;
     const key = name.toLowerCase();
     if (seen.has(key) || exclude.has(key)) continue;
     seen.add(key);
+    const existing = byName.get(key) || null;
+    const fromModel =
+      typeof raw === 'object' && raw
+        ? require('./tagService').normalizeDescription(raw.description)
+        : null;
     out.push({
       name,
-      existingTagId: byName.get(key) ?? null,
+      existingTagId: existing?.id ?? null,
+      description: existing?.description || fromModel || null,
     });
     if (out.length >= 5) break;
   }
@@ -293,6 +310,7 @@ async function getAiSuggestStatus(userId, itemId) {
         items: (ephemeral.items || []).map((it) => ({
           name: it.name,
           existingTagId: it.existingTagId ?? null,
+          description: it.description || null,
         })),
         error: null,
         generatedAt: ephemeral.generatedAt || null,
@@ -331,7 +349,16 @@ async function runAiSuggestJob(itemId) {
 
     const userTags = await listUserTagsForMatch(row.user_id);
     const currentTagNames = await listItemTagNames(row.user_id, itemId);
-    const existingNames = userTags.map((t) => t.name).join('、') || '（无）';
+    const existingNames =
+      userTags
+        .map((t) => {
+          const n = String(t.name).trim();
+          const d =
+            t.description != null ? String(t.description).trim() : '';
+          return d ? `${n}（${d}）` : n;
+        })
+        .filter(Boolean)
+        .join('、') || '（无）';
     const currentNames = currentTagNames.join('、') || '（无）';
 
     const regenBlock = formatRegenerateUserBlock(meta.tags.regenerateFrom);
@@ -540,9 +567,29 @@ async function applyAiSuggest(userId, itemId, { names = [] } = {}) {
       if (existing) {
         tagId = existing.id;
       } else {
-        const created = await tagService.createTag(userId, name);
+        const created = await tagService.createTag(userId, name, {
+          description: sug?.description,
+        });
         tagId = created.id;
-        userTags.push({ id: created.id, name: created.name });
+        userTags.push({
+          id: created.id,
+          name: created.name,
+          description: created.description,
+        });
+      }
+    } else if (sug?.description) {
+      const owned = userTags.find((t) => t.id === tagId);
+      const hasDesc =
+        owned?.description != null && String(owned.description).trim();
+      if (!hasDesc) {
+        try {
+          const updated = await tagService.updateTag(userId, tagId, {
+            description: sug.description,
+          });
+          if (owned) owned.description = updated.description;
+        } catch (_) {
+          // 补描述失败不影响打标
+        }
       }
     }
     if (tagId) tagIdSet.add(tagId);

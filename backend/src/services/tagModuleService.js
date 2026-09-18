@@ -43,6 +43,7 @@ async function listModules(userId) {
        c.section,
        c.code,
        c.name,
+       c.description,
        c.is_system,
        c.sort_order,
        c.module_id,

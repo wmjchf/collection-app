@@ -198,10 +198,10 @@ API：`GET …/transcript-targets`、`POST …/transcript`（body.segmentKey）�
 
 | 接口 | 说明 |
 | --- | --- |
-| `GET /api/tags` | 当前用户自建标签；含 `itemCount`、`moduleId` |
-| `GET /api/tags/search?q=` | 按名称匹配标签找条目；`tags` 为基集文章全部标签（命中靠前，`primaryTagId` 第一）；`filterTagIds` 二次 AND 筛选；`items` 含 `tags` |
-| `POST /api/tags` | body `{ name, moduleId? }` 新建；可选归入模块 |
-| `PATCH /api/tags/:id` | body `{ name }` 重命名；或 `{ moduleId, beforeTagId? }` 换模块/组内排序（`beforeTagId` 空=追加末尾） |
+| `GET /api/tags` | 当前用户自建标签；含 `itemCount`、`moduleId`、`description` |
+| `GET /api/tags/search?q=` | 按名称或说明匹配标签找条目；`tags` 为基集文章全部标签（命中靠前，`primaryTagId` 第一）；`filterTagIds` 二次 AND 筛选；`items` 含 `tags` |
+| `POST /api/tags` | body `{ name, moduleId?, description? }` 新建；可选归入模块与短说明 |
+| `PATCH /api/tags/:id` | body `{ name?, description? }` 更新；或 `{ moduleId, beforeTagId? }` 换模块/组内排序（`beforeTagId` 空=追加末尾） |
 | `DELETE /api/tags/:id` | 仅自建标签；解除 `item_tags` 关联，不删条目 |
 | `GET /api/tag-modules` | `{ modules:[{ id, name, tags[] }], ungrouped: Tag[] }` |
 | `GET /api/tag-modules/:id/items` | 归类下全部条目（组内任一标签 OR，去重分页）；含 `tags` |

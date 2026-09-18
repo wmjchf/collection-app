@@ -16,11 +16,12 @@ router.get('/', async (req, res, next) => {
   }
 });
 
-/** POST /api/tags — 新建标签；可选 moduleId 归入模块 */
+/** POST /api/tags — 新建标签；可选 moduleId / description */
 router.post('/', async (req, res, next) => {
   try {
     const tag = await tagService.createTag(req.auth.userId, req.body?.name, {
       moduleId: req.body?.moduleId,
+      description: req.body?.description,
     });
     return res.status(201).json({
       tag,
@@ -66,7 +67,7 @@ router.get('/:id/items', async (req, res, next) => {
   }
 });
 
-/** PATCH /api/tags/:id — 重命名，或放置（换模块 / 组内排序） */
+/** PATCH /api/tags/:id — 更新名称/描述，或放置（换模块 / 组内排序） */
 router.patch('/:id', async (req, res, next) => {
   try {
     const id = Number(req.params.id);
@@ -75,9 +76,10 @@ router.patch('/:id', async (req, res, next) => {
     }
     const body = req.body || {};
     const hasName = body.name !== undefined;
+    const hasDescription = body.description !== undefined;
     const hasPlace = Object.prototype.hasOwnProperty.call(body, 'moduleId');
-    if (!hasName && !hasPlace) {
-      return res.status(400).json({ message: '请提供 name 或 moduleId' });
+    if (!hasName && !hasDescription && !hasPlace) {
+      return res.status(400).json({ message: '请提供 name、description 或 moduleId' });
     }
 
     let tag = null;
@@ -87,8 +89,11 @@ router.patch('/:id', async (req, res, next) => {
         beforeTagId: body.beforeTagId,
       });
     }
-    if (hasName) {
-      tag = await tagService.renameTag(req.auth.userId, id, body.name);
+    if (hasName || hasDescription) {
+      tag = await tagService.updateTag(req.auth.userId, id, {
+        name: hasName ? body.name : undefined,
+        description: hasDescription ? body.description : undefined,
+      });
     }
     return res.json({
       tag,

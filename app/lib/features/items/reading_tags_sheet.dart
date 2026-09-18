@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:super_collection/core/analytics/analytics.dart';
 import 'package:super_collection/core/network/api_client.dart';
+import 'package:super_collection/core/ui/app_bottom_sheet.dart';
 import 'package:super_collection/core/ui/app_toast.dart';
 import 'package:super_collection/features/collection/tag_models.dart';
 import 'package:super_collection/features/collection/tag_module_models.dart';
@@ -32,12 +33,8 @@ Future<void> showReadingTagsSheet(
   var meta = tagsMeta;
 
   if (!context.mounted) return;
-  await showModalBottomSheet<void>(
+  await showAppBottomSheet<void>(
     context: context,
-    isScrollControlled: true,
-    backgroundColor: Colors.transparent,
-    barrierColor: const Color(0x59000000),
-    useSafeArea: false,
     builder: (context) => _ReadingTagsSheet(
       itemId: itemId,
       session: session,
@@ -85,7 +82,7 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
   static const _sectionMuted = Color(0xFF8B929C);
   static const _blue = Color(0xFF2F6FED);
   static const _chipBg = Color(0xFFF5F7FA);
-  static const _pageBg = Color(0xFFF7F7FA);
+  static const _surface = Color(0xFFF3F6FA);
   static const _handle = Color(0xFFE5E8ED);
 
   final _modulesRepo = TagModulesRepository();
@@ -459,12 +456,20 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
       final byName = {
         for (final t in all) t.name.toLowerCase(): t.id,
       };
+      final descByName = {
+        for (final item in _tagsMeta.items)
+          if ((item.description ?? '').trim().isNotEmpty)
+            item.name.toLowerCase(): item.description!.trim(),
+      };
       final ids = <int>{};
       for (final name in desiredNames) {
         final key = name.toLowerCase();
         var id = byName[key];
         if (id == null) {
-          final created = await _tagsRepo.createTag(name);
+          final created = await _tagsRepo.createTag(
+            name,
+            description: descByName[key],
+          );
           id = created.id;
           byName[key] = id;
         }
@@ -509,7 +514,8 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
       onTap: onTap,
       behavior: HitTestBehavior.opaque,
       child: Container(
-        padding: EdgeInsets.fromLTRB(isNew ? 6 : 12, 7, 12, 7),
+        // 略放大但仍保证常见「三个四字标签」一排放下
+        padding: EdgeInsets.fromLTRB(isNew ? 6 : 10, 7, onRemove != null ? 7 : 10, 7),
         decoration: BoxDecoration(
           color: selected ? _blue : _chipBg,
           borderRadius: BorderRadius.circular(999),
@@ -519,44 +525,44 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
           children: [
             if (isNew) ...[
               Container(
-                width: 18,
-                height: 18,
+                width: 17,
+                height: 17,
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
                   color: selected
                       ? Colors.white.withValues(alpha: 0.22)
                       : const Color(0xFFE8F0FE),
-                  borderRadius: BorderRadius.circular(6),
+                  borderRadius: BorderRadius.circular(5),
                 ),
                 child: Text(
                   '+',
                   style: TextStyle(
-                    fontSize: 13,
+                    fontSize: 12,
                     fontWeight: FontWeight.w800,
                     height: 1,
                     color: selected ? Colors.white : _blue,
                   ),
                 ),
               ),
-              const SizedBox(width: 6),
+              const SizedBox(width: 5),
             ],
             Text(
               _hashLabel(label),
               style: TextStyle(
                 fontSize: 14,
                 fontWeight: FontWeight.w600,
-                height: 1.25,
+                height: 1.2,
                 color: fg,
               ),
             ),
             if (onRemove != null) ...[
-              const SizedBox(width: 4),
+              const SizedBox(width: 3),
               GestureDetector(
                 onTap: onRemove,
                 behavior: HitTestBehavior.opaque,
                 child: Icon(
                   Icons.close_rounded,
-                  size: 16,
+                  size: 15,
                   color: selected ? Colors.white : _muted,
                 ),
               ),
@@ -567,82 +573,85 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
     );
   }
 
-  Widget _buildHeader() {
+  Widget _buildTitleRow() {
     return Row(
       children: [
-        const Text(
-          '选择标签',
-          style: TextStyle(
-            fontSize: 17,
-            fontWeight: FontWeight.w700,
-            color: _text,
-          ),
-        ),
-        const SizedBox(width: 10),
-        Expanded(
-          child: SizedBox(
-            height: 40,
-            child: TextField(
-              controller: _searchController,
-              focusNode: _searchFocus,
-              onChanged: (_) => setState(() {}),
-              onSubmitted: _onSearchSubmitted,
-              textInputAction: TextInputAction.done,
-              style: const TextStyle(fontSize: 14, color: _text),
-              decoration: InputDecoration(
-                hintText: '搜索或新建标签',
-                hintStyle: const TextStyle(fontSize: 14, color: _muted),
-                prefixIcon: const Icon(
-                  Icons.search_rounded,
-                  color: _muted,
-                  size: 20,
-                ),
-                prefixIconConstraints: const BoxConstraints(
-                  minWidth: 36,
-                  minHeight: 36,
-                ),
-                suffixIcon: _query.isEmpty
-                    ? null
-                    : IconButton(
-                        icon: const Icon(
-                          Icons.close_rounded,
-                          color: _muted,
-                          size: 18,
-                        ),
-                        onPressed: () {
-                          _searchController.clear();
-                          setState(() {});
-                        },
-                      ),
-                filled: true,
-                fillColor: _chipBg,
-                contentPadding: const EdgeInsets.symmetric(vertical: 0),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(999),
-                  borderSide: BorderSide.none,
-                ),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(999),
-                  borderSide: BorderSide.none,
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(999),
-                  borderSide: const BorderSide(
-                    color: Color(0xFFB8CCFA),
-                    width: 1,
-                  ),
-                ),
-              ),
+        const Expanded(
+          child: Text(
+            '选择标签',
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w700,
+              color: _text,
             ),
           ),
         ),
-        const SizedBox(width: 4),
-        IconButton(
-          tooltip: '关闭',
-          onPressed: () => Navigator.pop(context),
-          icon: const Icon(Icons.close_rounded, color: _muted, size: 22),
+        GestureDetector(
+          onTap: () => Navigator.pop(context),
+          child: const Text(
+            '关闭',
+            style: TextStyle(fontSize: 14, color: _muted),
+          ),
         ),
       ],
+    );
+  }
+
+  Widget _buildSearchField() {
+    return SizedBox(
+      height: 40,
+      child: TextField(
+        controller: _searchController,
+        focusNode: _searchFocus,
+        onChanged: (_) => setState(() {}),
+        onSubmitted: _onSearchSubmitted,
+        textInputAction: TextInputAction.done,
+        style: const TextStyle(fontSize: 14, color: _text),
+        decoration: InputDecoration(
+          hintText: '搜索或新建标签',
+          hintStyle: const TextStyle(fontSize: 14, color: _muted),
+          prefixIcon: const Icon(
+            Icons.search_rounded,
+            color: _muted,
+            size: 20,
+          ),
+          prefixIconConstraints: const BoxConstraints(
+            minWidth: 36,
+            minHeight: 36,
+          ),
+          suffixIcon: _query.isEmpty
+              ? null
+              : IconButton(
+                  icon: const Icon(
+                    Icons.close_rounded,
+                    color: _muted,
+                    size: 18,
+                  ),
+                  onPressed: () {
+                    _searchController.clear();
+                    setState(() {});
+                  },
+                ),
+          filled: true,
+          fillColor: _surface,
+          contentPadding: const EdgeInsets.symmetric(vertical: 0),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(999),
+            borderSide: BorderSide.none,
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(999),
+            borderSide: BorderSide.none,
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(999),
+            borderSide: const BorderSide(
+              color: Color(0xFFB8CCFA),
+              width: 1,
+            ),
+          ),
+        ),
+      ),
     );
   }
 
@@ -675,7 +684,7 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
         if (items.isNotEmpty) ...[
           const SizedBox(height: 10),
           Wrap(
-            spacing: 8,
+            spacing: 6,
             runSpacing: 8,
             children: [
               for (final item in items)
@@ -793,7 +802,7 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
         ] else if (meta.hasSuggestions) ...[
           const SizedBox(height: 10),
           Wrap(
-            spacing: 8,
+            spacing: 6,
             runSpacing: 8,
             children: [
               for (final item in meta.items)
@@ -832,7 +841,7 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
           ),
           const SizedBox(height: 8),
           Wrap(
-            spacing: 8,
+            spacing: 6,
             runSpacing: 8,
             children: [
               for (final tag in visible)
@@ -948,89 +957,61 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final maxSheetHeight = MediaQuery.sizeOf(context).height * 0.88;
-    final bottomInset = MediaQuery.paddingOf(context).bottom +
-        MediaQuery.viewInsetsOf(context).bottom;
+    final maxSheetHeight = MediaQuery.sizeOf(context).height * 0.82;
 
-    return Padding(
-      padding: EdgeInsets.only(bottom: bottomInset),
-      child: Align(
-        alignment: Alignment.bottomCenter,
-        child: Material(
-          color: Colors.white,
-          clipBehavior: Clip.antiAlias,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-          child: SizedBox(
-            height: maxSheetHeight,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                const SizedBox(height: 10),
-                Center(
-                  child: Container(
-                    width: 40,
-                    height: 4,
-                    decoration: BoxDecoration(
-                      color: _handle,
-                      borderRadius: BorderRadius.circular(2),
+    return Material(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(24),
+      clipBehavior: Clip.antiAlias,
+      child: SizedBox(
+        height: maxSheetHeight,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: _handle,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              _buildTitleRow(),
+              const SizedBox(height: 12),
+              _buildSearchField(),
+              const SizedBox(height: 12),
+              Expanded(
+                child: SingleChildScrollView(
+                  child: _buildBody(),
+                ),
+              ),
+              const SizedBox(height: 12),
+              SizedBox(
+                width: double.infinity,
+                height: 48,
+                child: FilledButton(
+                  onPressed: _loading || _saving ? null : _save,
+                  style: FilledButton.styleFrom(
+                    backgroundColor: _blue,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  child: Text(
+                    _saving ? '保存中…' : '完成 ($_selectedCount)',
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
                     ),
                   ),
                 ),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 12, 8, 8),
-                  child: _buildHeader(),
-                ),
-                Expanded(
-                  child: ColoredBox(
-                    color: _pageBg,
-                    child: SingleChildScrollView(
-                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
-                      child: DecoratedBox(
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                        child: Padding(
-                          padding: const EdgeInsets.fromLTRB(14, 14, 14, 16),
-                          child: _buildBody(),
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-                Container(
-                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
-                  decoration: const BoxDecoration(
-                    color: Colors.white,
-                    border: Border(
-                      top: BorderSide(color: Color(0xFFEEF0F3)),
-                    ),
-                  ),
-                  child: SizedBox(
-                    width: double.infinity,
-                    height: 48,
-                    child: FilledButton(
-                      onPressed: _loading || _saving ? null : _save,
-                      style: FilledButton.styleFrom(
-                        backgroundColor: _blue,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                      child: Text(
-                        _saving
-                            ? '保存中…'
-                            : '完成 ($_selectedCount)',
-                        style: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
       ),

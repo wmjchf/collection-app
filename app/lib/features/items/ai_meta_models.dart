@@ -2,15 +2,22 @@ class AiTagSuggestion {
   const AiTagSuggestion({
     required this.name,
     this.existingTagId,
+    this.description,
   });
 
   final String name;
   final int? existingTagId;
+  final String? description;
+
+  bool get hasDescription =>
+      description != null && description!.trim().isNotEmpty;
 
   factory AiTagSuggestion.fromJson(Map<String, dynamic> json) {
+    final desc = json['description'] as String?;
     return AiTagSuggestion(
       name: json['name'] as String? ?? '',
       existingTagId: (json['existingTagId'] as num?)?.toInt(),
+      description: (desc == null || desc.trim().isEmpty) ? null : desc.trim(),
     );
   }
 }

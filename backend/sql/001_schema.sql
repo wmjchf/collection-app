@@ -58,6 +58,7 @@ CREATE TABLE `categories` (
   `section` ENUM('system', 'folder', 'tag', 'other') NOT NULL,
   `code` VARCHAR(32) DEFAULT NULL COMMENT '系统入口键；用户自建为 NULL',
   `name` VARCHAR(64) NOT NULL,
+  `description` VARCHAR(80) DEFAULT NULL COMMENT '标签短说明（可选）',
   `is_system` TINYINT(1) NOT NULL DEFAULT 0,
   `sort_order` INT NOT NULL DEFAULT 0,
   `module_id` BIGINT UNSIGNED DEFAULT NULL COMMENT '标签所属模块；仅 section=tag',
