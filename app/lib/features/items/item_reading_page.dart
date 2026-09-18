@@ -1933,6 +1933,15 @@ class _InlineArticleBody extends StatelessWidget {
             for (final a in localAnns) (start: a.start, end: a.end),
           ],
           highlightColor: _highlight,
+          imageBuilder: (url, w, h) => WidgetSpan(
+            alignment: PlaceholderAlignment.middle,
+            child: _InlineEmoji(
+              url: url,
+              width: w,
+              height: h,
+              pageUrl: pageUrl,
+            ),
+          ),
         );
 
         children.add(
@@ -2101,6 +2110,37 @@ class _ReadingInlineImageState extends State<_ReadingInlineImage> {
         if (width >= maxW) return image;
         return Align(alignment: Alignment.centerLeft, child: image);
       },
+    );
+  }
+}
+
+/// 行内表情：跟后面的文字同一行。
+class _InlineEmoji extends StatelessWidget {
+  const _InlineEmoji({
+    required this.url,
+    required this.width,
+    required this.height,
+    this.pageUrl,
+  });
+
+  final String url;
+  final double width;
+  final double height;
+  final String? pageUrl;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 6),
+      child: Image.network(
+        url,
+        width: width,
+        height: height,
+        fit: BoxFit.contain,
+        headers: mediaHttpHeadersFor(url, pageUrl: pageUrl),
+        gaplessPlayback: true,
+        errorBuilder: (_, __, ___) => SizedBox(width: width, height: height),
+      ),
     );
   }
 }
@@ -2274,7 +2314,12 @@ class _AnnotatedBodyStackState extends State<_AnnotatedBodyStack> {
           _laidOutWidth = w;
         }
         // 每帧后按真实 RenderEditable 量一次，避免 TextPainter 与真机排版不一致
-        _scheduleMeasure();
+        final hasEmoji = widget.spans.any((s) => s is WidgetSpan);
+        if (!hasEmoji) _scheduleMeasure();
+        final rich = TextSpan(
+          style: widget.textStyle ?? _AnnotatedBodyStack.bodyStyle,
+          children: widget.spans,
+        );
         return Stack(
           clipBehavior: Clip.none,
           children: [
@@ -2283,20 +2328,20 @@ class _AnnotatedBodyStackState extends State<_AnnotatedBodyStack> {
                 selectionColor: _AnnotatedBodyStack._highlight,
                 selectionHandleColor: _AnnotatedBodyStack._blue,
               ),
-              child: SelectableText.rich(
-                TextSpan(
-                  style: widget.textStyle ?? _AnnotatedBodyStack.bodyStyle,
-                  children: widget.spans,
-                ),
-                key: _textKey,
-                textAlign: TextAlign.justify,
-                contextMenuBuilder: widget.contextMenuBuilder,
-                onTap: widget.onBodyTap,
-                onSelectionChanged: widget.onSelectionChanged == null
-                    ? null
-                    : (selection, _) =>
-                        widget.onSelectionChanged!(selection),
-              ),
+              // SelectableText 不绘制 WidgetSpan，表情段改用 Text.rich。
+              child: hasEmoji
+                  ? Text.rich(rich, textAlign: TextAlign.start)
+                  : SelectableText.rich(
+                      rich,
+                      key: _textKey,
+                      textAlign: TextAlign.justify,
+                      contextMenuBuilder: widget.contextMenuBuilder,
+                      onTap: widget.onBodyTap,
+                      onSelectionChanged: widget.onSelectionChanged == null
+                          ? null
+                          : (selection, _) =>
+                              widget.onSelectionChanged!(selection),
+                    ),
             ),
             // 透明热区盖住高亮，稳定响应点击（不与选区手势打架）
             for (final hit in _hits)

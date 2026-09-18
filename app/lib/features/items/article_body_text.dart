@@ -27,14 +27,43 @@ class ArticleBodyText extends StatelessWidget {
     final normalized =
         content.replaceAll('\r\n', '\n').replaceAll('\r', '\n');
     final parts = <String>[];
+    final pendingEmoji = StringBuffer();
+
+    void flushEmoji() {
+      final t = pendingEmoji.toString();
+      pendingEmoji.clear();
+      if (t.isNotEmpty) parts.add(t);
+    }
+
     for (final chunk in normalized.split('\n')) {
       final t = chunk.trim();
       if (t.isEmpty) continue;
-      if (ArticleContentBlocks.imageLine.hasMatch(t)) continue;
-      if (ArticleContentBlocks.videoLine.hasMatch(t)) continue;
-      if (ArticleContentBlocks.headingLine.hasMatch(t)) continue;
-      parts.add(t);
+      if (ArticleContentBlocks.videoLine.hasMatch(t)) {
+        flushEmoji();
+        continue;
+      }
+      if (ArticleContentBlocks.headingLine.hasMatch(t)) {
+        flushEmoji();
+        continue;
+      }
+      if (ArticleContentBlocks.imageLine.hasMatch(t)) {
+        if (ArticleContentBlocks.isInlineEmojiMarkdown(t)) {
+          pendingEmoji.write(t);
+        }
+        continue;
+      }
+      if (ArticleContentBlocks.isEmojiPlaceholder(t)) {
+        pendingEmoji.write(t);
+        continue;
+      }
+      if (pendingEmoji.isNotEmpty) {
+        parts.add('${pendingEmoji.toString()}$t');
+        pendingEmoji.clear();
+      } else {
+        parts.add(t);
+      }
     }
+    flushEmoji();
     if (parts.isEmpty && content.trim().isNotEmpty) {
       final plain = ArticleContentBlocks.plainText(content);
       if (plain.isNotEmpty) return [plain];
