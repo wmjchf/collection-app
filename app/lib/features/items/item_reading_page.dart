@@ -1676,37 +1676,30 @@ class _ArticleTagHashtags extends StatelessWidget {
     if (tags.isEmpty) return const SizedBox.shrink();
 
     return Wrap(
-      spacing: 8,
-      runSpacing: 8,
+      spacing: 10,
+      runSpacing: 6,
       children: [
         for (final tag in tags)
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-            decoration: BoxDecoration(
-              color: _brand,
-              borderRadius: BorderRadius.circular(999),
-            ),
-            child: Text.rich(
-              TextSpan(
-                children: [
-                  const TextSpan(
-                    text: '#',
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.white,
-                    ),
+          Text.rich(
+            TextSpan(
+              children: [
+                const TextSpan(
+                  text: '#',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: _brand,
                   ),
-                  TextSpan(
-                    text: tag.name,
-                    style: const TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w500,
-                      color: Colors.white,
-                    ),
+                ),
+                TextSpan(
+                  text: tag.name,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                    color: _brand,
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
           ),
       ],
