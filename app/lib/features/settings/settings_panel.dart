@@ -5,6 +5,7 @@ import 'package:super_collection/features/auth/login_page.dart';
 import 'package:super_collection/features/onboarding/shortcuts_help_page.dart';
 import 'package:super_collection/features/settings/account_page.dart';
 import 'package:super_collection/features/settings/account_security_page.dart';
+import 'package:super_collection/features/settings/ai_auto_tags_help_page.dart';
 import 'package:super_collection/features/settings/how_to_add_link_page.dart';
 import 'package:super_collection/features/settings/legal_docs.dart';
 import 'package:super_collection/features/settings/logout_confirm_dialog.dart';
@@ -75,6 +76,11 @@ class _SettingsPanelState extends State<SettingsPanel> {
                     title: '如何添加链接',
                     showChevron: true,
                     onTap: () => _open(const HowToAddLinkPage()),
+                  ),
+                  _InfoRow(
+                    title: 'AI自动标签分类方法',
+                    showChevron: true,
+                    onTap: () => _open(const AiAutoTagsHelpPage()),
                   ),
                 ],
               ),

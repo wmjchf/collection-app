@@ -44,7 +44,8 @@ class ItemsRepository {
     return CollectionItem.fromJson(itemJson);
   }
 
-  Future<({List<SearchHit> items, int total, String query})> search(
+  Future<({List<SearchHit> items, List<Tag> tags, int total, String query})>
+      search(
     String q, {
     int limit = 50,
     int offset = 0,
@@ -56,10 +57,15 @@ class ItemsRepository {
       accessToken: token,
     );
     final list = json['items'] as List<dynamic>? ?? const [];
+    final rawTags = json['tags'] as List<dynamic>? ?? const [];
     return (
       items: list
           .whereType<Map<String, dynamic>>()
           .map(SearchHit.fromJson)
+          .toList(),
+      tags: rawTags
+          .whereType<Map<String, dynamic>>()
+          .map(Tag.fromJson)
           .toList(),
       total: (json['total'] as num?)?.toInt() ?? 0,
       query: json['query'] as String? ?? q,

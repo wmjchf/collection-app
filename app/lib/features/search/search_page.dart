@@ -13,9 +13,7 @@ import 'package:super_collection/features/items/item_models.dart';
 import 'package:super_collection/features/items/item_reading_page.dart';
 import 'package:super_collection/features/items/items_repository.dart';
 
-enum _SearchMode { tags, content }
-
-/// 统一搜索：框内切换「标签 / 全文」；标签模式沿用原 TagSearchPage 逻辑。
+/// 统一搜索：上面是结果内容上的全部标签，下面是匹配内容；点标签可筛选内容。
 class SearchPage extends StatefulWidget {
   const SearchPage({super.key});
 
@@ -40,28 +38,54 @@ class _SearchPageState extends State<SearchPage> with ScreenDwellMixin {
   final _scroll = ScrollController();
 
   Timer? _debounce;
-  _SearchMode _mode = _SearchMode.content;
   String _query = '';
-  List<Tag> _tags = const [];
+  /// 结果内容上的全部标签（全文命中全集 + 标签命中条目）。
+  List<Tag> _contentTags = const [];
+  List<Tag> _textFacetTags = const [];
+  List<Tag> _tagSearchTags = const [];
   Set<int> _selectedTagIds = {};
   List<SearchHit> _textHits = const [];
   int _textTotal = 0;
-  List<CollectionItem> _tagItems = const [];
-  int _tagItemsTotal = 0;
+  /// 名称/释义命中的标签下的条目，与全文结果合并去重。
+  List<CollectionItem> _matchedTagItems = const [];
   bool _loading = false;
   bool _loadingMore = false;
   String? _error;
   bool _searched = false;
 
-  bool get _isTagMode => _mode == _SearchMode.tags;
+  bool get _filteringByTags => _selectedTagIds.isNotEmpty;
 
-  bool get _filteringByTags => _isTagMode && _selectedTagIds.isNotEmpty;
+  int get _contentCount => _visibleContent.length;
 
-  int get _contentTotal => _isTagMode ? _tagItemsTotal : _textTotal;
+  List<CollectionItem> get _baseContent {
+    final seen = <int>{};
+    return [
+      for (final item in _matchedTagItems)
+        if (seen.add(item.id)) item,
+      for (final hit in _textHits)
+        if (seen.add(hit.item.id)) hit.item,
+    ];
+  }
 
-  int get _contentCount => _isTagMode ? _tagItems.length : _textHits.length;
+  List<CollectionItem> get _visibleContent {
+    final base = _baseContent;
+    if (!_filteringByTags) return base;
+    return [
+      for (final item in base)
+        if (_selectedTagIds.every((id) => item.tags.any((t) => t.id == id)))
+          item,
+    ];
+  }
 
-  bool get _hasMore => _contentCount < _contentTotal;
+  int get _contentTotal {
+    if (_filteringByTags) return _visibleContent.length;
+    final textIds = _textHits.map((h) => h.item.id).toSet();
+    final extra =
+        _matchedTagItems.where((item) => !textIds.contains(item.id)).length;
+    return _textTotal + extra;
+  }
+
+  bool get _hasMore => _textHits.length < _textTotal;
 
   @override
   String get dwellScreen => AnalyticsScreens.search;
@@ -93,27 +117,17 @@ class _SearchPageState extends State<SearchPage> with ScreenDwellMixin {
 
   void _clearResults() {
     _query = '';
-    _tags = const [];
+    _contentTags = const [];
+    _textFacetTags = const [];
+    _tagSearchTags = const [];
     _selectedTagIds = {};
     _textHits = const [];
     _textTotal = 0;
-    _tagItems = const [];
-    _tagItemsTotal = 0;
+    _matchedTagItems = const [];
     _loading = false;
     _loadingMore = false;
     _error = null;
     _searched = false;
-  }
-
-  void _onModeChanged(_SearchMode mode) {
-    if (mode == _mode) return;
-    setState(() => _mode = mode);
-    final q = _controller.text.trim();
-    if (q.isEmpty) {
-      setState(_clearResults);
-      return;
-    }
-    unawaited(_search(q));
   }
 
   void _onQueryChanged(String value) {
@@ -130,145 +144,55 @@ class _SearchPageState extends State<SearchPage> with ScreenDwellMixin {
   }
 
   Future<void> _search(String q) async {
-    if (_isTagMode) {
-      await _searchTags(q, resetSelection: true);
-    } else {
-      await _searchContent(q);
-    }
-  }
-
-  /// 原 TagSearchPage：命中标签 + 内容同出，主命中默认选中，可点标签 AND 筛选。
-  Future<void> _searchTags(
-    String q, {
-    required bool resetSelection,
-  }) async {
     setState(() {
       _query = q;
       _loading = true;
       _error = null;
       _searched = true;
-      _tagItems = const [];
-      _tagItemsTotal = 0;
-      if (resetSelection) {
-        _tags = const [];
-        _selectedTagIds = {};
-      }
-    });
-
-    try {
-      final filterIds =
-          resetSelection ? const <int>[] : _selectedTagIds.toList();
-      final result = await _tagsRepo.searchTags(
-        q,
-        limit: kItemsPageSize,
-        offset: 0,
-        filterTagIds: filterIds,
-      );
-      if (!mounted || _controller.text.trim() != q) return;
-
-      final nextSelected = resetSelection
-          ? {
-              if (result.primaryTagId != null) result.primaryTagId!,
-            }
-          : Set<int>.from(_selectedTagIds);
-
-      final needPrimaryFilter = resetSelection &&
-          nextSelected.isNotEmpty &&
-          result.matchedTagIds.length > 1;
-      if (needPrimaryFilter) {
-        final filtered = await _tagsRepo.searchTags(
-          q,
-          limit: kItemsPageSize,
-          offset: 0,
-          filterTagIds: nextSelected.toList(),
-        );
-        if (!mounted || _controller.text.trim() != q) return;
-        setState(() {
-          _tags = filtered.tags;
-          _selectedTagIds = nextSelected;
-          _tagItems = filtered.items;
-          _tagItemsTotal = filtered.itemsTotal;
-          _loading = false;
-        });
-        Analytics.instance.searchSubmit(
-          hasResult: filtered.itemsTotal > 0 || filtered.tags.isNotEmpty,
-          resultCount: filtered.itemsTotal,
-        );
-        _scheduleFill();
-        return;
-      }
-
-      setState(() {
-        if (resetSelection) {
-          _tags = result.tags;
-          _selectedTagIds = nextSelected;
-        }
-        _tagItems = result.items;
-        _tagItemsTotal = result.itemsTotal;
-        _loading = false;
-      });
-      Analytics.instance.searchSubmit(
-        hasResult: result.itemsTotal > 0 || result.tags.isNotEmpty,
-        resultCount: result.itemsTotal,
-      );
-      _scheduleFill();
-    } on ApiException catch (e) {
-      if (!mounted || _controller.text.trim() != q) return;
-      setState(() {
-        _loading = false;
-        _error = e.message;
-        if (resetSelection) {
-          _tags = const [];
-          _selectedTagIds = {};
-          _tagItems = const [];
-          _tagItemsTotal = 0;
-        }
-      });
-      Analytics.instance.searchSubmit(hasResult: false, resultCount: 0);
-    } catch (_) {
-      if (!mounted || _controller.text.trim() != q) return;
-      setState(() {
-        _loading = false;
-        _error = '搜索失败';
-        if (resetSelection) {
-          _tags = const [];
-          _selectedTagIds = {};
-          _tagItems = const [];
-          _tagItemsTotal = 0;
-        }
-      });
-    }
-  }
-
-  Future<void> _searchContent(String q) async {
-    setState(() {
-      _query = q;
-      _loading = true;
-      _error = null;
-      _searched = true;
-      _tags = const [];
+      _contentTags = const [];
+      _textFacetTags = const [];
+      _tagSearchTags = const [];
       _selectedTagIds = {};
-      _tagItems = const [];
-      _tagItemsTotal = 0;
+      _matchedTagItems = const [];
       _textHits = const [];
       _textTotal = 0;
     });
 
     try {
-      final result = await _itemsRepo.search(
+      final tagFuture = _tagsRepo.searchTags(
         q,
         limit: kItemsPageSize,
         offset: 0,
       );
+      final textFuture = _itemsRepo.search(
+        q,
+        limit: kItemsPageSize,
+        offset: 0,
+      );
+      final tags = await tagFuture;
+      final text = await textFuture;
       if (!mounted || _controller.text.trim() != q) return;
       setState(() {
-        _textHits = result.items;
-        _textTotal = result.total;
+        _textFacetTags = text.tags;
+        _tagSearchTags = tags.tags;
+        _matchedTagItems = tags.items;
+        _textHits = text.items;
+        _textTotal = text.total;
+        _contentTags = _mergeContentTags(
+          textFacet: text.tags,
+          tagSearchTags: tags.tags,
+          items: [
+            ...tags.items,
+            for (final hit in text.items) hit.item,
+          ],
+        );
         _loading = false;
       });
       Analytics.instance.searchSubmit(
-        hasResult: result.total > 0,
-        resultCount: result.total,
+        hasResult: text.total > 0 ||
+            tags.tags.isNotEmpty ||
+            text.tags.isNotEmpty,
+        resultCount: text.total,
       );
       _scheduleFill();
     } on ApiException catch (e) {
@@ -276,6 +200,10 @@ class _SearchPageState extends State<SearchPage> with ScreenDwellMixin {
       setState(() {
         _loading = false;
         _error = e.message;
+        _contentTags = const [];
+        _textFacetTags = const [];
+        _tagSearchTags = const [];
+        _matchedTagItems = const [];
         _textHits = const [];
         _textTotal = 0;
       });
@@ -285,6 +213,10 @@ class _SearchPageState extends State<SearchPage> with ScreenDwellMixin {
       setState(() {
         _loading = false;
         _error = '搜索失败';
+        _contentTags = const [];
+        _textFacetTags = const [];
+        _tagSearchTags = const [];
+        _matchedTagItems = const [];
         _textHits = const [];
         _textTotal = 0;
       });
@@ -296,46 +228,29 @@ class _SearchPageState extends State<SearchPage> with ScreenDwellMixin {
     final q = _query;
     setState(() => _loadingMore = true);
     try {
-      if (_isTagMode) {
-        final selected = _selectedTagIds.toList();
-        final result = await _tagsRepo.searchTags(
-          q,
-          limit: kItemsPageSize,
-          offset: _tagItems.length,
-          filterTagIds: selected,
-        );
-        if (!mounted ||
-            _controller.text.trim() != q ||
-            !_setEquals(_selectedTagIds, selected.toSet())) {
-          if (mounted) setState(() => _loadingMore = false);
-          return;
+      final result = await _itemsRepo.search(
+        q,
+        limit: kItemsPageSize,
+        offset: _textHits.length,
+      );
+      if (!mounted || _controller.text.trim() != q) return;
+      setState(() {
+        final seen = _textHits.map((e) => e.item.id).toSet();
+        _textHits = [
+          ..._textHits,
+          ...result.items.where((e) => !seen.contains(e.item.id)),
+        ];
+        _textTotal = result.total;
+        if (_textFacetTags.isEmpty && result.tags.isNotEmpty) {
+          _textFacetTags = result.tags;
         }
-        setState(() {
-          final seen = _tagItems.map((e) => e.id).toSet();
-          _tagItems = [
-            ..._tagItems,
-            ...result.items.where((e) => !seen.contains(e.id)),
-          ];
-          _tagItemsTotal = result.itemsTotal;
-          _loadingMore = false;
-        });
-      } else {
-        final result = await _itemsRepo.search(
-          q,
-          limit: kItemsPageSize,
-          offset: _textHits.length,
+        _contentTags = _mergeContentTags(
+          textFacet: _textFacetTags,
+          tagSearchTags: _tagSearchTags,
+          items: _baseContent,
         );
-        if (!mounted || _controller.text.trim() != q) return;
-        setState(() {
-          final seen = _textHits.map((e) => e.item.id).toSet();
-          _textHits = [
-            ..._textHits,
-            ...result.items.where((e) => !seen.contains(e.item.id)),
-          ];
-          _textTotal = result.total;
-          _loadingMore = false;
-        });
-      }
+        _loadingMore = false;
+      });
       _scheduleFill();
     } catch (_) {
       if (!mounted) return;
@@ -352,59 +267,69 @@ class _SearchPageState extends State<SearchPage> with ScreenDwellMixin {
     );
   }
 
-  bool _setEquals(Set<int> a, Set<int> b) {
-    if (a.length != b.length) return false;
-    return a.containsAll(b);
+  void _toggleTag(Tag tag) {
+    setState(() {
+      if (_selectedTagIds.contains(tag.id)) {
+        _selectedTagIds.remove(tag.id);
+      } else {
+        _selectedTagIds.add(tag.id);
+      }
+    });
   }
 
-  Future<void> _toggleTag(Tag tag) async {
-    final next = Set<int>.from(_selectedTagIds);
-    if (next.contains(tag.id)) {
-      next.remove(tag.id);
-    } else {
-      next.add(tag.id);
+  /// 顶部标签 = 全部命中内容上的标签。优先用全文检索的全集统计，再并上标签检索里多出来的。
+  List<Tag> _mergeContentTags({
+    required List<Tag> textFacet,
+    required List<Tag> tagSearchTags,
+    required List<CollectionItem> items,
+  }) {
+    final names = <int, String>{};
+    final counts = <int, int>{};
+
+    void put(int id, String name, int count) {
+      final n = name.trim();
+      if (id <= 0 || n.isEmpty) return;
+      names.putIfAbsent(id, () => n);
+      final prev = counts[id] ?? 0;
+      if (count > prev) counts[id] = count;
     }
 
-    setState(() {
-      _selectedTagIds = next;
-      _tagItems = const [];
-      _tagItemsTotal = 0;
-      _loading = true;
-      _error = null;
-    });
-    final q = _query;
-    try {
-      final result = await _tagsRepo.searchTags(
-        q,
-        limit: kItemsPageSize,
-        offset: 0,
-        filterTagIds: next.toList(),
-      );
-      if (!mounted ||
-          _controller.text.trim() != q ||
-          !_setEquals(_selectedTagIds, next)) {
-        return;
-      }
-      setState(() {
-        _tags = result.tags;
-        _tagItems = result.items;
-        _tagItemsTotal = result.itemsTotal;
-        _loading = false;
-      });
-      _scheduleFill();
-    } on ApiException catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _loading = false;
-        _error = e.message;
-      });
-    } catch (_) {
-      if (!mounted) return;
-      setState(() {
-        _loading = false;
-        _error = '筛选失败';
-      });
+    for (final tag in textFacet) {
+      put(tag.id, tag.name, tag.itemCount);
     }
+    for (final tag in tagSearchTags) {
+      put(tag.id, tag.name, tag.itemCount);
+    }
+
+    final seenOnItems = <int, int>{};
+    for (final item in items) {
+      for (final tag in item.tags) {
+        names.putIfAbsent(tag.id, () => tag.name);
+        if (textFacet.isEmpty || !counts.containsKey(tag.id)) {
+          seenOnItems[tag.id] = (seenOnItems[tag.id] ?? 0) + 1;
+        }
+      }
+    }
+    for (final entry in seenOnItems.entries) {
+      put(entry.key, names[entry.key] ?? '', entry.value);
+    }
+
+    final list = [
+      for (final id in names.keys)
+        Tag(
+          id: id,
+          name: names[id]!,
+          isSystem: false,
+          itemCount: counts[id] ?? 0,
+          sortOrder: 0,
+        ),
+    ];
+    list.sort((a, b) {
+      final byCount = b.itemCount.compareTo(a.itemCount);
+      if (byCount != 0) return byCount;
+      return a.name.compareTo(b.name);
+    });
+    return list;
   }
 
   Future<void> _openItem(CollectionItem item, {required String entry}) async {
@@ -422,8 +347,13 @@ class _SearchPageState extends State<SearchPage> with ScreenDwellMixin {
       setState(() {
         _textHits = _textHits.where((e) => e.item.id != item.id).toList();
         _textTotal = (_textTotal - 1).clamp(0, 1 << 30);
-        _tagItems = _tagItems.where((e) => e.id != item.id).toList();
-        _tagItemsTotal = (_tagItemsTotal - 1).clamp(0, 1 << 30);
+        _matchedTagItems =
+            _matchedTagItems.where((e) => e.id != item.id).toList();
+        _contentTags = _mergeContentTags(
+          textFacet: _textFacetTags,
+          tagSearchTags: _tagSearchTags,
+          items: _baseContent,
+        );
       });
       return;
     }
@@ -435,8 +365,8 @@ class _SearchPageState extends State<SearchPage> with ScreenDwellMixin {
       final updated = await _itemsRepo.getItem(itemId);
       if (!mounted) return;
       setState(() {
-        _tagItems = [
-          for (final e in _tagItems)
+        _matchedTagItems = [
+          for (final e in _matchedTagItems)
             if (e.id == itemId) updated else e,
         ];
         _textHits = [
@@ -446,6 +376,11 @@ class _SearchPageState extends State<SearchPage> with ScreenDwellMixin {
             else
               hit,
         ];
+        _contentTags = _mergeContentTags(
+          textFacet: _textFacetTags,
+          tagSearchTags: _tagSearchTags,
+          items: _baseContent,
+        );
       });
     } catch (_) {}
   }
@@ -463,12 +398,9 @@ class _SearchPageState extends State<SearchPage> with ScreenDwellMixin {
     return n.startsWith('#') ? n : '#$n';
   }
 
-  String get _hintText =>
-      _isTagMode ? '搜索标签' : '搜索标题、正文、感想…';
+  String get _hintText => '搜索标签或内容';
 
-  String get _idleHint => _isTagMode
-      ? '输入标签名，查看相关收藏'
-      : '输入关键词搜索收藏';
+  String get _idleHint => '输入关键词，查看相关标签和内容';
 
   @override
   Widget build(BuildContext context) {
@@ -496,14 +428,13 @@ class _SearchPageState extends State<SearchPage> with ScreenDwellMixin {
                       clipBehavior: Clip.antiAlias,
                       child: Row(
                         children: [
-                          _SearchModePicker(
-                            mode: _mode,
-                            onChanged: _onModeChanged,
-                          ),
-                          Container(
-                            width: 1,
-                            height: 18,
-                            color: _hairline,
+                          const Padding(
+                            padding: EdgeInsets.only(left: 12),
+                            child: Icon(
+                              Icons.search_rounded,
+                              color: _muted,
+                              size: 20,
+                            ),
                           ),
                           Expanded(
                             child: TextField(
@@ -603,10 +534,10 @@ class _SearchPageState extends State<SearchPage> with ScreenDwellMixin {
         ),
       );
     }
-    if (_loading && _tags.isEmpty && _contentCount == 0) {
+    if (_loading && _contentTags.isEmpty && _contentCount == 0) {
       return const Center(child: CircularProgressIndicator());
     }
-    if (_error != null && _tags.isEmpty && _contentCount == 0) {
+    if (_error != null && _contentTags.isEmpty && _contentCount == 0) {
       return Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -620,15 +551,7 @@ class _SearchPageState extends State<SearchPage> with ScreenDwellMixin {
         ),
       );
     }
-
-    if (_isTagMode) {
-      return _buildTagModeBody();
-    }
-    return _buildContentModeBody();
-  }
-
-  Widget _buildTagModeBody() {
-    if (_tags.isEmpty && _contentCount == 0 && !_loading) {
+    if (_contentTags.isEmpty && _contentCount == 0 && !_loading) {
       return Center(
         child: Text(
           '没有「$_query」相关的标签或内容',
@@ -637,10 +560,12 @@ class _SearchPageState extends State<SearchPage> with ScreenDwellMixin {
       );
     }
 
+    final contentItems = _visibleContent;
+
     return CustomScrollView(
       controller: _scroll,
       slivers: [
-        if (_tags.isNotEmpty)
+        if (_contentTags.isNotEmpty)
           SliverPadding(
             padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
             sliver: SliverToBoxAdapter(
@@ -660,12 +585,12 @@ class _SearchPageState extends State<SearchPage> with ScreenDwellMixin {
                     spacing: 8,
                     runSpacing: 8,
                     children: [
-                      for (final tag in _tags)
+                      for (final tag in _contentTags)
                         _FilterTagChip(
                           label: _hashName(tag.name),
                           count: tag.itemCount,
                           selected: _selectedTagIds.contains(tag.id),
-                          onTap: () => unawaited(_toggleTag(tag)),
+                          onTap: () => _toggleTag(tag),
                         ),
                     ],
                   ),
@@ -679,12 +604,12 @@ class _SearchPageState extends State<SearchPage> with ScreenDwellMixin {
             child: Center(child: CircularProgressIndicator()),
           )
         else if (_contentCount == 0)
-          const SliverFillRemaining(
+          SliverFillRemaining(
             hasScrollBody: false,
             child: Center(
               child: Text(
-                '没有相关标签的内容',
-                style: TextStyle(fontSize: 14, color: _muted),
+                _filteringByTags ? '没有相关标签的内容' : '没有相关内容',
+                style: const TextStyle(fontSize: 14, color: _muted),
               ),
             ),
           )
@@ -709,137 +634,32 @@ class _SearchPageState extends State<SearchPage> with ScreenDwellMixin {
             sliver: SliverList(
               delegate: SliverChildBuilderDelegate(
                 (context, index) {
-                  if (index == _tagItems.length) {
+                  if (index == contentItems.length) {
                     return pagedListFooter(
                       loadingMore: _loadingMore,
                       hasMore: _hasMore,
                       isEmpty: false,
                     );
                   }
-                  final item = _tagItems[index];
+                  final item = contentItems[index];
                   return Padding(
-                    key: ValueKey('unified-tag-item-${item.id}'),
+                    key: ValueKey('search-item-${item.id}'),
                     padding: const EdgeInsets.only(bottom: 8),
                     child: ItemListTile.fromItem(
                       item,
                       subtitle: _subtitle(item),
                       onTap: () => unawaited(
-                        _openItem(item, entry: 'tag_search'),
+                        _openItem(item, entry: 'search'),
                       ),
                     ),
                   );
                 },
-                childCount: _tagItems.length + 1,
+                childCount: contentItems.length + 1,
               ),
             ),
           ),
         ],
       ],
-    );
-  }
-
-  Widget _buildContentModeBody() {
-    if (_contentCount == 0 && !_loading) {
-      return Center(
-        child: Text(
-          '没有「$_query」相关内容',
-          style: const TextStyle(fontSize: 14, color: _muted),
-        ),
-      );
-    }
-
-    if (_loading && _contentCount == 0) {
-      return const Center(child: CircularProgressIndicator());
-    }
-
-    return ListView(
-      controller: _scroll,
-      padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
-      children: [
-        for (final hit in _textHits)
-          Padding(
-            key: ValueKey('unified-text-item-${hit.item.id}'),
-            padding: const EdgeInsets.only(bottom: 8),
-            child: ItemListTile.fromItem(
-              hit.item,
-              subtitle: _subtitle(hit.item),
-              onTap: () => unawaited(
-                _openItem(hit.item, entry: 'search'),
-              ),
-            ),
-          ),
-        pagedListFooter(
-          loadingMore: _loadingMore,
-          hasMore: _hasMore,
-          isEmpty: false,
-        ),
-      ],
-    );
-  }
-}
-
-class _SearchModePicker extends StatelessWidget {
-  const _SearchModePicker({
-    required this.mode,
-    required this.onChanged,
-  });
-
-  final _SearchMode mode;
-  final ValueChanged<_SearchMode> onChanged;
-
-  String get _label => mode == _SearchMode.tags ? '标签' : '全文';
-
-  @override
-  Widget build(BuildContext context) {
-    return PopupMenuButton<_SearchMode>(
-      padding: EdgeInsets.zero,
-      offset: const Offset(0, 40),
-      color: Colors.white,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      onSelected: onChanged,
-      itemBuilder: (context) => [
-        _menuItem(_SearchMode.content, '全文'),
-        _menuItem(_SearchMode.tags, '标签'),
-      ],
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 10),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              _label,
-              style: const TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-                color: _SearchPageState._brand,
-              ),
-            ),
-            const Icon(
-              Icons.expand_more_rounded,
-              size: 18,
-              color: _SearchPageState._brand,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  PopupMenuItem<_SearchMode> _menuItem(_SearchMode value, String label) {
-    final selected = mode == value;
-    return PopupMenuItem<_SearchMode>(
-      value: value,
-      height: 40,
-      child: Text(
-        label,
-        style: TextStyle(
-          fontSize: 15,
-          fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
-          color: selected
-              ? _SearchPageState._brand
-              : _SearchPageState._text,
-        ),
-      ),
     );
   }
 }

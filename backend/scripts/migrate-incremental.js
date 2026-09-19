@@ -32,6 +32,8 @@ const MIGRATION_FILES = [
   '022_tag_modules.sql',
   '023_untagged_system_filter.sql',
   '024_tag_description.sql',
+  '025_help_pages.sql',
+  '026_help_page_blocks.sql',
 ];
 
 async function getConnection() {
@@ -232,6 +234,16 @@ async function apply024(conn, dbName) {
   );
 }
 
+async function apply026(conn, dbName) {
+  if (await columnExists(conn, dbName, 'help_pages', 'blocks')) {
+    console.log('[db:migrate] 026: blocks 已存在，跳过');
+    return;
+  }
+  await conn.query(
+    "ALTER TABLE `help_pages` ADD COLUMN `blocks` JSON DEFAULT NULL COMMENT '分段 [{title,imageUrl,text}]' AFTER `body`",
+  );
+}
+
 async function applyMigration(conn, dbName, file) {
   if (file === '002_last_read_at.sql') {
     await apply002(conn, dbName);
@@ -263,6 +275,10 @@ async function applyMigration(conn, dbName, file) {
   }
   if (file === '024_tag_description.sql') {
     await apply024(conn, dbName);
+    return;
+  }
+  if (file === '026_help_page_blocks.sql') {
+    await apply026(conn, dbName);
     return;
   }
   await runSqlFile(conn, file);

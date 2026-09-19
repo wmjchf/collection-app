@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="robots" content="noindex,nofollow" />
+  <title>奏折 · AI自动标签分类方法</title>
+  <link href="https://cdn.jsdelivr.net/npm/quill@2.0.3/dist/quill.snow.css" rel="stylesheet" />
+  <style>
+    :root {
+      --text: #1f242e;
+      --muted: #737a85;
+      --bg: #f4f5f7;
+      --line: #e5e5eb;
+      --blue: #2f6fed;
+      --ok: #1a7f4b;
+      --bad: #c0392b;
+      --font: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+        "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: var(--font);
+      color: var(--text);
+      background: var(--bg);
+      line-height: 1.5;
+    }
+    .wrap { max-width: 760px; margin: 0 auto; padding: 28px 20px 80px; }
+    h1 { margin: 0; font-size: 22px; font-weight: 700; }
+    .sub { color: var(--muted); font-size: 13px; margin: 6px 0 20px; }
+    .row { display: flex; gap: 8px; align-items: center; margin-bottom: 16px; flex-wrap: wrap; }
+    input, button {
+      font: inherit; font-size: 14px; border-radius: 10px;
+      border: 1px solid var(--line); background: #fff; color: var(--text);
+    }
+    #token { flex: 1; min-width: 180px; padding: 8px 12px; }
+    #pageTitle { width: 100%; padding: 10px 12px; margin-bottom: 12px; }
+    label { display: block; font-size: 12px; color: var(--muted); margin: 0 0 6px; }
+    button {
+      background: var(--blue); color: #fff; border-color: var(--blue);
+      padding: 8px 14px; cursor: pointer; font-weight: 600;
+    }
+    button.ghost { background: #fff; color: var(--text); border-color: var(--line); font-weight: 500; }
+    button:disabled { opacity: 0.55; cursor: default; }
+    #editor {
+      min-height: 360px;
+      background: #fff;
+      font-size: 15px;
+    }
+    .ql-toolbar.ql-snow, .ql-container.ql-snow { border-color: var(--line); }
+    .ql-toolbar.ql-snow { border-radius: 12px 12px 0 0; background: #fff; }
+    .ql-container.ql-snow { border-radius: 0 0 12px 12px; }
+    .ql-editor img { max-width: 100%; height: auto; }
+    .ql-snow .ql-picker.ql-size { width: 58px; }
+    .ql-snow .ql-picker.ql-size .ql-picker-label::before,
+    .ql-snow .ql-picker.ql-size .ql-picker-item::before { content: '字号'; }
+    .ql-snow .ql-picker.ql-size .ql-picker-label[data-value="12px"]::before,
+    .ql-snow .ql-picker.ql-size .ql-picker-item[data-value="12px"]::before { content: '12'; }
+    .ql-snow .ql-picker.ql-size .ql-picker-label[data-value="14px"]::before,
+    .ql-snow .ql-picker.ql-size .ql-picker-item[data-value="14px"]::before { content: '14'; }
+    .ql-snow .ql-picker.ql-size .ql-picker-label[data-value="16px"]::before,
+    .ql-snow .ql-picker.ql-size .ql-picker-item[data-value="16px"]::before { content: '16'; }
+    .ql-snow .ql-picker.ql-size .ql-picker-label[data-value="18px"]::before,
+    .ql-snow .ql-picker.ql-size .ql-picker-item[data-value="18px"]::before { content: '18'; }
+    .ql-snow .ql-picker.ql-size .ql-picker-label[data-value="20px"]::before,
+    .ql-snow .ql-picker.ql-size .ql-picker-item[data-value="20px"]::before { content: '20'; }
+    .ql-snow .ql-picker.ql-size .ql-picker-label[data-value="24px"]::before,
+    .ql-snow .ql-picker.ql-size .ql-picker-item[data-value="24px"]::before { content: '24'; }
+    .ql-snow .ql-picker.ql-size .ql-picker-label[data-value="28px"]::before,
+    .ql-snow .ql-picker.ql-size .ql-picker-item[data-value="28px"]::before { content: '28'; }
+    .msg { min-height: 22px; margin-top: 10px; font-size: 13px; }
+    .msg.ok { color: var(--ok); }
+    .msg.err { color: var(--bad); }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>AI自动标签分类方法</h1>
+    <p class="sub">标题是整页一个。正文可设文字颜色和字号，图片插在哪就出现在哪。与埋点看板共用 Token。</p>
+    <div class="row">
+      <input id="token" type="password" placeholder="看板 Token" autocomplete="off" />
+      <button id="load" type="button">读取</button>
+      <button id="save" type="button">保存</button>
+    </div>
+    <label for="pageTitle">标题</label>
+    <input id="pageTitle" type="text" maxlength="40" placeholder="AI自动标签分类方法" />
+    <div id="editor"></div>
+    <div id="msg" class="msg"></div>
+  </div>
+  <script src="https://cdn.jsdelivr.net/npm/quill@2.0.3/dist/quill.js"></script>
+  <script>
+    const KEY = 'ai_auto_tags';
+    const TOKEN_KEY = 'conflux_analytics_token';
+    const $ = (id) => document.getElementById(id);
+
+    const Size = Quill.import('attributors/style/size');
+    Size.whitelist = ['12px', '14px', '16px', '18px', '20px', '24px', '28px'];
+    Quill.register(Size, true);
+
+    const quill = new Quill('#editor', {
+      theme: 'snow',
+      placeholder: '写说明，需要配图时点工具栏的图片',
+      modules: {
+        toolbar: {
+          container: [
+            [{ header: [2, 3, false] }],
+            [{ size: ['12px', '14px', '16px', '18px', '20px', '24px', '28px'] }],
+            [{ color: [] }],
+            ['bold', 'italic', 'underline'],
+            [{ list: 'ordered' }, { list: 'bullet' }],
+            ['image'],
+            ['clean'],
+          ],
+          handlers: { image: pickImage },
+        },
+      },
+    });
+
+    function token() { return $('token').value.trim(); }
+
+    function show(text, ok) {
+      const el = $('msg');
+      el.textContent = text || '';
+      el.className = 'msg' + (text ? (ok ? ' ok' : ' err') : '');
+    }
+
+    function currentHtml() {
+      if (typeof quill.getSemanticHTML === 'function') return quill.getSemanticHTML();
+      return quill.root.innerHTML;
+    }
+
+    function pickImage() {
+      const t = token();
+      if (!t) {
+        show('请先填写看板 Token', false);
+        return;
+      }
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = 'image/png,image/jpeg,image/webp';
+      input.onchange = () => {
+        const file = input.files && input.files[0];
+        if (file) uploadImage(file).catch((e) => show(e.message || '上传失败', false));
+      };
+      input.click();
+    }
+
+    async function uploadImage(file) {
+      if (file.size > 2.5 * 1024 * 1024) {
+        show('图片不能超过 2.5MB', false);
+        return;
+      }
+      show('上传中…', true);
+      const dataUrl = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = () => reject(new Error('读取图片失败'));
+        reader.readAsDataURL(file);
+      });
+      const res = await fetch('/api/help/' + KEY + '/images', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Analytics-Token': token(),
+        },
+        body: JSON.stringify({ dataUrl }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        show(json.message || '上传失败', false);
+        return;
+      }
+      const range = quill.getSelection(true);
+      const index = range ? range.index : quill.getLength();
+      quill.insertEmbed(index, 'image', json.imageUrl, 'user');
+      quill.setSelection(index + 1);
+      show('图片已插入，记得点保存', true);
+    }
+
+    function fillEditor(html) {
+      const source = html || '';
+      const delta = quill.clipboard.convert({ html: source, text: '\n' });
+      quill.setContents(delta, 'silent');
+    }
+
+    async function load() {
+      const t = token();
+      if (!t) {
+        show('请填写看板 Token（环境变量 ANALYTICS_DASHBOARD_TOKEN）', false);
+        return;
+      }
+      sessionStorage.setItem(TOKEN_KEY, t);
+      show('读取中…', true);
+      const res = await fetch('/api/help/' + KEY + '/draft?t=' + Date.now(), {
+        headers: { 'X-Analytics-Token': t },
+        cache: 'no-store',
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        show(json.message || '读取失败', false);
+        return;
+      }
+      $('pageTitle').value = json.title || '';
+      fillEditor(json.html || '');
+      show('已填入已保存内容，改完点保存', true);
+    }
+
+    async function save() {
+      const t = token();
+      if (!t) {
+        show('请填写看板 Token', false);
+        return;
+      }
+      sessionStorage.setItem(TOKEN_KEY, t);
+      $('save').disabled = true;
+      show('保存中…', true);
+      try {
+        const res = await fetch('/api/help/' + KEY, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Analytics-Token': t,
+          },
+          body: JSON.stringify({
+            title: $('pageTitle').value,
+            html: currentHtml(),
+          }),
+        });
+        const json = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          show(json.message || '保存失败', false);
+          return;
+        }
+        $('pageTitle').value = json.title || '';
+        show('已保存', true);
+      } finally {
+        $('save').disabled = false;
+      }
+    }
+
+    $('token').value = sessionStorage.getItem(TOKEN_KEY) ||
+      new URLSearchParams(location.search).get('token') || '';
+    $('load').addEventListener('click', () => { load().catch((e) => show(e.message, false)); });
+    $('save').addEventListener('click', () => { save().catch((e) => show(e.message, false)); });
+    if ($('token').value) load().catch((e) => show(e.message || '读取失败', false));
+  </script>
+</body>
+</html>
