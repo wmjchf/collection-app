@@ -68,14 +68,14 @@ class _SettingsPanelState extends State<SettingsPanel> {
               _CardGroup(
                 children: [
                   _InfoRow(
-                    title: 'iOS 快捷指令说明',
-                    showChevron: true,
-                    onTap: () => _open(const ShortcutsHelpPage()),
-                  ),
-                  _InfoRow(
                     title: '如何添加链接',
                     showChevron: true,
                     onTap: () => _open(const HowToAddLinkPage()),
+                  ),
+                  _InfoRow(
+                    title: 'iOS 快捷指令说明',
+                    showChevron: true,
+                    onTap: () => _open(const ShortcutsHelpPage()),
                   ),
                   _InfoRow(
                     title: 'AI自动标签分类方法',
