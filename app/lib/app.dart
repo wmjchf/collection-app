@@ -89,7 +89,8 @@ class _AuthGateState extends State<_AuthGate> {
   void initState() {
     super.initState();
     _future = _resolveHome();
-    _future.whenComplete(() {
+    _future.whenComplete(() async {
+      await Future<void>.delayed(const Duration(seconds: 2));
       WidgetsBinding.instance.allowFirstFrame();
     });
   }
