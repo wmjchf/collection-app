@@ -1,9 +1,6 @@
 const crypto = require('crypto');
 const transcriptSegments = require('./transcriptSegments');
 
-const CONTENT_LIMIT = 8000;
-const TRANSCRIPT_LIMIT = 6000;
-
 function stripMarkdown(text) {
   return String(text || '')
     .replace(/!v?\[[^\]]*\]\([^)]+\)/g, ' ')
@@ -40,9 +37,9 @@ function buildInputText(row) {
   if (title) parts.push(`标题：${title}`);
   if (platform) parts.push(`来源：${platform}`);
   if (summary) parts.push(`摘要：${summary}`);
-  const content = stripMarkdown(row.content || '').slice(0, CONTENT_LIMIT);
+  const content = stripMarkdown(row.content || '');
   if (content) parts.push(`正文：${content}`);
-  const transcript = collectTranscriptText(row).slice(0, TRANSCRIPT_LIMIT);
+  const transcript = collectTranscriptText(row);
   if (transcript) parts.push(`文稿：${transcript}`);
   return parts.join('\n\n');
 }
@@ -117,8 +114,6 @@ function buildAiTaskMessages(inputText, taskParts) {
 }
 
 module.exports = {
-  CONTENT_LIMIT,
-  TRANSCRIPT_LIMIT,
   stripMarkdown,
   collectTranscriptText,
   hasAiInput,
