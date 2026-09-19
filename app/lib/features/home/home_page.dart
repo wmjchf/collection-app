@@ -345,8 +345,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     return CoachHoleOverlay(
       tooltip: CoachTooltipCard(
         stepLabel: '3 / 3',
-        title: '可以开始了',
-        message: '先存一条感兴趣的内容，之后用搜索随时找回。',
+        title: 'AI自动标签分类',
+        imageAsset: 'assets/onboarding/ai_auto_tags.png',
+        message: 'Pro 用户解析成功后，AI 会自动打标签',
         confirmLabel: '开始使用',
         showSkip: false,
         onConfirm: () => unawaited(_finishCoach()),

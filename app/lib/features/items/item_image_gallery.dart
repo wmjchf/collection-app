@@ -52,19 +52,11 @@ class _ItemImageGalleryState extends State<ItemImageGallery> {
     final list = _list;
     if (list.isEmpty) return;
     final i = initialIndex.clamp(0, list.length - 1);
-    Navigator.of(context).push(
-      PageRouteBuilder<void>(
-        opaque: false,
-        barrierColor: Colors.black,
-        pageBuilder: (_, __, ___) => _ImagePreviewPage(
-          urls: list,
-          initialIndex: i,
-          pageUrl: widget.pageUrl,
-        ),
-        transitionsBuilder: (_, anim, __, child) {
-          return FadeTransition(opacity: anim, child: child);
-        },
-      ),
+    showNetworkImagePreview(
+      context,
+      urls: list,
+      initialIndex: i,
+      pageUrl: widget.pageUrl,
     );
   }
 
@@ -208,6 +200,35 @@ class _CarouselImage extends StatelessWidget {
       child: child,
     );
   }
+}
+
+/// 全屏看图：左右滑动、双指缩放、点空白或关闭按钮退出。
+void showNetworkImagePreview(
+  BuildContext context, {
+  required List<String> urls,
+  int initialIndex = 0,
+  String? pageUrl,
+}) {
+  final list = urls
+      .map((e) => e.trim())
+      .where((e) => e.isNotEmpty)
+      .toList(growable: false);
+  if (list.isEmpty) return;
+  final i = initialIndex.clamp(0, list.length - 1);
+  Navigator.of(context).push(
+    PageRouteBuilder<void>(
+      opaque: false,
+      barrierColor: Colors.black,
+      pageBuilder: (_, __, ___) => _ImagePreviewPage(
+        urls: list,
+        initialIndex: i,
+        pageUrl: pageUrl,
+      ),
+      transitionsBuilder: (_, anim, __, child) {
+        return FadeTransition(opacity: anim, child: child);
+      },
+    ),
+  );
 }
 
 /// 全屏图片预览：左右滑动、双指缩放、点空白关闭

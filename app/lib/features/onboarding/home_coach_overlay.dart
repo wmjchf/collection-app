@@ -143,6 +143,7 @@ class CoachTooltipCard extends StatelessWidget {
     required this.title,
     required this.message,
     required this.confirmLabel,
+    this.imageAsset,
     this.showSkip = true,
     this.onSkip,
     this.onConfirm,
@@ -152,6 +153,7 @@ class CoachTooltipCard extends StatelessWidget {
   final String title;
   final String message;
   final String confirmLabel;
+  final String? imageAsset;
   final bool showSkip;
   final VoidCallback? onSkip;
   final VoidCallback? onConfirm;
@@ -191,6 +193,16 @@ class CoachTooltipCard extends StatelessWidget {
                 height: 1.2,
               ),
             ),
+            if (imageAsset != null) ...[
+              const SizedBox(height: 12),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(10),
+                child: Image.asset(
+                  imageAsset!,
+                  fit: BoxFit.fitWidth,
+                ),
+              ),
+            ],
             const SizedBox(height: 10),
             Text(
               message,

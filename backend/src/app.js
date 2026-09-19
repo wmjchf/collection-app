@@ -63,6 +63,14 @@ function sendAnalyticsDashboard(_req, res) {
 app.get('/internal/analytics', sendAnalyticsDashboard);
 app.get('/analytics.html', sendAnalyticsDashboard);
 
+/** 帮助文案编辑（需 ANALYTICS_DASHBOARD_TOKEN；不链到官网） */
+function sendHelpEditor(_req, res) {
+  res.setHeader('X-Robots-Tag', 'noindex, nofollow');
+  res.setHeader('Cache-Control', 'no-store');
+  res.sendFile(path.join(publicDir, 'help-editor.html'));
+}
+app.get('/internal/help', sendHelpEditor);
+
 app.use('/api', healthRouter);
 app.use('/api/auth', authRouter);
 app.use('/api/items', itemsRouter);
@@ -73,6 +81,7 @@ app.use('/api/home', homeRouter);
 app.use('/api/usage', usageRouter);
 app.use('/api/billing', billingRouter);
 app.use('/api/analytics', analyticsRouter);
+app.use('/api/help', require('./routes/help'));
 
 app.use((err, _req, res, _next) => {
   console.error(err);

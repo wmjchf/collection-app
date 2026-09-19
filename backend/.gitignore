@@ -8,4 +8,5 @@ logs/
 .idea/
 .vscode/
 secrets/
-*.p8
+public/help/*
+!public/help/.gitkeep

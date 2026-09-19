@@ -1600,10 +1600,34 @@ async function searchItems(userId, rawQuery, { limit = 50, offset = 0 } = {}) {
 
   const withTags = await attachTagsToItems(userId, items);
 
+  // 全部命中内容上的标签（不限本页），供搜索页顶部展示
+  const [tagRows] = await pool.execute(
+    `SELECT c.id AS id, c.name AS name, COUNT(DISTINCT i.id) AS item_count
+     FROM items i
+     INNER JOIN item_tags it ON it.item_id = i.id
+     INNER JOIN categories c
+       ON c.id = it.category_id
+      AND c.section = 'tag'
+      AND c.user_id = :userId
+     WHERE i.user_id = :userId
+       AND i.deleted_at IS NULL
+       AND ${matchClause}
+     GROUP BY c.id, c.name
+     ORDER BY item_count DESC, c.id ASC`,
+    params,
+  );
+
   return {
     query,
     total,
     items: withTags,
+    tags: tagRows.map((row) => ({
+      id: Number(row.id),
+      name: row.name,
+      itemCount: Number(row.item_count || 0),
+      isSystem: false,
+      sortOrder: 0,
+    })),
     limit: safeLimit,
     offset: safeOffset,
   };

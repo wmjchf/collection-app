@@ -51,6 +51,7 @@ router.get('/', async (req, res, next) => {
 /**
  * GET /api/items/search?q=
  * Query: limit, offset
+ * 另返回 tags：全部命中内容上的标签（id / name / itemCount）
  */
 router.get('/search', async (req, res, next) => {
   try {
