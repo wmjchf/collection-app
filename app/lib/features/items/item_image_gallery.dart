@@ -209,6 +209,36 @@ void showNetworkImagePreview(
   int initialIndex = 0,
   String? pageUrl,
 }) {
+  _pushImagePreview(
+    context,
+    urls: urls,
+    initialIndex: initialIndex,
+    pageUrl: pageUrl,
+    fromAsset: false,
+  );
+}
+
+/// 全屏看本地资源图。
+void showAssetImagePreview(
+  BuildContext context, {
+  required List<String> assets,
+  int initialIndex = 0,
+}) {
+  _pushImagePreview(
+    context,
+    urls: assets,
+    initialIndex: initialIndex,
+    fromAsset: true,
+  );
+}
+
+void _pushImagePreview(
+  BuildContext context, {
+  required List<String> urls,
+  int initialIndex = 0,
+  String? pageUrl,
+  required bool fromAsset,
+}) {
   final list = urls
       .map((e) => e.trim())
       .where((e) => e.isNotEmpty)
@@ -223,6 +253,7 @@ void showNetworkImagePreview(
         urls: list,
         initialIndex: i,
         pageUrl: pageUrl,
+        fromAsset: fromAsset,
       ),
       transitionsBuilder: (_, anim, __, child) {
         return FadeTransition(opacity: anim, child: child);
@@ -237,11 +268,13 @@ class _ImagePreviewPage extends StatefulWidget {
     required this.urls,
     required this.initialIndex,
     this.pageUrl,
+    this.fromAsset = false,
   });
 
   final List<String> urls;
   final int initialIndex;
   final String? pageUrl;
+  final bool fromAsset;
 
   @override
   State<_ImagePreviewPage> createState() => _ImagePreviewPageState();
@@ -283,16 +316,29 @@ class _ImagePreviewPageState extends State<_ImagePreviewPage> {
                   minScale: 1,
                   maxScale: 4,
                   child: Center(
-                    child: Image.network(
-                      list[i],
-                      fit: BoxFit.contain,
-                      headers: mediaHttpHeadersFor(list[i], pageUrl: widget.pageUrl),
-                      errorBuilder: (_, __, ___) => const Icon(
-                        Icons.broken_image_outlined,
-                        color: Colors.white54,
-                        size: 50,
-                      ),
-                    ),
+                    child: widget.fromAsset
+                        ? Image.asset(
+                            list[i],
+                            fit: BoxFit.contain,
+                            errorBuilder: (_, __, ___) => const Icon(
+                              Icons.broken_image_outlined,
+                              color: Colors.white54,
+                              size: 50,
+                            ),
+                          )
+                        : Image.network(
+                            list[i],
+                            fit: BoxFit.contain,
+                            headers: mediaHttpHeadersFor(
+                              list[i],
+                              pageUrl: widget.pageUrl,
+                            ),
+                            errorBuilder: (_, __, ___) => const Icon(
+                              Icons.broken_image_outlined,
+                              color: Colors.white54,
+                              size: 50,
+                            ),
+                          ),
                   ),
                 ),
               );

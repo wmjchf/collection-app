@@ -2,6 +2,7 @@ const express = require('express');
 const { requireAuth } = require('../middleware/auth');
 const config = require('../config');
 const helpPageService = require('../services/helpPageService');
+const helpStaticAssets = require('../services/helpStaticAssets');
 
 const router = express.Router();
 
@@ -23,6 +24,16 @@ function requireDashboardToken(req, res, next) {
   }
   return next();
 }
+
+/** GET /api/help/assets/:set — 本地帮助页配图（24h 签名 URL，无需登录） */
+router.get('/assets/:set', async (req, res, next) => {
+  try {
+    const payload = helpStaticAssets.signSet(req.params.set);
+    return res.json(payload);
+  } catch (err) {
+    return next(err);
+  }
+});
 
 /** GET /api/help/:key — 已登录用户读取帮助正文 */
 router.get('/:key', requireAuth, async (req, res, next) => {

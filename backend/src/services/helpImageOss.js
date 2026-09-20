@@ -116,9 +116,43 @@ async function upload({ pageKey, ext, buffer, contentType }) {
   };
 }
 
+/** 上传到固定 help/ 对象键（本地帮助页配图同步用）。 */
+async function uploadFixed({ key, buffer, contentType }) {
+  assertConfigured();
+  if (!KEY_RE.test(key)) {
+    const err = new Error(`非法 OSS 键：${key}`);
+    err.status = 400;
+    throw err;
+  }
+  const oss = getClient();
+  await oss.put(key, buffer, {
+    timeout: 60000,
+    headers: { 'Content-Type': contentType },
+  });
+  return {
+    key,
+    imageUrl: oss.signatureUrl(key, { expires: SIGNED_URL_EXPIRES_SEC }),
+  };
+}
+
+function signKeys(keys) {
+  assertConfigured();
+  const oss = getClient();
+  return keys.map((key) => {
+    if (!KEY_RE.test(key)) {
+      const err = new Error(`非法 OSS 键：${key}`);
+      err.status = 400;
+      throw err;
+    }
+    return oss.signatureUrl(key, { expires: SIGNED_URL_EXPIRES_SEC });
+  });
+}
+
 module.exports = {
   isConfigured,
   upload,
+  uploadFixed,
+  signKeys,
   canonicalSrc,
   signHtml,
 };
