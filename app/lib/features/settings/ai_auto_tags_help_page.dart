@@ -51,63 +51,34 @@ class AiAutoTagsHelpPage extends StatelessWidget {
         body: ListView(
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
           children: [
-            const _WhiteCard(
-              child: Text(
-                '一篇好内容可能同时包含不同类别的突出点，无法用简单的分类模式来收藏。'
-                '我们开发了一套全新的标签内容分类模式：用标签表示内容的分类，'
-                '再用标签归属大类的方式帮助你管理内容。',
-                style: TextStyle(fontSize: 15, color: _text, height: 1.55),
-              ),
+            const _IntroCard(),
+            const SizedBox(height: 24),
+            const _SectionHeading('在 App 里整理标签'),
+            const SizedBox(height: 10),
+            const _GuideStepCard(
+              figureIndex: 0,
+              title: '标签与类别一览',
+              desc:
+                  '在「我的收藏」进入归类标签：顶部是未归类的标签，'
+                  '下方按大类分组；点右上角 + 可新建类别，点类别或标签可查看对应内容。',
             ),
             const SizedBox(height: 12),
-            _WhiteCard(
-              color: _tint,
-              child: _RichBody(
-                children: [
-                  const TextSpan(
-                    text:
-                        '比如一篇夏天去海边游玩赶海的游记，内容里有赶海攻略、夏日美景，'
-                        '以及旅途中遇到的美食、金黄色的日落，可以打标签为',
-                  ),
-                  _tag('旅游攻略'),
-                  const TextSpan(text: '、'),
-                  _tag('夏日美景'),
-                  const TextSpan(text: '、'),
-                  _tag('海边'),
-                  const TextSpan(text: '、'),
-                  _tag('赶海'),
-                  const TextSpan(text: '、'),
-                  _tag('美食'),
-                  const TextSpan(text: '。\n\n再把标签归入不同大类，比如'),
-                  _tag('旅游攻略'),
-                  const TextSpan(text: '、'),
-                  _tag('夏日美景'),
-                  const TextSpan(text: '、'),
-                  _tag('海边'),
-                  const TextSpan(text: '、'),
-                  _tag('赶海'),
-                  const TextSpan(text: '属于旅游类，'),
-                  _tag('美食'),
-                  const TextSpan(text: '属于生活类，从而实现整体管理。\n\n'),
-                  const TextSpan(
-                    text: '新建标签和 AI 自动打的标签若尚未归类，会显示在「未归类」里。',
-                  ),
-                ],
-              ),
+            const _GuideStepCard(
+              figureIndex: 1,
+              title: 'AI 一键归类',
+              desc:
+                  '未归类区点「AI 标签归类」可自动整理；'
+                  '类别旁的 ··· 菜单可改名、往类别里加标签，或删除整个归类。',
             ),
-            const SizedBox(height: 20),
-            const _SectionLabel('图一'),
-            const SizedBox(height: 8),
-            _FigureCard(asset: _figures[0], index: 0),
-            const SizedBox(height: 20),
-            const _SectionLabel('图二'),
-            const SizedBox(height: 8),
-            _FigureCard(asset: _figures[1], index: 1),
-            const SizedBox(height: 20),
-            const _SectionLabel('图三'),
-            const SizedBox(height: 8),
-            _FigureCard(asset: _figures[2], index: 2),
-            const SizedBox(height: 20),
+            const SizedBox(height: 12),
+            const _GuideStepCard(
+              figureIndex: 2,
+              title: '长按拖动归类',
+              desc: '长按任意标签拖到目标类别，类别蓝色高亮时松手即可快速归类。',
+            ),
+            const SizedBox(height: 24),
+            const _SectionHeading('解析后自动打标签'),
+            const SizedBox(height: 10),
             const _ProCard(
               child: Text(
                 '升级为 Pro 的用户，在粘贴链接解析完成后，AI 会自动打标签并显示在内容上；'
@@ -120,7 +91,9 @@ class AiAutoTagsHelpPage extends StatelessWidget {
                 ),
               ),
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 24),
+            const _SectionHeading('快速搜索'),
+            const SizedBox(height: 10),
             const _WhiteCard(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -130,7 +103,7 @@ class AiAutoTagsHelpPage extends StatelessWidget {
                       Icon(Icons.search_rounded, size: 18, color: _blue),
                       SizedBox(width: 6),
                       Text(
-                        '快速搜索',
+                        '按标签、文字、感想查找',
                         style: TextStyle(
                           fontSize: 15,
                           fontWeight: FontWeight.w700,
@@ -171,8 +144,8 @@ class AiAutoTagsHelpPage extends StatelessWidget {
   }
 }
 
-class _SectionLabel extends StatelessWidget {
-  const _SectionLabel(this.text);
+class _SectionHeading extends StatelessWidget {
+  const _SectionHeading(this.text);
 
   final String text;
 
@@ -181,10 +154,162 @@ class _SectionLabel extends StatelessWidget {
     return Text(
       text,
       style: const TextStyle(
-        fontSize: 15,
-        fontWeight: FontWeight.w700,
-        color: AiAutoTagsHelpPage._blue,
-        height: 1.3,
+        fontSize: 13,
+        fontWeight: FontWeight.w600,
+        color: AiAutoTagsHelpPage._muted,
+      ),
+    );
+  }
+}
+
+class _IntroCard extends StatelessWidget {
+  const _IntroCard();
+
+  @override
+  Widget build(BuildContext context) {
+    return const _WhiteCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '一篇好内容可能同时包含不同类别的突出点，无法用简单的分类模式来收藏。'
+            '我们开发了一套全新的标签内容分类模式：用标签表示内容的分类，'
+            '再用标签归属大类的方式帮助你管理内容。',
+            style: TextStyle(fontSize: 15, color: AiAutoTagsHelpPage._text, height: 1.55),
+          ),
+          SizedBox(height: 16),
+          Text(
+            '举个例子',
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              color: AiAutoTagsHelpPage._blue,
+            ),
+          ),
+          SizedBox(height: 10),
+          _ExampleBlock(),
+        ],
+      ),
+    );
+  }
+}
+
+class _ExampleBlock extends StatelessWidget {
+  const _ExampleBlock();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AiAutoTagsHelpPage._tint,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: _RichBody(
+        children: [
+          const TextSpan(
+            text:
+                '夏天去海边游玩赶海的游记，内容里有赶海攻略、夏日美景，'
+                '以及旅途中遇到的美食、金黄色的日落，可以打标签为',
+          ),
+          AiAutoTagsHelpPage._tag('旅游攻略'),
+          const TextSpan(text: '、'),
+          AiAutoTagsHelpPage._tag('夏日美景'),
+          const TextSpan(text: '、'),
+          AiAutoTagsHelpPage._tag('海边'),
+          const TextSpan(text: '、'),
+          AiAutoTagsHelpPage._tag('赶海'),
+          const TextSpan(text: '、'),
+          AiAutoTagsHelpPage._tag('美食'),
+          const TextSpan(text: '。\n\n再把标签归入不同大类，比如'),
+          AiAutoTagsHelpPage._tag('旅游攻略'),
+          const TextSpan(text: '、'),
+          AiAutoTagsHelpPage._tag('夏日美景'),
+          const TextSpan(text: '、'),
+          AiAutoTagsHelpPage._tag('海边'),
+          const TextSpan(text: '、'),
+          AiAutoTagsHelpPage._tag('赶海'),
+          const TextSpan(text: '属于旅游类，'),
+          AiAutoTagsHelpPage._tag('美食'),
+          const TextSpan(text: '属于生活类，从而实现整体管理。\n\n'),
+          const TextSpan(
+            text: '新建标签和 AI 自动打的标签若尚未归类，会显示在「未归类」里。',
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _GuideStepCard extends StatelessWidget {
+  const _GuideStepCard({
+    required this.figureIndex,
+    required this.title,
+    required this.desc,
+  });
+
+  final int figureIndex;
+  final String title;
+  final String desc;
+
+  @override
+  Widget build(BuildContext context) {
+    final asset = AiAutoTagsHelpPage._figures[figureIndex];
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          GestureDetector(
+            onTap: () => showAssetImagePreview(
+              context,
+              assets: AiAutoTagsHelpPage._figures,
+              initialIndex: figureIndex,
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(10),
+              child: Image.asset(
+                asset,
+                width: 118,
+                fit: BoxFit.fitWidth,
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.only(top: 4, right: 2),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: const TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
+                      color: AiAutoTagsHelpPage._text,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    desc,
+                    style: const TextStyle(
+                      fontSize: 13,
+                      color: AiAutoTagsHelpPage._muted,
+                      height: 1.45,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -278,35 +403,6 @@ class _RichBody extends StatelessWidget {
           height: 1.55,
         ),
         children: children,
-      ),
-    );
-  }
-}
-
-class _FigureCard extends StatelessWidget {
-  const _FigureCard({required this.asset, required this.index});
-
-  final String asset;
-  final int index;
-
-  @override
-  Widget build(BuildContext context) {
-    return _WhiteCard(
-      padding: const EdgeInsets.all(10),
-      child: GestureDetector(
-        onTap: () => showAssetImagePreview(
-          context,
-          assets: AiAutoTagsHelpPage._figures,
-          initialIndex: index,
-        ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(10),
-          child: Image.asset(
-            asset,
-            width: double.infinity,
-            fit: BoxFit.fitWidth,
-          ),
-        ),
       ),
     );
   }
