@@ -39,6 +39,14 @@ class AiAutoTagsHelpPage extends StatelessWidget {
             icon: const Icon(Icons.chevron_left, size: 30),
             label: const Text('返回', style: TextStyle(fontSize: 15)),
           ),
+          title: const Text(
+            'AI自动标签分类方法',
+            style: TextStyle(
+              fontSize: 17,
+              fontWeight: FontWeight.w700,
+              color: _text,
+            ),
+          ),
         ),
         body: ListView(
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
