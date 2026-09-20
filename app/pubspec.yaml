@@ -48,8 +48,6 @@ dependencies:
   audio_session: ^0.2.4
   in_app_purchase: ^3.3.0
   in_app_purchase_storekit: ^0.4.11
-  flutter_html: ^3.0.0
-
 dev_dependencies:
   flutter_test:
     sdk: flutter
@@ -76,6 +74,8 @@ flutter:
     - assets/icons/
     - assets/branding/
     - assets/onboarding/
+    - assets/help/
+    - assets/shortcuts/
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images
