@@ -2,10 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:super_collection/core/analytics/screen_dwell_tracker.dart';
 import 'package:super_collection/core/config/app_brand.dart';
 import 'package:super_collection/features/items/item_image_gallery.dart';
+import 'package:super_collection/features/settings/help_assets_loader.dart';
+import 'package:super_collection/features/settings/help_assets_repository.dart';
 import 'package:super_collection/features/shortcuts/shortcut_config.dart';
 import 'package:super_collection/features/shortcuts/shortcut_install.dart';
 
-/// iOS 快捷指令说明（本地写死，排版对齐功能指引）
+/// iOS 快捷指令说明（文案本地写死，配图 OSS help/）
 class ShortcutsHelpPage extends StatelessWidget {
   const ShortcutsHelpPage({super.key});
 
@@ -14,15 +16,6 @@ class ShortcutsHelpPage extends StatelessWidget {
   static const _muted = Color(0xFF737A85);
   static const _blue = Color(0xFF2F6FED);
   static const _tint = Color(0xFFEAF1FE);
-
-  static const _figures = <String>[
-    'assets/shortcuts/fig1.png',
-    'assets/shortcuts/fig2.png',
-    'assets/shortcuts/fig3.png',
-    'assets/shortcuts/fig4.png',
-    'assets/shortcuts/fig5.png',
-    'assets/shortcuts/fig6.png',
-  ];
 
   @override
   Widget build(BuildContext context) {
@@ -57,20 +50,24 @@ class ShortcutsHelpPage extends StatelessWidget {
             ),
           ),
         ),
-        body: ListView(
+        body: HelpAssetsLoader(
+          set: HelpAssetsRepository.shortcuts,
+          builder: (context, urls) => ListView(
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
           children: [
             _InstallCard(hasOneTap: hasOneTap),
             const SizedBox(height: 24),
             const _SectionHeading('安装步骤'),
             const SizedBox(height: 10),
-            const _GuideStepCard(
+            _GuideStepCard(
+              urls: urls,
               figureIndex: 0,
               title: '添加快捷指令',
               desc: '在指令详情页点底部「添加快捷指令」，提示添加成功即可。',
             ),
             const SizedBox(height: 12),
             _GuideStepCard(
+              urls: urls,
               figureIndex: 1,
               title: '找到指令',
               desc: '打开「快捷指令」App，在所有快捷指令里找到「$name」，点开这张卡片。',
@@ -83,13 +80,15 @@ class ShortcutsHelpPage extends StatelessWidget {
             const SizedBox(height: 24),
             const _SectionHeading('加到主屏幕'),
             const SizedBox(height: 10),
-            const _GuideStepCard(
+            _GuideStepCard(
+              urls: urls,
               figureIndex: 2,
               title: '点分享按钮',
               desc: '在指令详情页点底部分享按钮，打开分享面板。',
             ),
             const SizedBox(height: 12),
-            const _GuideStepCard(
+            _GuideStepCard(
+              urls: urls,
               figureIndex: 3,
               title: '添加到主屏幕',
               desc: '在分享面板里选「添加到主屏幕」，按提示完成添加。',
@@ -113,13 +112,15 @@ class ShortcutsHelpPage extends StatelessWidget {
                   'iPhone 8 及更新：设置 → 辅助功能 → 触控 → 轻点背面 → 轻点两下。',
             ),
             const SizedBox(height: 12),
-            const _GuideStepCard(
+            _GuideStepCard(
+              urls: urls,
               figureIndex: 4,
               title: '搜索「轻点两下」',
               desc: '打开「设置」，搜索「轻点」，找到「轻点两下」并进入。',
             ),
             const SizedBox(height: 12),
             _GuideStepCard(
+              urls: urls,
               figureIndex: 5,
               title: '勾选指令',
               desc:
@@ -135,6 +136,7 @@ class ShortcutsHelpPage extends StatelessWidget {
               style: TextStyle(fontSize: 12, color: _muted),
             ),
           ],
+        ),
         ),
       ),
     );
@@ -290,18 +292,20 @@ class _TextGuideCard extends StatelessWidget {
 
 class _GuideStepCard extends StatelessWidget {
   const _GuideStepCard({
+    required this.urls,
     required this.figureIndex,
     required this.title,
     required this.desc,
   });
 
+  final List<String> urls;
   final int figureIndex;
   final String title;
   final String desc;
 
   @override
   Widget build(BuildContext context) {
-    final asset = ShortcutsHelpPage._figures[figureIndex];
+    final url = urls[figureIndex.clamp(0, urls.length - 1)];
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(12),
@@ -312,19 +316,13 @@ class _GuideStepCard extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          GestureDetector(
-            onTap: () => showAssetImagePreview(
+          HelpNetworkImage(
+            url: url,
+            width: 118,
+            onTap: () => showNetworkImagePreview(
               context,
-              assets: ShortcutsHelpPage._figures,
+              urls: urls,
               initialIndex: figureIndex,
-            ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(10),
-              child: Image.asset(
-                asset,
-                width: 118,
-                fit: BoxFit.fitWidth,
-              ),
             ),
           ),
           const SizedBox(width: 12),

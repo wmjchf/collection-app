@@ -74,9 +74,6 @@ flutter:
     - assets/icons/
     - assets/branding/
     - assets/onboarding/
-    - assets/help/
-    - assets/shortcuts/
-    - assets/how_to_add_link/
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images

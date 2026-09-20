@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:super_collection/core/analytics/screen_dwell_tracker.dart';
 import 'package:super_collection/features/items/item_image_gallery.dart';
+import 'package:super_collection/features/settings/help_assets_loader.dart';
+import 'package:super_collection/features/settings/help_assets_repository.dart';
 
-/// 设置 → 使用帮助 → AI自动标签分类方法（本地写死，不走后台）
+/// 设置 → 使用帮助 → AI自动标签分类方法（文案本地写死，配图 OSS help/）
 class AiAutoTagsHelpPage extends StatelessWidget {
   const AiAutoTagsHelpPage({super.key});
 
@@ -11,12 +13,6 @@ class AiAutoTagsHelpPage extends StatelessWidget {
   static const _muted = Color(0xFF737A85);
   static const _blue = Color(0xFF2F6FED);
   static const _tint = Color(0xFFEAF1FE);
-
-  static const _figures = <String>[
-    'assets/help/fig1.png',
-    'assets/help/fig2.png',
-    'assets/help/fig3.png',
-  ];
 
   @override
   Widget build(BuildContext context) {
@@ -48,14 +44,17 @@ class AiAutoTagsHelpPage extends StatelessWidget {
             ),
           ),
         ),
-        body: ListView(
+        body: HelpAssetsLoader(
+          set: HelpAssetsRepository.aiAutoTags,
+          builder: (context, urls) => ListView(
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
           children: [
             const _IntroCard(),
             const SizedBox(height: 24),
             const _SectionHeading('在 App 里整理标签'),
             const SizedBox(height: 10),
-            const _GuideStepCard(
+            _GuideStepCard(
+              urls: urls,
               figureIndex: 0,
               title: '标签与类别一览',
               desc:
@@ -63,7 +62,8 @@ class AiAutoTagsHelpPage extends StatelessWidget {
                   '下方按大类分组；点右上角 + 可新建类别，点类别或标签可查看对应内容。',
             ),
             const SizedBox(height: 12),
-            const _GuideStepCard(
+            _GuideStepCard(
+              urls: urls,
               figureIndex: 1,
               title: 'AI 一键归类',
               desc:
@@ -71,7 +71,8 @@ class AiAutoTagsHelpPage extends StatelessWidget {
                   '类别旁的 ··· 菜单可改名、往类别里加标签，或删除整个归类。',
             ),
             const SizedBox(height: 12),
-            const _GuideStepCard(
+            _GuideStepCard(
+              urls: urls,
               figureIndex: 2,
               title: '长按拖动归类',
               desc: '长按任意标签拖到目标类别，类别蓝色高亮时松手即可快速归类。',
@@ -128,6 +129,7 @@ class AiAutoTagsHelpPage extends StatelessWidget {
               style: TextStyle(fontSize: 12, color: _muted),
             ),
           ],
+        ),
         ),
       ),
     );
@@ -244,18 +246,20 @@ class _ExampleBlock extends StatelessWidget {
 
 class _GuideStepCard extends StatelessWidget {
   const _GuideStepCard({
+    required this.urls,
     required this.figureIndex,
     required this.title,
     required this.desc,
   });
 
+  final List<String> urls;
   final int figureIndex;
   final String title;
   final String desc;
 
   @override
   Widget build(BuildContext context) {
-    final asset = AiAutoTagsHelpPage._figures[figureIndex];
+    final url = urls[figureIndex.clamp(0, urls.length - 1)];
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(12),
@@ -266,19 +270,13 @@ class _GuideStepCard extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          GestureDetector(
-            onTap: () => showAssetImagePreview(
+          HelpNetworkImage(
+            url: url,
+            width: 118,
+            onTap: () => showNetworkImagePreview(
               context,
-              assets: AiAutoTagsHelpPage._figures,
+              urls: urls,
               initialIndex: figureIndex,
-            ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(10),
-              child: Image.asset(
-                asset,
-                width: 118,
-                fit: BoxFit.fitWidth,
-              ),
             ),
           ),
           const SizedBox(width: 12),

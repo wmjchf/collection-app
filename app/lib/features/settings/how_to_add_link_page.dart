@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:super_collection/core/analytics/screen_dwell_tracker.dart';
 import 'package:super_collection/core/config/app_brand.dart';
 import 'package:super_collection/features/items/item_image_gallery.dart';
+import 'package:super_collection/features/settings/help_assets_loader.dart';
+import 'package:super_collection/features/settings/help_assets_repository.dart';
 
-/// 如何添加链接（设置 → 使用帮助，本地写死）
+/// 如何添加链接（文案本地写死，配图 OSS help/）
 class HowToAddLinkPage extends StatelessWidget {
   const HowToAddLinkPage({super.key});
 
@@ -12,12 +14,6 @@ class HowToAddLinkPage extends StatelessWidget {
   static const _muted = Color(0xFF737A85);
   static const _blue = Color(0xFF2F6FED);
   static const _illustrationBg = Color(0xFFF0F2F5);
-
-  static const _figures = <String>[
-    'assets/how_to_add_link/share_sheet.png',
-    'assets/how_to_add_link/paste_dialog.png',
-    'assets/how_to_add_link/shortcuts.png',
-  ];
 
   @override
   Widget build(BuildContext context) {
@@ -49,7 +45,9 @@ class HowToAddLinkPage extends StatelessWidget {
             ),
           ),
         ),
-        body: ListView(
+        body: HelpAssetsLoader(
+          set: HelpAssetsRepository.howToAddLink,
+          builder: (context, urls) => ListView(
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
           children: [
             Text(
@@ -58,6 +56,7 @@ class HowToAddLinkPage extends StatelessWidget {
             ),
             const SizedBox(height: 16),
             _MethodCard(
+              urls: urls,
               number: 1,
               title: '系统分享',
               desc:
@@ -68,6 +67,7 @@ class HowToAddLinkPage extends StatelessWidget {
             ),
             const SizedBox(height: 12),
             _MethodCard(
+              urls: urls,
               number: 2,
               title: '复制链接自动保存',
               desc:
@@ -78,6 +78,7 @@ class HowToAddLinkPage extends StatelessWidget {
             ),
             const SizedBox(height: 12),
             _MethodCard(
+              urls: urls,
               number: 3,
               title: '快捷指令（iOS）',
               desc:
@@ -93,6 +94,7 @@ class HowToAddLinkPage extends StatelessWidget {
             ),
           ],
         ),
+        ),
       ),
     );
   }
@@ -100,6 +102,7 @@ class HowToAddLinkPage extends StatelessWidget {
 
 class _MethodCard extends StatelessWidget {
   const _MethodCard({
+    required this.urls,
     required this.number,
     required this.title,
     required this.desc,
@@ -108,6 +111,7 @@ class _MethodCard extends StatelessWidget {
     this.captionBelow,
   });
 
+  final List<String> urls;
   final int number;
   final String title;
   final String desc;
@@ -117,7 +121,7 @@ class _MethodCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final asset = HowToAddLinkPage._figures[figureIndex];
+    final url = urls[figureIndex.clamp(0, urls.length - 1)];
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(16),
@@ -191,19 +195,14 @@ class _MethodCard extends StatelessWidget {
                   ),
                   const SizedBox(height: 10),
                 ],
-                GestureDetector(
-                  onTap: () => showAssetImagePreview(
+                HelpNetworkImage(
+                  url: url,
+                  width: double.infinity,
+                  borderRadius: 8,
+                  onTap: () => showNetworkImagePreview(
                     context,
-                    assets: HowToAddLinkPage._figures,
+                    urls: urls,
                     initialIndex: figureIndex,
-                  ),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(8),
-                    child: Image.asset(
-                      asset,
-                      width: double.infinity,
-                      fit: BoxFit.fitWidth,
-                    ),
                   ),
                 ),
                 if (captionBelow != null) ...[
