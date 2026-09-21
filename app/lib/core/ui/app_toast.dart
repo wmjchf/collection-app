@@ -170,6 +170,7 @@ class _ToastPill extends StatelessWidget {
             Flexible(
               child: Text(
                 message,
+                textAlign: TextAlign.center,
                 style: const TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.w500,
