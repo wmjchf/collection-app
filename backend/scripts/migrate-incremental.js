@@ -34,6 +34,7 @@ const MIGRATION_FILES = [
   '024_tag_description.sql',
   '025_help_pages.sql',
   '026_help_page_blocks.sql',
+  '027_app_settings.sql',
 ];
 
 async function getConnection() {
