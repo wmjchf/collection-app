@@ -109,15 +109,13 @@ function mapSub(row) {
   };
 }
 
-/** 试用即将结束（48h 内）时给客户端的站内提醒载荷；否则 null */
-function buildTrialReminder(subscription, { withinHours = 48 } = {}) {
+/** 免费试用进行中时给客户端的站内提醒载荷；试用结束或过期后 null */
+function buildTrialReminder(subscription) {
   if (!subscription?.isTrial || !subscription.expiresAt) return null;
   const endsMs = new Date(subscription.expiresAt).getTime();
   if (!Number.isFinite(endsMs)) return null;
   const msLeft = endsMs - Date.now();
   if (msLeft <= 0) return null;
-  const withinMs = Math.max(1, Number(withinHours) || 48) * 60 * 60 * 1000;
-  if (msLeft > withinMs) return null;
   const hoursLeft = Math.max(1, Math.ceil(msLeft / (60 * 60 * 1000)));
   const daysLeft = Math.max(1, Math.ceil(msLeft / (24 * 60 * 60 * 1000)));
   return {
