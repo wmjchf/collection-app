@@ -177,7 +177,7 @@ class _TrialExpiryBannerHostState extends State<TrialExpiryBannerHost> {
       if (!mounted) return;
       setState(() => _reminder = dismissed ? null : reminder);
     } catch (_) {
-      if (mounted) setState(() => _reminder = null);
+      // 从 App Store 返回等场景下网络偶发失败时，保留已展示的条，避免误消失
     }
   }
 

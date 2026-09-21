@@ -164,7 +164,7 @@ class UsageSummary {
   }
 }
 
-/// 免费试用即将结束（后端 48h 内才下发）
+/// 免费试用进行中（后端试用期内下发，仅用户点 × 可关闭）
 class TrialReminder {
   const TrialReminder({
     required this.endsAt,
