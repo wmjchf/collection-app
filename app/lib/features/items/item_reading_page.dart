@@ -261,19 +261,23 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
     }
   }
 
+  /// 离开时是否要先问「还没有标签」。为 true 时系统右滑会被关掉，改由左缘手势触发返回。
+  bool get _shouldNudgeOnLeave {
+    final engaged = _markedRead ||
+        DateTime.now().difference(_openedAt) >= _markReadDelay;
+    return _item.isSuccess &&
+        _itemTags.isEmpty &&
+        !_tagLeaveNudgeDone &&
+        engaged;
+  }
+
   /// 离开阅读页：若已认真看过且仍无标签，轻推打标（可跳过）。
-  /// PopScope(canPop: false) 下须用 [Navigator.pop] 强制出栈，不可用 maybePop。
+  /// 需要拦截时 [PopScope.canPop] 为 false，须用 [Navigator.pop] 强制出栈。
   Future<void> _handleBack() async {
     if (_handlingBack) return;
     _handlingBack = true;
     try {
-      final engaged = _markedRead ||
-          DateTime.now().difference(_openedAt) >= _markReadDelay;
-      final shouldNudge = _item.isSuccess &&
-          _itemTags.isEmpty &&
-          !_tagLeaveNudgeDone &&
-          engaged;
-      if (shouldNudge) {
+      if (_shouldNudgeOnLeave) {
         _tagLeaveNudgeDone = true;
         final goTag = await showAppConfirmDialog(
           context,
@@ -1434,7 +1438,7 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
     final bottomChrome = mq.padding.bottom + _bottomBarHeight;
 
     return PopScope(
-      canPop: false,
+      canPop: !_shouldNudgeOnLeave,
       onPopInvokedWithResult: (didPop, result) {
         if (didPop) return;
         unawaited(_handleBack());
@@ -1679,6 +1683,20 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
               ),
             ),
           ),
+          if (_shouldNudgeOnLeave)
+            Positioned(
+              left: 0,
+              top: 0,
+              bottom: 0,
+              width: 28,
+              child: GestureDetector(
+                behavior: HitTestBehavior.translucent,
+                onHorizontalDragEnd: (details) {
+                  final velocity = details.primaryVelocity ?? 0;
+                  if (velocity > 200) unawaited(_handleBack());
+                },
+              ),
+            ),
         ],
       ),
     ),
