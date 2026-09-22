@@ -376,11 +376,27 @@
         const journey = data.journey || {};
         const singleUser = !!userId;
 
+        const trial = data.trial || {};
         $('kpis').innerHTML = [
           kpi(singleUser ? '事件数' : 'DAU（末日）', singleUser ? (su?.eventCount ?? 0) : (data.dau?.length ? data.dau[data.dau.length - 1].users : 0), singleUser ? '周期内埋点' : '按 app_open 去重'),
           kpi('入库', journey.funnel?.[0]?.users ?? 0, singleUser ? '是否入库' : '周期内 item_save_success'),
           kpi('打开阅读', journey.funnel?.find((x) => x.key === 'read_open')?.users ?? r.opens ?? 0, '主链路'),
           kpi('付费成功', journey.funnel?.find((x) => x.key === 'iap_success')?.users ?? 0, '主链路'),
+          kpi(
+            singleUser ? '试用中' : '试用中用户',
+            singleUser ? (trial.userInTrial ? 1 : 0) : (trial.currentlyInTrialUsers ?? 0),
+            '7 天免费试用 · 未过期',
+          ),
+          kpi(
+            singleUser ? '曾开试用' : '曾开试用用户',
+            singleUser ? (trial.userEverTrial ? 1 : 0) : (trial.everHadTrialUsers ?? 0),
+            '含已结束试用',
+          ),
+          kpi(
+            singleUser ? '付费生效中' : '付费生效用户',
+            trial.currentlyActivePaidUsers ?? 0,
+            '太子/帝王 · 未过期',
+          ),
         ].join('');
 
         $('journeyFunnel').innerHTML = funnelSteps(journey.funnel || [], singleUser);
