@@ -127,6 +127,34 @@
       <div id="userBadge" class="user-badge" hidden></div>
       <div class="grid" id="kpis"></div>
 
+      <div class="card section" id="usageSection">
+        <h2>本月 AI Token 用量（按用户）</h2>
+        <p class="muted" style="margin:0 0 10px;font-size:13px" id="usageHint">
+          自然月 Asia/Shanghai · 与账户额度同一口径（可计费 token）· 点击行可筛选该用户
+        </p>
+        <div id="usageStats" style="margin-bottom:12px"></div>
+        <div style="overflow-x:auto">
+          <table>
+            <thead>
+              <tr>
+                <th>用户</th>
+                <th>方案</th>
+                <th>AI token</th>
+                <th>积分</th>
+                <th>额度</th>
+                <th>使用%</th>
+                <th>标签</th>
+                <th>总结</th>
+                <th>脑图</th>
+                <th>归类</th>
+                <th>转写(分)</th>
+              </tr>
+            </thead>
+            <tbody id="usageUsers"></tbody>
+          </table>
+        </div>
+      </div>
+
       <div class="card section">
         <h2>DAU（app_open）</h2>
         <div id="dau"></div>
@@ -283,6 +311,77 @@
       return d.toLocaleString('zh-CN', { hour12: false });
     }
 
+    function fmtNum(n) {
+      if (n == null || !Number.isFinite(Number(n))) return '—';
+      return Number(n).toLocaleString('zh-CN');
+    }
+
+    function usageTable(data) {
+      const usage = data.usage || {};
+      const stats = usage.stats || {};
+      const period = usage.period || {};
+      const users = usage.users || [];
+      const ref = usage.quotasReference || {};
+      const princeTok = ref.prince?.aiTokensPerMonth;
+      const emperorTok = ref.emperor?.aiTokensPerMonth;
+
+      $('usageHint').textContent =
+        `${period.yearMonth || '本月'} · Asia/Shanghai · 可计费 token（与账户额度同口径）` +
+        (princeTok != null
+          ? ` · 参考额度 太子 ${fmtNum(princeTok)} / 帝王 ${fmtNum(emperorTok)}`
+          : '') +
+        ' · 点击行筛选用户';
+
+      $('usageStats').innerHTML = [
+        kpi('有 AI 用量用户', stats.usersWithAi ?? 0, '本月'),
+        kpi('合计 token', fmtNum(stats.totalAiTokens ?? 0), '全用户'),
+        kpi('P50', fmtNum(stats.p50AiTokens), '有用量用户'),
+        kpi('P90', fmtNum(stats.p90AiTokens), '有用量用户'),
+        kpi('峰值', fmtNum(stats.maxAiTokens), '单用户最高'),
+        kpi('≥80% 额度', stats.usersNearCap ?? 0, '排行榜内'),
+      ].join('');
+      $('usageStats').className = 'grid';
+
+      if (!users.length) {
+        $('usageUsers').innerHTML =
+          '<tr><td colspan="11" class="muted">本月暂无 usage_events</td></tr>';
+        return;
+      }
+
+      $('usageUsers').innerHTML = users
+        .map((u) => {
+          const f = u.byFeature || {};
+          const pct =
+            u.aiUsedPct == null
+              ? '—'
+              : `<span class="${u.aiUsedPct >= 80 ? 'bad' : u.aiUsedPct >= 50 ? '' : 'ok'}">${u.aiUsedPct}%</span>`;
+          const label = `#${u.userId} ${u.phoneMasked || ''}${u.nickname ? ` · ${esc(u.nickname)}` : ''}`;
+          return `<tr class="click-user" data-user-id="${u.userId}">
+            <td>${label}</td>
+            <td>${esc(u.planLabel || u.plan || '')}</td>
+            <td class="mono">${fmtNum(u.aiTokens)}</td>
+            <td class="mono">${fmtNum(u.aiCredits)}</td>
+            <td class="mono">${fmtNum(u.aiLimit)}</td>
+            <td>${pct}</td>
+            <td class="mono muted">${fmtNum(f.tags)}</td>
+            <td class="mono muted">${fmtNum(f.summary)}</td>
+            <td class="mono muted">${fmtNum(f.mindmap)}</td>
+            <td class="mono muted">${fmtNum(f.organize)}</td>
+            <td class="mono">${fmtNum(u.transcriptMinutes)}</td>
+          </tr>`;
+        })
+        .join('');
+
+      $('usageUsers').querySelectorAll('tr.click-user').forEach((tr) => {
+        tr.addEventListener('click', () => {
+          const id = tr.getAttribute('data-user-id');
+          if (!id) return;
+          setSelectedUserId(id);
+          load();
+        });
+      });
+    }
+
     function kpi(label, value, hint) {
       return `<div class="card"><div class="label">${esc(label)}</div>
         <div class="value">${esc(value)}</div>
@@ -398,6 +497,8 @@
             '太子/帝王 · 未过期',
           ),
         ].join('');
+
+        usageTable(data);
 
         $('journeyFunnel').innerHTML = funnelSteps(journey.funnel || [], singleUser);
 

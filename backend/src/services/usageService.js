@@ -666,6 +666,187 @@ async function getUsageSummary(userId) {
   };
 }
 
+function maskPhoneForDashboard(phone) {
+  const s = String(phone || '');
+  if (s.length <= 4) return '****';
+  return `${'*'.repeat(Math.min(7, s.length - 4))}${s.slice(-4)}`;
+}
+
+function percentileSorted(sortedAsc, p) {
+  if (!sortedAsc.length) return null;
+  const idx = Math.min(
+    sortedAsc.length - 1,
+    Math.max(0, Math.ceil((p / 100) * sortedAsc.length) - 1),
+  );
+  return sortedAsc[idx];
+}
+
+/**
+ * 看板：本月（Asia/Shanghai）按用户 AI token / 转写用量，便于调额度
+ * @param {{ userId?: number|null, limit?: number }} [opts]
+ */
+async function getUsageLeaderboard({ userId = null, limit = 100 } = {}) {
+  const { yearMonth, start, end } = periodBounds();
+  const uid = userId != null && userId !== '' ? Number(userId) : null;
+  const lim = Math.min(200, Math.max(1, Number(limit) || 100));
+  const params = { start, end };
+  let userFilter = '';
+  if (uid != null && Number.isFinite(uid) && uid > 0) {
+    userFilter = ' AND ue.user_id = :userId';
+    params.userId = uid;
+  }
+
+  const [rows] = await pool.execute(
+    `SELECT ue.user_id,
+            ue.kind,
+            JSON_UNQUOTE(JSON_EXTRACT(ue.meta, '$.feature')) AS feature,
+            SUM(ue.amount) AS total_amount,
+            COUNT(*) AS event_count,
+            u.phone,
+            u.nickname
+     FROM usage_events ue
+     LEFT JOIN users u ON u.id = ue.user_id
+     WHERE ue.created_at >= :start
+       AND ue.created_at < :end
+       AND ue.kind IN (:kindAi, :kindTranscript)
+       ${userFilter}
+     GROUP BY ue.user_id, ue.kind, feature, u.phone, u.nickname`,
+    { ...params, kindAi: KIND_AI, kindTranscript: KIND_TRANSCRIPT },
+  );
+
+  const byUser = new Map();
+  for (const r of rows) {
+    const id = Number(r.user_id);
+    if (!Number.isFinite(id) || id <= 0) continue;
+    let u = byUser.get(id);
+    if (!u) {
+      u = {
+        userId: id,
+        phoneMasked: maskPhoneForDashboard(r.phone),
+        nickname: r.nickname || null,
+        aiTokens: 0,
+        transcriptSeconds: 0,
+        aiEvents: 0,
+        transcriptEvents: 0,
+        byFeature: {
+          tags: 0,
+          summary: 0,
+          mindmap: 0,
+          organize: 0,
+          other: 0,
+        },
+      };
+      byUser.set(id, u);
+    }
+    const amount = Number(r.total_amount) || 0;
+    const events = Number(r.event_count) || 0;
+    if (r.kind === KIND_AI) {
+      u.aiTokens += amount;
+      u.aiEvents += events;
+      const feat = String(r.feature || '').trim();
+      if (
+        feat === 'tags' ||
+        feat === 'summary' ||
+        feat === 'mindmap' ||
+        feat === 'organize'
+      ) {
+        u.byFeature[feat] += amount;
+      } else {
+        u.byFeature.other += amount;
+      }
+    } else if (r.kind === KIND_TRANSCRIPT) {
+      u.transcriptSeconds += amount;
+      u.transcriptEvents += events;
+    }
+  }
+
+  const allUsers = [...byUser.values()].sort(
+    (a, b) =>
+      b.aiTokens - a.aiTokens ||
+      b.transcriptSeconds - a.transcriptSeconds ||
+      a.userId - b.userId,
+  );
+  const top = allUsers.slice(0, lim);
+
+  await Promise.all(
+    top.map(async (u) => {
+      const { plan, subscription } = await subscriptionService.getPlanForUser(
+        u.userId,
+      );
+      const isTrial = Boolean(subscription?.isTrial);
+      const quotas = quotasForPlan(plan, { isTrial });
+      const normalized = planService.normalizePlan(plan);
+      u.plan = normalized;
+      u.planLabel = isTrial
+        ? `${planService.planLabel(normalized)}（试用）`
+        : planService.planLabel(normalized);
+      u.isTrial = isTrial;
+      u.aiLimit = quotas.aiTokensPerMonth;
+      u.aiUsedPct =
+        quotas.aiTokensPerMonth > 0
+          ? Math.round((u.aiTokens / quotas.aiTokensPerMonth) * 1000) / 10
+          : null;
+      u.aiCredits = tokensToCredits(u.aiTokens);
+      u.transcriptMinutes = round1(u.transcriptSeconds / 60);
+      u.transcriptLimit = quotas.transcriptMinutesPerMonth;
+    }),
+  );
+
+  const aiTokenList = allUsers
+    .filter((u) => u.aiTokens > 0)
+    .map((u) => Math.round(u.aiTokens))
+    .sort((a, b) => a - b);
+  const totalAiTokens = Math.round(
+    allUsers.reduce((s, u) => s + u.aiTokens, 0),
+  );
+
+  return {
+    period: {
+      yearMonth,
+      start: start.toISOString(),
+      end: end.toISOString(),
+      timeZone: 'Asia/Shanghai',
+    },
+    quotasReference: planQuotasTable(),
+    stats: {
+      usersWithUsage: allUsers.length,
+      usersWithAi: aiTokenList.length,
+      totalAiTokens,
+      maxAiTokens: aiTokenList.length
+        ? aiTokenList[aiTokenList.length - 1]
+        : 0,
+      p50AiTokens: percentileSorted(aiTokenList, 50),
+      p90AiTokens: percentileSorted(aiTokenList, 90),
+      usersNearCap: top.filter(
+        (u) => u.aiUsedPct != null && u.aiUsedPct >= 80,
+      ).length,
+    },
+    users: top.map((u) => ({
+      userId: u.userId,
+      phoneMasked: u.phoneMasked,
+      nickname: u.nickname,
+      plan: u.plan,
+      planLabel: u.planLabel,
+      isTrial: u.isTrial,
+      aiTokens: Math.round(u.aiTokens),
+      aiCredits: u.aiCredits,
+      aiLimit: u.aiLimit,
+      aiUsedPct: u.aiUsedPct,
+      aiEvents: u.aiEvents,
+      byFeature: {
+        tags: Math.round(u.byFeature.tags),
+        summary: Math.round(u.byFeature.summary),
+        mindmap: Math.round(u.byFeature.mindmap),
+        organize: Math.round(u.byFeature.organize),
+        other: Math.round(u.byFeature.other),
+      },
+      transcriptMinutes: u.transcriptMinutes,
+      transcriptLimit: u.transcriptLimit,
+      transcriptEvents: u.transcriptEvents,
+    })),
+  };
+}
+
 module.exports = {
   KIND_TRANSCRIPT,
   KIND_AI,
@@ -684,6 +865,7 @@ module.exports = {
   creditsFromModelUsage,
   listUsageEvents,
   getUsageSummary,
+  getUsageLeaderboard,
   assertQuota,
   assertTranscriptQuota,
   assertAiQuota,

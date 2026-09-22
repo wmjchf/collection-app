@@ -2,6 +2,7 @@
 
 const { pool } = require('../db');
 const subscriptionService = require('./subscriptionService');
+const usageService = require('./usageService');
 
 const ALLOWED_EVENTS = new Set([
   'app_open',
@@ -837,10 +838,11 @@ async function getSummary(days = 7, userId = null) {
   const saveFail = byName.item_save_fail || 0;
   const parseReady = byName.parse_ready || 0;
   const parseFail = byName.parse_fail || 0;
-  const [journey, selectedUser, trial] = await Promise.all([
+  const [journey, selectedUser, trial, usage] = await Promise.all([
     journeyPromise,
     uid ? getUserMeta(uid, start) : Promise.resolve(null),
     subscriptionService.getTrialStats({ userId: uid }),
+    usageService.getUsageLeaderboard({ userId: uid, limit: uid ? 1 : 100 }),
   ]);
 
   return {
@@ -850,6 +852,7 @@ async function getSummary(days = 7, userId = null) {
     userId: uid,
     selectedUser,
     trial,
+    usage,
     byName,
     dau: dauRows.map((r) => ({
       date: r.d instanceof Date ? r.d.toISOString().slice(0, 10) : String(r.d),
