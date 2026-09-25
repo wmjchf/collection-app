@@ -7,6 +7,7 @@ import 'package:super_collection/core/ui/app_bottom_sheet.dart';
 import 'package:super_collection/core/ui/app_toast.dart';
 import 'package:super_collection/features/items/ai_meta_models.dart';
 import 'package:super_collection/features/items/ai_mindmap_panel.dart';
+import 'package:super_collection/features/items/ai_scholar_copy.dart';
 import 'package:super_collection/features/items/item_models.dart';
 import 'package:super_collection/features/items/items_repository.dart';
 import 'package:super_collection/features/items/mindmap_image_export.dart';
@@ -62,6 +63,7 @@ class _ReadingMindmapSheetState extends State<_ReadingMindmapSheet> {
   bool _requesting = false;
   bool _generateInFlight = false;
   bool _sharing = false;
+  bool _isPro = false;
   int _pollGen = 0;
 
   AiMindmapMeta get _meta => _item.aiMeta.mindmap;
@@ -75,6 +77,7 @@ class _ReadingMindmapSheetState extends State<_ReadingMindmapSheet> {
   void initState() {
     super.initState();
     _item = widget.initialItem;
+    unawaited(_loadPro());
     if (_meta.isPending) {
       unawaited(_poll());
     } else if (_shouldAutoStart) {
@@ -84,6 +87,14 @@ class _ReadingMindmapSheetState extends State<_ReadingMindmapSheet> {
         if (mounted) unawaited(_generate());
       });
     }
+  }
+
+  Future<void> _loadPro() async {
+    try {
+      final usage = await UsageRepository().fetchUsage();
+      if (!mounted) return;
+      setState(() => _isPro = usage.isPro);
+    } catch (_) {}
   }
 
   @override
@@ -345,8 +356,9 @@ class _ReadingMindmapSheetState extends State<_ReadingMindmapSheet> {
 
   Widget _buildBody() {
     if (_meta.isPending || _requesting) {
-      final label =
-          _meta.awaitTranscript ? '转写完成后生成思维导图…' : '思维导图生成中…';
+      final label = _meta.awaitTranscript
+          ? '转写完成后生成思维导图…'
+          : aiScholarGeneratingLabel('思维导图', isPro: _isPro);
       return Container(
         width: double.infinity,
         padding: const EdgeInsets.fromLTRB(16, 18, 16, 18),

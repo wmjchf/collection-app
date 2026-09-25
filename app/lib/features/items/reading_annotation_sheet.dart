@@ -34,7 +34,7 @@ Future<void> showAnnotationDetailSheet(
   );
 }
 
-/// 选中文字后「加短注」：创建标注并写入短注。
+/// 选中文字后「加批注」：创建标注并写入批注。
 Future<ItemAnnotation?> showCreateAnnotationNoteSheet(
   BuildContext context, {
   required int itemId,
@@ -160,7 +160,7 @@ class _AnnotationNoteSheetState extends State<_AnnotationNoteSheet> {
     }
     final ok = await showAppConfirmDialog(
       context,
-      title: '删除标注？',
+      title: '删除批注？',
       message: '删除后不可恢复。',
       confirmLabel: '删除',
     );
@@ -205,7 +205,7 @@ class _AnnotationNoteSheetState extends State<_AnnotationNoteSheet> {
                 Row(
                   children: [
                     Text(
-                      widget.isCreate ? '添加短注' : '标注短注',
+                      widget.isCreate ? '添加批注' : '编辑批注',
                       style: const TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.w700,
@@ -252,7 +252,7 @@ class _AnnotationNoteSheetState extends State<_AnnotationNoteSheet> {
                     height: 1.45,
                   ),
                   decoration: InputDecoration(
-                    hintText: '可选：写一句短注',
+                    hintText: '可选：写一句批注',
                     hintStyle: const TextStyle(color: _muted, fontSize: 14),
                     filled: true,
                     fillColor: _fieldBg,
@@ -281,7 +281,7 @@ class _AnnotationNoteSheetState extends State<_AnnotationNoteSheet> {
                             ),
                           ),
                           child: Text(
-                            widget.isCreate ? '取消' : '删除标注',
+                            widget.isCreate ? '取消' : '删除批注',
                             style: const TextStyle(
                               fontSize: 15,
                               fontWeight: FontWeight.w500,

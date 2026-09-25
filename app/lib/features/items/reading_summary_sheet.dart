@@ -6,6 +6,7 @@ import 'package:super_collection/core/network/api_client.dart';
 import 'package:super_collection/core/ui/app_bottom_sheet.dart';
 import 'package:super_collection/core/ui/app_toast.dart';
 import 'package:super_collection/features/items/ai_meta_models.dart';
+import 'package:super_collection/features/items/ai_scholar_copy.dart';
 import 'package:super_collection/features/items/item_models.dart';
 import 'package:super_collection/features/items/items_repository.dart';
 import 'package:super_collection/features/items/reading_regenerate_confirm_dialog.dart';
@@ -55,6 +56,7 @@ class _ReadingSummarySheetState extends State<_ReadingSummarySheet> {
   late CollectionItem _item;
   bool _requesting = false;
   bool _generateInFlight = false;
+  bool _isPro = false;
   int _pollGen = 0;
 
   AiSummaryMeta get _meta => _item.aiMeta.summary;
@@ -68,6 +70,7 @@ class _ReadingSummarySheetState extends State<_ReadingSummarySheet> {
   void initState() {
     super.initState();
     _item = widget.initialItem;
+    unawaited(_loadPro());
     if (_meta.isPending) {
       unawaited(_poll());
     } else if (_shouldAutoStart) {
@@ -77,6 +80,14 @@ class _ReadingSummarySheetState extends State<_ReadingSummarySheet> {
         if (mounted) unawaited(_generate());
       });
     }
+  }
+
+  Future<void> _loadPro() async {
+    try {
+      final usage = await UsageRepository().fetchUsage();
+      if (!mounted) return;
+      setState(() => _isPro = usage.isPro);
+    } catch (_) {}
   }
 
   @override
@@ -321,7 +332,7 @@ class _ReadingSummarySheetState extends State<_ReadingSummarySheet> {
     if (_meta.isPending || _requesting) {
       final label = _meta.awaitTranscript
           ? '转写完成后生成 AI 总结…'
-          : 'AI 总结生成中…';
+          : aiScholarGeneratingLabel('总结', isPro: _isPro);
       return Container(
         width: double.infinity,
         padding: const EdgeInsets.fromLTRB(16, 18, 16, 18),

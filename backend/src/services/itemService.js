@@ -1468,7 +1468,7 @@ const HIT_LABELS = {
   url: '链接',
   platform: '来源',
   tag: '标签',
-  annotation: '标注',
+  annotation: '批注',
 };
 
 const PLATFORM_ALIASES = {

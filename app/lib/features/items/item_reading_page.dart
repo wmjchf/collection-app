@@ -669,7 +669,7 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
       setState(() => _annotations = [..._annotations, ann]);
       AppToast.show(
         context,
-        '短注已保存',
+        '批注已保存',
         actionLabel: '查看',
         onAction: _showAnnotationList,
       );
@@ -714,7 +714,7 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
               padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
               children: [
                 const Text(
-                  '本篇标注',
+                  '本篇批注',
                   style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.w700,
@@ -723,7 +723,7 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
                 ),
                 const SizedBox(height: 4),
                 const Text(
-                  '点一条可查看或编辑短注',
+                  '点一条可查看或编辑批注',
                   style: TextStyle(fontSize: 12, color: _muted),
                 ),
                 const SizedBox(height: 12),
@@ -783,7 +783,7 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
                             Text(
                               (ann.note != null && ann.note!.trim().isNotEmpty)
                                   ? ann.note!
-                                  : '暂无短注 · 点击可添加',
+                                  : '暂无批注 · 点击可添加',
                               style: const TextStyle(
                                 fontSize: 13,
                                 color: _muted,
@@ -811,7 +811,7 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
       final go = await showAppConfirmDialog(
         context,
         title: '编辑正文',
-        message: '本篇已有高亮标注，修改正文后标注位置可能不准确。',
+        message: '本篇已有高亮批注，修改正文后批注位置可能不准确。',
         confirmLabel: '继续编辑',
         dangerConfirm: false,
       );
@@ -1356,7 +1356,7 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
           ),
         ),
         _ToolbarAction(
-          label: '加短注',
+          label: '加批注',
           onTap: () => _onAddNote(
             editableTextState,
             selected,
@@ -2192,7 +2192,7 @@ class _InlineEmoji extends StatelessWidget {
   }
 }
 
-/// 正文可选中；标注热区与短注图标用 Stack 绝对定位，不抢 SelectableText 手势状态。
+/// 正文可选中；批注热区与批注图标用 Stack 绝对定位，不抢 SelectableText 手势状态。
 class _AnnotatedBodyStack extends StatefulWidget {
   const _AnnotatedBodyStack({
     required this.text,
@@ -2445,7 +2445,7 @@ extension on List<({Rect rect, ItemAnnotation ann, bool showNoteIcon})> {
   }
 }
 
-/// Figma：深色圆角工具条「高亮 / 加短注 / 复制」
+/// Figma：深色圆角工具条「高亮 / 加批注 / 复制」
 class _ToolbarAction extends StatelessWidget {
   const _ToolbarAction({required this.label, required this.onTap});
 
