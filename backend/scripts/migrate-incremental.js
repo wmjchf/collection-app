@@ -36,6 +36,7 @@ const MIGRATION_FILES = [
   '026_help_page_blocks.sql',
   '027_app_settings.sql',
   '028_rename_untagged_filter.sql',
+  '029_rename_annotated_filter.sql',
 ];
 
 async function getConnection() {

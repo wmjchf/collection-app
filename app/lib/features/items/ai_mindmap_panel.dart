@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:super_collection/core/ui/app_toast.dart';
 import 'package:super_collection/features/items/ai_meta_models.dart';
+import 'package:super_collection/features/items/ai_scholar_copy.dart';
 import 'package:super_collection/features/items/mindmap_image_export.dart';
 import 'package:super_collection/features/items/mindmap_render.dart';
 
@@ -14,11 +15,13 @@ class AiMindmapPanel extends StatefulWidget {
     required this.mindmapMeta,
     this.sourceTitle,
     this.onRetry,
+    this.isPro = false,
   });
 
   final AiMindmapMeta mindmapMeta;
   final String? sourceTitle;
   final VoidCallback? onRetry;
+  final bool isPro;
 
   static const _text = Color(0xFF1F242E);
   static const _muted = Color(0xFF737A85);
@@ -68,7 +71,10 @@ class _AiMindmapPanelState extends State<AiMindmapPanel> {
     if (meta.isPending) {
       return Padding(
         padding: const EdgeInsets.only(top: 12),
-        child: _MindmapLoadingCard(awaitTranscript: meta.awaitTranscript),
+        child: _MindmapLoadingCard(
+          awaitTranscript: meta.awaitTranscript,
+          isPro: widget.isPro,
+        ),
       );
     }
 
@@ -652,15 +658,19 @@ class _MindmapActionIcon extends StatelessWidget {
 }
 
 class _MindmapLoadingCard extends StatelessWidget {
-  const _MindmapLoadingCard({this.awaitTranscript = false});
+  const _MindmapLoadingCard({
+    this.awaitTranscript = false,
+    this.isPro = false,
+  });
 
   final bool awaitTranscript;
+  final bool isPro;
 
   @override
   Widget build(BuildContext context) {
     final title = awaitTranscript
         ? '正在转写，完成后生成思维导图…'
-        : '正在生成思维导图…';
+        : aiScholarGeneratingLabel('思维导图', isPro: isPro);
     final subtitle = awaitTranscript
         ? '转写完成后将自动开始生成'
         : '完成后可缩放查看结构';

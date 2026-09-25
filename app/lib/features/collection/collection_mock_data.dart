@@ -17,7 +17,7 @@ class CollectionMockData {
     CollectionNavItem(title: '所有', countLabel: '4', code: 'all'),
     CollectionNavItem(title: '今天', countLabel: '4', code: 'today'),
     CollectionNavItem(title: '无标签', countLabel: '2', code: 'untagged'),
-    CollectionNavItem(title: '标注', countLabel: '1', code: 'annotated'),
+    CollectionNavItem(title: '批注', countLabel: '1', code: 'annotated'),
   ];
 
   static const tags = [

@@ -11,6 +11,7 @@ import 'package:super_collection/features/collection/tag_module_models.dart';
 import 'package:super_collection/features/collection/tag_modules_repository.dart';
 import 'package:super_collection/features/collection/tags_repository.dart';
 import 'package:super_collection/features/items/ai_meta_models.dart';
+import 'package:super_collection/features/items/ai_scholar_copy.dart';
 import 'package:super_collection/features/items/items_repository.dart';
 import 'package:super_collection/features/settings/quota_gate.dart';
 import 'package:super_collection/features/settings/usage_repository.dart';
@@ -98,6 +99,7 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
   bool _loading = true;
   bool _saving = false;
   bool _creating = false;
+  bool _isPro = false;
   String? _error;
   late AiTagsMeta _tagsMeta;
   Timer? _aiPollTimer;
@@ -110,6 +112,7 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
       _aiSelected.addAll(_tagsMeta.items.map((e) => e.name));
     }
     _load();
+    unawaited(_loadPro());
     if (_tagsMeta.isPending) {
       _startAiPoll();
     } else if (widget.autoStartAiSuggest && widget.aiSuggestEnabled) {
@@ -117,6 +120,14 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
         if (mounted) unawaited(_triggerAiSuggest());
       });
     }
+  }
+
+  Future<void> _loadPro() async {
+    try {
+      final usage = await UsageRepository().fetchUsage();
+      if (!mounted) return;
+      setState(() => _isPro = usage.isPro);
+    } catch (_) {}
   }
 
   void _syncTagsMeta(AiTagsMeta meta) {
@@ -771,9 +782,9 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
         ),
         if (meta.isPending) ...[
           const SizedBox(height: 10),
-          const Text(
-            '正在生成推荐…',
-            style: TextStyle(fontSize: 13, color: _muted),
+          Text(
+            aiScholarGeneratingLabel('推荐', isPro: _isPro),
+            style: const TextStyle(fontSize: 13, color: _muted),
           ),
         ] else if (meta.isFailed) ...[
           const SizedBox(height: 10),

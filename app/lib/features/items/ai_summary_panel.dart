@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:super_collection/features/items/ai_meta_models.dart';
+import 'package:super_collection/features/items/ai_scholar_copy.dart';
 
 /// 阅读页正文下方：AI 总结 loading / 结果 / 失败
 class AiSummaryPanel extends StatelessWidget {
@@ -7,10 +8,12 @@ class AiSummaryPanel extends StatelessWidget {
     super.key,
     required this.summaryMeta,
     this.onRetry,
+    this.isPro = false,
   });
 
   final AiSummaryMeta summaryMeta;
   final VoidCallback? onRetry;
+  final bool isPro;
 
   static const _text = Color(0xFF1F242E);
   static const _muted = Color(0xFF737A85);
@@ -27,7 +30,10 @@ class AiSummaryPanel extends StatelessWidget {
     if (meta.isPending) {
       return Padding(
         padding: const EdgeInsets.only(top: 12),
-        child: _SummaryLoadingCard(awaitTranscript: meta.awaitTranscript),
+        child: _SummaryLoadingCard(
+          awaitTranscript: meta.awaitTranscript,
+          isPro: isPro,
+        ),
       );
     }
 
@@ -143,13 +149,19 @@ class _AiCard extends StatelessWidget {
 }
 
 class _SummaryLoadingCard extends StatelessWidget {
-  const _SummaryLoadingCard({this.awaitTranscript = false});
+  const _SummaryLoadingCard({
+    this.awaitTranscript = false,
+    this.isPro = false,
+  });
 
   final bool awaitTranscript;
+  final bool isPro;
 
   @override
   Widget build(BuildContext context) {
-    final label = awaitTranscript ? '转写完成后生成 AI 总结…' : 'AI 总结生成中…';
+    final label = awaitTranscript
+        ? '转写完成后生成 AI 总结…'
+        : aiScholarGeneratingLabel('总结', isPro: isPro);
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
