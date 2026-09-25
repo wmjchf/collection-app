@@ -8,6 +8,7 @@ import 'package:super_collection/features/home/home_format.dart';
 import 'package:super_collection/features/items/item_list_tile.dart';
 import 'package:super_collection/features/items/item_reading_page.dart';
 import 'package:super_collection/features/items/item_models.dart';
+import 'package:super_collection/features/items/items_batch_delete.dart';
 import 'package:super_collection/features/items/items_repository.dart';
 
 /// 系统筛选条目列表（未读 / 所有 / 今天 …）
@@ -39,8 +40,14 @@ class _SystemFilterListPageState extends State<SystemFilterListPage>
   bool _loadingMore = false;
   String? _error;
 
+  bool _selecting = false;
+  final Set<int> _selectedIds = {};
+  bool _deleting = false;
+
   bool get _hasMore => _items.length < _total;
   bool get _isUntagged => widget.code == 'untagged';
+  bool get _allSelected =>
+      _items.isNotEmpty && _selectedIds.length >= _items.length;
 
   @override
   String get dwellScreen => AnalyticsScreens.filterList;
@@ -66,11 +73,77 @@ class _SystemFilterListPageState extends State<SystemFilterListPage>
     if (shouldLoadMore(_scroll)) _loadMore();
   }
 
+  void _enterSelecting([int? initialId]) {
+    setState(() {
+      _selecting = true;
+      _selectedIds.clear();
+      if (initialId != null) _selectedIds.add(initialId);
+    });
+  }
+
+  void _exitSelecting() {
+    setState(() {
+      _selecting = false;
+      _selectedIds.clear();
+      _deleting = false;
+    });
+  }
+
+  void _toggleSelected(int id) {
+    setState(() {
+      if (_selectedIds.contains(id)) {
+        _selectedIds.remove(id);
+      } else {
+        _selectedIds.add(id);
+      }
+    });
+  }
+
+  void _toggleSelectAll() {
+    setState(() {
+      if (_allSelected) {
+        _selectedIds.clear();
+      } else {
+        _selectedIds
+          ..clear()
+          ..addAll(_items.map((e) => e.id));
+      }
+    });
+  }
+
+  Future<void> _batchDelete() async {
+    if (_deleting || _selectedIds.isEmpty) return;
+    setState(() => _deleting = true);
+    final deleted = await confirmAndBatchDeleteItems(
+      context: context,
+      repo: _itemsRepo,
+      ids: Set<int>.from(_selectedIds),
+    );
+    if (!mounted) return;
+    if (deleted == null) {
+      setState(() => _deleting = false);
+      return;
+    }
+    setState(() {
+      if (deleted.isNotEmpty) {
+        _items = _items.where((e) => !deleted.contains(e.id)).toList();
+        _total = (_total - deleted.length).clamp(0, 1 << 30);
+      }
+      _selecting = false;
+      _selectedIds.clear();
+      _deleting = false;
+    });
+  }
+
   Future<void> _load({required bool reset}) async {
     if (reset) {
       setState(() {
         _loading = true;
         _error = null;
+        if (_selecting) {
+          _selecting = false;
+          _selectedIds.clear();
+        }
       });
     }
     try {
@@ -191,12 +264,42 @@ class _SystemFilterListPageState extends State<SystemFilterListPage>
     }
   }
 
+  void _onItemTap(CollectionItem item) {
+    if (_selecting) {
+      _toggleSelected(item.id);
+      return;
+    }
+    _openItem(item);
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: _bg,
-      appBar: AppSubpageAppBar(title: widget.title),
+      appBar: _selecting
+          ? itemsBatchSelectAppBar(
+              selectedCount: _selectedIds.length,
+              allSelected: _allSelected,
+              onCancel: _exitSelecting,
+              onToggleSelectAll: _toggleSelectAll,
+            )
+          : AppSubpageAppBar(
+              title: widget.title,
+              actions: [
+                itemsBatchEnterSelectAction(
+                  onPressed: _items.isEmpty ? null : () => _enterSelecting(),
+                ),
+              ],
+            ),
+      bottomNavigationBar: _selecting
+          ? ItemsBatchDeleteBar(
+              selectedCount: _selectedIds.length,
+              busy: _deleting,
+              onDelete: _batchDelete,
+            )
+          : null,
       body: RefreshIndicator(
+        notificationPredicate: (_) => !_selecting,
         onRefresh: () => _load(reset: true),
         child: _loading && _items.isEmpty
             ? const Center(child: CircularProgressIndicator())
@@ -217,7 +320,12 @@ class _SystemFilterListPageState extends State<SystemFilterListPage>
                 : ListView.builder(
                     controller: _scroll,
                     physics: const AlwaysScrollableScrollPhysics(),
-                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+                    padding: EdgeInsets.fromLTRB(
+                      16,
+                      12,
+                      16,
+                      _selecting ? 16 : 24,
+                    ),
                     itemCount: _items.isEmpty ? 2 : (2 + _items.length),
                     itemBuilder: (context, index) {
                       if (index == 0) {
@@ -255,7 +363,12 @@ class _SystemFilterListPageState extends State<SystemFilterListPage>
                         child: ItemListTile.fromItem(
                           item,
                           subtitle: _subtitle(item),
-                          onTap: () => _openItem(item),
+                          selecting: _selecting,
+                          selected: _selectedIds.contains(item.id),
+                          onTap: () => _onItemTap(item),
+                          onLongPress: _selecting
+                              ? null
+                              : () => _enterSelecting(item.id),
                         ),
                       );
                     },

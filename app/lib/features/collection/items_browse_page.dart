@@ -11,6 +11,7 @@ import 'package:super_collection/features/home/home_format.dart';
 import 'package:super_collection/features/items/item_list_tile.dart';
 import 'package:super_collection/features/items/item_reading_page.dart';
 import 'package:super_collection/features/items/item_models.dart';
+import 'package:super_collection/features/items/items_batch_delete.dart';
 import 'package:super_collection/features/items/items_repository.dart';
 
 typedef ItemsBrowseLoader = Future<({List<CollectionItem> items, int total})>
@@ -50,8 +51,14 @@ class _ItemsBrowsePageState extends State<ItemsBrowsePage> with ScreenDwellMixin
   bool _busy = false;
   String? _error;
 
+  bool _selecting = false;
+  final Set<int> _selectedIds = {};
+  bool _deleting = false;
+
   bool get _hasMore => _items.length < _total;
   bool get _canManageTag => widget.tagId != null;
+  bool get _allSelected =>
+      _items.isNotEmpty && _selectedIds.length >= _items.length;
 
   @override
   String get dwellScreen => AnalyticsScreens.tagList;
@@ -77,6 +84,68 @@ class _ItemsBrowsePageState extends State<ItemsBrowsePage> with ScreenDwellMixin
 
   void _onScroll() {
     if (shouldLoadMore(_scroll)) _loadMore();
+  }
+
+  void _enterSelecting([int? initialId]) {
+    setState(() {
+      _selecting = true;
+      _selectedIds.clear();
+      if (initialId != null) _selectedIds.add(initialId);
+    });
+  }
+
+  void _exitSelecting() {
+    setState(() {
+      _selecting = false;
+      _selectedIds.clear();
+      _deleting = false;
+    });
+  }
+
+  void _toggleSelected(int id) {
+    setState(() {
+      if (_selectedIds.contains(id)) {
+        _selectedIds.remove(id);
+      } else {
+        _selectedIds.add(id);
+      }
+    });
+  }
+
+  void _toggleSelectAll() {
+    setState(() {
+      if (_allSelected) {
+        _selectedIds.clear();
+      } else {
+        _selectedIds
+          ..clear()
+          ..addAll(_items.map((e) => e.id));
+      }
+    });
+  }
+
+  Future<void> _batchDelete() async {
+    if (_deleting || _selectedIds.isEmpty) return;
+    setState(() => _deleting = true);
+    final deleted = await confirmAndBatchDeleteItems(
+      context: context,
+      repo: _itemsRepo,
+      ids: Set<int>.from(_selectedIds),
+    );
+    if (!mounted) return;
+    if (deleted == null) {
+      setState(() => _deleting = false);
+      return;
+    }
+    setState(() {
+      if (deleted.isNotEmpty) {
+        _items = _items.where((e) => !deleted.contains(e.id)).toList();
+        _total = (_total - deleted.length).clamp(0, 1 << 30);
+      }
+      _selecting = false;
+      _selectedIds.clear();
+      _deleting = false;
+    });
   }
 
   Future<void> _onRenameTag() async {
@@ -140,6 +209,10 @@ class _ItemsBrowsePageState extends State<ItemsBrowsePage> with ScreenDwellMixin
       setState(() {
         _loading = true;
         _error = null;
+        if (_selecting) {
+          _selecting = false;
+          _selectedIds.clear();
+        }
       });
     }
     try {
@@ -220,6 +293,35 @@ class _ItemsBrowsePageState extends State<ItemsBrowsePage> with ScreenDwellMixin
     return '$platform · $day';
   }
 
+  Future<void> _openItem(CollectionItem item) async {
+    final deleted = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) => ItemReadingPage(
+          itemId: item.id,
+          initialItem: item,
+          openEntry: widget.tagId != null ? 'tag' : 'library',
+        ),
+      ),
+    );
+    if (!mounted) return;
+    if (deleted == true) {
+      setState(() {
+        _items = _items.where((e) => e.id != item.id).toList();
+        _total = (_total - 1).clamp(0, 1 << 30);
+      });
+      return;
+    }
+    await _refreshItem(item.id);
+  }
+
+  void _onItemTap(CollectionItem item) {
+    if (_selecting) {
+      _toggleSelected(item.id);
+      return;
+    }
+    _openItem(item);
+  }
+
   Future<void> _showTagActionsMenu(BuildContext anchorContext) async {
     if (_busy) return;
 
@@ -243,6 +345,7 @@ class _ItemsBrowsePageState extends State<ItemsBrowsePage> with ScreenDwellMixin
     const text = Color(0xFF1F242E);
     const danger = Color(0xFFD14343);
 
+    final canBatch = _items.isNotEmpty;
     final action = await showMenu<_TagAction>(
       context: anchorContext,
       position: position,
@@ -254,8 +357,31 @@ class _ItemsBrowsePageState extends State<ItemsBrowsePage> with ScreenDwellMixin
         side: const BorderSide(color: Color(0xFFE6E8EB)),
       ),
       constraints: const BoxConstraints(minWidth: 160, maxWidth: 160),
-      items: const [
+      items: [
         PopupMenuItem(
+          value: _TagAction.batchDelete,
+          enabled: canBatch,
+          height: 44,
+          child: Row(
+            children: [
+              Icon(
+                Icons.checklist_rtl_rounded,
+                size: 20,
+                color: canBatch ? text : _muted,
+              ),
+              const SizedBox(width: 10),
+              Text(
+                '批量删除',
+                style: TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w500,
+                  color: canBatch ? text : _muted,
+                ),
+              ),
+            ],
+          ),
+        ),
+        const PopupMenuItem(
           value: _TagAction.rename,
           height: 44,
           child: Row(
@@ -273,7 +399,7 @@ class _ItemsBrowsePageState extends State<ItemsBrowsePage> with ScreenDwellMixin
             ],
           ),
         ),
-        PopupMenuItem(
+        const PopupMenuItem(
           value: _TagAction.delete,
           height: 44,
           child: Row(
@@ -296,6 +422,8 @@ class _ItemsBrowsePageState extends State<ItemsBrowsePage> with ScreenDwellMixin
 
     if (action == null || !mounted) return;
     switch (action) {
+      case _TagAction.batchDelete:
+        _enterSelecting();
       case _TagAction.rename:
         await _onRenameTag();
       case _TagAction.delete:
@@ -304,20 +432,26 @@ class _ItemsBrowsePageState extends State<ItemsBrowsePage> with ScreenDwellMixin
   }
 
   List<Widget>? _buildActions() {
-    if (!_canManageTag) return null;
+    if (_canManageTag) {
+      return [
+        Builder(
+          builder: (anchorContext) {
+            return IconButton(
+              tooltip: '更多',
+              onPressed: _busy ? null : () => _showTagActionsMenu(anchorContext),
+              icon: Icon(
+                Icons.more_horiz,
+                size: 24,
+                color: _busy ? _muted : const Color(0xFF1F242E),
+              ),
+            );
+          },
+        ),
+      ];
+    }
     return [
-      Builder(
-        builder: (anchorContext) {
-          return IconButton(
-            tooltip: '更多',
-            onPressed: _busy ? null : () => _showTagActionsMenu(anchorContext),
-            icon: Icon(
-              Icons.more_horiz,
-              size: 24,
-              color: _busy ? _muted : const Color(0xFF1F242E),
-            ),
-          );
-        },
+      itemsBatchEnterSelectAction(
+        onPressed: _items.isEmpty || _busy ? null : () => _enterSelecting(),
       ),
     ];
   }
@@ -326,11 +460,26 @@ class _ItemsBrowsePageState extends State<ItemsBrowsePage> with ScreenDwellMixin
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: _bg,
-      appBar: AppSubpageAppBar(
-        title: _title,
-        actions: _buildActions(),
-      ),
+      appBar: _selecting
+          ? itemsBatchSelectAppBar(
+              selectedCount: _selectedIds.length,
+              allSelected: _allSelected,
+              onCancel: _exitSelecting,
+              onToggleSelectAll: _toggleSelectAll,
+            )
+          : AppSubpageAppBar(
+              title: _title,
+              actions: _buildActions(),
+            ),
+      bottomNavigationBar: _selecting
+          ? ItemsBatchDeleteBar(
+              selectedCount: _selectedIds.length,
+              busy: _deleting,
+              onDelete: _batchDelete,
+            )
+          : null,
       body: RefreshIndicator(
+        notificationPredicate: (_) => !_selecting,
         onRefresh: () => _load(reset: true),
         child: _loading && _items.isEmpty
             ? const Center(child: CircularProgressIndicator())
@@ -354,7 +503,12 @@ class _ItemsBrowsePageState extends State<ItemsBrowsePage> with ScreenDwellMixin
                 : ListView.builder(
                     controller: _scroll,
                     physics: const AlwaysScrollableScrollPhysics(),
-                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+                    padding: EdgeInsets.fromLTRB(
+                      16,
+                      12,
+                      16,
+                      _selecting ? 16 : 24,
+                    ),
                     itemCount: _items.isEmpty ? 2 : (2 + _items.length),
                     itemBuilder: (context, index) {
                       if (index == 0) {
@@ -392,30 +546,12 @@ class _ItemsBrowsePageState extends State<ItemsBrowsePage> with ScreenDwellMixin
                         child: ItemListTile.fromItem(
                           item,
                           subtitle: _subtitle(item),
-                          onTap: () async {
-                            final deleted =
-                                await Navigator.of(context).push<bool>(
-                              MaterialPageRoute(
-                                builder: (_) => ItemReadingPage(
-                                  itemId: item.id,
-                                  initialItem: item,
-                                  openEntry:
-                                      widget.tagId != null ? 'tag' : 'library',
-                                ),
-                              ),
-                            );
-                            if (!mounted) return;
-                            if (deleted == true) {
-                              setState(() {
-                                _items = _items
-                                    .where((e) => e.id != item.id)
-                                    .toList();
-                                _total = (_total - 1).clamp(0, 1 << 30);
-                              });
-                              return;
-                            }
-                            await _refreshItem(item.id);
-                          },
+                          selecting: _selecting,
+                          selected: _selectedIds.contains(item.id),
+                          onTap: () => _onItemTap(item),
+                          onLongPress: _selecting
+                              ? null
+                              : () => _enterSelecting(item.id),
                         ),
                       );
                     },
@@ -425,4 +561,4 @@ class _ItemsBrowsePageState extends State<ItemsBrowsePage> with ScreenDwellMixin
   }
 }
 
-enum _TagAction { rename, delete }
+enum _TagAction { batchDelete, rename, delete }

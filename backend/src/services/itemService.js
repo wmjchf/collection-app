@@ -843,6 +843,76 @@ async function deleteItem(userId, itemId) {
   return { id: itemId, deleted: true };
 }
 
+const BATCH_DELETE_MAX = 100;
+
+/**
+ * 批量永久删除。使用指引跳过；不存在的 id 忽略。
+ * @returns {{ deletedIds: number[], skippedGuideIds: number[], deletedCount: number }}
+ */
+async function deleteItems(userId, rawIds) {
+  const uniqueIds = [
+    ...new Set(
+      (Array.isArray(rawIds) ? rawIds : [])
+        .map((id) => Number(id))
+        .filter((id) => Number.isInteger(id) && id > 0),
+    ),
+  ];
+  if (uniqueIds.length === 0) {
+    throw Object.assign(new Error('请选择要删除的条目'), { status: 400 });
+  }
+  if (uniqueIds.length > BATCH_DELETE_MAX) {
+    throw Object.assign(new Error(`一次最多删除 ${BATCH_DELETE_MAX} 条`), {
+      status: 400,
+    });
+  }
+
+  const idParams = { userId };
+  const placeholders = uniqueIds
+    .map((id, i) => {
+      idParams[`iid${i}`] = id;
+      return `:iid${i}`;
+    })
+    .join(', ');
+
+  const [rows] = await pool.execute(
+    `SELECT id, platform, canonical_url
+     FROM items
+     WHERE user_id = :userId AND id IN (${placeholders})`,
+    idParams,
+  );
+
+  const skippedGuideIds = [];
+  const deletableIds = [];
+  for (const row of rows) {
+    if (guideItemService.isGuideItem(row)) {
+      skippedGuideIds.push(row.id);
+    } else {
+      deletableIds.push(row.id);
+    }
+  }
+
+  if (deletableIds.length > 0) {
+    const delParams = { userId };
+    const delPlaceholders = deletableIds
+      .map((id, i) => {
+        delParams[`did${i}`] = id;
+        return `:did${i}`;
+      })
+      .join(', ');
+    await pool.execute(
+      `DELETE FROM items
+       WHERE user_id = :userId AND id IN (${delPlaceholders})`,
+      delParams,
+    );
+  }
+
+  return {
+    deletedIds: deletableIds,
+    skippedGuideIds,
+    deletedCount: deletableIds.length,
+  };
+}
+
 /** 条目当前标签 */
 async function listItemTags(userId, itemId) {
   const existing = await getByIdForUser(userId, itemId);
@@ -1651,6 +1721,7 @@ module.exports = {
   updateNote,
   updateContent,
   deleteItem,
+  deleteItems,
   listItemTags,
   setItemTags,
   searchItems,

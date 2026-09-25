@@ -276,32 +276,10 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
 
     final fullLabel = _formatMoney(monthly, fullYear);
     final saveLabel = _formatMoney(monthly, save);
-    return Text.rich(
-      TextSpan(
-        children: [
-          TextSpan(
-            text: fullLabel,
-            style: const TextStyle(
-              fontSize: 15,
-              fontWeight: FontWeight.w500,
-              color: _muted,
-              decoration: TextDecoration.lineThrough,
-              decorationColor: _muted,
-              height: 1.2,
-            ),
-          ),
-          const TextSpan(text: '  '),
-          TextSpan(
-            text: '立省 $saveLabel',
-            style: TextStyle(
-              fontSize: 22,
-              fontWeight: FontWeight.w700,
-              color: accent,
-              height: 1.2,
-            ),
-          ),
-        ],
-      ),
+    return _YearlySaveBadge(
+      struckPrice: fullLabel,
+      saveAmount: saveLabel,
+      emphasized: selected,
     );
   }
 
@@ -864,6 +842,71 @@ class _PlanFeature {
   final String label;
   final bool included;
   final bool isQuota;
+}
+
+/// 年付价签：删除线原价 + 醒目「立省」胶囊
+class _YearlySaveBadge extends StatelessWidget {
+  const _YearlySaveBadge({
+    required this.struckPrice,
+    required this.saveAmount,
+    required this.emphasized,
+  });
+
+  final String struckPrice;
+  final String saveAmount;
+  final bool emphasized;
+
+  static const _save = Color(0xFFE4572E);
+  static const _saveSoft = Color(0xFFFFE8E1);
+
+  @override
+  Widget build(BuildContext context) {
+    return Wrap(
+      crossAxisAlignment: WrapCrossAlignment.center,
+      spacing: 10,
+      runSpacing: 8,
+      children: [
+        Text(
+          struckPrice,
+          style: TextStyle(
+            fontSize: 15,
+            fontWeight: FontWeight.w600,
+            color: _UpgradeProPageState._muted.withValues(alpha: 0.85),
+            decoration: TextDecoration.lineThrough,
+            decorationColor: _UpgradeProPageState._muted,
+            decorationThickness: 1.6,
+            height: 1.2,
+          ),
+        ),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+          decoration: BoxDecoration(
+            color: emphasized ? _save : _saveSoft,
+            borderRadius: BorderRadius.circular(999),
+            boxShadow: emphasized
+                ? [
+                    BoxShadow(
+                      color: _save.withValues(alpha: 0.28),
+                      blurRadius: 10,
+                      offset: const Offset(0, 3),
+                    ),
+                  ]
+                : null,
+          ),
+          child: Text(
+            '立省 $saveAmount',
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 0.2,
+              color: emphasized ? Colors.white : _save,
+              height: 1.15,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
 }
 
 class _TierPlanCard extends StatelessWidget {
