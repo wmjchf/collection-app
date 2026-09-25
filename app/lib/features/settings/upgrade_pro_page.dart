@@ -213,15 +213,107 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
 
   AppleFreeTrialOffer? get _selectedTrial => _trialForTier(_selectedTier);
 
-  String? _priceLabelForTier(String tier) {
+  /// 月付：价签文案；年付：删除线（月×12）+ 立省，实付价在底部 CTA。
+  Widget? _priceWidgetForTier(String tier, {required bool selected}) {
+    if (_yearlyBilling) {
+      return _yearlySavingsLabel(tier, selected: selected);
+    }
+    final label = _monthlyPriceLabelForTier(tier);
+    if (label == null) return null;
+    return Text(
+      label,
+      style: TextStyle(
+        fontSize: 22,
+        fontWeight: FontWeight.w700,
+        color: selected ? _accent : _text,
+        height: 1.2,
+      ),
+    );
+  }
+
+  String? _monthlyPriceLabelForTier(String tier) {
     final p = _productForTier(tier);
     if (p == null) return null;
-    if (_yearlyBilling) return '${p.price}/年';
     final trial = _trialForTier(tier);
     if (trial != null) {
       return '免费试用 ${trial.days} 天，之后 ${p.price}/月';
     }
     return '${p.price}/月';
+  }
+
+  Widget? _yearlySavingsLabel(String tier, {required bool selected}) {
+    final ids = _idsForTier(tier);
+    final monthly = _products[ids.monthly];
+    final yearly = _products[ids.yearly];
+    if (yearly == null) return null;
+
+    final accent = selected ? _accent : _text;
+    if (monthly == null || monthly.rawPrice <= 0 || yearly.rawPrice <= 0) {
+      return Text(
+        '${yearly.price}/年',
+        style: TextStyle(
+          fontSize: 22,
+          fontWeight: FontWeight.w700,
+          color: accent,
+          height: 1.2,
+        ),
+      );
+    }
+
+    final fullYear = monthly.rawPrice * 12;
+    final save = fullYear - yearly.rawPrice;
+    if (save <= 0.01) {
+      return Text(
+        '${yearly.price}/年',
+        style: TextStyle(
+          fontSize: 22,
+          fontWeight: FontWeight.w700,
+          color: accent,
+          height: 1.2,
+        ),
+      );
+    }
+
+    final fullLabel = _formatMoney(monthly, fullYear);
+    final saveLabel = _formatMoney(monthly, save);
+    return Text.rich(
+      TextSpan(
+        children: [
+          TextSpan(
+            text: fullLabel,
+            style: const TextStyle(
+              fontSize: 15,
+              fontWeight: FontWeight.w500,
+              color: _muted,
+              decoration: TextDecoration.lineThrough,
+              decorationColor: _muted,
+              height: 1.2,
+            ),
+          ),
+          const TextSpan(text: '  '),
+          TextSpan(
+            text: '立省 $saveLabel',
+            style: TextStyle(
+              fontSize: 22,
+              fontWeight: FontWeight.w700,
+              color: accent,
+              height: 1.2,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  static String _formatMoney(ProductDetails ref, double amount) {
+    final sym = ref.currencySymbol.trim().isNotEmpty
+        ? ref.currencySymbol
+        : '¥';
+    final rounded = (amount * 100).round() / 100;
+    final body = rounded == rounded.roundToDouble()
+        ? rounded.toStringAsFixed(0)
+        : rounded.toStringAsFixed(2);
+    return '$sym$body';
   }
 
   void _setBillingPeriod(bool yearly) {
@@ -394,8 +486,11 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
                 _TierPlanCard(
                   title: '太子Pro',
                   tagline: '智能整理：不限收藏，解锁 AI 自动打标签、解读与标签归类',
-                  priceLabel: _isIos && !_productsLoading && _error == null
-                      ? _priceLabelForTier(UsagePlan.prince)
+                  priceWidget: _isIos && !_productsLoading && _error == null
+                      ? _priceWidgetForTier(
+                          UsagePlan.prince,
+                          selected: _selectedTier == UsagePlan.prince,
+                        )
                       : null,
                   features: _princeFeatures(_quotas),
                   selected: _selectedTier == UsagePlan.prince,
@@ -405,8 +500,11 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
                 _TierPlanCard(
                   title: '帝王Pro',
                   tagline: '深度加工：含太子Pro，另解锁脑图与转写',
-                  priceLabel: _isIos && !_productsLoading && _error == null
-                      ? _priceLabelForTier(UsagePlan.emperor)
+                  priceWidget: _isIos && !_productsLoading && _error == null
+                      ? _priceWidgetForTier(
+                          UsagePlan.emperor,
+                          selected: _selectedTier == UsagePlan.emperor,
+                        )
                       : null,
                   features: _emperorFeatures(_quotas),
                   selected: _selectedTier == UsagePlan.emperor,
@@ -775,7 +873,7 @@ class _TierPlanCard extends StatelessWidget {
     required this.features,
     required this.selected,
     required this.onTap,
-    this.priceLabel,
+    this.priceWidget,
   });
 
   final String title;
@@ -783,7 +881,7 @@ class _TierPlanCard extends StatelessWidget {
   final List<_PlanFeature> features;
   final bool selected;
   final VoidCallback onTap;
-  final String? priceLabel;
+  final Widget? priceWidget;
 
   @override
   Widget build(BuildContext context) {
@@ -837,19 +935,9 @@ class _TierPlanCard extends StatelessWidget {
                             height: 1.4,
                           ),
                         ),
-                        if (priceLabel != null) ...[
+                        if (priceWidget != null) ...[
                           const SizedBox(height: 10),
-                          Text(
-                            priceLabel!,
-                            style: TextStyle(
-                              fontSize: 22,
-                              fontWeight: FontWeight.w700,
-                              color: selected
-                                  ? _UpgradeProPageState._accent
-                                  : _UpgradeProPageState._text,
-                              height: 1.2,
-                            ),
-                          ),
+                          priceWidget!,
                         ],
                       ],
                     ),
