@@ -236,7 +236,7 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
     if (p == null) return null;
     final trial = _trialForTier(tier);
     if (trial != null) {
-      return '免费试用 ${trial.days} 天，之后 ${p.price}/月';
+      return '免费试用 ${trial.days} 天，之后 ${p.price}/月，试用期间可取消';
     }
     return '${p.price}/月';
   }
