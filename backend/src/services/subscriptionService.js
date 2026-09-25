@@ -127,6 +127,61 @@ function buildTrialReminder(subscription) {
 }
 
 /**
+ * 看板：7 天免费试用用户数（按 subscriptions.meta / 月付窗口推断）
+ * @param {{ userId?: number|null }} [opts]
+ */
+async function getTrialStats({ userId = null } = {}) {
+  const uid = userId != null && userId !== '' ? Number(userId) : null;
+  const params = {};
+  let userFilter = '';
+  if (uid != null && Number.isFinite(uid) && uid > 0) {
+    userFilter = ' AND user_id = :userId';
+    params.userId = uid;
+  }
+
+  const [rows] = await pool.execute(
+    `SELECT id, user_id, plan, status, source, external_id,
+            started_at, expires_at, cancelled_at, meta
+     FROM subscriptions
+     WHERE 1=1${userFilter}
+     ORDER BY id DESC
+     LIMIT 5000`,
+    params,
+  );
+
+  const now = Date.now();
+  const everUsers = new Set();
+  const trialNow = new Set();
+  const paidNow = new Set();
+
+  for (const row of rows) {
+    const sub = mapSub(row);
+    if (!sub) continue;
+    const userIdNum = Number(row.user_id);
+    const expiresMs = sub.expiresAt ? new Date(sub.expiresAt).getTime() : null;
+    const stillActive =
+      sub.status === STATUS_ACTIVE &&
+      (expiresMs == null || !Number.isFinite(expiresMs) || expiresMs > now);
+
+    if (sub.isTrial) {
+      everUsers.add(userIdNum);
+      if (stillActive) trialNow.add(userIdNum);
+    }
+    if (stillActive && planService.hasPrince(sub.plan)) {
+      paidNow.add(userIdNum);
+    }
+  }
+
+  return {
+    currentlyInTrialUsers: trialNow.size,
+    everHadTrialUsers: everUsers.size,
+    currentlyActivePaidUsers: paidNow.size,
+    userInTrial: uid ? trialNow.has(uid) : null,
+    userEverTrial: uid ? everUsers.has(uid) : null,
+  };
+}
+
+/**
  * 激活 / 续期订阅（支付成功或内部 grant）
  * - 同一 externalId 的 active 行：延长 expires_at
  * - 否则插入新行（高档可与低档并存，生效取最高档）
@@ -441,6 +496,7 @@ module.exports = {
   getActiveSubscription,
   getActiveSubscriptions,
   buildTrialReminder,
+  getTrialStats,
   patchMetaByExternalId,
   getPlanForUser,
   activateSubscription,

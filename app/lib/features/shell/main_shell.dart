@@ -13,6 +13,7 @@ import 'package:super_collection/features/collection/collection_page.dart';
 import 'package:super_collection/features/home/home_page.dart';
 import 'package:super_collection/features/search/search_page.dart';
 import 'package:super_collection/features/settings/account_drawer.dart';
+import 'package:super_collection/features/settings/app_update_prompt.dart';
 import 'package:super_collection/features/shell/app_bottom_nav_bar.dart';
 import 'package:super_collection/features/shortcuts/shortcut_inbound.dart';
 
@@ -86,6 +87,7 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
       }
       unawaited(ShortcutInbound.flushPending());
       unawaited(ClientFetchBackfill.run());
+      unawaited(AppUpdatePrompt.maybeShow(context));
       unawaited(
         Future<void>.delayed(const Duration(milliseconds: 900), () async {
           if (!mounted) return;

@@ -9,10 +9,14 @@ import 'package:super_collection/features/auth/auth_repository.dart';
 import 'package:super_collection/features/auth/login_page.dart';
 import 'package:super_collection/features/onboarding/onboarding_page.dart';
 import 'package:super_collection/features/onboarding/onboarding_prefs.dart';
+import 'package:super_collection/features/onboarding/splash_prefs.dart';
 import 'package:super_collection/features/shell/main_shell.dart';
 import 'package:super_collection/features/shortcuts/app_navigator.dart';
 import 'package:super_collection/features/shortcuts/share_inbound.dart';
 import 'package:super_collection/features/shortcuts/shortcut_inbound.dart';
+
+/// 首次安装启动页最少展示时长（原生 LaunchScreen 一直盖到 allowFirstFrame）。
+const _kFirstSplashMin = Duration(seconds: 3);
 
 class SuperCollectionApp extends StatefulWidget {
   const SuperCollectionApp({super.key});
@@ -88,9 +92,20 @@ class _AuthGateState extends State<_AuthGate> {
   @override
   void initState() {
     super.initState();
+    final started = DateTime.now();
     _future = _resolveHome();
     _future.whenComplete(() async {
-      await Future<void>.delayed(const Duration(seconds: 2));
+      // 首次下载：启动页至少 3 秒，方便看清品牌文案；
+      // 之后冷启动立刻进壳，缩短粘贴链接 / 剪贴板入库等待。
+      final first = await SplashPrefs.isFirstLaunch();
+      if (first) {
+        final elapsed = DateTime.now().difference(started);
+        final remaining = _kFirstSplashMin - elapsed;
+        if (remaining > Duration.zero) {
+          await Future<void>.delayed(remaining);
+        }
+        await SplashPrefs.markFirstLaunchDone();
+      }
       WidgetsBinding.instance.allowFirstFrame();
     });
   }
