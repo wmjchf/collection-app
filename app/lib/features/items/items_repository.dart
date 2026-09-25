@@ -301,6 +301,25 @@ class ItemsRepository {
     await _api.delete('/api/items/$id', accessToken: token);
   }
 
+  /// 批量永久删除。返回实际删除的 id（使用指引等会被跳过）。
+  Future<({List<int> deletedIds, List<int> skippedGuideIds})> deleteItems(
+    List<int> ids,
+  ) async {
+    final token = await _token();
+    final json = await _api.post(
+      '/api/items/batch-delete',
+      body: {'ids': ids},
+      accessToken: token,
+    );
+    final deleted = (json['deletedIds'] as List<dynamic>? ?? const [])
+        .map((e) => (e as num).toInt())
+        .toList();
+    final skipped = (json['skippedGuideIds'] as List<dynamic>? ?? const [])
+        .map((e) => (e as num).toInt())
+        .toList();
+    return (deletedIds: deleted, skippedGuideIds: skipped);
+  }
+
   Future<List<Tag>> listItemTags(int id) async {
     final token = await _token();
     final json = await _api.get('/api/items/$id/tags', accessToken: token);

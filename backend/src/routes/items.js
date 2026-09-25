@@ -382,6 +382,22 @@ router.patch('/:id', async (req, res, next) => {
   }
 });
 
+/**
+ * POST /api/items/batch-delete — 批量永久删除
+ * body: { ids: number[] }（最多 100）
+ */
+router.post('/batch-delete', async (req, res, next) => {
+  try {
+    const result = await itemService.deleteItems(
+      req.auth.userId,
+      req.body?.ids,
+    );
+    return res.json(result);
+  } catch (err) {
+    return next(err);
+  }
+});
+
 /** DELETE /api/items/:id — 永久删除 */
 router.delete('/:id', async (req, res, next) => {
   try {

@@ -13,6 +13,9 @@ class ItemListTile extends StatelessWidget {
     this.coverKey,
     this.tags = const [],
     this.onTap,
+    this.onLongPress,
+    this.selecting = false,
+    this.selected = false,
   });
 
   factory ItemListTile.fromItem(
@@ -20,6 +23,9 @@ class ItemListTile extends StatelessWidget {
     Key? key,
     required String subtitle,
     VoidCallback? onTap,
+    VoidCallback? onLongPress,
+    bool selecting = false,
+    bool selected = false,
   }) {
     final title =
         item.title?.isNotEmpty == true ? item.title! : item.url;
@@ -32,6 +38,9 @@ class ItemListTile extends StatelessWidget {
       coverKey: ValueKey('cover-${item.id}'),
       tags: item.tags,
       onTap: onTap,
+      onLongPress: onLongPress,
+      selecting: selecting,
+      selected: selected,
     );
   }
 
@@ -42,10 +51,14 @@ class ItemListTile extends StatelessWidget {
   final Key? coverKey;
   final List<ItemTagBrief> tags;
   final VoidCallback? onTap;
+  final VoidCallback? onLongPress;
+  final bool selecting;
+  final bool selected;
 
   static const _text = Color(0xFF1F242E);
   static const _muted = Color(0xFF737A85);
   static const _tag = Color(0xFF2F6FED);
+  static const _selectedBorder = Color(0xFF2F6FED);
   /// 列表卡单行最多展示几个标签，超出用 +N
   static const _maxVisibleTags = 3;
 
@@ -78,6 +91,19 @@ class ItemListTile extends StatelessWidget {
     final body = Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        if (selecting) ...[
+          Padding(
+            padding: const EdgeInsets.only(top: 20),
+            child: Icon(
+              selected
+                  ? Icons.check_circle_rounded
+                  : Icons.circle_outlined,
+              size: 24,
+              color: selected ? _selectedBorder : const Color(0xFFC5CAD3),
+            ),
+          ),
+          const SizedBox(width: 10),
+        ],
         CoverImage(
           key: coverKey,
           url: coverUrl,
@@ -163,10 +189,11 @@ class ItemListTile extends StatelessWidget {
     );
 
     return Material(
-      color: Colors.white,
+      color: selected ? const Color(0xFFF0F5FF) : Colors.white,
       borderRadius: BorderRadius.circular(12),
       child: InkWell(
         onTap: onTap,
+        onLongPress: onLongPress,
         borderRadius: BorderRadius.circular(12),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
