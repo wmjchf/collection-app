@@ -3,15 +3,16 @@ import 'package:super_collection/core/network/api_client.dart';
 import 'package:super_collection/core/ui/app_bottom_sheet.dart';
 import 'package:super_collection/core/ui/app_confirm_dialog.dart';
 import 'package:super_collection/core/ui/app_toast.dart';
+import 'package:super_collection/core/ui/pro_copy.dart';
 import 'package:super_collection/features/items/item_models.dart';
 import 'package:super_collection/features/items/items_repository.dart';
-
 
 Future<void> showAnnotationDetailSheet(
   BuildContext context, {
   required int itemId,
   required ItemAnnotation annotation,
   required VoidCallback onChanged,
+  bool isPro = false,
 }) {
   return showAppBottomSheet<void>(
     context: context,
@@ -21,6 +22,7 @@ Future<void> showAnnotationDetailSheet(
       selectedText: annotation.selectedText,
       initialNote: annotation.note,
       onChanged: onChanged,
+      isPro: isPro,
     ),
   );
 }
@@ -32,6 +34,7 @@ Future<ItemAnnotation?> showCreateAnnotationNoteSheet(
   required String selectedText,
   int? startOffset,
   int? endOffset,
+  bool isPro = false,
 }) {
   return showAppBottomSheet<ItemAnnotation>(
     context: context,
@@ -41,6 +44,7 @@ Future<ItemAnnotation?> showCreateAnnotationNoteSheet(
       startOffset: startOffset,
       endOffset: endOffset,
       isCreate: true,
+      isPro: isPro,
     ),
   );
 }
@@ -55,6 +59,7 @@ class _AnnotationNoteSheet extends StatefulWidget {
     this.endOffset,
     this.onChanged,
     this.isCreate = false,
+    this.isPro = false,
   });
 
   final int itemId;
@@ -65,6 +70,7 @@ class _AnnotationNoteSheet extends StatefulWidget {
   final int? endOffset;
   final VoidCallback? onChanged;
   final bool isCreate;
+  final bool isPro;
 
   @override
   State<_AnnotationNoteSheet> createState() => _AnnotationNoteSheetState();
@@ -141,7 +147,7 @@ class _AnnotationNoteSheetState extends State<_AnnotationNoteSheet> {
     }
     final ok = await showAppConfirmDialog(
       context,
-      title: '删除批注？',
+      title: deleteAnnotationTitle(isPro: widget.isPro),
       message: '删除后不可恢复。',
       confirmLabel: '删除',
     );
@@ -160,140 +166,145 @@ class _AnnotationNoteSheetState extends State<_AnnotationNoteSheet> {
   @override
   Widget build(BuildContext context) {
     return Material(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(24),
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(24),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Center(
+              child: Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: _handle,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            Row(
               children: [
-                Center(
-                  child: Container(
-                    width: 40,
-                    height: 4,
-                    decoration: BoxDecoration(
-                      color: _handle,
-                      borderRadius: BorderRadius.circular(2),
-                    ),
+                Text(
+                  annotationSheetTitle(
+                    isPro: widget.isPro,
+                    isCreate: widget.isCreate,
                   ),
-                ),
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    Text(
-                      widget.isCreate ? '添加批注' : '编辑批注',
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w700,
-                        color: _text,
-                      ),
-                    ),
-                    const Spacer(),
-                    GestureDetector(
-                      onTap: () => Navigator.pop(context),
-                      child: const Text(
-                        '关闭',
-                        style: TextStyle(fontSize: 14, color: _muted),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: _fieldBg,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Text(
-                    _quotePreview,
-                    style: const TextStyle(
-                      fontSize: 13,
-                      color: _muted,
-                      height: 1.4,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 10),
-                TextField(
-                  controller: _controller,
-                  maxLines: 4,
-                  minLines: 3,
-                  maxLength: 500,
-                  autofocus: true,
                   style: const TextStyle(
-                    fontSize: 14,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
                     color: _text,
-                    height: 1.45,
-                  ),
-                  decoration: InputDecoration(
-                    hintText: '可选：写一句批注',
-                    hintStyle: const TextStyle(color: _muted, fontSize: 14),
-                    filled: true,
-                    fillColor: _fieldBg,
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide.none,
-                    ),
-                    contentPadding: const EdgeInsets.all(12),
-                    counterText: '',
                   ),
                 ),
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    Expanded(
-                      child: SizedBox(
-                        height: 48,
-                        child: FilledButton(
-                          onPressed: _delete,
-                          style: FilledButton.styleFrom(
-                            backgroundColor: _fieldBg,
-                            foregroundColor: _text,
-                            elevation: 0,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                          ),
-                          child: Text(
-                            widget.isCreate ? '取消' : '删除批注',
-                            style: const TextStyle(
-                              fontSize: 15,
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: SizedBox(
-                        height: 48,
-                        child: FilledButton(
-                          onPressed: _saving ? null : _save,
-                          style: FilledButton.styleFrom(
-                            backgroundColor: _blue,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                          ),
-                          child: Text(
-                            _saving ? '保存中…' : '保存',
-                            style: const TextStyle(
-                              fontSize: 15,
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
+                const Spacer(),
+                GestureDetector(
+                  onTap: () => Navigator.pop(context),
+                  child: const Text(
+                    '关闭',
+                    style: TextStyle(fontSize: 14, color: _muted),
+                  ),
                 ),
               ],
             ),
-          ),
-        );
+            const SizedBox(height: 12),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: _fieldBg,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Text(
+                _quotePreview,
+                style: const TextStyle(
+                  fontSize: 13,
+                  color: _muted,
+                  height: 1.4,
+                ),
+              ),
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              controller: _controller,
+              maxLines: 4,
+              minLines: 3,
+              maxLength: 500,
+              autofocus: true,
+              style: const TextStyle(
+                fontSize: 14,
+                color: _text,
+                height: 1.45,
+              ),
+              decoration: InputDecoration(
+                hintText: annotationNoteHint(isPro: widget.isPro),
+                hintStyle: const TextStyle(color: _muted, fontSize: 14),
+                filled: true,
+                fillColor: _fieldBg,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide.none,
+                ),
+                contentPadding: const EdgeInsets.all(12),
+                counterText: '',
+              ),
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: SizedBox(
+                    height: 48,
+                    child: FilledButton(
+                      onPressed: _delete,
+                      style: FilledButton.styleFrom(
+                        backgroundColor: _fieldBg,
+                        foregroundColor: _text,
+                        elevation: 0,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      child: Text(
+                        widget.isCreate
+                            ? '取消'
+                            : deleteAnnotationLabel(isPro: widget.isPro),
+                        style: const TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: SizedBox(
+                    height: 48,
+                    child: FilledButton(
+                      onPressed: _saving ? null : _save,
+                      style: FilledButton.styleFrom(
+                        backgroundColor: _blue,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      child: Text(
+                        _saving ? '保存中…' : '保存',
+                        style: const TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }

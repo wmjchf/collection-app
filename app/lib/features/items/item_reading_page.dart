@@ -10,6 +10,7 @@ import 'package:super_collection/core/network/media_http_headers.dart';
 import 'package:super_collection/core/ui/app_confirm_dialog.dart';
 import 'package:super_collection/core/ui/app_toast.dart';
 import 'package:super_collection/core/ui/parse_progress_tracker.dart';
+import 'package:super_collection/core/ui/pro_copy.dart';
 import 'package:super_collection/features/collection/items_browse_page.dart';
 import 'package:super_collection/features/collection/tag_models.dart';
 import 'package:super_collection/features/collection/tags_repository.dart';
@@ -87,6 +88,7 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
   bool _markedRead = false;
   bool _handlingBack = false;
   bool _tagLeaveNudgeDone = false;
+  bool _isPro = false;
   int _summaryPollGen = 0;
   int _mindmapPollGen = 0;
   late final DateTime _openedAt;
@@ -98,6 +100,7 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
   void initState() {
     super.initState();
     _openedAt = DateTime.now();
+    unawaited(_loadPro());
     final initial = widget.initialItem;
     _item = initial ??
         CollectionItem(
@@ -119,6 +122,14 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
       }
     }
     unawaited(_bootstrapItem());
+  }
+
+  Future<void> _loadPro() async {
+    try {
+      final usage = await _usageRepo.fetchUsage();
+      if (!mounted) return;
+      setState(() => _isPro = usage.isPro);
+    } catch (_) {}
   }
 
   @override
@@ -249,7 +260,7 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
       final item = await _repo.markAsUnread(widget.itemId);
       if (!mounted) return;
       setState(() => _item = item);
-      AppToast.show(context, '已标为未读');
+      AppToast.show(context, markedAsUnreadToast(isPro: _isPro));
     } on ApiException catch (e) {
       if (!mounted) return;
       _markedRead = false;
@@ -664,12 +675,13 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
       selectedText: text,
       startOffset: start,
       endOffset: end,
+      isPro: _isPro,
     );
     if (ann != null && mounted) {
       setState(() => _annotations = [..._annotations, ann]);
       AppToast.show(
         context,
-        '批注已保存',
+        annotationSavedToast(isPro: _isPro),
         actionLabel: '查看',
         onAction: _showAnnotationList,
       );
@@ -692,6 +704,7 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
       itemId: _item.id,
       annotation: ann,
       onChanged: _loadAnnotations,
+      isPro: _isPro,
     );
   }
 
@@ -713,18 +726,18 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
               shrinkWrap: true,
               padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
               children: [
-                const Text(
-                  '本篇批注',
-                  style: TextStyle(
+                Text(
+                  annotationSectionTitle(isPro: _isPro),
+                  style: const TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.w700,
                     color: _text,
                   ),
                 ),
                 const SizedBox(height: 4),
-                const Text(
-                  '点一条可查看或编辑批注',
-                  style: TextStyle(fontSize: 12, color: _muted),
+                Text(
+                  annotationListHint(isPro: _isPro),
+                  style: const TextStyle(fontSize: 12, color: _muted),
                 ),
                 const SizedBox(height: 12),
                 for (final ann in _annotations) ...[
@@ -783,7 +796,7 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
                             Text(
                               (ann.note != null && ann.note!.trim().isNotEmpty)
                                   ? ann.note!
-                                  : '暂无批注 · 点击可添加',
+                                  : annotationEmptyNoteHint(isPro: _isPro),
                               style: const TextStyle(
                                 fontSize: 13,
                                 color: _muted,
@@ -811,7 +824,7 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
       final go = await showAppConfirmDialog(
         context,
         title: '编辑正文',
-        message: '本篇已有高亮批注，修改正文后批注位置可能不准确。',
+        message: annotationEditBodyWarning(isPro: _isPro),
         confirmLabel: '继续编辑',
         dangerConfirm: false,
       );
@@ -1356,7 +1369,7 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
           ),
         ),
         _ToolbarAction(
-          label: '加批注',
+          label: addAnnotationLabel(isPro: _isPro),
           onTap: () => _onAddNote(
             editableTextState,
             selected,
@@ -1598,6 +1611,7 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
                     menuEnabled: true,
                     editEnabled: canRead,
                     showMarkUnread: !_item.isUnread,
+                    isPro: _isPro,
                     onEditContent: _onEditContent,
                     onCopyLink: _copyLink,
                     onReparse: _reparseItem,
@@ -2483,6 +2497,7 @@ class _ReadingTopBar extends StatelessWidget {
     this.menuEnabled = true,
     this.editEnabled = false,
     this.showMarkUnread = false,
+    this.isPro = false,
   });
 
   final VoidCallback onBack;
@@ -2494,6 +2509,7 @@ class _ReadingTopBar extends StatelessWidget {
   final bool menuEnabled;
   final bool editEnabled;
   final bool showMarkUnread;
+  final bool isPro;
 
   static const _text = Color(0xFF1F242E);
   static const _danger = Color(0xFFE34D59);
@@ -2558,12 +2574,12 @@ class _ReadingTopBar extends StatelessWidget {
                         ),
                       ),
                     if (showMarkUnread)
-                      const PopupMenuItem<String>(
+                      PopupMenuItem<String>(
                         value: 'unread',
                         height: 44,
                         child: Text(
-                          '标为未读',
-                          style: TextStyle(
+                          markAsUnreadLabel(isPro: isPro),
+                          style: const TextStyle(
                             fontSize: 15,
                             fontWeight: FontWeight.w500,
                             color: _text,

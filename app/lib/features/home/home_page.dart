@@ -7,6 +7,7 @@ import 'package:super_collection/core/network/api_client.dart';
 import 'package:super_collection/core/ui/app_toast.dart';
 import 'package:super_collection/core/ui/client_fetch_backfill.dart';
 import 'package:super_collection/core/ui/parse_progress_tracker.dart';
+import 'package:super_collection/core/ui/pro_copy.dart';
 import 'package:super_collection/core/utils/clipboard_utils.dart';
 import 'package:super_collection/core/utils/link_utils.dart';
 import 'package:super_collection/features/auth/auth_repository.dart';
@@ -24,6 +25,7 @@ import 'package:super_collection/features/onboarding/home_coach_overlay.dart';
 import 'package:super_collection/features/onboarding/shortcuts_help_page.dart';
 import 'package:super_collection/features/shell/user_avatar_button.dart';
 import 'package:super_collection/features/settings/trial_expiry_banner.dart';
+import 'package:super_collection/features/settings/usage_repository.dart';
 
 /// 一级页：首页 — 未读 / 最近阅读
 class HomePage extends StatefulWidget {
@@ -55,9 +57,11 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   final _repo = HomeRepository();
   final _items = ItemsRepository();
   final _auth = AuthRepository();
+  final _usageRepo = UsageRepository();
   HomeData? _data;
   bool _loading = true;
   bool _pasting = false;
+  bool _isPro = false;
   String? _error;
   final _addButtonKey = GlobalKey();
   final _pasteItemKey = GlobalKey();
@@ -78,7 +82,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    UsageRefresh.version.addListener(_onUsageRefresh);
     _load();
+    unawaited(_loadPro());
     WidgetsBinding.instance.addPostFrameCallback((_) {
       unawaited(_startCoachThenClipboard());
     });
@@ -86,9 +92,20 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
 
   @override
   void dispose() {
+    UsageRefresh.version.removeListener(_onUsageRefresh);
     _removeCoachOverlays();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
+  }
+
+  void _onUsageRefresh() => unawaited(_loadPro());
+
+  Future<void> _loadPro() async {
+    try {
+      final usage = await _usageRepo.fetchUsage();
+      if (!mounted) return;
+      setState(() => _isPro = usage.isPro);
+    } catch (_) {}
   }
 
   @override
@@ -732,15 +749,18 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                                 widget.refreshTick + _trialRefreshTick,
                           ),
                           _HomeSection(
-                            title: '未读',
-                            emptyText: '暂无未读',
+                            title: unreadSectionTitle(isPro: _isPro),
+                            emptyText: unreadEmptyText(isPro: _isPro),
                             emptyIcon: Icons.mark_email_unread_outlined,
                             emptyHeight: emptyCardH,
                             items: [
                               for (final item in unread)
                                 previewForUnread(item),
                             ],
-                            onMore: () => _openFilter('unread', '未读'),
+                            onMore: () => _openFilter(
+                              'unread',
+                              unreadSectionTitle(isPro: _isPro),
+                            ),
                             onItemTap: (preview) {
                               final item = unread
                                   .firstWhere((e) => e.id == preview.id);
@@ -749,16 +769,18 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                           ),
                           const SizedBox(height: sectionGap),
                           _HomeSection(
-                            title: '最近阅读',
-                            emptyText: '暂无最近阅读',
+                            title: recentReadSectionTitle(isPro: _isPro),
+                            emptyText: recentReadEmptyText(isPro: _isPro),
                             emptyIcon: Icons.schedule_rounded,
                             emptyHeight: emptyCardH,
                             items: [
                               for (final item in recentRead)
                                 previewForRecentRead(item),
                             ],
-                            onMore: () =>
-                                _openFilter('recent_read', '最近阅读'),
+                            onMore: () => _openFilter(
+                              'recent_read',
+                              recentReadSectionTitle(isPro: _isPro),
+                            ),
                             onItemTap: (preview) {
                               final item = recentRead
                                   .firstWhere((e) => e.id == preview.id);
