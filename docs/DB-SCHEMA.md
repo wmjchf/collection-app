@@ -73,6 +73,10 @@
 | avatar_url | VARCHAR(512) NULL | |
 | status | ENUM('active','disabled') NOT NULL DEFAULT 'active' | |
 | last_login_at | DATETIME(3) NULL | |
+| survey_completed_at | DATETIME(3) NULL | 首次问卷完成/跳过时间 |
+| survey_age_range | VARCHAR(32) NULL | 年龄段 |
+| survey_source | VARCHAR(32) NULL | 获客来源 id |
+| survey_interests | JSON NULL | 所选兴趣类 id 列表 |
 | created_at / updated_at | DATETIME(3) | |
 
 ---

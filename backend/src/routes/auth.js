@@ -60,6 +60,7 @@ router.get('/me', requireAuth, async (req, res, next) => {
         phone: user.phone,
         nickname: user.nickname,
         avatarUrl: user.avatar_url,
+        surveyCompleted: !!user.survey_completed_at,
       },
     });
   } catch (err) {

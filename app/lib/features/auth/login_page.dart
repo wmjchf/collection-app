@@ -4,8 +4,7 @@ import 'package:super_collection/core/config/app_brand.dart';
 import 'package:super_collection/core/network/api_client.dart';
 import 'package:super_collection/core/ui/app_toast.dart';
 import 'package:super_collection/features/auth/auth_repository.dart';
-import 'package:super_collection/features/onboarding/onboarding_page.dart';
-import 'package:super_collection/features/onboarding/onboarding_prefs.dart';
+import 'package:super_collection/features/onboarding/onboarding_flow.dart';
 import 'package:super_collection/features/settings/legal_docs.dart';
 import 'package:super_collection/features/settings/simple_doc_page.dart';
 import 'package:super_collection/features/shell/main_shell.dart';
@@ -116,18 +115,16 @@ class _LoginPageState extends State<LoginPage> {
     try {
       final session = await _auth.login(phone: phone, code: code);
       if (!mounted) return;
-      final seen = await OnboardingPrefs.isSeen(userId: session.userId);
+      final home = await resolvePostAuthHome(userId: session.userId);
       if (!mounted) return;
       Navigator.of(context).pushReplacement(
-        MaterialPageRoute<void>(
-          builder: (_) => seen
-              ? const MainShell()
-              : OnboardingPage(userId: session.userId),
-        ),
+        MaterialPageRoute<void>(builder: (_) => home),
       );
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        ShortcutInbound.flushPending();
-      });
+      if (home is MainShell) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          ShortcutInbound.flushPending();
+        });
+      }
     } on ApiException catch (e) {
       _toast(e.message);
     } catch (_) {
