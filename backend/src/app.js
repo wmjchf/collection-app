@@ -82,6 +82,7 @@ app.get('/internal/app-update', sendAppUpdateEditor);
 app.use('/api', healthRouter);
 app.use('/api/app', require('./routes/appVersion'));
 app.use('/api/auth', authRouter);
+app.use('/api/onboarding', require('./routes/onboarding'));
 app.use('/api/items', itemsRouter);
 app.use('/api/tags', tagsRouter);
 app.use('/api/tag-modules', require('./routes/tagModules'));

@@ -253,6 +253,18 @@ class Analytics {
     });
   }
 
+  void surveySubmit({
+    required String source,
+    required int interestCount,
+  }) {
+    track('survey_submit', {
+      'source': source,
+      'interest_count': interestCount,
+    });
+  }
+
+  void surveySkip() => track('survey_skip');
+
   static String secondsBucket(int seconds) {
     if (seconds < 5) return '0-5';
     if (seconds < 15) return '5-15';

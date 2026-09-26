@@ -7,8 +7,7 @@ import 'package:super_collection/core/config/app_brand.dart';
 import 'package:super_collection/core/ui/app_icon_sizes.dart';
 import 'package:super_collection/features/auth/auth_repository.dart';
 import 'package:super_collection/features/auth/login_page.dart';
-import 'package:super_collection/features/onboarding/onboarding_page.dart';
-import 'package:super_collection/features/onboarding/onboarding_prefs.dart';
+import 'package:super_collection/features/onboarding/onboarding_flow.dart';
 import 'package:super_collection/features/onboarding/splash_prefs.dart';
 import 'package:super_collection/features/shell/main_shell.dart';
 import 'package:super_collection/features/shortcuts/app_navigator.dart';
@@ -115,12 +114,15 @@ class _AuthGateState extends State<_AuthGate> {
     if (session == null) return const LoginPage();
 
     // 启动时校验 access；过期则自动 refresh，仍失败则回登录页
+    bool? surveyCompletedFromMe;
     try {
-      await ApiClient().get(
+      final me = await ApiClient().get(
         '/api/auth/me',
         accessToken: session.accessToken,
         handleExpiry: false,
       );
+      final user = me['user'] as Map<String, dynamic>?;
+      surveyCompletedFromMe = user?['surveyCompleted'] == true;
     } on ApiException catch (e) {
       if (e.statusCode == 401) return const LoginPage();
       // 网络等临时错误：仍进入主界面，后续请求再处理
@@ -128,12 +130,16 @@ class _AuthGateState extends State<_AuthGate> {
 
     final latest = await _auth.readSession() ?? session;
     await _auth.saveSession(latest);
-    final seen = await OnboardingPrefs.isSeen(userId: latest.userId);
-    if (!seen) return OnboardingPage(userId: latest.userId);
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      ShortcutInbound.flushPending();
-    });
-    return const MainShell();
+    final home = await resolvePostAuthHome(
+      userId: latest.userId,
+      surveyCompletedFromServer: surveyCompletedFromMe,
+    );
+    if (home is MainShell) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        ShortcutInbound.flushPending();
+      });
+    }
+    return home;
   }
 
   @override

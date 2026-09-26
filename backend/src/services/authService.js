@@ -70,7 +70,8 @@ async function sendLoginCode(phone) {
 
 async function findUserByPhone(phone) {
   const [rows] = await pool.execute(
-    'SELECT id, phone, nickname, avatar_url, status FROM users WHERE phone = :phone LIMIT 1',
+    `SELECT id, phone, nickname, avatar_url, status, survey_completed_at
+     FROM users WHERE phone = :phone LIMIT 1`,
     { phone: normalizePhone(phone) },
   );
   return rows[0] || null;
