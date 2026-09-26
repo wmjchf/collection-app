@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:super_collection/core/network/api_client.dart';
 import 'package:super_collection/core/ui/app_confirm_dialog.dart';
 import 'package:super_collection/core/ui/app_toast.dart';
+import 'package:super_collection/core/ui/pro_copy.dart';
 import 'package:super_collection/features/items/item_models.dart';
 import 'package:super_collection/features/items/items_repository.dart';
 
@@ -11,6 +12,7 @@ Future<void> showAnnotationDetailSheet(
   required int itemId,
   required ItemAnnotation annotation,
   required VoidCallback onChanged,
+  bool isPro = false,
 }) {
   return showModalBottomSheet<void>(
     context: context,
@@ -29,6 +31,7 @@ Future<void> showAnnotationDetailSheet(
         selectedText: annotation.selectedText,
         initialNote: annotation.note,
         onChanged: onChanged,
+        isPro: isPro,
       ),
     ),
   );
@@ -41,6 +44,7 @@ Future<ItemAnnotation?> showCreateAnnotationNoteSheet(
   required String selectedText,
   int? startOffset,
   int? endOffset,
+  bool isPro = false,
 }) {
   return showModalBottomSheet<ItemAnnotation>(
     context: context,
@@ -59,6 +63,7 @@ Future<ItemAnnotation?> showCreateAnnotationNoteSheet(
         startOffset: startOffset,
         endOffset: endOffset,
         isCreate: true,
+        isPro: isPro,
       ),
     ),
   );
@@ -74,6 +79,7 @@ class _AnnotationNoteSheet extends StatefulWidget {
     this.endOffset,
     this.onChanged,
     this.isCreate = false,
+    this.isPro = false,
   });
 
   final int itemId;
@@ -84,6 +90,7 @@ class _AnnotationNoteSheet extends StatefulWidget {
   final int? endOffset;
   final VoidCallback? onChanged;
   final bool isCreate;
+  final bool isPro;
 
   @override
   State<_AnnotationNoteSheet> createState() => _AnnotationNoteSheetState();
@@ -160,7 +167,7 @@ class _AnnotationNoteSheetState extends State<_AnnotationNoteSheet> {
     }
     final ok = await showAppConfirmDialog(
       context,
-      title: '删除批注？',
+      title: deleteAnnotationTitle(isPro: widget.isPro),
       message: '删除后不可恢复。',
       confirmLabel: '删除',
     );
@@ -205,7 +212,10 @@ class _AnnotationNoteSheetState extends State<_AnnotationNoteSheet> {
                 Row(
                   children: [
                     Text(
-                      widget.isCreate ? '添加批注' : '编辑批注',
+                      annotationSheetTitle(
+                        isPro: widget.isPro,
+                        isCreate: widget.isCreate,
+                      ),
                       style: const TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.w700,
@@ -252,7 +262,7 @@ class _AnnotationNoteSheetState extends State<_AnnotationNoteSheet> {
                     height: 1.45,
                   ),
                   decoration: InputDecoration(
-                    hintText: '可选：写一句批注',
+                    hintText: annotationNoteHint(isPro: widget.isPro),
                     hintStyle: const TextStyle(color: _muted, fontSize: 14),
                     filled: true,
                     fillColor: _fieldBg,
@@ -281,7 +291,9 @@ class _AnnotationNoteSheetState extends State<_AnnotationNoteSheet> {
                             ),
                           ),
                           child: Text(
-                            widget.isCreate ? '取消' : '删除批注',
+                            widget.isCreate
+                                ? '取消'
+                                : deleteAnnotationLabel(isPro: widget.isPro),
                             style: const TextStyle(
                               fontSize: 15,
                               fontWeight: FontWeight.w500,

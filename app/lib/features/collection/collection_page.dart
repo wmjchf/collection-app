@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:super_collection/core/network/api_client.dart';
 import 'package:super_collection/core/ui/app_confirm_dialog.dart';
 import 'package:super_collection/core/ui/app_toast.dart';
+import 'package:super_collection/core/ui/pro_copy.dart';
 import 'package:super_collection/features/collection/ai_organize_sheet.dart';
 import 'package:super_collection/features/collection/collection_tag_modules_section.dart';
 import 'package:super_collection/features/collection/create_module_sheet.dart';
@@ -47,6 +48,7 @@ class _CollectionPageState extends State<CollectionPage> {
   final _tagsRepo = TagsRepository();
   final _tagModulesRepo = TagModulesRepository();
   final _systemFiltersRepo = SystemFiltersRepository();
+  final _usageRepo = UsageRepository();
   final _scrollController = ScrollController();
   final _tagsHeaderKey = GlobalKey();
 
@@ -54,6 +56,7 @@ class _CollectionPageState extends State<CollectionPage> {
   List<Tag> _ungrouped = const [];
   List<SystemFilter> _systemFilters = const [];
   bool _loading = true;
+  bool _isPro = false;
   String? _error;
   /// 归类标签收进顶栏：0 未贴顶，1 完全收起
   final _tagsFocusT = ValueNotifier<double>(0);
@@ -62,15 +65,28 @@ class _CollectionPageState extends State<CollectionPage> {
   void initState() {
     super.initState();
     _scrollController.addListener(_onScrollForTagsFocus);
+    UsageRefresh.version.addListener(_onUsageRefresh);
     _load();
+    _loadPro();
   }
 
   @override
   void dispose() {
+    UsageRefresh.version.removeListener(_onUsageRefresh);
     _scrollController.removeListener(_onScrollForTagsFocus);
     _scrollController.dispose();
     _tagsFocusT.dispose();
     super.dispose();
+  }
+
+  void _onUsageRefresh() => _loadPro();
+
+  Future<void> _loadPro() async {
+    try {
+      final usage = await _usageRepo.fetchUsage();
+      if (!mounted) return;
+      setState(() => _isPro = usage.isPro);
+    } catch (_) {}
   }
 
   @override
@@ -263,12 +279,17 @@ class _CollectionPageState extends State<CollectionPage> {
   }
 
   void _openSystemFilter(SystemFilter filter) {
+    final title = systemFilterDisplayName(
+      filter.code,
+      filter.name,
+      isPro: _isPro,
+    );
     Navigator.of(context)
         .push(
       MaterialPageRoute<void>(
         builder: (_) => SystemFilterListPage(
           code: filter.code,
-          title: filter.name,
+          title: title,
         ),
       ),
     )
@@ -447,7 +468,11 @@ class _CollectionPageState extends State<CollectionPage> {
                   entries: [
                     for (final f in _systemFilters)
                       _EntityEntry(
-                        title: f.name,
+                        title: systemFilterDisplayName(
+                          f.code,
+                          f.name,
+                          isPro: _isPro,
+                        ),
                         countLabel: f.countLabel,
                         icon: _CollectionNavIcon.forSystemCode(f.code),
                         onTap: () => _openSystemFilter(f),
