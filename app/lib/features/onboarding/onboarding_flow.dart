@@ -7,9 +7,12 @@ import 'package:super_collection/features/onboarding/survey_prefs.dart';
 import 'package:super_collection/features/shell/main_shell.dart';
 
 /// 登录 / 冷启动后首页：问卷 → 三种收藏引导 → MainShell
+///
+/// [localOnly]：只读本地 prefs，不请求问卷状态（冷启动秒进用）。
 Future<Widget> resolvePostAuthHome({
   required int userId,
   bool? surveyCompletedFromServer,
+  bool localOnly = false,
 }) async {
   var surveyDone = await SurveyPrefs.isDone(userId: userId);
 
@@ -18,7 +21,7 @@ Future<Widget> resolvePostAuthHome({
     surveyDone = true;
   }
 
-  if (!surveyDone) {
+  if (!surveyDone && !localOnly) {
     try {
       final status = await OnboardingSurveyRepository().fetchStatus();
       if (status.surveyCompleted) {

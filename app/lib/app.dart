@@ -9,6 +9,7 @@ import 'package:super_collection/features/auth/auth_repository.dart';
 import 'package:super_collection/features/auth/login_page.dart';
 import 'package:super_collection/features/onboarding/onboarding_flow.dart';
 import 'package:super_collection/features/onboarding/splash_prefs.dart';
+import 'package:super_collection/features/onboarding/survey_prefs.dart';
 import 'package:super_collection/features/shell/main_shell.dart';
 import 'package:super_collection/features/shortcuts/app_navigator.dart';
 import 'package:super_collection/features/shortcuts/share_inbound.dart';
@@ -86,30 +87,57 @@ class _AuthGate extends StatefulWidget {
 
 class _AuthGateState extends State<_AuthGate> {
   final _auth = AuthRepository();
-  late Future<Widget> _future;
+  Widget? _home;
 
   @override
   void initState() {
     super.initState();
-    final started = DateTime.now();
-    _future = _resolveHome();
-    _future.whenComplete(() async {
-      // 首次下载：启动页至少 3 秒，方便看清品牌文案；
-      // 之后冷启动立刻进壳，缩短粘贴链接 / 剪贴板入库等待。
-      final first = await SplashPrefs.isFirstLaunch();
-      if (first) {
-        final elapsed = DateTime.now().difference(started);
-        final remaining = _kFirstSplashMin - elapsed;
-        if (remaining > Duration.zero) {
-          await Future<void>.delayed(remaining);
-        }
-        await SplashPrefs.markFirstLaunchDone();
-      }
-      WidgetsBinding.instance.allowFirstFrame();
-    });
+    unawaited(_boot());
   }
 
-  Future<Widget> _resolveHome() async {
+  /// 首次安装：原生启动页至少 3 秒；之后冷启动只读本地会话，秒揭首帧。
+  Future<void> _boot() async {
+    final started = DateTime.now();
+    final firstSplash = await SplashPrefs.isFirstLaunch();
+
+    final home = firstSplash
+        ? await _resolveHomeRemote()
+        : await _resolveHomeLocal();
+
+    if (!mounted) return;
+    setState(() => _home = home);
+
+    if (firstSplash) {
+      final remaining = _kFirstSplashMin - DateTime.now().difference(started);
+      if (remaining > Duration.zero) {
+        await Future<void>.delayed(remaining);
+      }
+      await SplashPrefs.markFirstLaunchDone();
+    } else {
+      unawaited(_validateSessionInBackground());
+    }
+
+    // 先 setState 再放行，避免首帧落到空白占位
+    WidgetsBinding.instance.allowFirstFrame();
+  }
+
+  Future<Widget> _resolveHomeLocal() async {
+    final session = await _auth.readSession();
+    if (session == null) return const LoginPage();
+
+    final home = await resolvePostAuthHome(
+      userId: session.userId,
+      localOnly: true,
+    );
+    if (home is MainShell) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        ShortcutInbound.flushPending();
+      });
+    }
+    return home;
+  }
+
+  Future<Widget> _resolveHomeRemote() async {
     final session = await _auth.readSession();
     if (session == null) return const LoginPage();
 
@@ -142,16 +170,35 @@ class _AuthGateState extends State<_AuthGate> {
     return home;
   }
 
+  /// 秒进后后台校验；失效则踢回登录，不影响首帧。
+  Future<void> _validateSessionInBackground() async {
+    final session = await _auth.readSession();
+    if (session == null) return;
+    try {
+      final me = await ApiClient().get(
+        '/api/auth/me',
+        accessToken: session.accessToken,
+        handleExpiry: false,
+      );
+      final user = me['user'] as Map<String, dynamic>?;
+      if (user?['surveyCompleted'] == true) {
+        await SurveyPrefs.markDone(userId: session.userId);
+      }
+      final latest = await _auth.readSession() ?? session;
+      await _auth.saveSession(latest);
+    } on ApiException catch (e) {
+      if (e.statusCode != 401 || !mounted) return;
+      final nav = AppNavigator.key.currentState;
+      if (nav == null) return;
+      nav.pushAndRemoveUntil(
+        MaterialPageRoute<void>(builder: (_) => const LoginPage()),
+        (_) => false,
+      );
+    } catch (_) {}
+  }
+
   @override
   Widget build(BuildContext context) {
-    return FutureBuilder<Widget>(
-      future: _future,
-      builder: (context, snapshot) {
-        if (snapshot.connectionState != ConnectionState.done) {
-          return const ColoredBox(color: Colors.white);
-        }
-        return snapshot.data ?? const LoginPage();
-      },
-    );
+    return _home ?? const ColoredBox(color: Colors.white);
   }
 }

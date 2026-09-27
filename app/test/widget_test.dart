@@ -6,7 +6,10 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   setUp(() {
-    SharedPreferences.setMockInitialValues({});
+    // 非首次启动：跳过 LaunchScreen 3 秒，走秒进路径
+    SharedPreferences.setMockInitialValues({
+      'splash_first_launch_done': true,
+    });
   });
 
   testWidgets('app boots to login page', (tester) async {
