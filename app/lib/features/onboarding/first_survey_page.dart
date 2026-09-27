@@ -8,7 +8,7 @@ import 'package:super_collection/features/onboarding/onboarding_survey_repositor
 import 'package:super_collection/features/onboarding/survey_catalog.dart';
 import 'package:super_collection/features/onboarding/survey_prefs.dart';
 
-/// 首次问卷：年龄 / 来源 / 兴趣类（可跳过）
+/// 首次问卷：三页各一题（年龄 / 来源 / 兴趣类），可跳过
 class FirstSurveyPage extends StatefulWidget {
   const FirstSurveyPage({super.key, required this.userId});
 
@@ -22,18 +22,37 @@ class _FirstSurveyPageState extends State<FirstSurveyPage> {
   static const _text = Color(0xFF1F242E);
   static const _muted = Color(0xFF737A85);
   static const _blue = Color(0xFF2F6FED);
+  static const _stepCount = 3;
 
   final _repo = OnboardingSurveyRepository();
+  final _pageController = PageController();
 
+  int _step = 0;
   String? _ageRange;
   String? _source;
   final Set<String> _interests = {};
   bool _busy = false;
 
-  bool get _canSubmit =>
-      _ageRange != null && _source != null && _interests.isNotEmpty;
+  bool get _canAdvance {
+    switch (_step) {
+      case 0:
+        return _ageRange != null;
+      case 1:
+        return _source != null;
+      case 2:
+        return _interests.isNotEmpty;
+      default:
+        return false;
+    }
+  }
 
-  Future<void> _finishAndContinue({required bool skipped}) async {
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _finishAndContinue() async {
     await SurveyPrefs.markDone(userId: widget.userId);
     if (!mounted) return;
     final next = await nextAfterSurvey(userId: widget.userId);
@@ -49,7 +68,7 @@ class _FirstSurveyPageState extends State<FirstSurveyPage> {
     try {
       await _repo.skip();
       Analytics.instance.surveySkip();
-      await _finishAndContinue(skipped: true);
+      await _finishAndContinue();
     } on ApiException catch (e) {
       if (!mounted) return;
       setState(() => _busy = false);
@@ -61,8 +80,16 @@ class _FirstSurveyPageState extends State<FirstSurveyPage> {
     }
   }
 
-  Future<void> _onSubmit() async {
-    if (_busy || !_canSubmit) return;
+  Future<void> _onPrimary() async {
+    if (_busy || !_canAdvance) return;
+    if (_step < _stepCount - 1) {
+      await _pageController.nextPage(
+        duration: const Duration(milliseconds: 280),
+        curve: Curves.easeOutCubic,
+      );
+      return;
+    }
+
     final age = _ageRange!;
     final source = _source!;
     final interests = _interests.toList();
@@ -77,7 +104,7 @@ class _FirstSurveyPageState extends State<FirstSurveyPage> {
         source: source,
         interestCount: interests.length,
       );
-      await _finishAndContinue(skipped: false);
+      await _finishAndContinue();
     } on ApiException catch (e) {
       if (!mounted) return;
       setState(() => _busy = false);
@@ -89,6 +116,14 @@ class _FirstSurveyPageState extends State<FirstSurveyPage> {
     }
   }
 
+  void _goBack() {
+    if (_busy || _step == 0) return;
+    _pageController.previousPage(
+      duration: const Duration(milliseconds: 280),
+      curve: Curves.easeOutCubic,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -97,82 +132,85 @@ class _FirstSurveyPageState extends State<FirstSurveyPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Expanded(
-              child: ListView(
-                padding: const EdgeInsets.fromLTRB(24, 32, 24, 16),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(8, 4, 16, 0),
+              child: Row(
                 children: [
-                  const Text(
-                    AppBrand.name,
-                    style: TextStyle(
-                      fontSize: 28,
-                      fontWeight: FontWeight.w700,
-                      color: _text,
+                  SizedBox(
+                    width: 48,
+                    height: 48,
+                    child: _step > 0
+                        ? IconButton(
+                            onPressed: _busy ? null : _goBack,
+                            icon: const Icon(Icons.arrow_back_ios_new, size: 18),
+                            color: _text,
+                          )
+                        : null,
+                  ),
+                  Expanded(child: _StepDots(step: _step, count: _stepCount)),
+                  const SizedBox(width: 48),
+                ],
+              ),
+            ),
+            Expanded(
+              child: PageView(
+                controller: _pageController,
+                physics: const NeverScrollableScrollPhysics(),
+                onPageChanged: (i) => setState(() => _step = i),
+                children: [
+                  _SurveyStep(
+                    brand: AppBrand.name,
+                    subtitle: '先了解一下你，方便预置更贴合的标签分类',
+                    title: '你的年龄段',
+                    child: _wrapChips(
+                      children: [
+                        for (final age in SurveyCatalog.ageRanges)
+                          _ChoiceChip(
+                            label: age,
+                            selected: _ageRange == age,
+                            onTap: _busy
+                                ? null
+                                : () => setState(() => _ageRange = age),
+                          ),
+                      ],
                     ),
                   ),
-                  const SizedBox(height: 8),
-                  const Text(
-                    '先了解一下你，方便预置更贴合的标签分类',
-                    style: TextStyle(
-                      fontSize: 15,
-                      color: _muted,
-                      height: 1.4,
+                  _SurveyStep(
+                    title: '你从哪里看到我们的产品？',
+                    child: _wrapChips(
+                      children: [
+                        for (final s in SurveyCatalog.sources)
+                          _ChoiceChip(
+                            label: s.label,
+                            selected: _source == s.id,
+                            onTap: _busy
+                                ? null
+                                : () => setState(() => _source = s.id),
+                          ),
+                      ],
                     ),
                   ),
-                  const SizedBox(height: 28),
-                  _sectionTitle('你的年龄段'),
-                  const SizedBox(height: 10),
-                  _wrapChips(
-                    children: [
-                      for (final age in SurveyCatalog.ageRanges)
-                        _ChoiceChip(
-                          label: age,
-                          selected: _ageRange == age,
-                          onTap: _busy
-                              ? null
-                              : () => setState(() => _ageRange = age),
-                        ),
-                    ],
-                  ),
-                  const SizedBox(height: 24),
-                  _sectionTitle('你从哪里看到我们的产品？'),
-                  const SizedBox(height: 10),
-                  _wrapChips(
-                    children: [
-                      for (final s in SurveyCatalog.sources)
-                        _ChoiceChip(
-                          label: s.label,
-                          selected: _source == s.id,
-                          onTap: _busy
-                              ? null
-                              : () => setState(() => _source = s.id),
-                        ),
-                    ],
-                  ),
-                  const SizedBox(height: 24),
-                  _sectionTitle('感兴趣的内容方向（可多选）'),
-                  const SizedBox(height: 4),
-                  const Text(
-                    '只选类别；确认后会预置对应归类与标签',
-                    style: TextStyle(fontSize: 12, color: _muted),
-                  ),
-                  const SizedBox(height: 10),
-                  _wrapChips(
-                    children: [
-                      for (final c in SurveyCatalog.interests)
-                        _ChoiceChip(
-                          label: c.name,
-                          selected: _interests.contains(c.id),
-                          onTap: _busy
-                              ? null
-                              : () => setState(() {
-                                    if (_interests.contains(c.id)) {
-                                      _interests.remove(c.id);
-                                    } else {
-                                      _interests.add(c.id);
-                                    }
-                                  }),
-                        ),
-                    ],
+                  _SurveyStep(
+                    title: '感兴趣的内容方向（可多选）',
+                    hint: '只选类别；确认后会预置对应归类与标签',
+                    child: _wrapChips(
+                      children: [
+                        for (final c in SurveyCatalog.interests)
+                          _ChoiceChip(
+                            label: c.name,
+                            selected: _interests.contains(c.id),
+                            onTap: _busy
+                                ? null
+                                : () => setState(() {
+                                      if (_interests.contains(c.id)) {
+                                        _interests.remove(c.id);
+                                      } else {
+                                        _interests.add(c.id);
+                                      }
+                                    }),
+                          ),
+                      ],
+                    ),
                   ),
                 ],
               ),
@@ -185,7 +223,7 @@ class _FirstSurveyPageState extends State<FirstSurveyPage> {
                     width: double.infinity,
                     height: 52,
                     child: FilledButton(
-                      onPressed: _busy || !_canSubmit ? null : _onSubmit,
+                      onPressed: _busy || !_canAdvance ? null : _onPrimary,
                       style: FilledButton.styleFrom(
                         backgroundColor: _blue,
                         disabledBackgroundColor:
@@ -203,9 +241,9 @@ class _FirstSurveyPageState extends State<FirstSurveyPage> {
                                 color: Colors.white,
                               ),
                             )
-                          : const Text(
-                              '继续',
-                              style: TextStyle(
+                          : Text(
+                              _step == _stepCount - 1 ? '继续' : '下一步',
+                              style: const TextStyle(
                                 fontSize: 16,
                                 fontWeight: FontWeight.w500,
                                 color: Colors.white,
@@ -230,22 +268,111 @@ class _FirstSurveyPageState extends State<FirstSurveyPage> {
     );
   }
 
-  Widget _sectionTitle(String text) {
-    return Text(
-      text,
-      style: const TextStyle(
-        fontSize: 15,
-        fontWeight: FontWeight.w600,
-        color: _text,
-      ),
-    );
-  }
-
   Widget _wrapChips({required List<Widget> children}) {
     return Wrap(
       spacing: 8,
       runSpacing: 8,
       children: children,
+    );
+  }
+}
+
+class _StepDots extends StatelessWidget {
+  const _StepDots({required this.step, required this.count});
+
+  final int step;
+  final int count;
+
+  static const _blue = Color(0xFF2F6FED);
+  static const _idle = Color(0xFFE6E8EB);
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        for (var i = 0; i < count; i++) ...[
+          if (i > 0) const SizedBox(width: 6),
+          AnimatedContainer(
+            duration: const Duration(milliseconds: 200),
+            width: i == step ? 18 : 6,
+            height: 6,
+            decoration: BoxDecoration(
+              color: i <= step ? _blue : _idle,
+              borderRadius: BorderRadius.circular(999),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+class _SurveyStep extends StatelessWidget {
+  const _SurveyStep({
+    required this.title,
+    required this.child,
+    this.brand,
+    this.subtitle,
+    this.hint,
+  });
+
+  final String? brand;
+  final String? subtitle;
+  final String title;
+  final String? hint;
+  final Widget child;
+
+  static const _text = Color(0xFF1F242E);
+  static const _muted = Color(0xFF737A85);
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(24, 16, 24, 16),
+      children: [
+        if (brand != null) ...[
+          Text(
+            brand!,
+            style: const TextStyle(
+              fontSize: 28,
+              fontWeight: FontWeight.w700,
+              color: _text,
+            ),
+          ),
+          if (subtitle != null) ...[
+            const SizedBox(height: 8),
+            Text(
+              subtitle!,
+              style: const TextStyle(
+                fontSize: 15,
+                color: _muted,
+                height: 1.4,
+              ),
+            ),
+          ],
+          const SizedBox(height: 28),
+        ] else
+          const SizedBox(height: 12),
+        Text(
+          title,
+          style: const TextStyle(
+            fontSize: 20,
+            fontWeight: FontWeight.w600,
+            color: _text,
+            height: 1.3,
+          ),
+        ),
+        if (hint != null) ...[
+          const SizedBox(height: 6),
+          Text(
+            hint!,
+            style: const TextStyle(fontSize: 13, color: _muted, height: 1.35),
+          ),
+        ],
+        const SizedBox(height: 16),
+        child,
+      ],
     );
   }
 }
