@@ -6,19 +6,19 @@ const usageService = require('./usageService');
 const ORGANIZE_SYSTEM_PROMPT =
   '你是收藏整理助手。用户有一批标签，以及可选的已有归类（模块）。' +
   '你根据标签名、可选的标签说明（description）与已有归类来划分，看不到文章正文；结果是草稿，允许用户之后微调。' +
-  '核心目标：逐个理解每一个标签「它是什么」，再把同类放进同一归类；每一个标签都必须归入某个归类，不允许留在未归类。' +
+  '核心目标：逐个理解每一个标签「它是什么」，再把确实同类的放进同一归类；凑不齐同类的可以留在未归类。' +
   '规则：' +
   '1. 先对输入里的标签逐个弄清含义（有说明时以说明消歧，勿只看字面），不要跳过或批量糊弄；再按含义归并；想清楚后再起归类名、再分配。' +
   '2. 可以复用已有归类（填写 existingModuleId），也可以建议新建（existingModuleId 为 null，并给出 name）。' +
   '3. 归类名只表达一个大方向，简短中文 2～8 字，例如「人物」「公司」「职场」「育儿」；禁止用「与/及/和/、」把两类不同主题拼成一名（如不要「职场与成长」）；主题不同就拆成多个归类。' +
   '4. 专有名词按「它是什么」归（如人物、公司/品牌、作品、地点、事件等），不要凭行业常识硬套职能或话题桶（如管理、领导力、财金、投资）。' +
-  '5. 只有一个标签、或找不到可合并的同类时，也必须单独成一类，归类名仍要表达它是什么；禁止因为「只有一个」就丢进未归类。' +
+  '5. 每个归类至少包含 2 个标签；若某个方向只有 1 个标签、或找不到可合并的同类，把该标签放进 ungroupedTagIds，不要为此单独建归类。' +
   '6. 复用已有归类时 name 必须用原名，existingModuleId 必填。' +
-  '7. 只使用输入里给出的 tagId，禁止编造新 id 或新标签名；每个标签最多出现在一个归类。' +
-  '8. 输入中的全部 tagId 都必须出现在某个 modules[].tagIds 里；ungroupedTagIds 必须为空数组 []。' +
-  '9. 若几乎没有归类，应主动按含义提出清晰的大方向划分；不要把所有标签塞进一个「其他」，也不要用拼凑名掩盖混杂。' +
-  '10. 归类数量通常 2～8 个（标签很少或需单列时可更少/略多）；不要输出空归类。' +
-  '只输出 JSON：{"modules":[{"name":"归类名","existingModuleId":null,"tagIds":[1,2]}],"ungroupedTagIds":[]}';
+  '7. 只使用输入里给出的 tagId，禁止编造新 id 或新标签名；每个标签最多出现在一个归类或未归类中一次。' +
+  '8. 输入中的全部 tagId 都必须出现：要么在某个 modules[].tagIds 里，要么在 ungroupedTagIds 里。' +
+  '9. 若几乎没有归类，应主动按含义提出清晰的大方向划分；不要把所有标签塞进一个「其他」，也不要用拼凑名掩盖混杂；实在无法成组的宁可留未归类。' +
+  '10. 归类数量通常 0～8 个（能成组的才建）；不要输出空归类，也不要输出只有 1 个标签的归类。' +
+  '只输出 JSON：{"modules":[{"name":"归类名","existingModuleId":null,"tagIds":[1,2]}],"ungroupedTagIds":[3]}';
 
 function formatTagLine(t) {
   const name = String(t.name || '').trim();
@@ -74,13 +74,17 @@ function collectUserTags(modules, ungrouped) {
 
 function normalizeProposal(raw, tagById, moduleById) {
   const modulesIn = Array.isArray(raw?.modules) ? raw.modules : [];
+  const ungroupedIn = Array.isArray(raw?.ungroupedTagIds)
+    ? raw.ungroupedTagIds
+    : [];
 
   const used = new Set();
   const modules = [];
+  const ungroupedTagIds = [];
   const maxModules = Math.max(12, tagById.size);
 
   const pushModule = (name, existingId, tagIds) => {
-    if (!tagIds.length || modules.length >= maxModules) return;
+    if (tagIds.length < 2 || modules.length >= maxModules) return false;
     modules.push({
       name,
       existingModuleId: existingId,
@@ -90,6 +94,7 @@ function normalizeProposal(raw, tagById, moduleById) {
         name: tagById.get(id).name,
       })),
     });
+    return true;
   };
 
   const resolveExistingId = (name, existingId) => {
@@ -131,23 +136,35 @@ function normalizeProposal(raw, tagById, moduleById) {
       used.add(tid);
       tagIds.push(tid);
     }
-    pushModule(name, existingId, tagIds);
+    // 不足 2 个：不建归类，标签回未归类
+    if (!pushModule(name, existingId, tagIds)) {
+      for (const tid of tagIds) {
+        ungroupedTagIds.push(tid);
+      }
+    }
   }
 
-  // 模型漏放或仍标未归类的标签：各自成一类（归类名先用标签名截断；理想情况应由模型给出大方向名）
-  for (const [tid, tag] of tagById) {
+  for (const rawId of ungroupedIn) {
+    const tid = Number(rawId);
+    if (!Number.isFinite(tid) || !tagById.has(tid) || used.has(tid)) continue;
+    used.add(tid);
+    ungroupedTagIds.push(tid);
+  }
+
+  // 模型漏放的标签：留在未归类（不再强制单列成类）
+  for (const tid of tagById.keys()) {
     if (used.has(tid)) continue;
     used.add(tid);
-    let name = String(tag.name || '').trim().slice(0, 8);
-    if (!name) name = `标签${tid}`;
-    const resolved = resolveExistingId(name, null);
-    pushModule(resolved.name, resolved.existingId, [tid]);
+    ungroupedTagIds.push(tid);
   }
 
   return {
     modules,
-    ungroupedTagIds: [],
-    ungroupedTags: [],
+    ungroupedTagIds,
+    ungroupedTags: ungroupedTagIds.map((id) => ({
+      id,
+      name: tagById.get(id).name,
+    })),
   };
 }
 
