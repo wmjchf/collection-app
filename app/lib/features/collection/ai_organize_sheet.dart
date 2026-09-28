@@ -393,6 +393,11 @@ class _UngroupedPreview extends StatelessWidget {
             ),
           ],
         ),
+        const SizedBox(height: 4),
+        const Text(
+          '同类不足 2 个时暂放这里',
+          style: TextStyle(fontSize: 12, height: 1.35, color: _muted),
+        ),
         const SizedBox(height: 8),
         Wrap(
           spacing: 4,
