@@ -38,6 +38,7 @@ const MIGRATION_FILES = [
   '028_rename_untagged_filter.sql',
   '029_rename_annotated_filter.sql',
   '030_user_onboarding_survey.sql',
+  '031_user_feedback.sql',
 ];
 
 async function getConnection() {

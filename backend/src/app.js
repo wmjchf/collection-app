@@ -79,10 +79,19 @@ function sendAppUpdateEditor(_req, res) {
 }
 app.get('/internal/app-update', sendAppUpdateEditor);
 
+/** 意见反馈后台（需 ANALYTICS_DASHBOARD_TOKEN；不链到官网） */
+function sendFeedbackAdmin(_req, res) {
+  res.setHeader('X-Robots-Tag', 'noindex, nofollow');
+  res.setHeader('Cache-Control', 'no-store');
+  res.sendFile(path.join(publicDir, 'feedback.html'));
+}
+app.get('/internal/feedback', sendFeedbackAdmin);
+
 app.use('/api', healthRouter);
 app.use('/api/app', require('./routes/appVersion'));
 app.use('/api/auth', authRouter);
 app.use('/api/onboarding', require('./routes/onboarding'));
+app.use('/api/feedback', require('./routes/feedback'));
 app.use('/api/items', itemsRouter);
 app.use('/api/tags', tagsRouter);
 app.use('/api/tag-modules', require('./routes/tagModules'));

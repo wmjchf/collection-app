@@ -6,6 +6,7 @@ import 'package:super_collection/features/onboarding/shortcuts_help_page.dart';
 import 'package:super_collection/features/settings/account_page.dart';
 import 'package:super_collection/features/settings/account_security_page.dart';
 import 'package:super_collection/features/settings/ai_auto_tags_help_page.dart';
+import 'package:super_collection/features/settings/feedback_page.dart';
 import 'package:super_collection/features/settings/how_to_add_link_page.dart';
 import 'package:super_collection/features/settings/legal_docs.dart';
 import 'package:super_collection/features/settings/logout_confirm_dialog.dart';
@@ -24,7 +25,7 @@ class SettingsPanel extends StatefulWidget {
 
 class _SettingsPanelState extends State<SettingsPanel> {
   static const _muted = Color(0xFF737A85);
-  static const _version = 'v1.3.2';
+  static const _version = 'v1.3.3';
 
   final _auth = AuthRepository();
 
@@ -89,6 +90,11 @@ class _SettingsPanelState extends State<SettingsPanel> {
               const SizedBox(height: 8),
               _CardGroup(
                 children: [
+                  _InfoRow(
+                    title: '意见反馈',
+                    showChevron: true,
+                    onTap: () => _open(const FeedbackPage()),
+                  ),
                   _InfoRow(
                     title: '用户协议',
                     showChevron: true,

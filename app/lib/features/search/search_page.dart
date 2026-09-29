@@ -13,7 +13,7 @@ import 'package:super_collection/features/items/item_models.dart';
 import 'package:super_collection/features/items/item_reading_page.dart';
 import 'package:super_collection/features/items/items_repository.dart';
 
-/// 统一搜索：上面是结果内容上的全部标签，下面是匹配内容；点标签可筛选内容。
+/// 统一搜索：上为结果相关标签（默认可收成约两行），下为匹配内容；点标签可筛选。
 class SearchPage extends StatefulWidget {
   const SearchPage({super.key});
 
@@ -52,6 +52,8 @@ class _SearchPageState extends State<SearchPage> with ScreenDwellMixin {
   bool _loadingMore = false;
   String? _error;
   bool _searched = false;
+  /// 标签区是否展开全部（默认约两行）。
+  bool _tagsExpanded = false;
 
   bool get _filteringByTags => _selectedTagIds.isNotEmpty;
 
@@ -128,6 +130,7 @@ class _SearchPageState extends State<SearchPage> with ScreenDwellMixin {
     _loadingMore = false;
     _error = null;
     _searched = false;
+    _tagsExpanded = false;
   }
 
   void _onQueryChanged(String value) {
@@ -156,6 +159,7 @@ class _SearchPageState extends State<SearchPage> with ScreenDwellMixin {
       _matchedTagItems = const [];
       _textHits = const [];
       _textTotal = 0;
+      _tagsExpanded = false;
     });
 
     try {
@@ -569,32 +573,13 @@ class _SearchPageState extends State<SearchPage> with ScreenDwellMixin {
           SliverPadding(
             padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
             sliver: SliverToBoxAdapter(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    '标签',
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                      color: _muted,
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: [
-                      for (final tag in _contentTags)
-                        _FilterTagChip(
-                          label: _hashName(tag.name),
-                          count: tag.itemCount,
-                          selected: _selectedTagIds.contains(tag.id),
-                          onTap: () => _toggleTag(tag),
-                        ),
-                    ],
-                  ),
-                ],
+              child: _CollapsibleFilterTags(
+                tags: _contentTags,
+                selectedTagIds: _selectedTagIds,
+                expanded: _tagsExpanded,
+                onExpandedChanged: (v) => setState(() => _tagsExpanded = v),
+                hashName: _hashName,
+                onToggle: _toggleTag,
               ),
             ),
           ),
@@ -660,6 +645,246 @@ class _SearchPageState extends State<SearchPage> with ScreenDwellMixin {
           ),
         ],
       ],
+    );
+  }
+}
+
+/// 标签默认约两行；超出可展开。
+class _CollapsibleFilterTags extends StatelessWidget {
+  const _CollapsibleFilterTags({
+    required this.tags,
+    required this.selectedTagIds,
+    required this.expanded,
+    required this.onExpandedChanged,
+    required this.hashName,
+    required this.onToggle,
+  });
+
+  static const _maxCollapsedLines = 2;
+  static const _spacing = 8.0;
+  static const _runSpacing = 8.0;
+  static const _labelStyle = TextStyle(
+    fontSize: 14,
+    fontWeight: FontWeight.w500,
+  );
+  static const _countStyle = TextStyle(
+    fontSize: 12,
+    fontWeight: FontWeight.w500,
+  );
+
+  final List<Tag> tags;
+  final Set<int> selectedTagIds;
+  final bool expanded;
+  final ValueChanged<bool> onExpandedChanged;
+  final String Function(String name) hashName;
+  final void Function(Tag tag) onToggle;
+
+  double _chipWidth(String label, int count) {
+    final labelTp = TextPainter(
+      text: TextSpan(text: label, style: _labelStyle),
+      textDirection: TextDirection.ltr,
+      maxLines: 1,
+    )..layout();
+    var width = 24 + labelTp.width + 2; // padding + border
+    if (count > 0) {
+      final countTp = TextPainter(
+        text: TextSpan(text: '$count', style: _countStyle),
+        textDirection: TextDirection.ltr,
+        maxLines: 1,
+      )..layout();
+      width += 6 + countTp.width;
+    }
+    return width;
+  }
+
+  double _actionWidth(String label) {
+    final tp = TextPainter(
+      text: TextSpan(
+        text: label,
+        style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
+      ),
+      textDirection: TextDirection.ltr,
+      maxLines: 1,
+    )..layout();
+    // 文案 + 箭头 + 左右点击区
+    return tp.width + 14 + 8;
+  }
+
+  /// 在 [maxWidth] 内排满最多 [maxLines] 行，末行预留 [reserveWidth]（展开按钮）。
+  List<Tag> _fitTags({
+    required List<Tag> ordered,
+    required double maxWidth,
+    required int maxLines,
+    required double reserveWidth,
+  }) {
+    if (ordered.isEmpty || maxWidth <= 0) return const [];
+    final visible = <Tag>[];
+    var line = 0;
+    var used = 0.0;
+
+    for (final tag in ordered) {
+      final w = _chipWidth(hashName(tag.name), tag.itemCount);
+      final next = used == 0.0 ? w : used + _spacing + w;
+      final limit =
+          (line == maxLines - 1 && reserveWidth > 0)
+              ? maxWidth - reserveWidth - (used == 0.0 ? 0 : _spacing)
+              : maxWidth;
+
+      if (next <= limit + 0.5) {
+        used = next;
+        visible.add(tag);
+        continue;
+      }
+      if (line >= maxLines - 1) break;
+      line += 1;
+      if (w > maxWidth) {
+        visible.add(tag);
+        used = maxWidth;
+        continue;
+      }
+      final firstLineLimit =
+          (line == maxLines - 1 && reserveWidth > 0)
+              ? maxWidth - reserveWidth
+              : maxWidth;
+      if (w > firstLineLimit + 0.5 && reserveWidth > 0) {
+        break;
+      }
+      used = w;
+      visible.add(tag);
+    }
+    return visible;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          '标签',
+          style: TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+            color: _SearchPageState._muted,
+          ),
+        ),
+        const SizedBox(height: 10),
+        LayoutBuilder(
+          builder: (context, constraints) {
+            final maxWidth = constraints.maxWidth;
+            final expandReserve = _actionWidth('展开 99') + _spacing;
+            final ordered = tags;
+
+            final fitsCollapsed = _fitTags(
+                  ordered: ordered,
+                  maxWidth: maxWidth,
+                  maxLines: _maxCollapsedLines,
+                  reserveWidth: 0,
+                ).length >=
+                ordered.length;
+
+            late final List<Tag> visible;
+            var showExpand = false;
+            var showCollapse = false;
+
+            if (expanded) {
+              visible = ordered;
+              showCollapse = !fitsCollapsed;
+            } else if (fitsCollapsed) {
+              visible = ordered;
+            } else {
+              var fitted = _fitTags(
+                ordered: ordered,
+                maxWidth: maxWidth,
+                maxLines: _maxCollapsedLines,
+                reserveWidth: expandReserve,
+              );
+              if (fitted.isEmpty && ordered.isNotEmpty) {
+                fitted = ordered.take(1).toList();
+              }
+              visible = fitted;
+              showExpand = visible.length < ordered.length;
+            }
+
+            final hiddenCount = ordered.length - visible.length;
+
+            return Wrap(
+              spacing: _spacing,
+              runSpacing: _runSpacing,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                for (final tag in visible)
+                  _FilterTagChip(
+                    label: hashName(tag.name),
+                    count: tag.itemCount,
+                    selected: selectedTagIds.contains(tag.id),
+                    onTap: () => onToggle(tag),
+                  ),
+                if (showExpand)
+                  _TagFoldAction(
+                    label: '展开 $hiddenCount',
+                    expanded: false,
+                    onTap: () => onExpandedChanged(true),
+                  ),
+                if (showCollapse)
+                  _TagFoldAction(
+                    label: '收起',
+                    expanded: true,
+                    onTap: () => onExpandedChanged(false),
+                  ),
+              ],
+            );
+          },
+        ),
+      ],
+    );
+  }
+}
+
+/// 展开/收起：文字链样式，与标签 chip 区分。
+class _TagFoldAction extends StatelessWidget {
+  const _TagFoldAction({
+    required this.label,
+    required this.expanded,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool expanded;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(8),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                label,
+                style: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w500,
+                  color: _SearchPageState._brand,
+                ),
+              ),
+              const SizedBox(width: 2),
+              Icon(
+                expanded
+                    ? Icons.keyboard_arrow_up
+                    : Icons.keyboard_arrow_down,
+                size: 16,
+                color: _SearchPageState._brand,
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

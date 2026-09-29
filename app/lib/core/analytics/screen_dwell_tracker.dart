@@ -21,6 +21,7 @@ abstract final class AnalyticsScreens {
   static const howToAddLink = 'how_to_add_link';
   static const aiAutoTagsHelp = 'ai_auto_tags_help';
   static const shortcutsHelp = 'shortcuts_help';
+  static const feedback = 'feedback';
   static const doc = 'doc';
 }
 

@@ -49,6 +49,7 @@
 | 表 | 说明 |
 | --- | --- |
 | `users` | 用户（手机号） |
+| `user_feedback` | 意见反馈 |
 | `user_sessions` | 登录会话 / refresh |
 | `sms_send_logs` | 发码流水（限流/审计；验证码本身不存） |
 | `categories` | 第二层分类（标签可挂 `module_id`） |
@@ -78,6 +79,21 @@
 | survey_source | VARCHAR(32) NULL | 获客来源 id |
 | survey_interests | JSON NULL | 所选兴趣类 id 列表 |
 | created_at / updated_at | DATETIME(3) | |
+
+### `user_feedback`（迁移 `031`）
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| id | BIGINT UNSIGNED PK AI | |
+| user_id | BIGINT UNSIGNED NOT NULL | FK → users |
+| category | VARCHAR(32) | feature / bug / parse / other |
+| content | VARCHAR(2000) | 正文 |
+| contact | VARCHAR(128) NULL | 选填联系方式 |
+| app_version | VARCHAR(32) NULL | 客户端版本 |
+| created_at | DATETIME(3) | |
+
+`POST /api/feedback`（需登录）：body `{ category, content, contact?, appVersion? }`；每用户每日最多 10 条。  
+后台：`GET /api/feedback/admin`（`X-Analytics-Token`）· 页面 `/internal/feedback`。
 
 ---
 
