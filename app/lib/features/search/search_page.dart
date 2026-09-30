@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:super_collection/core/analytics/analytics.dart';
 import 'package:super_collection/core/analytics/screen_dwell_tracker.dart';
 import 'package:super_collection/core/network/api_client.dart';
+import 'package:super_collection/core/ui/app_bottom_sheet.dart';
 import 'package:super_collection/core/ui/paged_list.dart';
 import 'package:super_collection/features/collection/tag_models.dart';
 import 'package:super_collection/features/collection/tags_repository.dart';
@@ -13,7 +14,7 @@ import 'package:super_collection/features/items/item_models.dart';
 import 'package:super_collection/features/items/item_reading_page.dart';
 import 'package:super_collection/features/items/items_repository.dart';
 
-/// 统一搜索：上为结果相关标签（默认可收成约两行），下为匹配内容；点标签可筛选。
+/// 统一搜索：结果区可按标签筛选（弹框多选），下方为匹配内容。
 class SearchPage extends StatefulWidget {
   const SearchPage({super.key});
 
@@ -52,8 +53,6 @@ class _SearchPageState extends State<SearchPage> with ScreenDwellMixin {
   bool _loadingMore = false;
   String? _error;
   bool _searched = false;
-  /// 标签区是否展开全部（默认约两行）。
-  bool _tagsExpanded = false;
 
   bool get _filteringByTags => _selectedTagIds.isNotEmpty;
 
@@ -130,7 +129,6 @@ class _SearchPageState extends State<SearchPage> with ScreenDwellMixin {
     _loadingMore = false;
     _error = null;
     _searched = false;
-    _tagsExpanded = false;
   }
 
   void _onQueryChanged(String value) {
@@ -159,7 +157,6 @@ class _SearchPageState extends State<SearchPage> with ScreenDwellMixin {
       _matchedTagItems = const [];
       _textHits = const [];
       _textTotal = 0;
-      _tagsExpanded = false;
     });
 
     try {
@@ -279,6 +276,28 @@ class _SearchPageState extends State<SearchPage> with ScreenDwellMixin {
         _selectedTagIds.add(tag.id);
       }
     });
+  }
+
+  void _clearTagFilters() {
+    if (_selectedTagIds.isEmpty) return;
+    setState(() => _selectedTagIds = {});
+  }
+
+  Future<void> _openTagFilterSheet() async {
+    if (_contentTags.isEmpty) return;
+    await showAppBottomSheet<void>(
+      context: context,
+      builder: (context) {
+        return _SearchTagFilterSheet(
+          tags: _contentTags,
+          selectedTagIds: Set<int>.from(_selectedTagIds),
+          hashName: _hashName,
+          onChanged: (ids) {
+            setState(() => _selectedTagIds = ids);
+          },
+        );
+      },
+    );
   }
 
   /// 顶部标签 = 全部命中内容上的标签。优先用全文检索的全集统计，再并上标签检索里多出来的。
@@ -573,13 +592,13 @@ class _SearchPageState extends State<SearchPage> with ScreenDwellMixin {
           SliverPadding(
             padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
             sliver: SliverToBoxAdapter(
-              child: _CollapsibleFilterTags(
+              child: _SearchTagFilterBar(
                 tags: _contentTags,
                 selectedTagIds: _selectedTagIds,
-                expanded: _tagsExpanded,
-                onExpandedChanged: (v) => setState(() => _tagsExpanded = v),
                 hashName: _hashName,
+                onOpenFilter: () => unawaited(_openTagFilterSheet()),
                 onToggle: _toggleTag,
+                onClear: _clearTagFilters,
               ),
             ),
           ),
@@ -649,240 +668,286 @@ class _SearchPageState extends State<SearchPage> with ScreenDwellMixin {
   }
 }
 
-/// 标签默认约两行；超出可展开。
-class _CollapsibleFilterTags extends StatelessWidget {
-  const _CollapsibleFilterTags({
+/// 搜索结果标签区：先露出若干标签，全部/多选走筛选弹框。
+class _SearchTagFilterBar extends StatelessWidget {
+  const _SearchTagFilterBar({
     required this.tags,
     required this.selectedTagIds,
-    required this.expanded,
-    required this.onExpandedChanged,
     required this.hashName,
+    required this.onOpenFilter,
     required this.onToggle,
+    required this.onClear,
   });
 
-  static const _maxCollapsedLines = 2;
-  static const _spacing = 8.0;
-  static const _runSpacing = 8.0;
-  static const _labelStyle = TextStyle(
-    fontSize: 14,
-    fontWeight: FontWeight.w500,
-  );
-  static const _countStyle = TextStyle(
-    fontSize: 12,
-    fontWeight: FontWeight.w500,
-  );
+  /// 结果区默认露出的标签数量。
+  static const _previewMax = 6;
 
   final List<Tag> tags;
   final Set<int> selectedTagIds;
-  final bool expanded;
-  final ValueChanged<bool> onExpandedChanged;
   final String Function(String name) hashName;
+  final VoidCallback onOpenFilter;
   final void Function(Tag tag) onToggle;
+  final VoidCallback onClear;
 
-  double _chipWidth(String label, int count) {
-    final labelTp = TextPainter(
-      text: TextSpan(text: label, style: _labelStyle),
-      textDirection: TextDirection.ltr,
-      maxLines: 1,
-    )..layout();
-    var width = 24 + labelTp.width + 2; // padding + border
-    if (count > 0) {
-      final countTp = TextPainter(
-        text: TextSpan(text: '$count', style: _countStyle),
-        textDirection: TextDirection.ltr,
-        maxLines: 1,
-      )..layout();
-      width += 6 + countTp.width;
+  List<Tag> get _previewTags {
+    if (tags.isEmpty) return const [];
+    final byId = {for (final t in tags) t.id: t};
+    final shown = <Tag>[];
+    final seen = <int>{};
+
+    // 已选优先露出，避免选中却被挤出预览
+    for (final id in selectedTagIds) {
+      final t = byId[id];
+      if (t == null || !seen.add(id)) continue;
+      shown.add(t);
+      if (shown.length >= _previewMax) return shown;
     }
-    return width;
-  }
-
-  double _actionWidth(String label) {
-    final tp = TextPainter(
-      text: TextSpan(
-        text: label,
-        style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
-      ),
-      textDirection: TextDirection.ltr,
-      maxLines: 1,
-    )..layout();
-    // 文案 + 箭头 + 左右点击区
-    return tp.width + 14 + 8;
-  }
-
-  /// 在 [maxWidth] 内排满最多 [maxLines] 行，末行预留 [reserveWidth]（展开按钮）。
-  List<Tag> _fitTags({
-    required List<Tag> ordered,
-    required double maxWidth,
-    required int maxLines,
-    required double reserveWidth,
-  }) {
-    if (ordered.isEmpty || maxWidth <= 0) return const [];
-    final visible = <Tag>[];
-    var line = 0;
-    var used = 0.0;
-
-    for (final tag in ordered) {
-      final w = _chipWidth(hashName(tag.name), tag.itemCount);
-      final next = used == 0.0 ? w : used + _spacing + w;
-      final limit =
-          (line == maxLines - 1 && reserveWidth > 0)
-              ? maxWidth - reserveWidth - (used == 0.0 ? 0 : _spacing)
-              : maxWidth;
-
-      if (next <= limit + 0.5) {
-        used = next;
-        visible.add(tag);
-        continue;
-      }
-      if (line >= maxLines - 1) break;
-      line += 1;
-      if (w > maxWidth) {
-        visible.add(tag);
-        used = maxWidth;
-        continue;
-      }
-      final firstLineLimit =
-          (line == maxLines - 1 && reserveWidth > 0)
-              ? maxWidth - reserveWidth
-              : maxWidth;
-      if (w > firstLineLimit + 0.5 && reserveWidth > 0) {
-        break;
-      }
-      used = w;
-      visible.add(tag);
+    for (final t in tags) {
+      if (!seen.add(t.id)) continue;
+      shown.add(t);
+      if (shown.length >= _previewMax) break;
     }
-    return visible;
+    return shown;
   }
 
   @override
   Widget build(BuildContext context) {
+    final preview = _previewTags;
+    final selectedCount = selectedTagIds.length;
+    final hiddenCount = tags.length - preview.length;
+    final filterLabel = selectedCount > 0
+        ? '筛选 · $selectedCount'
+        : (hiddenCount > 0 ? '全部 ${tags.length}' : '筛选');
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
-          '标签',
-          style: TextStyle(
-            fontSize: 13,
-            fontWeight: FontWeight.w600,
-            color: _SearchPageState._muted,
+        Row(
+          children: [
+            const Text(
+              '标签',
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: _SearchPageState._muted,
+              ),
+            ),
+            const Spacer(),
+            Material(
+              color: Colors.transparent,
+              child: InkWell(
+                onTap: onOpenFilter,
+                borderRadius: BorderRadius.circular(8),
+                child: Padding(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        filterLabel,
+                        style: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w500,
+                          color: _SearchPageState._brand,
+                        ),
+                      ),
+                      const SizedBox(width: 2),
+                      const Icon(
+                        Icons.keyboard_arrow_down,
+                        size: 16,
+                        color: _SearchPageState._brand,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+        if (preview.isNotEmpty) ...[
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              for (final tag in preview)
+                _FilterTagChip(
+                  label: hashName(tag.name),
+                  count: tag.itemCount,
+                  selected: selectedTagIds.contains(tag.id),
+                  onTap: () => onToggle(tag),
+                ),
+              if (selectedCount > 1)
+                GestureDetector(
+                  onTap: onClear,
+                  child: const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+                    child: Text(
+                      '清除',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w500,
+                        color: _SearchPageState._muted,
+                      ),
+                    ),
+                  ),
+                ),
+            ],
           ),
-        ),
-        const SizedBox(height: 10),
-        LayoutBuilder(
-          builder: (context, constraints) {
-            final maxWidth = constraints.maxWidth;
-            final expandReserve = _actionWidth('展开 99') + _spacing;
-            final ordered = tags;
-
-            final fitsCollapsed = _fitTags(
-                  ordered: ordered,
-                  maxWidth: maxWidth,
-                  maxLines: _maxCollapsedLines,
-                  reserveWidth: 0,
-                ).length >=
-                ordered.length;
-
-            late final List<Tag> visible;
-            var showExpand = false;
-            var showCollapse = false;
-
-            if (expanded) {
-              visible = ordered;
-              showCollapse = !fitsCollapsed;
-            } else if (fitsCollapsed) {
-              visible = ordered;
-            } else {
-              var fitted = _fitTags(
-                ordered: ordered,
-                maxWidth: maxWidth,
-                maxLines: _maxCollapsedLines,
-                reserveWidth: expandReserve,
-              );
-              if (fitted.isEmpty && ordered.isNotEmpty) {
-                fitted = ordered.take(1).toList();
-              }
-              visible = fitted;
-              showExpand = visible.length < ordered.length;
-            }
-
-            final hiddenCount = ordered.length - visible.length;
-
-            return Wrap(
-              spacing: _spacing,
-              runSpacing: _runSpacing,
-              crossAxisAlignment: WrapCrossAlignment.center,
-              children: [
-                for (final tag in visible)
-                  _FilterTagChip(
-                    label: hashName(tag.name),
-                    count: tag.itemCount,
-                    selected: selectedTagIds.contains(tag.id),
-                    onTap: () => onToggle(tag),
-                  ),
-                if (showExpand)
-                  _TagFoldAction(
-                    label: '展开 $hiddenCount',
-                    expanded: false,
-                    onTap: () => onExpandedChanged(true),
-                  ),
-                if (showCollapse)
-                  _TagFoldAction(
-                    label: '收起',
-                    expanded: true,
-                    onTap: () => onExpandedChanged(false),
-                  ),
-              ],
-            );
-          },
-        ),
+        ],
       ],
     );
   }
 }
 
-/// 展开/收起：文字链样式，与标签 chip 区分。
-class _TagFoldAction extends StatelessWidget {
-  const _TagFoldAction({
-    required this.label,
-    required this.expanded,
-    required this.onTap,
+/// 按标签筛选弹框：多选即时生效。
+class _SearchTagFilterSheet extends StatefulWidget {
+  const _SearchTagFilterSheet({
+    required this.tags,
+    required this.selectedTagIds,
+    required this.hashName,
+    required this.onChanged,
   });
 
-  final String label;
-  final bool expanded;
-  final VoidCallback onTap;
+  final List<Tag> tags;
+  final Set<int> selectedTagIds;
+  final String Function(String name) hashName;
+  final ValueChanged<Set<int>> onChanged;
+
+  @override
+  State<_SearchTagFilterSheet> createState() => _SearchTagFilterSheetState();
+}
+
+class _SearchTagFilterSheetState extends State<_SearchTagFilterSheet> {
+  static const _text = Color(0xFF1F242E);
+  static const _muted = Color(0xFF737A85);
+  static const _blue = Color(0xFF2F6FED);
+  static const _handle = Color(0xFFE5E8ED);
+
+  late Set<int> _selected;
+
+  @override
+  void initState() {
+    super.initState();
+    _selected = Set<int>.from(widget.selectedTagIds);
+  }
+
+  void _toggle(Tag tag) {
+    setState(() {
+      if (_selected.contains(tag.id)) {
+        _selected.remove(tag.id);
+      } else {
+        _selected.add(tag.id);
+      }
+    });
+    widget.onChanged(Set<int>.from(_selected));
+  }
+
+  void _clear() {
+    if (_selected.isEmpty) return;
+    setState(() => _selected = {});
+    widget.onChanged({});
+  }
 
   @override
   Widget build(BuildContext context) {
+    final maxH = MediaQuery.sizeOf(context).height * 0.62;
     return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(8),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                label,
-                style: const TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w500,
-                  color: _SearchPageState._brand,
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(20),
+      clipBehavior: Clip.antiAlias,
+      child: ConstrainedBox(
+        constraints: BoxConstraints(maxHeight: maxH),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: 10),
+            Container(
+              width: 36,
+              height: 4,
+              decoration: BoxDecoration(
+                color: _handle,
+                borderRadius: BorderRadius.circular(999),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 14, 12, 8),
+              child: Row(
+                children: [
+                  const Expanded(
+                    child: Text(
+                      '按标签筛选',
+                      style: TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.w700,
+                        color: _text,
+                      ),
+                    ),
+                  ),
+                  if (_selected.isNotEmpty)
+                    TextButton(
+                      onPressed: _clear,
+                      child: const Text(
+                        '清除',
+                        style: TextStyle(fontSize: 14, color: _muted),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+            Flexible(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(20, 4, 20, 12),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      for (final tag in widget.tags)
+                        _FilterTagChip(
+                          label: widget.hashName(tag.name),
+                          count: tag.itemCount,
+                          selected: _selected.contains(tag.id),
+                          onTap: () => _toggle(tag),
+                        ),
+                    ],
+                  ),
                 ),
               ),
-              const SizedBox(width: 2),
-              Icon(
-                expanded
-                    ? Icons.keyboard_arrow_up
-                    : Icons.keyboard_arrow_down,
-                size: 16,
-                color: _SearchPageState._brand,
+            ),
+            SafeArea(
+              top: false,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 4, 20, 16),
+                child: SizedBox(
+                  width: double.infinity,
+                  height: 48,
+                  child: FilledButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: _blue,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                    ),
+                    child: Text(
+                      _selected.isEmpty
+                          ? '完成'
+                          : '完成（已选 ${_selected.length}）',
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w500,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ),
+                ),
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
