@@ -409,7 +409,10 @@ class _SearchPageState extends State<SearchPage> with ScreenDwellMixin {
   }
 
   String _subtitle(CollectionItem item) {
-    final platform = platformLabel(item.platform);
+    final pageUrl = (item.canonicalUrl?.trim().isNotEmpty == true)
+        ? item.canonicalUrl
+        : item.url;
+    final platform = platformLabel(item.platform, url: pageUrl);
     final day = formatRelativeDay(item.createdAt);
     if (day.isEmpty) return platform;
     return '$platform · $day';
@@ -853,53 +856,60 @@ class _SearchTagFilterSheetState extends State<_SearchTagFilterSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final maxH = MediaQuery.sizeOf(context).height * 0.62;
+    // 内容区上限，避免少量标签时 Flexible 把整页撑高留下大块空白
+    final scrollMaxH = MediaQuery.sizeOf(context).height * 0.42;
     return Material(
       color: Colors.white,
-      borderRadius: BorderRadius.circular(20),
+      borderRadius: BorderRadius.circular(24),
       clipBehavior: Clip.antiAlias,
-      child: ConstrainedBox(
-        constraints: BoxConstraints(maxHeight: maxH),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const SizedBox(height: 10),
             Container(
-              width: 36,
+              width: 40,
               height: 4,
               decoration: BoxDecoration(
                 color: _handle,
-                borderRadius: BorderRadius.circular(999),
+                borderRadius: BorderRadius.circular(2),
               ),
             ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 14, 12, 8),
-              child: Row(
-                children: [
-                  const Expanded(
-                    child: Text(
-                      '按标签筛选',
-                      style: TextStyle(
-                        fontSize: 17,
-                        fontWeight: FontWeight.w700,
-                        color: _text,
-                      ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                const Text(
+                  '按标签筛选',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                    color: _text,
+                  ),
+                ),
+                const Spacer(),
+                if (_selected.isNotEmpty) ...[
+                  GestureDetector(
+                    onTap: _clear,
+                    child: const Text(
+                      '清除',
+                      style: TextStyle(fontSize: 14, color: _muted),
                     ),
                   ),
-                  if (_selected.isNotEmpty)
-                    TextButton(
-                      onPressed: _clear,
-                      child: const Text(
-                        '清除',
-                        style: TextStyle(fontSize: 14, color: _muted),
-                      ),
-                    ),
+                  const SizedBox(width: 16),
                 ],
-              ),
+                GestureDetector(
+                  onTap: () => Navigator.of(context).pop(),
+                  child: const Text(
+                    '关闭',
+                    style: TextStyle(fontSize: 14, color: _muted),
+                  ),
+                ),
+              ],
             ),
-            Flexible(
+            const SizedBox(height: 12),
+            ConstrainedBox(
+              constraints: BoxConstraints(maxHeight: scrollMaxH),
               child: SingleChildScrollView(
-                padding: const EdgeInsets.fromLTRB(20, 4, 20, 12),
                 child: Align(
                   alignment: Alignment.centerLeft,
                   child: Wrap(
@@ -918,31 +928,26 @@ class _SearchTagFilterSheetState extends State<_SearchTagFilterSheet> {
                 ),
               ),
             ),
-            SafeArea(
-              top: false,
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(20, 4, 20, 16),
-                child: SizedBox(
-                  width: double.infinity,
-                  height: 48,
-                  child: FilledButton(
-                    onPressed: () => Navigator.of(context).pop(),
-                    style: FilledButton.styleFrom(
-                      backgroundColor: _blue,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(14),
-                      ),
-                    ),
-                    child: Text(
-                      _selected.isEmpty
-                          ? '完成'
-                          : '完成（已选 ${_selected.length}）',
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w500,
-                        color: Colors.white,
-                      ),
-                    ),
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              height: 48,
+              child: FilledButton(
+                onPressed: () => Navigator.of(context).pop(),
+                style: FilledButton.styleFrom(
+                  backgroundColor: _blue,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                child: Text(
+                  _selected.isEmpty
+                      ? '完成'
+                      : '完成（已选 ${_selected.length}）',
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w500,
+                    color: Colors.white,
                   ),
                 ),
               ),

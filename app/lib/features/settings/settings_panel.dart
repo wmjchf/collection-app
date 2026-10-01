@@ -25,7 +25,7 @@ class SettingsPanel extends StatefulWidget {
 
 class _SettingsPanelState extends State<SettingsPanel> {
   static const _muted = Color(0xFF737A85);
-  static const _version = 'v1.3.4';
+  static const _version = 'v1.3.5';
 
   final _auth = AuthRepository();
 
