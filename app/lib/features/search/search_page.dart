@@ -278,11 +278,6 @@ class _SearchPageState extends State<SearchPage> with ScreenDwellMixin {
     });
   }
 
-  void _clearTagFilters() {
-    if (_selectedTagIds.isEmpty) return;
-    setState(() => _selectedTagIds = {});
-  }
-
   Future<void> _openTagFilterSheet() async {
     if (_contentTags.isEmpty) return;
     await showAppBottomSheet<void>(
@@ -601,7 +596,6 @@ class _SearchPageState extends State<SearchPage> with ScreenDwellMixin {
                 hashName: _hashName,
                 onOpenFilter: () => unawaited(_openTagFilterSheet()),
                 onToggle: _toggleTag,
-                onClear: _clearTagFilters,
               ),
             ),
           ),
@@ -679,7 +673,6 @@ class _SearchTagFilterBar extends StatelessWidget {
     required this.hashName,
     required this.onOpenFilter,
     required this.onToggle,
-    required this.onClear,
   });
 
   /// 结果区默认露出的标签数量。
@@ -690,7 +683,6 @@ class _SearchTagFilterBar extends StatelessWidget {
   final String Function(String name) hashName;
   final VoidCallback onOpenFilter;
   final void Function(Tag tag) onToggle;
-  final VoidCallback onClear;
 
   List<Tag> get _previewTags {
     if (tags.isEmpty) return const [];
@@ -767,21 +759,6 @@ class _SearchTagFilterBar extends StatelessWidget {
                   count: tag.itemCount,
                   selected: selectedTagIds.contains(tag.id),
                   onTap: () => onToggle(tag),
-                ),
-              if (selectedCount > 1)
-                GestureDetector(
-                  onTap: onClear,
-                  child: const Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 4, vertical: 8),
-                    child: Text(
-                      '清除',
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w500,
-                        color: _SearchPageState._muted,
-                      ),
-                    ),
-                  ),
                 ),
             ],
           ),
