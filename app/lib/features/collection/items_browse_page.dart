@@ -287,7 +287,10 @@ class _ItemsBrowsePageState extends State<ItemsBrowsePage> with ScreenDwellMixin
   }
 
   String _subtitle(CollectionItem item) {
-    final platform = platformLabel(item.platform);
+    final pageUrl = (item.canonicalUrl?.trim().isNotEmpty == true)
+        ? item.canonicalUrl
+        : item.url;
+    final platform = platformLabel(item.platform, url: pageUrl);
     final day = formatRelativeDay(item.createdAt);
     if (day.isEmpty) return platform;
     return '$platform · $day';

@@ -479,7 +479,12 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
             '${date.month.toString().padLeft(2, '0')}-'
             '${date.day.toString().padLeft(2, '0')}';
     return [
-      platformLabel(_item.platform),
+      platformLabel(
+        _item.platform,
+        url: (_item.canonicalUrl?.trim().isNotEmpty == true)
+            ? _item.canonicalUrl
+            : _item.url,
+      ),
       dateStr,
     ].where((e) => e.isNotEmpty).join(' · ');
   }

@@ -177,13 +177,72 @@ function detectPlatform(url) {
   if (host.includes('xiaoyuzhoufm.com')) {
     return 'xiaoyuzhou';
   }
+  if (
+    host.includes('theblockbeats.info') ||
+    host.includes('blockbeats.cn') ||
+    host.includes('blockbeats.info')
+  ) {
+    return 'blockbeats';
+  }
   if (host.includes('zhihu.com')) {
     return 'zhihu';
   }
   if (host.includes('myzaker.com')) {
     return 'zaker';
   }
-  return 'web';
+  // 未登记站：用域名主体当平台 id，避免一律显示 web
+  return platformIdFromHost(host) || 'web';
+}
+
+/**
+ * 从 hostname 推断可读平台 id（如 m.theblockbeats.info → theblockbeats）。
+ * IP / 无法识别时返回 null。
+ */
+function platformIdFromHost(hostname) {
+  let host = String(hostname || '')
+    .trim()
+    .toLowerCase()
+    .replace(/\.$/, '');
+  if (!host) return null;
+  // IPv4 / IPv6
+  if (/^\d{1,3}(\.\d{1,3}){3}$/.test(host) || host.includes(':')) return null;
+  if (host === 'localhost') return 'localhost';
+
+  host = host.replace(/^www\./, '');
+  host = host.replace(/^(m|mobile|wap|app|www\d*)\./, '');
+
+  const parts = host.split('.').filter(Boolean);
+  if (!parts.length) return null;
+
+  const last2 = parts.length >= 2 ? parts.slice(-2).join('.') : '';
+  let brand;
+  if (
+    parts.length >= 3 &&
+    ['com.cn', 'net.cn', 'org.cn', 'co.uk', 'com.hk', 'com.tw'].includes(last2)
+  ) {
+    brand = parts[parts.length - 3];
+  } else if (parts.length >= 2) {
+    brand = parts[parts.length - 2];
+  } else {
+    brand = parts[0];
+  }
+
+  const id = String(brand || '')
+    .replace(/[^a-z0-9-]/gi, '')
+    .toLowerCase();
+  if (!id || id === 'www') return null;
+  return id;
+}
+
+/**
+ * 从任意 URL 推断平台展示 id（已知站走 detectPlatform，否则域名主体）。
+ */
+function platformIdFromUrl(rawUrl) {
+  try {
+    return detectPlatform(String(rawUrl || ''));
+  } catch {
+    return 'web';
+  }
 }
 
 /**
@@ -255,6 +314,8 @@ module.exports = {
   assertHttpUrl,
   normalizeUrl,
   detectPlatform,
+  platformIdFromHost,
+  platformIdFromUrl,
   resolveFetchUrl,
   resolveParseUrl,
   infzmContentId,

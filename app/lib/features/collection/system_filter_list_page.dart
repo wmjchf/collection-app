@@ -200,7 +200,10 @@ class _SystemFilterListPageState extends State<SystemFilterListPage>
   }
 
   String _subtitle(CollectionItem item) {
-    final platform = platformLabel(item.platform);
+    final pageUrl = (item.canonicalUrl?.trim().isNotEmpty == true)
+        ? item.canonicalUrl
+        : item.url;
+    final platform = platformLabel(item.platform, url: pageUrl);
     final status = switch (item.status) {
       'pending' => '解析中',
       'failed' => '解析失败',

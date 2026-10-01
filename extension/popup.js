@@ -64,8 +64,45 @@ const nameInput = $('name-input');
 const nameError = $('name-error');
 const nameSave = $('name-save');
 
-function platformLabel(platform) {
+function platformIdFromHost(hostname) {
+  let host = String(hostname || '')
+    .trim()
+    .toLowerCase()
+    .replace(/\.$/, '');
+  if (!host) return '';
+  if (/^\d{1,3}(\.\d{1,3}){3}$/.test(host) || host.includes(':')) return '';
+  if (host === 'localhost') return 'localhost';
+  host = host.replace(/^www\./, '');
+  host = host.replace(/^(m|mobile|wap|app|www\d*)\./, '');
+  const parts = host.split('.').filter(Boolean);
+  if (!parts.length) return '';
+  const last2 = parts.length >= 2 ? parts.slice(-2).join('.') : '';
+  let brand;
+  if (
+    parts.length >= 3 &&
+    ['com.cn', 'net.cn', 'org.cn', 'co.uk', 'com.hk', 'com.tw'].includes(last2)
+  ) {
+    brand = parts[parts.length - 3];
+  } else if (parts.length >= 2) {
+    brand = parts[parts.length - 2];
+  } else {
+    brand = parts[0];
+  }
+  const id = String(brand || '')
+    .replace(/[^a-z0-9-]/gi, '')
+    .toLowerCase();
+  if (!id || id === 'www') return '';
+  return id;
+}
+
+function platformLabel(platform, url) {
   const p = String(platform || '').trim();
+  if (p && p !== 'web') return p;
+  try {
+    const host = url ? new URL(String(url)).hostname : '';
+    const guessed = platformIdFromHost(host);
+    if (guessed) return guessed;
+  } catch (_) {}
   return p || 'web';
 }
 
@@ -255,7 +292,7 @@ function subtitleFor(kind, item) {
   if (kind === 'recent') {
     return formatRelativeTime(item.lastReadAt || item.updatedAt);
   }
-  return [platformLabel(item.platform), formatDay(item.createdAt)]
+  return [platformLabel(item.platform, item.canonicalUrl || item.url), formatDay(item.createdAt)]
     .filter(Boolean)
     .join(' · ');
 }
@@ -1199,7 +1236,7 @@ function renderDetail() {
 
   const meta = document.createElement('p');
   meta.className = 'detail-meta';
-  meta.textContent = [platformLabel(item.platform), formatDateTime(item.createdAt)]
+  meta.textContent = [platformLabel(item.platform, item.canonicalUrl || item.url), formatDateTime(item.createdAt)]
     .filter(Boolean)
     .join(' · ');
 
