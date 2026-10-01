@@ -694,33 +694,17 @@ class _SearchTagFilterBar extends StatelessWidget {
 
   List<Tag> get _previewTags {
     if (tags.isEmpty) return const [];
-    final byId = {for (final t in tags) t.id: t};
-    final shown = <Tag>[];
-    final seen = <int>{};
-
-    // 已选优先露出，避免选中却被挤出预览
-    for (final id in selectedTagIds) {
-      final t = byId[id];
-      if (t == null || !seen.add(id)) continue;
-      shown.add(t);
-      if (shown.length >= _previewMax) return shown;
-    }
-    for (final t in tags) {
-      if (!seen.add(t.id)) continue;
-      shown.add(t);
-      if (shown.length >= _previewMax) break;
-    }
-    return shown;
+    if (tags.length <= _previewMax) return tags;
+    return tags.take(_previewMax).toList();
   }
 
   @override
   Widget build(BuildContext context) {
     final preview = _previewTags;
     final selectedCount = selectedTagIds.length;
-    final hiddenCount = tags.length - preview.length;
-    final filterLabel = selectedCount > 0
-        ? '筛选 · $selectedCount'
-        : (hiddenCount > 0 ? '全部 ${tags.length}' : '筛选');
+    final showFilter = tags.length > _previewMax;
+    final filterLabel =
+        selectedCount > 0 ? '筛选 · $selectedCount' : '全部 ${tags.length}';
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -735,37 +719,39 @@ class _SearchTagFilterBar extends StatelessWidget {
                 color: _SearchPageState._muted,
               ),
             ),
-            const Spacer(),
-            Material(
-              color: Colors.transparent,
-              child: InkWell(
-                onTap: onOpenFilter,
-                borderRadius: BorderRadius.circular(8),
-                child: Padding(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        filterLabel,
-                        style: const TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w500,
+            if (showFilter) ...[
+              const Spacer(),
+              Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  onTap: onOpenFilter,
+                  borderRadius: BorderRadius.circular(8),
+                  child: Padding(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          filterLabel,
+                          style: const TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w500,
+                            color: _SearchPageState._brand,
+                          ),
+                        ),
+                        const SizedBox(width: 2),
+                        const Icon(
+                          Icons.keyboard_arrow_down,
+                          size: 16,
                           color: _SearchPageState._brand,
                         ),
-                      ),
-                      const SizedBox(width: 2),
-                      const Icon(
-                        Icons.keyboard_arrow_down,
-                        size: 16,
-                        color: _SearchPageState._brand,
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
               ),
-            ),
+            ],
           ],
         ),
         if (preview.isNotEmpty) ...[
