@@ -1,9 +1,11 @@
 const { fetchHtml } = require('../fetchHtml');
 const { extractXiaohongshuNote } = require('../extractXiaohongshu');
+const { normalizeXiaohongshuCanonical } = require('../../../utils/url');
 
 /**
  * 小红书：桌面 UA 常落到空壳 noteDetailMap；分享短链用手机 UA。
  * 正文在 __INITIAL_STATE__（noteDetailMap 或 noteData.data.noteData）。
+ * pageUrl 必须回写 www.xiaohongshu.com（xhslink 不能作 CDN Referer）。
  * @type {import('./registry').PlatformAdapter}
  */
 
@@ -11,6 +13,16 @@ const MOBILE_UA =
   'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) ' +
   'AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 ' +
   'Mobile/15E148 Safari/604.1';
+
+function resolvePageUrl(finalUrl, note) {
+  const fromUrl = normalizeXiaohongshuCanonical(finalUrl);
+  if (fromUrl) return fromUrl;
+  const noteId = note?.noteId && String(note.noteId).trim();
+  if (noteId) {
+    return `https://www.xiaohongshu.com/discovery/item/${noteId}`;
+  }
+  return null;
+}
 
 function toResult(note, extra = {}) {
   if (!note) {
@@ -23,6 +35,7 @@ function toResult(note, extra = {}) {
       imageUrls: [],
       videoUrl: null,
       content: null,
+      pageUrl: extra.pageUrl || null,
       errorMessage: extra.errorMessage || '未能提取到笔记内容',
     };
   }
@@ -30,6 +43,7 @@ function toResult(note, extra = {}) {
     note.content ||
     (note.imageUrls && note.imageUrls.length) ||
     note.videoUrl;
+  const pageUrl = resolvePageUrl(extra.finalUrl, note) || extra.pageUrl || null;
   if (!has) {
     return {
       ok: false,
@@ -40,6 +54,7 @@ function toResult(note, extra = {}) {
       imageUrls: note.imageUrls || [],
       videoUrl: note.videoUrl || null,
       content: note.content,
+      pageUrl,
       errorMessage: extra.errorMessage || '未能提取到笔记内容',
     };
   }
@@ -52,6 +67,7 @@ function toResult(note, extra = {}) {
     imageUrls: note.imageUrls || [],
     videoUrl: note.videoUrl || null,
     content: note.content,
+    pageUrl,
     errorMessage: null,
   };
 }
@@ -71,6 +87,7 @@ module.exports = {
     const first = await fetchHtml(url, { timeoutMs: 15000 });
     let result = toResult(
       first.ok ? extractXiaohongshuNote(first.html) : null,
+      { finalUrl: first.finalUrl || url },
     );
     if (result.ok) return result;
 
@@ -79,9 +96,14 @@ module.exports = {
       userAgent: MOBILE_UA,
     });
     if (!second.ok || !second.html) {
-      return toResult(null, { errorMessage: '小红书页面抓取失败' });
+      return toResult(null, {
+        errorMessage: '小红书页面抓取失败',
+        pageUrl: normalizeXiaohongshuCanonical(first.finalUrl) || null,
+      });
     }
-    return toResult(extractXiaohongshuNote(second.html));
+    return toResult(extractXiaohongshuNote(second.html), {
+      finalUrl: second.finalUrl || first.finalUrl || url,
+    });
   },
   extractMeta(html) {
     const note = extractXiaohongshuNote(html);

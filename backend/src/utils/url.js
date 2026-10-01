@@ -310,6 +310,23 @@ function normalizeBilibiliCanonical(raw) {
   return bvid ? `https://www.bilibili.com/video/${bvid}` : null;
 }
 
+/** 小红书笔记 id（explore / discovery/item；短链 xhslink 无 id，需展开后规范） */
+function extractXiaohongshuNoteId(raw) {
+  const s = String(raw || '');
+  const m = s.match(
+    /(?:xiaohongshu\.com)\/(?:explore|discovery\/item|item)\/([a-zA-Z0-9]+)/i,
+  );
+  return m ? m[1] : null;
+}
+
+/** 小红书 canonical 统一为 www…/discovery/item/{id}（xhslink 无法作 CDN Referer） */
+function normalizeXiaohongshuCanonical(raw) {
+  const noteId = extractXiaohongshuNoteId(raw);
+  return noteId
+    ? `https://www.xiaohongshu.com/discovery/item/${noteId}`
+    : null;
+}
+
 module.exports = {
   assertHttpUrl,
   normalizeUrl,
@@ -323,4 +340,6 @@ module.exports = {
   placeholderTitle,
   extractBvid,
   normalizeBilibiliCanonical,
+  extractXiaohongshuNoteId,
+  normalizeXiaohongshuCanonical,
 };
