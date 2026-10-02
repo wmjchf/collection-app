@@ -2088,9 +2088,10 @@ class _ReadingInlineImageState extends State<_ReadingInlineImage> {
   }
 
   void _listen() {
+    final resolved = resolveMediaUrl(widget.url);
     final provider = NetworkImage(
-      widget.url,
-      headers: mediaHttpHeadersFor(widget.url, pageUrl: widget.pageUrl),
+      resolved,
+      headers: mediaHttpHeadersFor(resolved, pageUrl: widget.pageUrl),
     );
     _stream = provider.resolve(const ImageConfiguration());
     _listener = ImageStreamListener(
@@ -2139,12 +2140,15 @@ class _ReadingInlineImageState extends State<_ReadingInlineImage> {
             : maxW;
         final height = aspect != null ? width * aspect : null;
         final image = Image.network(
-          widget.url,
+          resolveMediaUrl(widget.url),
           width: width,
           height: height,
           fit: BoxFit.fitWidth,
           alignment: Alignment.center,
-          headers: mediaHttpHeadersFor(widget.url, pageUrl: widget.pageUrl),
+          headers: mediaHttpHeadersFor(
+            resolveMediaUrl(widget.url),
+            pageUrl: widget.pageUrl,
+          ),
           filterQuality: FilterQuality.medium,
           gaplessPlayback: true,
           errorBuilder: (_, __, ___) => SizedBox(
@@ -2199,11 +2203,14 @@ class _InlineEmoji extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 6),
       child: Image.network(
-        url,
+        resolveMediaUrl(url),
         width: width,
         height: height,
         fit: BoxFit.contain,
-        headers: mediaHttpHeadersFor(url, pageUrl: pageUrl),
+        headers: mediaHttpHeadersFor(
+          resolveMediaUrl(url),
+          pageUrl: pageUrl,
+        ),
         gaplessPlayback: true,
         errorBuilder: (_, __, ___) => SizedBox(width: width, height: height),
       ),

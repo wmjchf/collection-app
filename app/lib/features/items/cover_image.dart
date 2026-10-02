@@ -32,9 +32,12 @@ class CoverImage extends StatelessWidget {
         width: width ?? double.infinity,
         child: hasUrl
             ? Image.network(
-                trimmed,
+                resolveMediaUrl(trimmed),
                 fit: BoxFit.cover,
-                headers: mediaHttpHeadersFor(trimmed, pageUrl: pageUrl),
+                headers: mediaHttpHeadersFor(
+                  resolveMediaUrl(trimmed),
+                  pageUrl: pageUrl,
+                ),
                 gaplessPlayback: true,
                 filterQuality: FilterQuality.low,
                 errorBuilder: (_, __, ___) => const _DefaultCover(),

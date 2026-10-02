@@ -52,6 +52,7 @@ function imgDisplaySize($el) {
     w = Math.round(h / ratio);
   }
   if (w <= 8) return null;
+  // height=auto 等非数字：只保留宽，阅读页按解码比例定高
   return { w, h: h > 0 ? h : 0 };
 }
 
@@ -263,8 +264,8 @@ function htmlToRichText(fragment, { baseUrl } = {}) {
       $el.remove();
       return;
     }
-    const alt = size ? `${size.w}x${size.h || 0}` : 'image';
-    $el.replaceWith(`\n\n![${alt}](${src})\n\n`);
+    const altOut = size && size.h > 0 ? `${size.w}x${size.h}` : 'image';
+    $el.replaceWith(`\n\n![${altOut}](${src})\n\n`);
   });
 
   // 2) 语义标题

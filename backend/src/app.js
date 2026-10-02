@@ -101,6 +101,7 @@ app.use('/api/usage', usageRouter);
 app.use('/api/billing', billingRouter);
 app.use('/api/analytics', analyticsRouter);
 app.use('/api/help', require('./routes/help'));
+app.use('/api', require('./routes/mediaProxy'));
 
 app.use((err, _req, res, _next) => {
   console.error(err);
