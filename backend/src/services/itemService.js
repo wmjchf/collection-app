@@ -43,6 +43,7 @@ const {
 const transcriptSegments = require('./transcriptSegments');
 const aiMeta = require('./aiMeta');
 const guideItemService = require('./guideItemService');
+const mediaProxy = require('./mediaProxy');
 
 /** 服务端抓取被拦时，等待客户端上报 HTML */
 const NEED_CLIENT_FETCH = 'NEED_CLIENT_FETCH';
@@ -63,6 +64,8 @@ function mapItem(row) {
       imageUrls = [];
     }
   }
+  const coverRaw = row.cover_image_url || null;
+  const contentRaw = row.content || null;
   return {
     id: row.id,
     userId: row.user_id,
@@ -74,10 +77,12 @@ function mapItem(row) {
         row.url,
       ) || row.canonical_url,
     title: row.title,
-    content: row.content,
+    content: mediaProxy.rewriteMediaUrlsInText(contentRaw),
     summary: row.summary,
-    coverImageUrl: row.cover_image_url,
-    imageUrls,
+    coverImageUrl: coverRaw
+      ? mediaProxy.toProxiedMediaUrl(coverRaw)
+      : null,
+    imageUrls: mediaProxy.rewriteMediaUrlList(imageUrls),
     videoUrl: row.video_url || null,
     transcriptSegments: transcriptSegments.mapSegmentsForApi(
       transcriptSegments.parseSegments(row.transcript_segments),

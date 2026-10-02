@@ -5,8 +5,8 @@ class ApiConfig {
   static const String baseUrl = String.fromEnvironment(
     'API_BASE_URL',
     // defaultValue: 'https://conflux.wobufang.com'
-    defaultValue: 'http://127.0.0.1:3001',
+    // defaultValue: 'http://127.0.0.1:3001',
     // defaultValue:'http://192.168.10.4:3001'
-    // defaultValue:'http://47.97.67.47:3002'
+    defaultValue:'http://47.97.67.47:3002'
   );
 }

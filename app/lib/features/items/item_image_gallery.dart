@@ -172,12 +172,15 @@ class _CarouselImage extends StatelessWidget {
     final child = ColoredBox(
       color: const Color(0xFFF0F2F5),
       child: Image.network(
-        url,
+        resolveMediaUrl(url),
         width: double.infinity,
         height: height,
         fit: fit,
         alignment: Alignment.center,
-        headers: mediaHttpHeadersFor(url, pageUrl: pageUrl),
+        headers: mediaHttpHeadersFor(
+          resolveMediaUrl(url),
+          pageUrl: pageUrl,
+        ),
         errorBuilder: (_, __, ___) => CoverImage(
           url: null,
           height: height,
@@ -327,10 +330,10 @@ class _ImagePreviewPageState extends State<_ImagePreviewPage> {
                             ),
                           )
                         : Image.network(
-                            list[i],
+                            resolveMediaUrl(list[i]),
                             fit: BoxFit.contain,
                             headers: mediaHttpHeadersFor(
-                              list[i],
+                              resolveMediaUrl(list[i]),
                               pageUrl: widget.pageUrl,
                             ),
                             errorBuilder: (_, __, ___) => const Icon(
