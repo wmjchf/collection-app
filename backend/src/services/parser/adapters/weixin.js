@@ -80,14 +80,15 @@ function absolutize(baseUrl, src) {
   }
 }
 
-/** 图文（type=8）专用：picture_page_info_list */
+/** 图文（type=8）专用：picture_page_info_list；只取主图 cdn_url，跳过 watermark_info 水印图 */
 function extractPicturePageImages(html) {
   const urls = [];
   const seen = new Set();
   const listIdx = html.indexOf('picture_page_info_list');
   if (listIdx < 0) return urls;
   const chunk = html.slice(listIdx, listIdx + 80000);
-  const re = /cdn_url:\s*'(https?:[^']+)'/g;
+  // 主图字段后紧跟 width；watermark_info / share_cover 里的 cdn_url 不跟 width
+  const re = /cdn_url:\s*'(https?:[^']+)'\s*,\s*width:/g;
   let m;
   while ((m = re.exec(chunk))) {
     const u = decodeJsString(m[1]);
