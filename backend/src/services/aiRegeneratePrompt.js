@@ -61,7 +61,7 @@ function formatRegenerateUserBlock(from) {
   if (!from) return '';
   if (from.kind === 'summary') {
     return (
-      `【重新生成】换表述或补漏，勿照抄上一版；仍须精、忠实正文。\n` +
+      `【重新生成】换理解角度或补漏，勿照抄上一版；仍须解读原文、忠实正文，不要写成摘要清单。\n` +
       `上一版：${from.text}`
     );
   }

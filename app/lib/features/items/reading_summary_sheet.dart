@@ -107,7 +107,7 @@ class _ReadingSummarySheetState extends State<_ReadingSummarySheet> {
     if (_item.hasAnyTranscriptPending && !_meta.awaitTranscript) {
       if (mounted) {
         setState(() => _requesting = false);
-        AppToast.show(context, '转写进行中，请稍候再生成 AI 总结');
+        AppToast.show(context, '转写进行中，请稍候再生成 AI 解读');
       }
       return;
     }
@@ -115,7 +115,7 @@ class _ReadingSummarySheetState extends State<_ReadingSummarySheet> {
         !_item.shouldAutoTranscribeBeforeMindmap) {
       if (mounted) {
         setState(() => _requesting = false);
-        AppToast.show(context, '内容不足，无法生成 AI 总结');
+        AppToast.show(context, '内容不足，无法生成 AI 解读');
       }
       return;
     }
@@ -241,10 +241,10 @@ class _ReadingSummarySheetState extends State<_ReadingSummarySheet> {
         if (st.summary.isSuccess) {
           AppToast.show(
             context,
-            aiDoneToast('AI 总结已生成', st.summary.creditsUsed),
+            aiDoneToast('AI 解读已生成', st.summary.creditsUsed),
           );
         } else if (st.summary.isFailed) {
-          AppToast.show(context, st.summary.error ?? 'AI 总结生成失败');
+          AppToast.show(context, st.summary.error ?? 'AI 解读生成失败');
         }
         return;
       } catch (_) {
@@ -285,7 +285,7 @@ class _ReadingSummarySheetState extends State<_ReadingSummarySheet> {
                 children: [
                   const Expanded(
                     child: Text(
-                      'AI 总结',
+                      'AI 解读',
                       style: TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.w700,
@@ -331,8 +331,8 @@ class _ReadingSummarySheetState extends State<_ReadingSummarySheet> {
   Widget _buildBody() {
     if (_meta.isPending || _requesting) {
       final label = _meta.awaitTranscript
-          ? '转写完成后生成 AI 总结…'
-          : aiScholarGeneratingLabel('总结', isPro: _isPro);
+          ? '转写完成后生成 AI 解读…'
+          : aiScholarGeneratingLabel('解读', isPro: _isPro);
       return Container(
         width: double.infinity,
         padding: const EdgeInsets.fromLTRB(16, 18, 16, 18),
@@ -379,7 +379,7 @@ class _ReadingSummarySheetState extends State<_ReadingSummarySheet> {
           mainAxisSize: MainAxisSize.min,
           children: [
             Text(
-              err.isEmpty ? 'AI 总结生成失败' : 'AI 总结失败：$err',
+              err.isEmpty ? 'AI 解读生成失败' : 'AI 解读失败：$err',
               style: const TextStyle(
                 fontSize: 13,
                 color: _muted,
