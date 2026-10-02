@@ -10,14 +10,14 @@ class ItemImageGallery extends StatefulWidget {
     this.pageUrl,
     this.borderRadius = 12,
     this.height = 360,
-    this.fit = BoxFit.contain,
+    this.fit = BoxFit.cover,
   });
 
   final List<String> urls;
   final String? pageUrl;
   final double borderRadius;
   final double height;
-  /// 详情/阅读预览默认 contain 完整显示；需要铺满裁切时传 [BoxFit.cover]
+  /// 阅读页图集默认 cover 铺满；全图预览仍用 contain
   final BoxFit fit;
 
   @override
@@ -158,7 +158,7 @@ class _CarouselImage extends StatelessWidget {
     this.pageUrl,
     required this.height,
     required this.borderRadius,
-    this.fit = BoxFit.contain,
+    this.fit = BoxFit.cover,
   });
 
   final String url;
