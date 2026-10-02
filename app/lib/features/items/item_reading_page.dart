@@ -39,7 +39,7 @@ import 'package:super_collection/features/items/transcript_models.dart';
 import 'package:super_collection/features/items/transcript_picker_sheet.dart';
 import 'package:super_collection/features/items/transcript_segment_panel.dart';
 
-/// 本地阅读页：标题 + 可读正文（含标注高亮）；顶栏更多；底栏 标签 / AI 总结 / 思维导图 / 感想（或转写条目下的「更多」）；总结与思维导图为底部弹层。
+/// 本地阅读页：标题 + 可读正文（含标注高亮）；顶栏更多；底栏 标签 / AI 解读 / 思维导图 / 感想（或转写条目下的「更多」）；解读与思维导图为底部弹层。
 class ItemReadingPage extends StatefulWidget {
   const ItemReadingPage({
     super.key,
@@ -605,10 +605,10 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
         if (st.summary.isSuccess) {
           AppToast.show(
             context,
-            aiDoneToast('AI 总结已生成', st.summary.creditsUsed),
+            aiDoneToast('AI 解读已生成', st.summary.creditsUsed),
           );
         } else if (st.summary.isFailed) {
-          AppToast.show(context, st.summary.error ?? 'AI 总结生成失败');
+          AppToast.show(context, st.summary.error ?? 'AI 解读生成失败');
         }
         return;
       } catch (_) {
@@ -1661,7 +1661,7 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
                                 icon: Icons.auto_awesome_outlined,
                                 label: _item.hasSummaryPending
                                     ? '生成中…'
-                                    : 'AI总结',
+                                    : 'AI解读',
                                 iconColor: _item.canTriggerSummary &&
                                         !_item.hasSummaryPending
                                     ? null

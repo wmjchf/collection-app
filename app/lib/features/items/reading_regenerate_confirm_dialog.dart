@@ -30,8 +30,8 @@ Future<bool?> showReadingRegenerateConfirmDialog(
       ),
     ReadingRegenerateKind.summary => showAppConfirmDialog(
         context,
-        title: '重新生成 AI 总结？',
-        message: '将覆盖现有 AI 总结。',
+        title: '重新生成 AI 解读？',
+        message: '将覆盖现有 AI 解读。',
         confirmLabel: '重新生成',
         dangerConfirm: false,
       ),

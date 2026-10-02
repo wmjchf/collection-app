@@ -1,5 +1,31 @@
 const { pool } = require('../db');
-const { normalizeUrl, detectPlatform, placeholderTitle, resolveParseUrl, normalizeBilibiliCanonical } = require('../utils/url');
+const {
+  normalizeUrl,
+  detectPlatform,
+  placeholderTitle,
+  resolveParseUrl,
+  normalizeBilibiliCanonical,
+  normalizeXiaohongshuCanonical,
+} = require('../utils/url');
+
+/** 防盗链：短链不能作 canonical（App 用其 origin 作 Referer） */
+function normalizeCanonicalForPlatform(platform, ...candidates) {
+  if (platform === 'bilibili') {
+    for (const c of candidates) {
+      const n = normalizeBilibiliCanonical(c);
+      if (n) return n;
+    }
+    return null;
+  }
+  if (platform === 'xiaohongshu') {
+    for (const c of candidates) {
+      const n = normalizeXiaohongshuCanonical(c);
+      if (n) return n;
+    }
+    return null;
+  }
+  return null;
+}
 const { fetchQuickMeta, parseFullContent } = require('./parser');
 const {
   getAdapter,
@@ -33,11 +59,12 @@ function mapItem(row) {
     id: row.id,
     userId: row.user_id,
     url: row.url,
-    canonicalUrl: row.platform === 'bilibili'
-        ? normalizeBilibiliCanonical(row.canonical_url) ||
-          normalizeBilibiliCanonical(row.url) ||
-          row.canonical_url
-        : row.canonical_url,
+    canonicalUrl:
+      normalizeCanonicalForPlatform(
+        row.platform,
+        row.canonical_url,
+        row.url,
+      ) || row.canonical_url,
     title: row.title,
     content: row.content,
     summary: row.summary,
@@ -161,7 +188,7 @@ async function getByIdForUser(userId, itemId, opts = {}) {
  */
 async function createItem(userId, rawUrl) {
   const url = String(rawUrl || '').trim();
-  const canonicalUrl = normalizeUrl(url);
+  let canonicalUrl = normalizeUrl(url);
 
   if (guideItemService.isGuideItem({ canonicalUrl })) {
     const seeded = await guideItemService.ensureForUser(userId);
@@ -172,15 +199,21 @@ async function createItem(userId, rawUrl) {
   }
 
   let meta = null;
+  const earlyPlatform = detectPlatform(canonicalUrl);
 
-  if (detectPlatform(canonicalUrl) === 'bilibili') {
+  // B 站 / 小红书：创建时展开短链并规范 canonical（CDN 不认 b23 / xhslink Referer）
+  if (earlyPlatform === 'bilibili' || earlyPlatform === 'xiaohongshu') {
     try {
       meta = await fetchQuickMeta(canonicalUrl);
-      const fixed = normalizeBilibiliCanonical(meta.finalUrl);
+      const fixed = normalizeCanonicalForPlatform(
+        earlyPlatform,
+        meta.finalUrl,
+        meta.adapterParsed?.pageUrl,
+      );
       if (fixed) canonicalUrl = fixed;
     } catch (err) {
       meta = {
-        platform: 'bilibili',
+        platform: earlyPlatform,
         finalUrl: canonicalUrl,
         title: placeholderTitle(canonicalUrl),
         summary: null,
@@ -313,10 +346,12 @@ async function runContentParse(itemId) {
       const imageUrls = Array.isArray(parsed.imageUrls)
         ? parsed.imageUrls.filter(Boolean).slice(0, 30)
         : [];
-      const bilibiliCanonical =
-        row.platform === 'bilibili'
-          ? normalizeBilibiliCanonical(parsed.pageUrl)
-          : null;
+      const fixedCanonical = normalizeCanonicalForPlatform(
+        row.platform,
+        parsed.pageUrl,
+        row.canonical_url,
+        row.url,
+      );
       const preserveUserContent = !!row.content_edited_at;
       await pool.execute(
         `UPDATE items SET
@@ -338,7 +373,7 @@ async function runContentParse(itemId) {
           imageUrls: JSON.stringify(imageUrls),
           videoUrl: parsed.videoUrl || null,
           content: preserveUserContent ? row.content : parsed.content,
-          canonicalUrl: bilibiliCanonical,
+          canonicalUrl: fixedCanonical,
         },
       );
       require('./analyticsService').trackParseOutcome(row, {
@@ -633,10 +668,12 @@ async function refreshItemVideo(userId, itemId) {
       videoUrl: parsed.videoUrl || null,
       content: preserveUserContent ? null : parsed.content || null,
       coverImageUrl: parsed.coverImageUrl || null,
-      canonicalUrl:
-        item.platform === 'bilibili'
-          ? normalizeBilibiliCanonical(parsed.pageUrl)
-          : null,
+      canonicalUrl: normalizeCanonicalForPlatform(
+        item.platform,
+        parsed.pageUrl,
+        item.canonicalUrl,
+        item.url,
+      ),
     },
   );
 

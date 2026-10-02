@@ -109,7 +109,7 @@ class CollectionItem {
       !hasAiTagsPending &&
       !(hasAnyTranscriptPending && !aiMeta.tags.awaitTranscript);
 
-  /// AI 功能触发的自动转写进行中（标签、思维导图或 AI 总结）
+  /// AI 功能触发的自动转写进行中（标签、思维导图或 AI 解读）
   bool get isAiAwaitingTranscript =>
       (aiMeta.tags.awaitTranscript && aiMeta.tags.isPending) ||
       (aiMeta.mindmap.awaitTranscript && aiMeta.mindmap.isPending) ||

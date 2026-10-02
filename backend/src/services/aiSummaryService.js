@@ -13,28 +13,30 @@ const {
   formatRegenerateUserBlock,
 } = require('./aiRegeneratePrompt');
 
-const SUMMARY_SYSTEM_PROMPT = `你是内容提炼助手。输入已是用户收藏的可读文本（标题、正文、音视频转写稿等），**不要假设还能打开链接、看视频或拉取字幕**。信息不足时在 text 中简短说明缺什么，禁止编造。
+const SUMMARY_SYSTEM_PROMPT = `你是内容解读助手。输入已是用户收藏的可读文本（标题、正文、音视频转写稿等），**不要假设还能打开链接、看视频或拉取字幕**。信息不足时在 text 中简短说明缺什么，禁止编造。
 
 ## 任务
-提炼全文**最核心的信息**。读者看完应立刻知道：这篇在讲什么、关键结论或判断是什么。**不是替代阅读原文**——论证过程、细节、例子留给正文。
+帮读者**读懂**这篇内容：它在说什么、关键判断/立场是什么、值得怎么理解。**不是写摘要提纲**——不要只罗列「讲了几点」；要讲清含义与脉络，让人看完更明白，而不是只知道标题级信息。
 
-## 怎么才算「精」
-1. **先抓主干**：全文真正想传达的一两个核心观点/结论；只写这个层级，不写枝节。
-2. **宁缺毋滥**：一条说到位的核心，胜过五条泛泛罗列。背景铺垫、重复论述、次要信息一律不写。
-3. **用自己的话概括**：不抄原文句式，不堆细节，不写「本文介绍了…」式空泛开头。
-4. **可对应原文**：每条要点应是读正文时能核对上的「核」，不是模糊感想。
+## 怎么才算「解读」
+1. **先立意**：这篇真正想传达的核心意思或主张是什么（用自己的话讲清楚）。
+2. **再讲清**：关键论点如何串起来；若有隐含前提、对比、转折，点明即可。
+3. **落到理解**：读者可能容易误解或略过的地方，用一两句点破；有实践含义时可以说「这意味着…」，但勿空洞鸡汤。
+4. **忠实原文**：解读必须能对应正文；可以概括与串讲，不可臆造原文没有的事实、数据或结论。
 
 ## 不要
-- 不要写成内容大纲或段落复述
-- 不要为显得全面而展开论证、举例、逐段概括
+- 不要写成干巴巴的要点清单或内容大纲
+- 不要大段复述原文、逐段摘抄
 - 不要寒暄、广告、引流、情绪煽情
+- 不要为显得「全面」而堆枝节
 
 ## 篇幅
-说清核心就停，自然收束；通常几条短句或一两段即可，**不以字数为目标**。
+说清「懂了什么」就停；通常一两段连贯短文，或若干有层次的短句；**不以字数为目标**。
 
 ## 输出（严格）
 只输出一个 JSON 对象，不要 markdown、不要代码块、不要前后说明。
-text 内多条要点用换行分隔（JSON 字符串里写 \\n），勿在正文里输出字面量「\\n」两个字符。`;
+格式：{"text":"..."}
+text 内分段或层次用换行分隔（JSON 字符串里写 \\n），勿在正文里输出字面量「\\n」两个字符。`;
 
 function normalizeSummaryText(raw) {
   if (!raw || typeof raw !== 'object') return null;
@@ -214,8 +216,8 @@ async function requestSummary(userId, itemId, { force = false } = {}) {
   const previewMessages = buildAiTaskMessages(inputText, [
     SUMMARY_SYSTEM_PROMPT,
     regenBlock,
-    '请按上述要求提炼核心信息（不要复述原文），输出 JSON（仅 JSON，无其它文字）。',
-  ]);
+      '请按上述要求解读内容（帮读者读懂，不要写成摘要提纲），输出 JSON（仅 JSON，无其它文字）。',
+    ]);
   await usageService.assertAiQuota(userId, {
     estimatedTokens: usageService.estimateAiTokens({
       messages: previewMessages,
@@ -278,7 +280,7 @@ async function runSummaryJob(itemId) {
     const messages = buildAiTaskMessages(inputText, [
       SUMMARY_SYSTEM_PROMPT,
       regenBlock,
-      '请按上述要求提炼核心信息（不要复述原文），输出 JSON（仅 JSON，无其它文字）。',
+      '请按上述要求解读内容（帮读者读懂，不要写成摘要提纲），输出 JSON（仅 JSON，无其它文字）。',
     ]);
 
     const usageService = require('./usageService');
@@ -295,7 +297,7 @@ async function runSummaryJob(itemId) {
 
     const text = normalizeSummaryText(result);
     if (!text) {
-      throw new Error('模型未返回有效总结');
+      throw new Error('模型未返回有效解读');
     }
 
     const contentHash = computeContentHash(row);

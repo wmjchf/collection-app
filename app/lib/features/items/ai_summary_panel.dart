@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:super_collection/features/items/ai_meta_models.dart';
 import 'package:super_collection/features/items/ai_scholar_copy.dart';
 
-/// 阅读页正文下方：AI 总结 loading / 结果 / 失败
+/// 阅读页正文下方：AI 解读 loading / 结果 / 失败
 class AiSummaryPanel extends StatelessWidget {
   const AiSummaryPanel({
     super.key,
@@ -46,7 +46,7 @@ class AiSummaryPanel extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const Text(
-                'AI 总结',
+                'AI 解读',
                 style: TextStyle(
                   fontSize: 15,
                   fontWeight: FontWeight.w600,
@@ -55,7 +55,7 @@ class AiSummaryPanel extends StatelessWidget {
               ),
               const SizedBox(height: 8),
               Text(
-                err.isEmpty ? 'AI 总结生成失败' : 'AI 总结失败：$err',
+                err.isEmpty ? 'AI 解读生成失败' : 'AI 解读失败：$err',
                 style: const TextStyle(
                   fontSize: 13,
                   color: _muted,
@@ -94,7 +94,7 @@ class AiSummaryPanel extends StatelessWidget {
               children: [
                 const Expanded(
                   child: Text(
-                    'AI 总结',
+                    'AI 解读',
                     style: TextStyle(
                       fontSize: 15,
                       fontWeight: FontWeight.w600,
@@ -160,8 +160,8 @@ class _SummaryLoadingCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final label = awaitTranscript
-        ? '转写完成后生成 AI 总结…'
-        : aiScholarGeneratingLabel('总结', isPro: isPro);
+        ? '转写完成后生成 AI 解读…'
+        : aiScholarGeneratingLabel('解读', isPro: isPro);
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
