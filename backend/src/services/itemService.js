@@ -6,6 +6,7 @@ const {
   resolveParseUrl,
   normalizeBilibiliCanonical,
   normalizeXiaohongshuCanonical,
+  normalizeDoubanCanonical,
 } = require('../utils/url');
 
 /** 防盗链：短链不能作 canonical（App 用其 origin 作 Referer） */
@@ -24,6 +25,13 @@ function normalizeCanonicalForPlatform(platform, ...candidates) {
     }
     return null;
   }
+  if (platform === 'douban') {
+    for (const c of candidates) {
+      const n = normalizeDoubanCanonical(c);
+      if (n) return n;
+    }
+    return null;
+  }
   return null;
 }
 const { fetchQuickMeta, parseFullContent } = require('./parser');
@@ -35,6 +43,7 @@ const {
 const transcriptSegments = require('./transcriptSegments');
 const aiMeta = require('./aiMeta');
 const guideItemService = require('./guideItemService');
+const mediaProxy = require('./mediaProxy');
 
 /** 服务端抓取被拦时，等待客户端上报 HTML */
 const NEED_CLIENT_FETCH = 'NEED_CLIENT_FETCH';
@@ -55,6 +64,8 @@ function mapItem(row) {
       imageUrls = [];
     }
   }
+  const coverRaw = row.cover_image_url || null;
+  const contentRaw = row.content || null;
   return {
     id: row.id,
     userId: row.user_id,
@@ -66,10 +77,12 @@ function mapItem(row) {
         row.url,
       ) || row.canonical_url,
     title: row.title,
-    content: row.content,
+    content: mediaProxy.rewriteMediaUrlsInText(contentRaw),
     summary: row.summary,
-    coverImageUrl: row.cover_image_url,
-    imageUrls,
+    coverImageUrl: coverRaw
+      ? mediaProxy.toProxiedMediaUrl(coverRaw)
+      : null,
+    imageUrls: mediaProxy.rewriteMediaUrlList(imageUrls),
     videoUrl: row.video_url || null,
     transcriptSegments: transcriptSegments.mapSegmentsForApi(
       transcriptSegments.parseSegments(row.transcript_segments),
@@ -201,8 +214,12 @@ async function createItem(userId, rawUrl) {
   let meta = null;
   const earlyPlatform = detectPlatform(canonicalUrl);
 
-  // B 站 / 小红书：创建时展开短链并规范 canonical（CDN 不认 b23 / xhslink Referer）
-  if (earlyPlatform === 'bilibili' || earlyPlatform === 'xiaohongshu') {
+  // B 站 / 小红书 / 豆瓣：创建时展开短链并规范 canonical（CDN 不认错误 Referer）
+  if (
+    earlyPlatform === 'bilibili' ||
+    earlyPlatform === 'xiaohongshu' ||
+    earlyPlatform === 'douban'
+  ) {
     try {
       meta = await fetchQuickMeta(canonicalUrl);
       const fixed = normalizeCanonicalForPlatform(
@@ -1513,6 +1530,8 @@ const PLATFORM_ALIASES = {
   视频号: 'channels',
   channels: 'channels',
   小红书: 'xiaohongshu',
+  豆瓣: 'douban',
+  douban: 'douban',
   抖音: 'douyin',
   微博: 'weibo',
   B站: 'bilibili',

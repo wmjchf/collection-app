@@ -25,6 +25,9 @@ function refererForMediaUrl(mediaUrl, pageUrl) {
   ) {
     return 'https://www.bilibili.com/';
   }
+  if (lower.includes('doubanio.com') || /img\d*\.douban\.com/i.test(lower)) {
+    return 'https://www.douban.com/';
+  }
   if (lower.includes('weibocdn')) return 'https://weibo.com/';
   if (lower.includes('gtimg.com')) return 'https://news.qq.com/';
   if (lower.includes('toutiaovod') || lower.includes('toutiao.com')) {

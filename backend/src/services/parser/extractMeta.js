@@ -38,6 +38,13 @@ function looksBlocked(html, $) {
   ) {
     return true;
   }
+  // 豆瓣未登录 / 风控权限页
+  if (
+    text.includes('没有访问权限') &&
+    !html.includes('topic-richtext')
+  ) {
+    return true;
+  }
   return false;
 }
 

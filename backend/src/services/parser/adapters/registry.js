@@ -50,6 +50,7 @@ const thepaperAdapter = require('./thepaper');
 const infzmAdapter = require('./infzm');
 const xinhuaxmtAdapter = require('./xinhuaxmt');
 const xiaoyuzhouAdapter = require('./xiaoyuzhou');
+const doubanAdapter = require('./douban');
 
 /** @type {PlatformAdapter[]} */
 const ADAPTERS = [
@@ -61,6 +62,7 @@ const ADAPTERS = [
   jikeAdapter,
   xiaohongshuAdapter,
   weiboAdapter,
+  doubanAdapter,
   kr36Adapter,
   toutiaoAdapter,
   peopleAdapter,
