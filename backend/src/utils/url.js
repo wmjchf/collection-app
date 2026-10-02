@@ -177,6 +177,9 @@ function detectPlatform(url) {
   if (host.includes('xiaoyuzhoufm.com')) {
     return 'xiaoyuzhou';
   }
+  if (host.includes('douban.com') || host.includes('douban.fm')) {
+    return 'douban';
+  }
   if (
     host.includes('theblockbeats.info') ||
     host.includes('blockbeats.cn') ||
@@ -274,6 +277,14 @@ function resolveFetchUrl(rawUrl) {
       uri.searchParams.delete('source');
       return uri.toString();
     }
+    // 豆瓣小组话题直链常 403；走 dispatch 再落地
+    if (host === 'douban.com' || host.endsWith('.douban.com')) {
+      const topicId = extractDoubanTopicId(rawUrl);
+      if (topicId && !/\/doubanapp\/dispatch/i.test(uri.pathname)) {
+        const path = `/group/topic/${topicId}/`;
+        return `https://www.douban.com/doubanapp/dispatch?uri=${encodeURIComponent(path)}`;
+      }
+    }
   } catch {
     // ignore
   }
@@ -327,6 +338,29 @@ function normalizeXiaohongshuCanonical(raw) {
     : null;
 }
 
+/** 豆瓣小组话题 id（path 或 doubanapp/dispatch?uri=） */
+function extractDoubanTopicId(raw) {
+  const s = String(raw || '');
+  const fromPath = s.match(/\/group\/topic\/(\d+)/i);
+  if (fromPath) return fromPath[1];
+  try {
+    const uri = new URL(s);
+    const q = uri.searchParams.get('uri') || '';
+    const decoded = decodeURIComponent(q);
+    const m = decoded.match(/\/group\/topic\/(\d+)/i);
+    if (m) return m[1];
+  } catch {
+    // ignore
+  }
+  return null;
+}
+
+/** 豆瓣话题 canonical 统一为 www.douban.com/group/topic/{id}/（CDN Referer 用） */
+function normalizeDoubanCanonical(raw) {
+  const id = extractDoubanTopicId(raw);
+  return id ? `https://www.douban.com/group/topic/${id}/` : null;
+}
+
 module.exports = {
   assertHttpUrl,
   normalizeUrl,
@@ -342,4 +376,6 @@ module.exports = {
   normalizeBilibiliCanonical,
   extractXiaohongshuNoteId,
   normalizeXiaohongshuCanonical,
+  extractDoubanTopicId,
+  normalizeDoubanCanonical,
 };

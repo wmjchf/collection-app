@@ -6,6 +6,7 @@ const {
   resolveParseUrl,
   normalizeBilibiliCanonical,
   normalizeXiaohongshuCanonical,
+  normalizeDoubanCanonical,
 } = require('../utils/url');
 
 /** 防盗链：短链不能作 canonical（App 用其 origin 作 Referer） */
@@ -20,6 +21,13 @@ function normalizeCanonicalForPlatform(platform, ...candidates) {
   if (platform === 'xiaohongshu') {
     for (const c of candidates) {
       const n = normalizeXiaohongshuCanonical(c);
+      if (n) return n;
+    }
+    return null;
+  }
+  if (platform === 'douban') {
+    for (const c of candidates) {
+      const n = normalizeDoubanCanonical(c);
       if (n) return n;
     }
     return null;
@@ -201,8 +209,12 @@ async function createItem(userId, rawUrl) {
   let meta = null;
   const earlyPlatform = detectPlatform(canonicalUrl);
 
-  // B 站 / 小红书：创建时展开短链并规范 canonical（CDN 不认 b23 / xhslink Referer）
-  if (earlyPlatform === 'bilibili' || earlyPlatform === 'xiaohongshu') {
+  // B 站 / 小红书 / 豆瓣：创建时展开短链并规范 canonical（CDN 不认错误 Referer）
+  if (
+    earlyPlatform === 'bilibili' ||
+    earlyPlatform === 'xiaohongshu' ||
+    earlyPlatform === 'douban'
+  ) {
     try {
       meta = await fetchQuickMeta(canonicalUrl);
       const fixed = normalizeCanonicalForPlatform(
@@ -1513,6 +1525,8 @@ const PLATFORM_ALIASES = {
   视频号: 'channels',
   channels: 'channels',
   小红书: 'xiaohongshu',
+  豆瓣: 'douban',
+  douban: 'douban',
   抖音: 'douyin',
   微博: 'weibo',
   B站: 'bilibili',
