@@ -4,20 +4,18 @@ const tagService = require('./tagService');
 const usageService = require('./usageService');
 
 const ORGANIZE_SYSTEM_PROMPT =
-  '你是收藏整理助手。用户有一批标签，以及可选的已有归类（模块）。' +
-  '你根据标签名、可选的标签说明（description）与已有归类来划分，看不到文章正文；结果是草稿，允许用户之后微调。' +
-  '核心目标：逐个理解每一个标签「它是什么」，再把确实同类的放进同一归类；凑不齐同类的可以留在未归类。' +
+  '你是收藏整理助手。用户已有归类（模块）里的标签结构是用户确认或自定义的，**禁止改动、禁止挪走、禁止打散重排**。' +
+  '你只能安置「未归类」里的标签：可把它们追加进已有归类，或用未归类标签新建归类；看不到文章正文。' +
   '规则：' +
-  '1. 先对输入里的标签逐个弄清含义（有说明时以说明消歧，勿只看字面），不要跳过或批量糊弄；再按含义归并；想清楚后再起归类名、再分配。' +
-  '2. 可以复用已有归类（填写 existingModuleId），也可以建议新建（existingModuleId 为 null，并给出 name）。' +
-  '3. 归类名只表达一个大方向，简短中文 2～8 字，例如「人物」「公司」「职场」「育儿」；禁止用「与/及/和/、」把两类不同主题拼成一名（如不要「职场与成长」）；主题不同就拆成多个归类。' +
-  '4. 专有名词按「它是什么」归（如人物、公司/品牌、作品、地点、事件等），不要凭行业常识硬套职能或话题桶（如管理、领导力、财金、投资）。' +
-  '5. 每个归类至少包含 2 个标签；若某个方向只有 1 个标签、或找不到可合并的同类，把该标签放进 ungroupedTagIds，不要为此单独建归类。' +
-  '6. 复用已有归类时 name 必须用原名，existingModuleId 必填。' +
-  '7. 只使用输入里给出的 tagId，禁止编造新 id 或新标签名；每个标签最多出现在一个归类或未归类中一次。' +
-  '8. 输入中的全部 tagId 都必须出现：要么在某个 modules[].tagIds 里，要么在 ungroupedTagIds 里。' +
-  '9. 若几乎没有归类，应主动按含义提出清晰的大方向划分；不要把所有标签塞进一个「其他」，也不要用拼凑名掩盖混杂；实在无法成组的宁可留未归类。' +
-  '10. 归类数量通常 0～8 个（能成组的才建）；不要输出空归类，也不要输出只有 1 个标签的归类。' +
+  '1. 已有模块中的标签一律保持不动；输出里不要把它们改放到别的归类或未归类。' +
+  '2. 只处理未归类标签：逐个理解含义（有说明时以说明消歧），再决定并入哪个已有归类，或与其它未归类标签组成新归类。' +
+  '3. 并入已有归类时：existingModuleId 必填，name 用原名；tagIds **只写本次新加入的未归类标签 id**（不要重复罗列该归类里原有的标签）。' +
+  '4. 新建归类：existingModuleId 为 null，给出简短中文名 2～8 字；tagIds 只能来自未归类；至少 2 个标签才能新建；禁止用「与/及/和/、」拼两类主题。' +
+  '5. 专有名词按「它是什么」归（人物、公司/品牌、作品、地点等），不要硬套职能桶。' +
+  '6. 某个未归类标签找不到合适归类、又凑不齐新建所需的同类时，放进 ungroupedTagIds。' +
+  '7. 只使用输入里的未归类 tagId；禁止编造 id；每个未归类标签最多出现一次。' +
+  '8. 全部未归类 tagId 都必须出现：要么在某个 modules[].tagIds（作为新增），要么在 ungroupedTagIds。' +
+  '9. 不要输出空归类；不要为「挪动已有归类内标签」而输出方案。' +
   '只输出 JSON：{"modules":[{"name":"归类名","existingModuleId":null,"tagIds":[1,2]}],"ungroupedTagIds":[3]}';
 
 function formatTagLine(t) {
@@ -32,7 +30,7 @@ function formatTagLine(t) {
 function buildCatalogText(modules, ungrouped) {
   const lines = [];
   if (modules.length) {
-    lines.push('已有模块：');
+    lines.push('已有归类（结构锁定，标签不可挪走；只能往里追加未归类标签）：');
     for (const m of modules) {
       const tags =
         (m.tags || [])
@@ -42,17 +40,17 @@ function buildCatalogText(modules, ungrouped) {
       lines.push(`- 模块 id=${m.id}「${m.name}」← ${tags}`);
     }
   } else {
-    lines.push('已有模块：（无）');
+    lines.push('已有归类：（无）');
   }
   lines.push('');
   const ug = (ungrouped || []).filter((t) => !t.isSystem);
   if (ug.length) {
-    lines.push('未归类标签：');
+    lines.push('待安置的未归类标签（你只需处理这些）：');
     for (const t of ug) {
       lines.push(`- ${formatTagLine(t)}`);
     }
   } else {
-    lines.push('未归类标签：（无）');
+    lines.push('待安置的未归类标签：（无）');
   }
   return lines.join('\n');
 }
@@ -72,7 +70,30 @@ function collectUserTags(modules, ungrouped) {
   return byId;
 }
 
-function normalizeProposal(raw, tagById, moduleById) {
+/** 已归类 tag → moduleId；当前未归类 tagId 集合 */
+function buildMembership(modules, ungrouped) {
+  const tagToModuleId = new Map();
+  const ungroupedIds = new Set();
+  for (const t of ungrouped || []) {
+    if (t.isSystem) continue;
+    ungroupedIds.add(Number(t.id));
+  }
+  for (const m of modules || []) {
+    const mid = Number(m.id);
+    for (const t of m.tags || []) {
+      if (t.isSystem) continue;
+      tagToModuleId.set(Number(t.id), mid);
+    }
+  }
+  return { tagToModuleId, ungroupedIds };
+}
+
+/**
+ * 只采纳对「当前未归类」标签的安置；已归类标签一律忽略。
+ * 已有归类：允许追加 ≥1 个；新建归类：仍须 ≥2 个。
+ */
+function normalizeProposal(raw, tagById, moduleById, membership) {
+  const { ungroupedIds } = membership;
   const modulesIn = Array.isArray(raw?.modules) ? raw.modules : [];
   const ungroupedIn = Array.isArray(raw?.ungroupedTagIds)
     ? raw.ungroupedTagIds
@@ -81,10 +102,11 @@ function normalizeProposal(raw, tagById, moduleById) {
   const used = new Set();
   const modules = [];
   const ungroupedTagIds = [];
-  const maxModules = Math.max(12, tagById.size);
+  const maxModules = Math.max(12, ungroupedIds.size);
 
   const pushModule = (name, existingId, tagIds) => {
-    if (tagIds.length < 2 || modules.length >= maxModules) return false;
+    const minSize = existingId != null ? 1 : 2;
+    if (tagIds.length < minSize || modules.length >= maxModules) return false;
     modules.push({
       name,
       existingModuleId: existingId,
@@ -132,11 +154,14 @@ function normalizeProposal(raw, tagById, moduleById) {
     const rawIds = Array.isArray(row?.tagIds) ? row.tagIds : [];
     for (const rawId of rawIds) {
       const tid = Number(rawId);
-      if (!Number.isFinite(tid) || !tagById.has(tid) || used.has(tid)) continue;
+      // 只接受当前未归类标签；已归类的一律跳过
+      if (!Number.isFinite(tid) || !ungroupedIds.has(tid) || used.has(tid)) {
+        continue;
+      }
+      if (!tagById.has(tid)) continue;
       used.add(tid);
       tagIds.push(tid);
     }
-    // 不足 2 个：不建归类，标签回未归类
     if (!pushModule(name, existingId, tagIds)) {
       for (const tid of tagIds) {
         ungroupedTagIds.push(tid);
@@ -146,13 +171,15 @@ function normalizeProposal(raw, tagById, moduleById) {
 
   for (const rawId of ungroupedIn) {
     const tid = Number(rawId);
-    if (!Number.isFinite(tid) || !tagById.has(tid) || used.has(tid)) continue;
+    if (!Number.isFinite(tid) || !ungroupedIds.has(tid) || used.has(tid)) {
+      continue;
+    }
     used.add(tid);
     ungroupedTagIds.push(tid);
   }
 
-  // 模型漏放的标签：留在未归类（不再强制单列成类）
-  for (const tid of tagById.keys()) {
+  // 未归类里模型漏放的：仍留未归类
+  for (const tid of ungroupedIds) {
     if (used.has(tid)) continue;
     used.add(tid);
     ungroupedTagIds.push(tid);
@@ -169,7 +196,7 @@ function normalizeProposal(raw, tagById, moduleById) {
 }
 
 /**
- * 同步生成归类建议（不落库）。
+ * 同步生成归类建议（不落库）。只安置未归类标签。
  */
 async function suggestOrganize(userId, { hint } = {}) {
   await usageService.assertPlanFeatureForUser(userId, 'ai_organize');
@@ -177,8 +204,10 @@ async function suggestOrganize(userId, { hint } = {}) {
 
   const { modules, ungrouped } = await tagModuleService.listModules(userId);
   const tagById = collectUserTags(modules, ungrouped);
-  if (tagById.size < 2) {
-    throw Object.assign(new Error('至少需要 2 个标签才能 AI 标签归类'), {
+  const membership = buildMembership(modules, ungrouped);
+
+  if (membership.ungroupedIds.size < 1) {
+    throw Object.assign(new Error('当前没有未归类标签，无需 AI 标签归类'), {
       status: 400,
     });
   }
@@ -193,7 +222,7 @@ async function suggestOrganize(userId, { hint } = {}) {
   const userParts = [
     catalog,
     hintText ? `用户补充偏好：${hintText}` : '',
-    '请给出归类方案。',
+    '请只安置未归类标签；已有归类中的标签保持不动。',
   ].filter(Boolean);
 
   const messages = [
@@ -212,7 +241,12 @@ async function suggestOrganize(userId, { hint } = {}) {
     messages,
   });
 
-  const proposal = normalizeProposal(result, tagById, moduleById);
+  const proposal = normalizeProposal(
+    result,
+    tagById,
+    moduleById,
+    membership,
+  );
   if (!proposal.modules.length && !proposal.ungroupedTagIds.length) {
     throw Object.assign(new Error('未能生成有效归类建议，请稍后重试'), {
       status: 502,
@@ -244,7 +278,7 @@ async function suggestOrganize(userId, { hint } = {}) {
 }
 
 /**
- * 应用归类方案：新建模块 + 放置标签。
+ * 应用归类方案：只移动当前未归类标签；不拆散已有归类。
  */
 async function applyOrganize(userId, body) {
   const modulesIn = Array.isArray(body?.modules) ? body.modules : [];
@@ -255,6 +289,7 @@ async function applyOrganize(userId, body) {
   const { modules: currentModules, ungrouped } =
     await tagModuleService.listModules(userId);
   const tagById = collectUserTags(currentModules, ungrouped);
+  const { ungroupedIds } = buildMembership(currentModules, ungrouped);
   const moduleById = new Map(
     (currentModules || []).map((m) => [Number(m.id), m]),
   );
@@ -307,6 +342,8 @@ async function applyOrganize(userId, body) {
       if (!Number.isFinite(tid) || !tagById.has(tid)) {
         throw Object.assign(new Error(`标签不存在：${rawId}`), { status: 400 });
       }
+      // 已在某归类中的标签：跳过，避免被方案挪走
+      if (!ungroupedIds.has(tid)) continue;
       if (used.has(tid)) continue;
       used.add(tid);
       await tagService.placeTag(userId, tid, { moduleId });
@@ -318,6 +355,8 @@ async function applyOrganize(userId, body) {
     if (!Number.isFinite(tid) || !tagById.has(tid)) {
       throw Object.assign(new Error(`标签不存在：${rawId}`), { status: 400 });
     }
+    // 已归类标签不因方案被踢回未归类
+    if (!ungroupedIds.has(tid)) continue;
     if (used.has(tid)) continue;
     used.add(tid);
     await tagService.placeTag(userId, tid, { moduleId: null });
@@ -334,4 +373,6 @@ async function applyOrganize(userId, body) {
 module.exports = {
   suggestOrganize,
   applyOrganize,
+  normalizeProposal,
+  buildMembership,
 };
