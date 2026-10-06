@@ -26,7 +26,7 @@ class SettingsPanel extends StatefulWidget {
 }
 
 class _SettingsPanelState extends State<SettingsPanel> {
-  static const _version = 'v1.3.7';
+  static const _version = 'v1.3.8';
 
   final _auth = AuthRepository();
 
