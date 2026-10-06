@@ -4,7 +4,6 @@
     <dependencies>
         <deployment identifier="iOS"/>
         <plugIn identifier="com.apple.InterfaceBuilder.IBCocoaTouchPlugin" version="21678"/>
-        <capability name="Named colors" minToolsVersion="9.0"/>
         <capability name="documents saved in the Xcode 8 format" minToolsVersion="8.0"/>
     </dependencies>
     <scenes>
@@ -28,7 +27,7 @@
                                     <label opaque="NO" userInteractionEnabled="NO" contentMode="left" horizontalHuggingPriority="251" verticalHuggingPriority="251" text="奏折" textAlignment="center" lineBreakMode="tailTruncation" translatesAutoresizingMaskIntoConstraints="NO" id="title">
                                         <rect key="frame" x="62" y="114" width="56" height="28"/>
                                         <fontDescription key="fontDescription" type="boldSystem" pointSize="28"/>
-                                        <color key="textColor" name="LaunchTitle"/>
+                                        <color key="textColor" red="0.12156862745098039" green="0.14117647058823529" blue="0.1803921568627451" alpha="1" colorSpace="custom" customColorSpace="sRGB"/>
                                         <nil key="highlightedColor"/>
                                     </label>
                                     <stackView opaque="NO" contentMode="scaleToFill" axis="vertical" alignment="center" spacing="4" translatesAutoresizingMaskIntoConstraints="NO" id="taglines">
@@ -37,13 +36,13 @@
                                             <label opaque="NO" userInteractionEnabled="NO" contentMode="left" horizontalHuggingPriority="251" verticalHuggingPriority="251" horizontalCompressionResistancePriority="1000" text="喜欢的内容收藏到一处" textAlignment="center" lineBreakMode="clip" translatesAutoresizingMaskIntoConstraints="NO" id="line1">
                                                 <rect key="frame" x="0.0" y="0.0" width="180" height="18"/>
                                                 <fontDescription key="fontDescription" type="system" pointSize="13"/>
-                                                <color key="textColor" name="LaunchMuted"/>
+                                                <color key="textColor" red="0.45098039215686275" green="0.47843137254901963" blue="0.5215686274509804" alpha="1" colorSpace="custom" customColorSpace="sRGB"/>
                                                 <nil key="highlightedColor"/>
                                             </label>
                                             <label opaque="NO" userInteractionEnabled="NO" contentMode="left" horizontalHuggingPriority="251" verticalHuggingPriority="251" horizontalCompressionResistancePriority="1000" text="像看奏折一样阅读、整理、思考" textAlignment="center" lineBreakMode="clip" translatesAutoresizingMaskIntoConstraints="NO" id="line2">
                                                 <rect key="frame" x="18" y="22" width="144" height="18"/>
                                                 <fontDescription key="fontDescription" type="system" pointSize="13"/>
-                                                <color key="textColor" name="LaunchMuted"/>
+                                                <color key="textColor" red="0.45098039215686275" green="0.47843137254901963" blue="0.5215686274509804" alpha="1" colorSpace="custom" customColorSpace="sRGB"/>
                                                 <nil key="highlightedColor"/>
                                             </label>
                                         </subviews>
@@ -51,7 +50,7 @@
                                 </subviews>
                             </stackView>
                         </subviews>
-                        <color key="backgroundColor" name="LaunchBackground"/>
+                        <color key="backgroundColor" red="1" green="1" blue="1" alpha="1" colorSpace="custom" customColorSpace="sRGB"/>
                         <constraints>
                             <constraint firstItem="stack" firstAttribute="centerX" secondItem="Ze5-6b-2t3" secondAttribute="centerX" id="cx"/>
                             <constraint firstItem="stack" firstAttribute="centerY" secondItem="Ze5-6b-2t3" secondAttribute="centerY" id="cy"/>
@@ -65,14 +64,5 @@
     </scenes>
     <resources>
         <image name="LaunchImage" width="96" height="96"/>
-        <namedColor name="LaunchBackground">
-            <color red="0.96862745098039216" green="0.96862745098039216" blue="0.98039215686274506" alpha="1" colorSpace="custom" customColorSpace="sRGB"/>
-        </namedColor>
-        <namedColor name="LaunchMuted">
-            <color red="0.45098039215686275" green="0.47843137254901963" blue="0.52156862745098043" alpha="1" colorSpace="custom" customColorSpace="sRGB"/>
-        </namedColor>
-        <namedColor name="LaunchTitle">
-            <color red="0.12156862745098039" green="0.14117647058823529" blue="0.1803921568627451" alpha="1" colorSpace="custom" customColorSpace="sRGB"/>
-        </namedColor>
     </resources>
 </document>
