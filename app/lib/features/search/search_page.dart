@@ -24,10 +24,6 @@ class SearchPage extends StatefulWidget {
 }
 
 class _SearchPageState extends State<SearchPage> with ScreenDwellMixin {
-  static const _text = Color(0xFF1F242E);
-  static const _muted = Color(0xFF737A85);
-  static const _brand = Color(0xFF2F6FED);
-  static const _hairline = Color(0xFFD5DAE2);
   static const _searchRadius = 20.0;
 
   final _itemsRepo = ItemsRepository();
@@ -441,18 +437,18 @@ class _SearchPageState extends State<SearchPage> with ScreenDwellMixin {
                         color: colors.inputBg,
                         borderRadius: BorderRadius.circular(_searchRadius),
                         border: Border.all(
-                          color: const Color(0xFFB8CCFA),
+                          color: colors.brand.withValues(alpha: 0.45),
                           width: 1,
                         ),
                       ),
                       clipBehavior: Clip.antiAlias,
                       child: Row(
                         children: [
-                          const Padding(
-                            padding: EdgeInsets.only(left: 12),
+                          Padding(
+                            padding: const EdgeInsets.only(left: 12),
                             child: Icon(
                               Icons.search_rounded,
-                              color: _muted,
+                              color: colors.muted,
                               size: 20,
                             ),
                           ),
@@ -469,16 +465,16 @@ class _SearchPageState extends State<SearchPage> with ScreenDwellMixin {
                                 if (q.isNotEmpty) unawaited(_search(q));
                                 _unfocusSearch();
                               },
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontSize: 15,
-                                color: _text,
+                                color: colors.ink,
                                 height: 1.2,
                               ),
                               decoration: InputDecoration(
                                 hintText: _hintText,
-                                hintStyle: const TextStyle(
+                                hintStyle: TextStyle(
                                   fontSize: 15,
-                                  color: _muted,
+                                  color: colors.placeholder,
                                 ),
                                 border: InputBorder.none,
                                 enabledBorder: InputBorder.none,
@@ -493,9 +489,9 @@ class _SearchPageState extends State<SearchPage> with ScreenDwellMixin {
                           ),
                           if (_controller.text.isNotEmpty)
                             IconButton(
-                              icon: const Icon(
+                              icon: Icon(
                                 Icons.close_rounded,
-                                color: _muted,
+                                color: colors.muted,
                                 size: 22,
                               ),
                               padding: const EdgeInsets.only(right: 4),
@@ -520,12 +516,12 @@ class _SearchPageState extends State<SearchPage> with ScreenDwellMixin {
                       minimumSize: const Size(0, 36),
                       tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                     ),
-                    child: const Text(
+                    child: Text(
                       '取消',
                       style: TextStyle(
                         fontSize: 15,
                         fontWeight: FontWeight.w500,
-                        color: _text,
+                        color: colors.ink,
                       ),
                     ),
                   ),
@@ -546,11 +542,12 @@ class _SearchPageState extends State<SearchPage> with ScreenDwellMixin {
   }
 
   Widget _buildBody() {
+    final colors = AppColors.of(context);
     if (!_searched) {
       return Center(
         child: Text(
           _idleHint,
-          style: const TextStyle(fontSize: 14, color: _muted),
+          style: TextStyle(fontSize: 14, color: colors.muted),
         ),
       );
     }
@@ -562,7 +559,7 @@ class _SearchPageState extends State<SearchPage> with ScreenDwellMixin {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text(_error!, style: const TextStyle(color: _muted)),
+            Text(_error!, style: TextStyle(color: colors.muted)),
             TextButton(
               onPressed: () => unawaited(_search(_query)),
               child: const Text('重试'),
@@ -575,7 +572,7 @@ class _SearchPageState extends State<SearchPage> with ScreenDwellMixin {
       return Center(
         child: Text(
           '没有「$_query」相关的标签或内容',
-          style: const TextStyle(fontSize: 14, color: _muted),
+          style: TextStyle(fontSize: 14, color: colors.muted),
         ),
       );
     }
@@ -609,7 +606,10 @@ class _SearchPageState extends State<SearchPage> with ScreenDwellMixin {
             child: Center(
               child: Text(
                 _filteringByTags ? '没有相关标签的内容' : '没有相关内容',
-                style: const TextStyle(fontSize: 14, color: _muted),
+                style: TextStyle(
+                  fontSize: 14,
+                  color: AppColors.of(context).muted,
+                ),
               ),
             ),
           )
@@ -621,10 +621,10 @@ class _SearchPageState extends State<SearchPage> with ScreenDwellMixin {
                 _filteringByTags
                     ? '内容 · $_contentTotal（按所选标签）'
                     : '内容 · $_contentTotal',
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 13,
                   fontWeight: FontWeight.w600,
-                  color: _muted,
+                  color: AppColors.of(context).muted,
                 ),
               ),
             ),
@@ -703,12 +703,12 @@ class _SearchTagFilterBar extends StatelessWidget {
       children: [
         Row(
           children: [
-            const Text(
+            Text(
               '标签',
               style: TextStyle(
                 fontSize: 13,
                 fontWeight: FontWeight.w600,
-                color: _SearchPageState._muted,
+                color: AppColors.of(context).muted,
               ),
             ),
             if (showFilter) ...[
@@ -726,17 +726,17 @@ class _SearchTagFilterBar extends StatelessWidget {
                       children: [
                         Text(
                           filterLabel,
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 13,
                             fontWeight: FontWeight.w500,
-                            color: _SearchPageState._brand,
+                            color: AppColors.of(context).brand,
                           ),
                         ),
                         const SizedBox(width: 2),
-                        const Icon(
+                        Icon(
                           Icons.keyboard_arrow_down,
                           size: 16,
-                          color: _SearchPageState._brand,
+                          color: AppColors.of(context).brand,
                         ),
                       ],
                     ),
@@ -787,11 +787,6 @@ class _SearchTagFilterSheet extends StatefulWidget {
 }
 
 class _SearchTagFilterSheetState extends State<_SearchTagFilterSheet> {
-  static const _text = Color(0xFF1F242E);
-  static const _muted = Color(0xFF737A85);
-  static const _blue = Color(0xFF2F6FED);
-  static const _handle = Color(0xFFE5E8ED);
-
   late Set<int> _selected;
 
   @override
@@ -821,8 +816,9 @@ class _SearchTagFilterSheetState extends State<_SearchTagFilterSheet> {
   Widget build(BuildContext context) {
     // 内容区上限，避免少量标签时 Flexible 把整页撑高留下大块空白
     final scrollMaxH = MediaQuery.sizeOf(context).height * 0.42;
+    final colors = AppColors.of(context);
     return Material(
-      color: AppColors.of(context).card,
+      color: colors.card,
       borderRadius: BorderRadius.circular(24),
       clipBehavior: Clip.antiAlias,
       child: Padding(
@@ -834,37 +830,37 @@ class _SearchTagFilterSheetState extends State<_SearchTagFilterSheet> {
               width: 40,
               height: 4,
               decoration: BoxDecoration(
-                color: _handle,
+                color: colors.iconMuted,
                 borderRadius: BorderRadius.circular(2),
               ),
             ),
             const SizedBox(height: 12),
             Row(
               children: [
-                const Text(
+                Text(
                   '按标签筛选',
                   style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.w700,
-                    color: _text,
+                    color: colors.ink,
                   ),
                 ),
                 const Spacer(),
                 if (_selected.isNotEmpty) ...[
                   GestureDetector(
                     onTap: _clear,
-                    child: const Text(
+                    child: Text(
                       '清除',
-                      style: TextStyle(fontSize: 14, color: _muted),
+                      style: TextStyle(fontSize: 14, color: colors.muted),
                     ),
                   ),
                   const SizedBox(width: 16),
                 ],
                 GestureDetector(
                   onTap: () => Navigator.of(context).pop(),
-                  child: const Text(
+                  child: Text(
                     '关闭',
-                    style: TextStyle(fontSize: 14, color: _muted),
+                    style: TextStyle(fontSize: 14, color: colors.muted),
                   ),
                 ),
               ],
@@ -898,7 +894,7 @@ class _SearchTagFilterSheetState extends State<_SearchTagFilterSheet> {
               child: FilledButton(
                 onPressed: () => Navigator.of(context).pop(),
                 style: FilledButton.styleFrom(
-                  backgroundColor: _blue,
+                  backgroundColor: colors.brand,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(12),
                   ),
@@ -950,9 +946,7 @@ class _FilterTagChip extends StatelessWidget {
           decoration: BoxDecoration(
             borderRadius: radius,
             border: Border.all(
-              color: selected
-                  ? _SearchPageState._brand
-                  : _SearchPageState._hairline,
+              color: selected ? colors.brand : colors.hairline,
               width: 1,
             ),
           ),
@@ -964,9 +958,7 @@ class _FilterTagChip extends StatelessWidget {
                 style: TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.w500,
-                  color: selected
-                      ? _SearchPageState._brand
-                      : _SearchPageState._text,
+                  color: selected ? colors.brand : colors.ink,
                 ),
               ),
               if (count > 0) ...[
@@ -976,9 +968,7 @@ class _FilterTagChip extends StatelessWidget {
                   style: TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w600,
-                    color: selected
-                        ? _SearchPageState._brand
-                        : _SearchPageState._muted,
+                    color: selected ? colors.brand : colors.muted,
                   ),
                 ),
               ],

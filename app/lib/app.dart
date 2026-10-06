@@ -4,6 +4,7 @@ import 'package:app_links/app_links.dart';
 import 'package:flutter/material.dart';
 import 'package:super_collection/core/network/api_client.dart';
 import 'package:super_collection/core/config/app_brand.dart';
+import 'package:super_collection/core/theme/app_colors.dart';
 import 'package:super_collection/core/theme/app_theme.dart';
 import 'package:super_collection/core/theme/theme_controller.dart';
 import 'package:super_collection/features/auth/auth_repository.dart';
@@ -195,6 +196,9 @@ class _AuthGateState extends State<_AuthGate> {
 
   @override
   Widget build(BuildContext context) {
-    return _home ?? const ColoredBox(color: Colors.white);
+    final splashBg = ThemeController.instance.isDark
+        ? AppColors.dark.pageBg
+        : AppColors.light.pageBg;
+    return _home ?? ColoredBox(color: splashBg);
   }
 }
