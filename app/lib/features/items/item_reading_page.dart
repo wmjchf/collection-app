@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:super_collection/core/analytics/analytics.dart';
 import 'package:super_collection/core/analytics/screen_dwell_tracker.dart';
 import 'package:super_collection/core/network/api_client.dart';
+import 'package:super_collection/core/theme/app_colors.dart';
 import 'package:super_collection/core/network/media_http_headers.dart';
 import 'package:super_collection/core/ui/app_confirm_dialog.dart';
 import 'package:super_collection/core/ui/app_toast.dart';
@@ -59,12 +60,6 @@ class ItemReadingPage extends StatefulWidget {
 }
 
 class _ItemReadingPageState extends State<ItemReadingPage> {
-  static const _text = Color(0xFF1F242E);
-  static const _muted = Color(0xFF737A85);
-  static const _border = Color(0xFFE5E5EB);
-  static const _blue = Color(0xFF2F6FED);
-  static const _highlight = Color(0xFFFFF2C7);
-
   static const _chromeAnim = Duration(milliseconds: 240);
   static const _topBarHeight = 52.0;
   static const _bottomBarHeight = 56.0;
@@ -716,7 +711,7 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
   void _showAnnotationList() {
     showModalBottomSheet<void>(
       context: context,
-      backgroundColor: Colors.white,
+      backgroundColor: AppColors.of(context).card,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
@@ -733,21 +728,21 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
               children: [
                 Text(
                   annotationSectionTitle(isPro: _isPro),
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.w700,
-                    color: _text,
+                    color: AppColors.of(context).ink,
                   ),
                 ),
                 const SizedBox(height: 4),
                 Text(
                   annotationListHint(isPro: _isPro),
-                  style: const TextStyle(fontSize: 12, color: _muted),
+                  style: TextStyle(fontSize: 12, color: AppColors.of(context).muted),
                 ),
                 const SizedBox(height: 12),
                 for (final ann in _annotations) ...[
                   Material(
-                    color: const Color(0xFFF5F7FA),
+                    color: AppColors.of(context).inputBg,
                     borderRadius: BorderRadius.circular(12),
                     child: InkWell(
                       borderRadius: BorderRadius.circular(12),
@@ -770,29 +765,29 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
                                     vertical: 8,
                                   ),
                                   decoration: BoxDecoration(
-                                    color: _highlight,
+                                    color: AppColors.of(context).highlight,
                                     borderRadius: BorderRadius.circular(8),
                                   ),
                                   child: Text(
                                     ann.selectedText,
                                     maxLines: 3,
                                     overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(
+                                    style: TextStyle(
                                       fontSize: 14,
-                                      color: _text,
+                                      color: AppColors.of(context).ink,
                                       height: 1.4,
                                     ),
                                   ),
                                 ),
                                 if (ann.note != null &&
                                     ann.note!.trim().isNotEmpty)
-                                  const Positioned(
+                                  Positioned(
                                     right: 6,
                                     top: 4,
                                     child: Icon(
                                       Icons.sticky_note_2_outlined,
                                       size: 16,
-                                      color: _blue,
+                                      color: AppColors.of(context).brand,
                                     ),
                                   ),
                               ],
@@ -802,9 +797,9 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
                               (ann.note != null && ann.note!.trim().isNotEmpty)
                                   ? ann.note!
                                   : annotationEmptyNoteHint(isPro: _isPro),
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontSize: 13,
-                                color: _muted,
+                                color: AppColors.of(context).muted,
                                 height: 1.4,
                               ),
                             ),
@@ -1317,9 +1312,9 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
       spans.add(
         TextSpan(
           text: localText.substring(r.start, r.end),
-          style: const TextStyle(
-            backgroundColor: _highlight,
-            color: _text,
+          style: TextStyle(
+            backgroundColor: AppColors.of(context).highlight,
+            color: AppColors.of(context).ink,
           ),
         ),
       );
@@ -1399,7 +1394,7 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
   Widget build(BuildContext context) {
     if (_pageLoading && widget.initialItem == null) {
       return Scaffold(
-        backgroundColor: Colors.white,
+        backgroundColor: AppColors.of(context).card,
         body: Column(
           children: [
             _ReadingTopBar(
@@ -1421,7 +1416,7 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
 
     if (_pageError != null && widget.initialItem == null) {
       return Scaffold(
-        backgroundColor: Colors.white,
+        backgroundColor: AppColors.of(context).card,
         body: Column(
           children: [
             _ReadingTopBar(
@@ -1437,7 +1432,7 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
               child: Center(
                 child: Text(
                   _pageError!,
-                  style: const TextStyle(color: _muted),
+                  style: TextStyle(color: AppColors.of(context).muted),
                 ),
               ),
             ),
@@ -1462,7 +1457,7 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
         unawaited(_handleBack());
       },
       child: Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: AppColors.of(context).card,
       body: Stack(
         children: [
           AnimatedPadding(
@@ -1486,10 +1481,10 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
                 children: [
                   Text(
                     title,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 20,
                       fontWeight: FontWeight.w700,
-                      color: _text,
+                      color: AppColors.of(context).ink,
                       height: 1.4,
                       letterSpacing: 0.2,
                     ),
@@ -1497,9 +1492,9 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
                   const SizedBox(height: 12),
                   Text(
                     _metaLine(),
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 12,
-                      color: _muted,
+                      color: AppColors.of(context).muted,
                       height: 1.4,
                     ),
                   ),
@@ -1552,9 +1547,9 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
                     const SizedBox(height: 18),
                   ],
                   if (_rawBody.isEmpty)
-                    const Text(
+                    Text(
                       '暂无正文',
-                      style: TextStyle(fontSize: 15, color: _muted),
+                      style: TextStyle(fontSize: 15, color: AppColors.of(context).muted),
                     )
                   else if (ArticleContentBlocks.hasRichMarkup(_rawBody))
                     _InlineArticleBody(
@@ -1641,10 +1636,12 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
                   offset:
                       _chromeVisible ? Offset.zero : const Offset(0, 1),
                   child: Material(
-                    color: Colors.white,
+                    color: AppColors.of(context).card,
                     child: Container(
-                      decoration: const BoxDecoration(
-                        border: Border(top: BorderSide(color: _border)),
+                      decoration: BoxDecoration(
+                        border: Border(
+                          top: BorderSide(color: AppColors.of(context).hairline),
+                        ),
                       ),
                       child: SafeArea(
                         top: false,
@@ -1665,7 +1662,7 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
                                 iconColor: _item.canTriggerSummary &&
                                         !_item.hasSummaryPending
                                     ? null
-                                    : _muted,
+                                    : AppColors.of(context).muted,
                                 onTap: _openSummarySheet,
                               ),
                               _ActionItem(
@@ -1677,7 +1674,7 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
                                 iconColor: _item.canTriggerMindmap &&
                                         !_item.hasMindmapPending
                                     ? null
-                                    : _muted,
+                                    : AppColors.of(context).muted,
                                 onTap: _openMindmapSheet,
                               ),
                               if (_hasTranscriptEntry)
@@ -1732,8 +1729,6 @@ class _ArticleTagHashtags extends StatelessWidget {
   final List<Tag> tags;
   final ValueChanged<Tag> onTap;
 
-  static const _brand = Color(0xFF2F6FED);
-
   @override
   Widget build(BuildContext context) {
     if (tags.isEmpty) return const SizedBox.shrink();
@@ -1749,20 +1744,20 @@ class _ArticleTagHashtags extends StatelessWidget {
             child: Text.rich(
               TextSpan(
                 children: [
-                  const TextSpan(
+                  TextSpan(
                     text: '#',
                     style: TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.w600,
-                      color: _brand,
+                      color: AppColors.of(context).brand,
                     ),
                   ),
                   TextSpan(
                     text: tag.name,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.w500,
-                      color: _brand,
+                      color: AppColors.of(context).brand,
                     ),
                   ),
                 ],
@@ -1806,17 +1801,8 @@ class _InlineArticleBody extends StatelessWidget {
   final ReadingMediaController? pageAudio;
   final Future<String?> Function(int index)? onRefreshInlineVideo;
 
-  static const _text = Color(0xFF1F242E);
-  static const _highlight = Color(0xFFFFF2C7);
 
-  static const _bodyStyle = TextStyle(
-    fontSize: 15,
-    height: 1.85,
-    letterSpacing: 0.2,
-    color: _text,
-  );
-
-  TextStyle _headingStyle(int level) {
+  TextStyle _headingStyle(int level, Color ink) {
     final size = switch (level) {
       1 => 21.0,
       2 => 19.0,
@@ -1827,7 +1813,7 @@ class _InlineArticleBody extends StatelessWidget {
       fontSize: size,
       height: 1.35,
       fontWeight: FontWeight.w700,
-      color: _text,
+      color: ink,
       letterSpacing: 0.2,
     );
   }
@@ -1855,6 +1841,15 @@ class _InlineArticleBody extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = AppColors.of(context);
+    final ink = colors.ink;
+    final highlight = colors.highlight;
+    final bodyStyle = TextStyle(
+      fontSize: 15,
+      height: 1.85,
+      letterSpacing: 0.2,
+      color: ink,
+    );
     final children = <Widget>[];
     var cursor = 0;
     var videoIndex = 0;
@@ -1937,14 +1932,14 @@ class _InlineArticleBody extends StatelessWidget {
             .where((r) => r.start < r.end)
             .toList();
 
-        final style = _headingStyle(block.level);
+        final style = _headingStyle(block.level, ink);
         final spans = ArticleMarkdown.inlineSpans(
           md,
           style: style,
           highlights: [
             for (final a in localAnns) (start: a.start, end: a.end),
           ],
-          highlightColor: _highlight,
+          highlightColor: highlight,
         );
 
         children.add(
@@ -1994,11 +1989,11 @@ class _InlineArticleBody extends StatelessWidget {
 
         final spans = ArticleMarkdown.inlineSpans(
           md,
-          style: _bodyStyle,
+          style: bodyStyle,
           highlights: [
             for (final a in localAnns) (start: a.start, end: a.end),
           ],
-          highlightColor: _highlight,
+          highlightColor: highlight,
           imageBuilder: (url, w, h) => WidgetSpan(
             alignment: PlaceholderAlignment.middle,
             child: _InlineEmoji(
@@ -2014,7 +2009,7 @@ class _InlineArticleBody extends StatelessWidget {
           _AnnotatedBodyStack(
             text: visible,
             spans: spans.isEmpty
-                ? [const TextSpan(text: '', style: _bodyStyle)]
+                ? [TextSpan(text: '', style: bodyStyle)]
                 : spans,
             annotations: localAnns,
             contextMenuBuilder: toolbarAt(pos.start),
@@ -2027,9 +2022,9 @@ class _InlineArticleBody extends StatelessWidget {
     }
 
     if (children.isEmpty) {
-      return const Text(
+      return Text(
         '暂无正文',
-        style: TextStyle(fontSize: 15, color: Color(0xFF737A85)),
+        style: TextStyle(fontSize: 15, color: colors.muted),
       );
     }
     return Column(
@@ -2154,10 +2149,10 @@ class _ReadingInlineImageState extends State<_ReadingInlineImage> {
           errorBuilder: (_, __, ___) => SizedBox(
             width: width,
             height: height ?? 72,
-            child: const Center(
+            child: Center(
               child: Icon(
                 Icons.broken_image_outlined,
-                color: Color(0xFFB2B8BF),
+                color: AppColors.of(context).placeholder,
                 size: 30,
               ),
             ),
@@ -2240,15 +2235,11 @@ class _AnnotatedBodyStack extends StatefulWidget {
   final ValueChanged<TextSelection>? onSelectionChanged;
   final TextStyle? textStyle;
 
-  static const _text = Color(0xFF1F242E);
-  static const _blue = Color(0xFF2F6FED);
-  static const _highlight = Color(0xFFFFF2C7);
-
-  static const bodyStyle = TextStyle(
+  static TextStyle bodyStyleFor(Color ink) => TextStyle(
     fontSize: 15,
     height: 1.85,
     letterSpacing: 0.2,
-    color: _text,
+    color: ink,
   );
 
   @override
@@ -2390,16 +2381,16 @@ class _AnnotatedBodyStackState extends State<_AnnotatedBodyStack> {
         final hasEmoji = widget.spans.any((s) => s is WidgetSpan);
         if (!hasEmoji) _scheduleMeasure();
         final rich = TextSpan(
-          style: widget.textStyle ?? _AnnotatedBodyStack.bodyStyle,
+          style: widget.textStyle ?? _AnnotatedBodyStack.bodyStyleFor(AppColors.of(context).ink),
           children: widget.spans,
         );
         return Stack(
           clipBehavior: Clip.none,
           children: [
             TextSelectionTheme(
-              data: const TextSelectionThemeData(
-                selectionColor: _AnnotatedBodyStack._highlight,
-                selectionHandleColor: _AnnotatedBodyStack._blue,
+              data: TextSelectionThemeData(
+                selectionColor: AppColors.of(context).highlight,
+                selectionHandleColor: AppColors.of(context).brand,
               ),
               // SelectableText 不绘制 WidgetSpan，表情段改用 Text.rich。
               child: hasEmoji
@@ -2434,11 +2425,11 @@ class _AnnotatedBodyStackState extends State<_AnnotatedBodyStack> {
                 Positioned(
                   left: hit.rect.right - 2,
                   top: hit.rect.top + (hit.rect.height - 12) / 2,
-                  child: const IgnorePointer(
+                  child: IgnorePointer(
                     child: Icon(
                       Icons.sticky_note_2_outlined,
                       size: 16,
-                      color: _AnnotatedBodyStack._blue,
+                      color: AppColors.of(context).brand,
                     ),
                   ),
                 ),
@@ -2523,13 +2514,11 @@ class _ReadingTopBar extends StatelessWidget {
   final bool showMarkUnread;
   final bool isPro;
 
-  static const _text = Color(0xFF1F242E);
-  static const _danger = Color(0xFFE34D59);
-
   @override
   Widget build(BuildContext context) {
+    final colors = AppColors.of(context);
     return Material(
-      color: Colors.white,
+      color: colors.card,
       child: SafeArea(
         bottom: false,
         child: SizedBox(
@@ -2541,7 +2530,7 @@ class _ReadingTopBar extends StatelessWidget {
                 TextButton.icon(
                   onPressed: onBack,
                   style: TextButton.styleFrom(
-                    foregroundColor: _text,
+                    foregroundColor: colors.ink,
                     padding: const EdgeInsets.symmetric(horizontal: 8),
                   ),
                   icon: const Icon(Icons.chevron_left, size: 28),
@@ -2556,11 +2545,11 @@ class _ReadingTopBar extends StatelessWidget {
                   tooltip: '更多',
                   offset: const Offset(0, 40),
                   elevation: 8,
-                  color: Colors.white,
+                  color: colors.card,
                   shadowColor: Colors.black.withValues(alpha: 0.14),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(12),
-                    side: const BorderSide(color: Color(0xFFE6E8EB)),
+                    side: BorderSide(color: colors.hairline),
                   ),
                   constraints:
                       const BoxConstraints(minWidth: 148, maxWidth: 168),
@@ -2573,7 +2562,7 @@ class _ReadingTopBar extends StatelessWidget {
                   },
                   itemBuilder: (context) => [
                     if (editEnabled)
-                      const PopupMenuItem<String>(
+                      PopupMenuItem<String>(
                         value: 'edit',
                         height: 44,
                         child: Text(
@@ -2581,7 +2570,7 @@ class _ReadingTopBar extends StatelessWidget {
                           style: TextStyle(
                             fontSize: 15,
                             fontWeight: FontWeight.w500,
-                            color: _text,
+                            color: colors.ink,
                           ),
                         ),
                       ),
@@ -2591,14 +2580,14 @@ class _ReadingTopBar extends StatelessWidget {
                         height: 44,
                         child: Text(
                           markAsUnreadLabel(isPro: isPro),
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 15,
                             fontWeight: FontWeight.w500,
-                            color: _text,
+                            color: colors.ink,
                           ),
                         ),
                       ),
-                    const PopupMenuItem<String>(
+                    PopupMenuItem<String>(
                       value: 'copy',
                       height: 44,
                       child: Text(
@@ -2606,11 +2595,11 @@ class _ReadingTopBar extends StatelessWidget {
                         style: TextStyle(
                           fontSize: 15,
                           fontWeight: FontWeight.w500,
-                          color: _text,
+                          color: colors.ink,
                         ),
                       ),
                     ),
-                    const PopupMenuItem<String>(
+                    PopupMenuItem<String>(
                       value: 'reparse',
                       height: 44,
                       child: Text(
@@ -2618,11 +2607,11 @@ class _ReadingTopBar extends StatelessWidget {
                         style: TextStyle(
                           fontSize: 15,
                           fontWeight: FontWeight.w500,
-                          color: _text,
+                          color: colors.ink,
                         ),
                       ),
                     ),
-                    const PopupMenuItem<String>(
+                    PopupMenuItem<String>(
                       value: 'delete',
                       height: 44,
                       child: Text(
@@ -2630,12 +2619,12 @@ class _ReadingTopBar extends StatelessWidget {
                         style: TextStyle(
                           fontSize: 15,
                           fontWeight: FontWeight.w500,
-                          color: _danger,
+                          color: colors.danger,
                         ),
                       ),
                     ),
                   ],
-                  child: const SizedBox(
+                  child: SizedBox(
                     width: 44,
                     height: 44,
                     child: Center(
@@ -2644,7 +2633,7 @@ class _ReadingTopBar extends StatelessWidget {
                         style: TextStyle(
                           fontSize: 22,
                           fontWeight: FontWeight.w700,
-                          color: _text,
+                          color: colors.ink,
                           height: 1,
                         ),
                       ),
@@ -2670,18 +2659,19 @@ class _ReadingStatusChip extends StatelessWidget {
     late final Color bg;
     late final Color fg;
     late final String label;
+    final dark = Theme.of(context).brightness == Brightness.dark;
     switch (status) {
       case 'success':
-        bg = const Color(0xFFE5F7EB);
-        fg = const Color(0xFF26804D);
+        bg = dark ? const Color(0xFF1A3A28) : const Color(0xFFE5F7EB);
+        fg = dark ? const Color(0xFF6BC48A) : const Color(0xFF26804D);
         label = '解析完成';
       case 'failed':
-        bg = const Color(0xFFFDECEC);
-        fg = const Color(0xFFE34D59);
+        bg = dark ? const Color(0xFF3A1C1C) : const Color(0xFFFDECEC);
+        fg = AppColors.of(context).danger;
         label = '解析失败';
       default:
-        bg = const Color(0xFFFFF3E6);
-        fg = const Color(0xFFD97706);
+        bg = dark ? const Color(0xFF3A2E18) : const Color(0xFFFFF3E6);
+        fg = dark ? const Color(0xFFE0A24B) : const Color(0xFFD97706);
         label = '正在解析…';
     }
     return Align(
@@ -2711,28 +2701,33 @@ class _ReadingPendingCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = AppColors.of(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _skel(height: 14, width: double.infinity),
+        _skel(height: 14, width: double.infinity, color: colors.inputBg),
         const SizedBox(height: 12),
-        _skel(height: 14, width: 220),
+        _skel(height: 14, width: 220, color: colors.inputBg),
         const SizedBox(height: 12),
-        _skel(height: 14, width: 160),
+        _skel(height: 14, width: 160, color: colors.inputBg),
         const SizedBox(height: 20),
-        _skel(height: 14, width: double.infinity),
+        _skel(height: 14, width: double.infinity, color: colors.inputBg),
         const SizedBox(height: 12),
-        _skel(height: 14, width: 200),
+        _skel(height: 14, width: 200, color: colors.inputBg),
       ],
     );
   }
 
-  Widget _skel({required double height, required double width}) {
+  Widget _skel({
+    required double height,
+    required double width,
+    required Color color,
+  }) {
     return Container(
       height: height,
       width: width,
       decoration: BoxDecoration(
-        color: const Color(0xFFEDF0F5),
+        color: color,
         borderRadius: BorderRadius.circular(6),
       ),
     );
@@ -2745,21 +2740,18 @@ class _ReadingFailedCard extends StatelessWidget {
   final String? message;
   final VoidCallback onRetry;
 
-  static const _blue = Color(0xFF2F6FED);
-  static const _text = Color(0xFF1F242E);
-  static const _muted = Color(0xFF737A85);
-
   @override
   Widget build(BuildContext context) {
+    final colors = AppColors.of(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
+        Text(
           '无法解析该链接的正文',
           style: TextStyle(
             fontSize: 15,
             fontWeight: FontWeight.w600,
-            color: _text,
+            color: colors.ink,
           ),
         ),
         const SizedBox(height: 8),
@@ -2767,9 +2759,9 @@ class _ReadingFailedCard extends StatelessWidget {
           (message != null && message!.isNotEmpty)
               ? message!
               : '请稍后重试。第一期不支持打开原文。',
-          style: const TextStyle(
+          style: TextStyle(
             fontSize: 14,
-            color: _muted,
+            color: colors.muted,
             height: 1.5,
           ),
         ),
@@ -2780,7 +2772,7 @@ class _ReadingFailedCard extends StatelessWidget {
           child: FilledButton(
             onPressed: onRetry,
             style: FilledButton.styleFrom(
-              backgroundColor: _blue,
+              backgroundColor: colors.brand,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(12),
               ),
@@ -2811,11 +2803,9 @@ class _ActionItem extends StatelessWidget {
   final Color? iconColor;
   final double iconSize;
 
-  static const _text = Color(0xFF1F242E);
-  static const _muted = Color(0xFF737A85);
-
   @override
   Widget build(BuildContext context) {
+    final colors = AppColors.of(context);
     return Expanded(
       child: InkWell(
         onTap: onTap,
@@ -2829,14 +2819,14 @@ class _ActionItem extends StatelessWidget {
                 child: Icon(
                   icon,
                   size: iconSize,
-                  color: iconColor ?? _text,
+                  color: iconColor ?? colors.ink,
                 ),
               ),
             ),
             const SizedBox(height: 4),
             Text(
               label,
-              style: const TextStyle(fontSize: 11, color: _muted),
+              style: TextStyle(fontSize: 11, color: colors.muted),
             ),
           ],
         ),

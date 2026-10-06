@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
+import 'package:super_collection/core/theme/app_colors.dart';
 
 /// 条目列表分页：与后端 limit/offset 对齐
 const int kItemsPageSize = 20;
@@ -33,6 +34,7 @@ void scheduleFillViewport({
 }
 
 Widget pagedListFooter({
+  required BuildContext context,
   required bool loadingMore,
   required bool hasMore,
   required bool isEmpty,
@@ -51,12 +53,12 @@ Widget pagedListFooter({
     );
   }
   if (!hasMore) {
-    return const Padding(
-      padding: EdgeInsets.symmetric(vertical: 14),
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 14),
       child: Center(
         child: Text(
           '没有更多了',
-          style: TextStyle(fontSize: 12, color: Color(0xFF737A85)),
+          style: TextStyle(fontSize: 12, color: AppColors.of(context).muted),
         ),
       ),
     );

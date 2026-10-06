@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:super_collection/core/theme/app_colors.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:super_collection/core/analytics/screen_dwell_tracker.dart';
 import 'package:super_collection/core/network/api_client.dart';
@@ -14,13 +15,6 @@ class FeedbackPage extends StatefulWidget {
 }
 
 class _FeedbackPageState extends State<FeedbackPage> with ScreenDwellMixin {
-  static const _bg = Color(0xFFF7F7FA);
-  static const _text = Color(0xFF1F242E);
-  static const _muted = Color(0xFF737A85);
-  static const _blue = Color(0xFF2F6FED);
-  static const _hairline = Color(0xFFE6E8EB);
-  static const _fieldBg = Colors.white;
-
   static const _categories = [
     (id: 'feature', label: '功能建议'),
     (id: 'bug', label: '问题反馈'),
@@ -86,31 +80,56 @@ class _FeedbackPageState extends State<FeedbackPage> with ScreenDwellMixin {
     }
   }
 
+  InputDecoration _fieldDecoration(
+    AppColors colors, {
+    required String hintText,
+    bool hideCounter = false,
+  }) {
+    return InputDecoration(
+      hintText: hintText,
+      hintStyle: TextStyle(fontSize: 14, color: colors.placeholder),
+      filled: true,
+      fillColor: colors.card,
+      counterText: hideCounter ? '' : null,
+      contentPadding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: BorderSide(color: colors.hairline),
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: BorderSide(color: colors.hairline),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: BorderSide(color: colors.brand, width: 1.2),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final colors = AppColors.of(context);
     return Scaffold(
-      backgroundColor: _bg,
+      backgroundColor: colors.pageBg,
       appBar: AppBar(
-        backgroundColor: Colors.white,
-        surfaceTintColor: Colors.transparent,
-        elevation: 0,
         centerTitle: true,
         leadingWidth: 80,
         leading: TextButton.icon(
           onPressed: _busy ? null : () => Navigator.of(context).maybePop(),
           style: TextButton.styleFrom(
-            foregroundColor: _text,
+            foregroundColor: colors.ink,
             padding: const EdgeInsets.only(left: 8),
           ),
           icon: const Icon(Icons.chevron_left, size: 30),
           label: const Text('返回', style: TextStyle(fontSize: 15)),
         ),
-        title: const Text(
+        title: Text(
           '意见反馈',
           style: TextStyle(
             fontSize: 17,
             fontWeight: FontWeight.w700,
-            color: _text,
+            color: colors.ink,
           ),
         ),
       ),
@@ -120,17 +139,17 @@ class _FeedbackPageState extends State<FeedbackPage> with ScreenDwellMixin {
             child: ListView(
               padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
               children: [
-                const Text(
+                Text(
                   '告诉我们你的想法或遇到的问题，我们会认真看。',
-                  style: TextStyle(fontSize: 14, color: _muted, height: 1.45),
+                  style: TextStyle(fontSize: 14, color: colors.muted, height: 1.45),
                 ),
                 const SizedBox(height: 20),
-                const Text(
+                Text(
                   '反馈类型',
                   style: TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.w600,
-                    color: _text,
+                    color: colors.ink,
                   ),
                 ),
                 const SizedBox(height: 10),
@@ -149,12 +168,12 @@ class _FeedbackPageState extends State<FeedbackPage> with ScreenDwellMixin {
                   ],
                 ),
                 const SizedBox(height: 22),
-                const Text(
+                Text(
                   '反馈内容',
                   style: TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.w600,
-                    color: _text,
+                    color: colors.ink,
                   ),
                 ),
                 const SizedBox(height: 10),
@@ -165,38 +184,23 @@ class _FeedbackPageState extends State<FeedbackPage> with ScreenDwellMixin {
                   minLines: 5,
                   maxLength: 2000,
                   onChanged: (_) => setState(() {}),
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 15,
                     height: 1.45,
-                    color: _text,
+                    color: colors.ink,
                   ),
-                  decoration: InputDecoration(
+                  decoration: _fieldDecoration(
+                    colors,
                     hintText: '请具体描述，方便我们定位与改进（至少 5 个字）',
-                    hintStyle: const TextStyle(fontSize: 14, color: _muted),
-                    filled: true,
-                    fillColor: _fieldBg,
-                    contentPadding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: const BorderSide(color: _hairline),
-                    ),
-                    enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: const BorderSide(color: _hairline),
-                    ),
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: const BorderSide(color: _blue, width: 1.2),
-                    ),
                   ),
                 ),
                 const SizedBox(height: 8),
-                const Text(
+                Text(
                   '联系方式（选填）',
                   style: TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.w600,
-                    color: _text,
+                    color: colors.ink,
                   ),
                 ),
                 const SizedBox(height: 10),
@@ -205,29 +209,11 @@ class _FeedbackPageState extends State<FeedbackPage> with ScreenDwellMixin {
                   enabled: !_busy,
                   maxLength: 128,
                   keyboardType: TextInputType.emailAddress,
-                  style: const TextStyle(fontSize: 15, color: _text),
-                  decoration: InputDecoration(
+                  style: TextStyle(fontSize: 15, color: colors.ink),
+                  decoration: _fieldDecoration(
+                    colors,
                     hintText: '微信或邮箱，方便我们回复你',
-                    hintStyle: const TextStyle(fontSize: 14, color: _muted),
-                    filled: true,
-                    fillColor: _fieldBg,
-                    counterText: '',
-                    contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 14,
-                      vertical: 14,
-                    ),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: const BorderSide(color: _hairline),
-                    ),
-                    enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: const BorderSide(color: _hairline),
-                    ),
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: const BorderSide(color: _blue, width: 1.2),
-                    ),
+                    hideCounter: true,
                   ),
                 ),
               ],
@@ -243,8 +229,8 @@ class _FeedbackPageState extends State<FeedbackPage> with ScreenDwellMixin {
                 child: FilledButton(
                   onPressed: _canSubmit ? _submit : null,
                   style: FilledButton.styleFrom(
-                    backgroundColor: _blue,
-                    disabledBackgroundColor: _blue.withValues(alpha: 0.35),
+                    backgroundColor: colors.brand,
+                    disabledBackgroundColor: colors.brand.withValues(alpha: 0.35),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(14),
                     ),
@@ -287,15 +273,11 @@ class _CategoryChip extends StatelessWidget {
   final bool selected;
   final VoidCallback? onTap;
 
-  static const _text = Color(0xFF1F242E);
-  static const _blue = Color(0xFF2F6FED);
-  static const _chipBg = Color(0xFFF5F7FA);
-  static const _chipBorder = Color(0xFFE6E8EB);
-
   @override
   Widget build(BuildContext context) {
+    final colors = AppColors.of(context);
     return Material(
-      color: selected ? const Color(0xFFE8F0FF) : _chipBg,
+      color: selected ? colors.brandSoft : colors.inputBg,
       borderRadius: BorderRadius.circular(999),
       child: InkWell(
         onTap: onTap,
@@ -304,14 +286,16 @@ class _CategoryChip extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(999),
-            border: Border.all(color: selected ? _blue : _chipBorder),
+            border: Border.all(
+              color: selected ? colors.brand : colors.hairline,
+            ),
           ),
           child: Text(
             label,
             style: TextStyle(
               fontSize: 14,
               fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
-              color: selected ? _blue : _text,
+              color: selected ? colors.brand : colors.ink,
             ),
           ),
         ),

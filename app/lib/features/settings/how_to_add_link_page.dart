@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:super_collection/core/theme/app_colors.dart';
 import 'package:super_collection/core/analytics/screen_dwell_tracker.dart';
 import 'package:super_collection/core/config/app_brand.dart';
 import 'package:super_collection/features/items/item_image_gallery.dart';
@@ -9,39 +10,31 @@ import 'package:super_collection/features/settings/help_assets_repository.dart';
 class HowToAddLinkPage extends StatelessWidget {
   const HowToAddLinkPage({super.key});
 
-  static const _bg = Color(0xFFF7F7FA);
-  static const _text = Color(0xFF1F242E);
-  static const _muted = Color(0xFF737A85);
-  static const _blue = Color(0xFF2F6FED);
-  static const _illustrationBg = Color(0xFFF0F2F5);
-
   @override
   Widget build(BuildContext context) {
+    final colors = AppColors.of(context);
     return ScreenDwellScope(
       screen: AnalyticsScreens.howToAddLink,
       child: Scaffold(
-        backgroundColor: _bg,
+        backgroundColor: colors.pageBg,
         appBar: AppBar(
-          backgroundColor: Colors.white,
-          surfaceTintColor: Colors.transparent,
-          elevation: 0,
           centerTitle: true,
           leadingWidth: 80,
           leading: TextButton.icon(
             onPressed: () => Navigator.of(context).maybePop(),
             style: TextButton.styleFrom(
-              foregroundColor: _text,
+              foregroundColor: colors.ink,
               padding: const EdgeInsets.only(left: 8),
             ),
             icon: const Icon(Icons.chevron_left, size: 30),
             label: const Text('返回', style: TextStyle(fontSize: 15)),
           ),
-          title: const Text(
+          title: Text(
             '如何添加链接',
             style: TextStyle(
               fontSize: 17,
               fontWeight: FontWeight.w700,
-              color: _text,
+              color: colors.ink,
             ),
           ),
         ),
@@ -52,7 +45,7 @@ class HowToAddLinkPage extends StatelessWidget {
           children: [
             Text(
               '任选一种方式即可把链接存进 ${AppBrand.name}。',
-              style: const TextStyle(fontSize: 14, color: _muted, height: 1.5),
+              style: TextStyle(fontSize: 14, color: colors.muted, height: 1.5),
             ),
             const SizedBox(height: 16),
             _MethodCard(
@@ -90,7 +83,7 @@ class HowToAddLinkPage extends StatelessWidget {
             Text(
               '${AppBrand.name} · 如何添加链接',
               textAlign: TextAlign.center,
-              style: const TextStyle(fontSize: 12, color: _muted),
+              style: TextStyle(fontSize: 12, color: colors.muted),
             ),
           ],
         ),
@@ -121,12 +114,13 @@ class _MethodCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = AppColors.of(context);
     final url = urls[figureIndex.clamp(0, urls.length - 1)];
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: colors.card,
         borderRadius: BorderRadius.circular(14),
       ),
       child: Column(
@@ -138,8 +132,8 @@ class _MethodCard extends StatelessWidget {
                 width: 26,
                 height: 26,
                 alignment: Alignment.center,
-                decoration: const BoxDecoration(
-                  color: HowToAddLinkPage._blue,
+                decoration: BoxDecoration(
+                  color: colors.brand,
                   shape: BoxShape.circle,
                 ),
                 child: Text(
@@ -155,10 +149,10 @@ class _MethodCard extends StatelessWidget {
               Expanded(
                 child: Text(
                   title,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.w700,
-                    color: HowToAddLinkPage._text,
+                    color: colors.ink,
                   ),
                 ),
               ),
@@ -167,9 +161,9 @@ class _MethodCard extends StatelessWidget {
           const SizedBox(height: 10),
           Text(
             desc,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 14,
-              color: HowToAddLinkPage._muted,
+              color: colors.muted,
               height: 1.5,
             ),
           ),
@@ -178,7 +172,7 @@ class _MethodCard extends StatelessWidget {
             width: double.infinity,
             padding: const EdgeInsets.fromLTRB(12, 12, 12, 14),
             decoration: BoxDecoration(
-              color: HowToAddLinkPage._illustrationBg,
+              color: colors.inputBg,
               borderRadius: BorderRadius.circular(12),
             ),
             child: Column(
@@ -187,9 +181,9 @@ class _MethodCard extends StatelessWidget {
                 if (captionAbove != null) ...[
                   Text(
                     captionAbove!,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 12,
-                      color: HowToAddLinkPage._muted,
+                      color: colors.muted,
                       height: 1.4,
                     ),
                   ),
@@ -209,9 +203,9 @@ class _MethodCard extends StatelessWidget {
                   const SizedBox(height: 10),
                   Text(
                     captionBelow!,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 12,
-                      color: HowToAddLinkPage._muted,
+                      color: colors.muted,
                       height: 1.4,
                     ),
                   ),

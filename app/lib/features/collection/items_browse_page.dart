@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:super_collection/core/theme/app_colors.dart';
 import 'package:super_collection/core/analytics/screen_dwell_tracker.dart';
 import 'package:super_collection/core/network/api_client.dart';
 import 'package:super_collection/core/ui/app_confirm_dialog.dart';
@@ -37,7 +38,6 @@ class ItemsBrowsePage extends StatefulWidget {
 }
 
 class _ItemsBrowsePageState extends State<ItemsBrowsePage> with ScreenDwellMixin {
-  static const _bg = Color(0xFFF7F7FA);
   static const _muted = Color(0xFF737A85);
 
   final _tagsRepo = TagsRepository();
@@ -345,19 +345,21 @@ class _ItemsBrowsePageState extends State<ItemsBrowsePage> with ScreenDwellMixin
       overlay.size.height - (topLeft.dy + size.height + 4),
     );
 
-    const text = Color(0xFF1F242E);
-    const danger = Color(0xFFD14343);
+    final colors = AppColors.of(anchorContext);
+    final ink = colors.ink;
+    final muted = colors.muted;
+    final danger = colors.danger;
 
     final canBatch = _items.isNotEmpty;
     final action = await showMenu<_TagAction>(
       context: anchorContext,
       position: position,
       elevation: 8,
-      color: Colors.white,
+      color: colors.card,
       shadowColor: Colors.black.withValues(alpha: 0.14),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
-        side: const BorderSide(color: Color(0xFFE6E8EB)),
+        side: BorderSide(color: colors.hairline),
       ),
       constraints: const BoxConstraints(minWidth: 160, maxWidth: 160),
       items: [
@@ -370,7 +372,7 @@ class _ItemsBrowsePageState extends State<ItemsBrowsePage> with ScreenDwellMixin
               Icon(
                 Icons.checklist_rtl_rounded,
                 size: 20,
-                color: canBatch ? text : _muted,
+                color: canBatch ? ink : muted,
               ),
               const SizedBox(width: 10),
               Text(
@@ -378,37 +380,37 @@ class _ItemsBrowsePageState extends State<ItemsBrowsePage> with ScreenDwellMixin
                 style: TextStyle(
                   fontSize: 15,
                   fontWeight: FontWeight.w500,
-                  color: canBatch ? text : _muted,
+                  color: canBatch ? ink : muted,
                 ),
               ),
             ],
           ),
         ),
-        const PopupMenuItem(
+        PopupMenuItem(
           value: _TagAction.rename,
           height: 44,
           child: Row(
             children: [
-              Icon(Icons.edit_outlined, size: 20, color: text),
-              SizedBox(width: 10),
+              Icon(Icons.edit_outlined, size: 20, color: ink),
+              const SizedBox(width: 10),
               Text(
                 '修改名称',
                 style: TextStyle(
                   fontSize: 15,
                   fontWeight: FontWeight.w500,
-                  color: text,
+                  color: ink,
                 ),
               ),
             ],
           ),
         ),
-        const PopupMenuItem(
+        PopupMenuItem(
           value: _TagAction.delete,
           height: 44,
           child: Row(
             children: [
               Icon(Icons.delete_outline_rounded, size: 20, color: danger),
-              SizedBox(width: 10),
+              const SizedBox(width: 10),
               Text(
                 '删除标签',
                 style: TextStyle(
@@ -445,7 +447,9 @@ class _ItemsBrowsePageState extends State<ItemsBrowsePage> with ScreenDwellMixin
               icon: Icon(
                 Icons.more_horiz,
                 size: 24,
-                color: _busy ? _muted : const Color(0xFF1F242E),
+                color: _busy
+                    ? AppColors.of(anchorContext).muted
+                    : AppColors.of(anchorContext).ink,
               ),
             );
           },
@@ -454,6 +458,7 @@ class _ItemsBrowsePageState extends State<ItemsBrowsePage> with ScreenDwellMixin
     }
     return [
       itemsBatchEnterSelectAction(
+        context: context,
         onPressed: _items.isEmpty || _busy ? null : () => _enterSelecting(),
       ),
     ];
@@ -462,9 +467,10 @@ class _ItemsBrowsePageState extends State<ItemsBrowsePage> with ScreenDwellMixin
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: _bg,
+      backgroundColor: AppColors.of(context).pageBg,
       appBar: _selecting
           ? itemsBatchSelectAppBar(
+              context: context,
               selectedCount: _selectedIds.length,
               allSelected: _allSelected,
               onCancel: _exitSelecting,
@@ -537,6 +543,7 @@ class _ItemsBrowsePageState extends State<ItemsBrowsePage> with ScreenDwellMixin
                       final itemIndex = index - 1;
                       if (itemIndex >= _items.length) {
                         return pagedListFooter(
+                          context: context,
                           loadingMore: _loadingMore,
                           hasMore: _hasMore,
                           isEmpty: false,

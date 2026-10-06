@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:super_collection/core/network/api_client.dart';
+import 'package:super_collection/core/theme/app_colors.dart';
 import 'package:super_collection/core/ui/app_confirm_dialog.dart';
 import 'package:super_collection/core/ui/app_toast.dart';
 import 'package:super_collection/features/items/items_repository.dart';
@@ -17,14 +18,13 @@ class ItemsBatchDeleteBar extends StatelessWidget {
   final bool busy;
   final VoidCallback onDelete;
 
-  static const _danger = Color(0xFFBF3333);
-
   @override
   Widget build(BuildContext context) {
+    final colors = AppColors.of(context);
     final enabled = selectedCount > 0 && !busy;
     final bottom = MediaQuery.paddingOf(context).bottom;
     return Material(
-      color: Colors.white,
+      color: colors.card,
       elevation: 8,
       shadowColor: Colors.black.withValues(alpha: 0.08),
       child: Padding(
@@ -34,8 +34,8 @@ class ItemsBatchDeleteBar extends StatelessWidget {
           child: FilledButton(
             onPressed: enabled ? onDelete : null,
             style: FilledButton.styleFrom(
-              backgroundColor: _danger,
-              disabledBackgroundColor: _danger.withValues(alpha: 0.35),
+              backgroundColor: colors.danger,
+              disabledBackgroundColor: colors.danger.withValues(alpha: 0.35),
               foregroundColor: Colors.white,
               disabledForegroundColor: Colors.white70,
               padding: const EdgeInsets.symmetric(vertical: 14),
@@ -68,13 +68,14 @@ class ItemsBatchDeleteBar extends StatelessWidget {
 
 /// 多选态顶栏右侧：全选 / 取消全选
 Widget itemsBatchSelectAllAction({
+  required BuildContext context,
   required bool allSelected,
   required VoidCallback? onPressed,
 }) {
   return TextButton(
     onPressed: onPressed,
     style: TextButton.styleFrom(
-      foregroundColor: const Color(0xFF1F242E),
+      foregroundColor: AppColors.of(context).ink,
       padding: const EdgeInsets.symmetric(horizontal: 12),
     ),
     child: Text(
@@ -85,11 +86,14 @@ Widget itemsBatchSelectAllAction({
 }
 
 /// 普通态顶栏「选择」
-Widget itemsBatchEnterSelectAction({required VoidCallback? onPressed}) {
+Widget itemsBatchEnterSelectAction({
+  required BuildContext context,
+  required VoidCallback? onPressed,
+}) {
   return TextButton(
     onPressed: onPressed,
     style: TextButton.styleFrom(
-      foregroundColor: const Color(0xFF1F242E),
+      foregroundColor: AppColors.of(context).ink,
       padding: const EdgeInsets.symmetric(horizontal: 12),
     ),
     child: const Text(
@@ -100,11 +104,14 @@ Widget itemsBatchEnterSelectAction({required VoidCallback? onPressed}) {
 }
 
 /// 多选态顶栏「取消」
-Widget itemsBatchCancelSelectAction({required VoidCallback onPressed}) {
+Widget itemsBatchCancelSelectAction({
+  required BuildContext context,
+  required VoidCallback onPressed,
+}) {
   return TextButton(
     onPressed: onPressed,
     style: TextButton.styleFrom(
-      foregroundColor: const Color(0xFF1F242E),
+      foregroundColor: AppColors.of(context).ink,
       padding: const EdgeInsets.symmetric(horizontal: 8),
     ),
     child: const Text(
@@ -115,29 +122,35 @@ Widget itemsBatchCancelSelectAction({required VoidCallback onPressed}) {
 }
 
 PreferredSizeWidget itemsBatchSelectAppBar({
+  required BuildContext context,
   required int selectedCount,
   required bool allSelected,
   required VoidCallback onCancel,
   required VoidCallback onToggleSelectAll,
 }) {
+  final ink = AppColors.of(context).ink;
   return AppBar(
-    backgroundColor: Colors.white,
+    backgroundColor: AppColors.of(context).card,
     surfaceTintColor: Colors.transparent,
     elevation: 0,
     scrolledUnderElevation: 0,
     centerTitle: true,
     leadingWidth: 88,
-    leading: itemsBatchCancelSelectAction(onPressed: onCancel),
+    leading: itemsBatchCancelSelectAction(
+      context: context,
+      onPressed: onCancel,
+    ),
     title: Text(
       '已选 $selectedCount',
-      style: const TextStyle(
+      style: TextStyle(
         fontSize: 17,
         fontWeight: FontWeight.w700,
-        color: Color(0xFF1F242E),
+        color: ink,
       ),
     ),
     actions: [
       itemsBatchSelectAllAction(
+        context: context,
         allSelected: allSelected,
         onPressed: onToggleSelectAll,
       ),

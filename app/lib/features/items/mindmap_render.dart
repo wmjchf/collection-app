@@ -1,7 +1,92 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:super_collection/core/theme/app_colors.dart';
 import 'package:super_collection/features/items/ai_meta_models.dart';
+
+/// 脑图绘制色；分享 PNG 固定用 [light]，应用内随主题。
+class MindmapPalette {
+  const MindmapPalette({
+    required this.edge,
+    required this.rootFill,
+    required this.childFill,
+    required this.childStroke,
+    required this.rootText,
+    required this.childText,
+    required this.badgeFill,
+    required this.badgeOnRoot,
+    required this.badgeText,
+    required this.badgeTextOnRoot,
+  });
+
+  final Color edge;
+  final Color rootFill;
+  final Color childFill;
+  final Color childStroke;
+  final Color rootText;
+  final Color childText;
+  final Color badgeFill;
+  final Color badgeOnRoot;
+  final Color badgeText;
+  final Color badgeTextOnRoot;
+
+  static const light = MindmapPalette(
+    edge: Color(0xFFD9DBE0),
+    rootFill: Color(0xFF2F6FED),
+    childFill: Color(0xFFF5F7FA),
+    childStroke: Color(0xFFE8ECF0),
+    rootText: Colors.white,
+    childText: Color(0xFF1F242E),
+    badgeFill: Color(0xFFE8F0FF),
+    badgeOnRoot: Color(0x38FFFFFF),
+    badgeText: Color(0xFF2F6FED),
+    badgeTextOnRoot: Colors.white,
+  );
+
+  factory MindmapPalette.fromAppColors(AppColors colors) {
+    return MindmapPalette(
+      edge: colors.hairline,
+      rootFill: colors.brand,
+      childFill: colors.inputBg,
+      childStroke: colors.hairline,
+      rootText: Colors.white,
+      childText: colors.ink,
+      badgeFill: colors.brandSoft,
+      badgeOnRoot: Colors.white.withValues(alpha: 0.22),
+      badgeText: colors.brand,
+      badgeTextOnRoot: Colors.white,
+    );
+  }
+
+  @override
+  bool operator ==(Object other) {
+    return other is MindmapPalette &&
+        other.edge == edge &&
+        other.rootFill == rootFill &&
+        other.childFill == childFill &&
+        other.childStroke == childStroke &&
+        other.rootText == rootText &&
+        other.childText == childText &&
+        other.badgeFill == badgeFill &&
+        other.badgeOnRoot == badgeOnRoot &&
+        other.badgeText == badgeText &&
+        other.badgeTextOnRoot == badgeTextOnRoot;
+  }
+
+  @override
+  int get hashCode => Object.hash(
+        edge,
+        rootFill,
+        childFill,
+        childStroke,
+        rootText,
+        childText,
+        badgeFill,
+        badgeOnRoot,
+        badgeText,
+        badgeTextOnRoot,
+      );
+}
 
 /// 横向思维导图布局与绘制（预览、全屏、导出共用）
 class MindmapLayout {
@@ -238,14 +323,18 @@ class MindmapNodeLayout {
 }
 
 class MindmapPainter extends CustomPainter {
-  MindmapPainter({required this.layout});
+  MindmapPainter({
+    required this.layout,
+    this.palette = MindmapPalette.light,
+  });
 
   final MindmapLayout layout;
+  final MindmapPalette palette;
 
   @override
   void paint(Canvas canvas, Size size) {
     final linePaint = Paint()
-      ..color = const Color(0xFFD9DBE0)
+      ..color = palette.edge
       ..strokeWidth = 1.5
       ..style = PaintingStyle.stroke
       ..strokeCap = StrokeCap.round;
@@ -265,9 +354,7 @@ class MindmapPainter extends CustomPainter {
         node.rect,
         Radius.circular(node.isRoot ? 10 : 8),
       );
-      final bg = node.isRoot
-          ? const Color(0xFF2F6FED)
-          : const Color(0xFFF5F7FA);
+      final bg = node.isRoot ? palette.rootFill : palette.childFill;
       canvas.drawRRect(
         r,
         Paint()..color = bg,
@@ -276,7 +363,7 @@ class MindmapPainter extends CustomPainter {
         canvas.drawRRect(
           r,
           Paint()
-            ..color = const Color(0xFFE8ECF0)
+            ..color = palette.childStroke
             ..style = PaintingStyle.stroke
             ..strokeWidth = 1,
         );
@@ -289,7 +376,7 @@ class MindmapPainter extends CustomPainter {
             fontSize: 13,
             fontWeight: FontWeight.w500,
             height: 1.2,
-            color: node.isRoot ? Colors.white : const Color(0xFF1F242E),
+            color: node.isRoot ? palette.rootText : palette.childText,
           ),
         ),
         textDirection: TextDirection.ltr,
@@ -309,17 +396,17 @@ class MindmapPainter extends CustomPainter {
       );
 
       if (hidden != null) {
-        const badgeStyle = TextStyle(
+        final badgeStyle = TextStyle(
           fontSize: 11,
           fontWeight: FontWeight.w600,
           height: 1,
-          color: Color(0xFF2F6FED),
+          color: palette.badgeText,
         );
         final badgeTp = TextPainter(
           text: TextSpan(
             text: '$hidden',
             style: node.isRoot
-                ? badgeStyle.copyWith(color: Colors.white)
+                ? badgeStyle.copyWith(color: palette.badgeTextOnRoot)
                 : badgeStyle,
           ),
           textDirection: TextDirection.ltr,
@@ -335,9 +422,7 @@ class MindmapPainter extends CustomPainter {
         canvas.drawRRect(
           badgeR,
           Paint()
-            ..color = node.isRoot
-                ? Colors.white.withValues(alpha: 0.22)
-                : const Color(0xFFE8F0FF),
+            ..color = node.isRoot ? palette.badgeOnRoot : palette.badgeFill,
         );
         badgeTp.paint(
           canvas,
@@ -351,5 +436,6 @@ class MindmapPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant MindmapPainter oldDelegate) => true;
+  bool shouldRepaint(covariant MindmapPainter oldDelegate) =>
+      oldDelegate.layout != layout || oldDelegate.palette != palette;
 }

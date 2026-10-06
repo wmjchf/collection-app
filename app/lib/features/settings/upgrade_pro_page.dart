@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:super_collection/core/theme/app_colors.dart';
 import 'package:in_app_purchase/in_app_purchase.dart';
 import 'package:super_collection/core/analytics/analytics.dart';
 import 'package:super_collection/core/analytics/screen_dwell_tracker.dart';
@@ -31,12 +32,6 @@ class UpgradeProPage extends StatefulWidget {
 }
 
 class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
-  static const _bg = Color(0xFFF7F7FA);
-  static const _text = Color(0xFF1F242E);
-  static const _muted = Color(0xFF737A85);
-  static const _accent = Color(0xFF2A6B52);
-  static const _accentSoft = Color(0xFFE8F3EE);
-  static const _border = Color(0xFFE8EBF0);
 
   final _iap = AppleIapService();
   final _usageRepo = UsageRepository();
@@ -225,7 +220,7 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
       style: TextStyle(
         fontSize: 22,
         fontWeight: FontWeight.w700,
-        color: selected ? _accent : _text,
+        color: selected ? AppColors.of(context).brand : AppColors.of(context).ink,
         height: 1.2,
       ),
     );
@@ -247,7 +242,7 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
     final yearly = _products[ids.yearly];
     if (yearly == null) return null;
 
-    final accent = selected ? _accent : _text;
+    final accent = selected ? AppColors.of(context).brand : AppColors.of(context).ink;
     if (monthly == null || monthly.rawPrice <= 0 || yearly.rawPrice <= 0) {
       return Text(
         '${yearly.price}/年',
@@ -411,29 +406,27 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
 
   @override
   Widget build(BuildContext context) {
+    final colors = AppColors.of(context);
     return Scaffold(
-      backgroundColor: _bg,
+      backgroundColor: colors.pageBg,
       appBar: AppBar(
-        backgroundColor: Colors.white,
-        surfaceTintColor: Colors.transparent,
-        elevation: 0,
         centerTitle: true,
         leadingWidth: 80,
         leading: TextButton.icon(
           onPressed: () => Navigator.of(context).maybePop(),
           style: TextButton.styleFrom(
-            foregroundColor: _text,
+            foregroundColor: colors.ink,
             padding: const EdgeInsets.only(left: 8),
           ),
           icon: const Icon(Icons.chevron_left, size: 30),
           label: const Text('返回', style: TextStyle(fontSize: 15)),
         ),
-        title: const Text(
+        title: Text(
           '订阅会员',
           style: TextStyle(
             fontSize: 17,
             fontWeight: FontWeight.w700,
-            color: _text,
+            color: colors.ink,
           ),
         ),
       ),
@@ -491,19 +484,19 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
                 const SizedBox(height: 8),
                 Text(
                   '普通用户收藏上限 ${_quotas.free.itemLimit ?? 300} 条；额度按自然月重置',
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 12,
-                    color: _muted,
+                    color: colors.muted,
                     height: 1.45,
                   ),
                 ),
                 if (!_isIos)
-                  const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 12),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 12),
                     child: Text(
                       '请在 iPhone 上通过 App Store 订阅。',
                       textAlign: TextAlign.center,
-                      style: TextStyle(fontSize: 14, color: _muted, height: 1.4),
+                      style: TextStyle(fontSize: 14, color: colors.muted, height: 1.4),
                     ),
                   )
                 else if (_productsLoading)
@@ -517,9 +510,9 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
                   Text(
                     _error!,
                     textAlign: TextAlign.center,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 14,
-                      color: _muted,
+                      color: colors.muted,
                       height: 1.4,
                     ),
                   ),
@@ -625,11 +618,12 @@ class _BillingPeriodToggle extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = AppColors.of(context);
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: colors.card,
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: _UpgradeProPageState._border),
+        border: Border.all(color: colors.hairline),
       ),
       child: Padding(
         padding: const EdgeInsets.all(3),
@@ -671,7 +665,7 @@ class _BillingPeriodChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: selected ? _UpgradeProPageState._accentSoft : Colors.transparent,
+      color: selected ? AppColors.of(context).brandSoft : Colors.transparent,
       borderRadius: BorderRadius.circular(8),
       child: InkWell(
         onTap: enabled ? onTap : null,
@@ -684,8 +678,8 @@ class _BillingPeriodChip extends StatelessWidget {
               fontSize: 13,
               fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
               color: selected
-                  ? _UpgradeProPageState._accent
-                  : _UpgradeProPageState._muted,
+                  ? AppColors.of(context).brand
+                  : AppColors.of(context).muted,
             ),
           ),
         ),
@@ -705,46 +699,44 @@ class _TierProductsSyncHint extends StatelessWidget {
   final List<String> missingIds;
   final VoidCallback? onRetry;
 
-  static const _muted = Color(0xFF737A85);
-  static const _accent = Color(0xFF2A6B52);
-
   @override
   Widget build(BuildContext context) {
+    final colors = AppColors.of(context);
     final ids = missingIds.isEmpty ? '（商品 id 未配置）' : missingIds.join('\n');
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
       decoration: BoxDecoration(
-        color: const Color(0xFFF0F4F2),
+        color: AppColors.of(context).brandSoft,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFFD8E4DE)),
+        border: Border.all(color: colors.hairline),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
             '$tierLabel 订阅商品尚未从 App Store 同步',
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 14,
               fontWeight: FontWeight.w600,
-              color: Color(0xFF1F242E),
+              color: colors.ink,
               height: 1.4,
             ),
           ),
           const SizedBox(height: 6),
-          const Text(
+          Text(
             'ASC 新建订阅后，沙盒通常需数小时才能查到。'
             '请确认商品已「准备提交」、id 与后端一致，稍后点重试；'
             '太子Pro档不受影响，可先订阅太子Pro。',
-            style: TextStyle(fontSize: 13, color: _muted, height: 1.45),
+            style: TextStyle(fontSize: 13, color: colors.muted, height: 1.45),
           ),
           if (missingIds.isNotEmpty) ...[
             const SizedBox(height: 8),
             Text(
               ids,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 11,
-                color: _muted,
+                color: colors.muted,
                 height: 1.35,
                 fontFamily: 'Menlo',
               ),
@@ -755,7 +747,7 @@ class _TierProductsSyncHint extends StatelessWidget {
             TextButton(
               onPressed: onRetry,
               style: TextButton.styleFrom(
-                foregroundColor: _accent,
+                foregroundColor: AppColors.of(context).brand,
                 padding: EdgeInsets.zero,
                 minimumSize: Size.zero,
                 tapTargetSize: MaterialTapTargetSize.shrinkWrap,
@@ -779,16 +771,22 @@ class _MembershipIntro extends StatelessWidget {
       child: Container(
         width: double.infinity,
         padding: const EdgeInsets.fromLTRB(20, 20, 20, 20),
-        decoration: const BoxDecoration(
+        decoration: BoxDecoration(
           gradient: LinearGradient(
-            begin: Alignment(-0.85, -0.4),
-            end: Alignment(0.9, 1.0),
+            begin: const Alignment(-0.85, -0.4),
+            end: const Alignment(0.9, 1.0),
             colors: [
-              Color(0xFF121F1C),
-              Color(0xFF1A382E),
-              Color(0xFF24473D),
+              const Color(0xFF12151A),
+              Color.alphaBlend(
+                AppColors.of(context).brand.withValues(alpha: 0.45),
+                const Color(0xFF12151A),
+              ),
+              Color.alphaBlend(
+                AppColors.of(context).brand.withValues(alpha: 0.7),
+                const Color(0xFF1C2128),
+              ),
             ],
-            stops: [0.0, 0.55, 1.0],
+            stops: const [0.0, 0.55, 1.0],
           ),
         ),
         child: Stack(
@@ -802,7 +800,7 @@ class _MembershipIntro extends StatelessWidget {
                 height: 90,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: const Color(0xFF8CD9B8).withValues(alpha: 0.2),
+                  color: AppColors.of(context).brand.withValues(alpha: 0.28),
                 ),
               ),
             ),
@@ -814,7 +812,7 @@ class _MembershipIntro extends StatelessWidget {
                   style: TextStyle(
                     fontSize: 26,
                     fontWeight: FontWeight.w700,
-                    color: Color(0xFFC7EDDB),
+                    color: Color(0xFFE8EEF8),
                     height: 1.2,
                   ),
                 ),
@@ -857,7 +855,6 @@ class _YearlySaveBadge extends StatelessWidget {
   final bool emphasized;
 
   static const _save = Color(0xFFE4572E);
-  static const _saveSoft = Color(0xFFFFE8E1);
 
   @override
   Widget build(BuildContext context) {
@@ -871,9 +868,9 @@ class _YearlySaveBadge extends StatelessWidget {
           style: TextStyle(
             fontSize: 15,
             fontWeight: FontWeight.w600,
-            color: _UpgradeProPageState._muted.withValues(alpha: 0.85),
+            color: AppColors.of(context).muted.withValues(alpha: 0.85),
             decoration: TextDecoration.lineThrough,
-            decorationColor: _UpgradeProPageState._muted,
+            decorationColor: AppColors.of(context).muted,
             decorationThickness: 1.6,
             height: 1.2,
           ),
@@ -881,7 +878,12 @@ class _YearlySaveBadge extends StatelessWidget {
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
           decoration: BoxDecoration(
-            color: emphasized ? _save : _saveSoft,
+            color: emphasized
+                ? _save
+                : Color.alphaBlend(
+                    _save.withValues(alpha: 0.18),
+                    AppColors.of(context).card,
+                  ),
             borderRadius: BorderRadius.circular(999),
             boxShadow: emphasized
                 ? [
@@ -928,10 +930,9 @@ class _TierPlanCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = AppColors.of(context);
     return Material(
-      color: selected
-          ? _UpgradeProPageState._accentSoft
-          : Colors.white,
+      color: selected ? AppColors.of(context).brandSoft : colors.card,
       borderRadius: BorderRadius.circular(16),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
@@ -942,9 +943,7 @@ class _TierPlanCard extends StatelessWidget {
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(16),
             border: Border.all(
-              color: selected
-                  ? _UpgradeProPageState._accent
-                  : _UpgradeProPageState._border,
+              color: selected ? AppColors.of(context).brand : colors.hairline,
               width: selected ? 2 : 1,
             ),
           ),
@@ -963,18 +962,16 @@ class _TierPlanCard extends StatelessWidget {
                           style: TextStyle(
                             fontSize: 20,
                             fontWeight: FontWeight.w700,
-                            color: selected
-                                ? _UpgradeProPageState._accent
-                                : _UpgradeProPageState._text,
+                            color: selected ? AppColors.of(context).brand : colors.ink,
                             height: 1.2,
                           ),
                         ),
                         const SizedBox(height: 4),
                         Text(
                           tagline,
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 13,
-                            color: _UpgradeProPageState._muted,
+                            color: colors.muted,
                             height: 1.4,
                           ),
                         ),
@@ -1010,15 +1007,14 @@ class _FeatureLine extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = AppColors.of(context);
     final included = feature.included;
     final icon = included
         ? Icons.check_rounded
         : Icons.remove_rounded;
     final color = included
-        ? (feature.isQuota
-            ? _UpgradeProPageState._accent
-            : _UpgradeProPageState._text)
-        : _UpgradeProPageState._muted.withValues(alpha: 0.55);
+        ? (feature.isQuota ? AppColors.of(context).brand : colors.ink)
+        : colors.muted.withValues(alpha: 0.55);
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1055,7 +1051,7 @@ class _TierRadioMark extends StatelessWidget {
         margin: const EdgeInsets.only(top: 2),
         decoration: BoxDecoration(
           shape: BoxShape.circle,
-          border: Border.all(color: const Color(0xFFC7CCD4), width: 1.5),
+          border: Border.all(color: AppColors.of(context).hairline, width: 1.5),
         ),
       );
     }
@@ -1063,9 +1059,9 @@ class _TierRadioMark extends StatelessWidget {
       width: size,
       height: size,
       margin: const EdgeInsets.only(top: 2),
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         shape: BoxShape.circle,
-        color: _UpgradeProPageState._accent,
+        color: AppColors.of(context).brand,
       ),
       child: const Icon(Icons.check_rounded, size: 14, color: Colors.white),
     );
@@ -1097,7 +1093,7 @@ class _SubscribeButton extends StatelessWidget {
           boxShadow: (canTap || busy)
               ? [
                   BoxShadow(
-                    color: const Color(0xFF2A6B52).withValues(alpha: 0.22),
+                    color: AppColors.of(context).brand.withValues(alpha: 0.22),
                     blurRadius: 16,
                     offset: const Offset(0, 6),
                   ),
@@ -1107,11 +1103,11 @@ class _SubscribeButton extends StatelessWidget {
         child: FilledButton(
           onPressed: canTap ? onPressed : null,
           style: FilledButton.styleFrom(
-            backgroundColor: _UpgradeProPageState._accent,
+            backgroundColor: AppColors.of(context).brand,
             foregroundColor: Colors.white,
             disabledBackgroundColor: busy
-                ? _UpgradeProPageState._accent
-                : _UpgradeProPageState._accent.withValues(alpha: 0.5),
+                ? AppColors.of(context).brand
+                : AppColors.of(context).brand.withValues(alpha: 0.5),
             disabledForegroundColor: Colors.white,
             elevation: 0,
             shadowColor: Colors.transparent,
@@ -1186,12 +1182,13 @@ class _BottomActionBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = AppColors.of(context);
     return Material(
-      color: Colors.white,
+      color: colors.card,
       child: DecoratedBox(
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          border: Border(top: BorderSide(color: Color(0xFFE8EBF0))),
+        decoration: BoxDecoration(
+          color: colors.card,
+          border: Border(top: BorderSide(color: colors.hairline)),
         ),
         child: SafeArea(
           top: false,
@@ -1211,7 +1208,7 @@ class _BottomActionBar extends StatelessWidget {
                   TextButton(
                     onPressed: busy ? null : onRestore,
                     style: TextButton.styleFrom(
-                      foregroundColor: const Color(0xFF737A85),
+                      foregroundColor: AppColors.of(context).muted,
                       minimumSize: const Size(0, 36),
                     ),
                     child: Text(
@@ -1251,10 +1248,11 @@ class _SubscriptionLegalFooter extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const style = TextStyle(fontSize: 12, color: Color(0xFF737A85), height: 1.55);
-    const linkStyle = TextStyle(
+    final colors = AppColors.of(context);
+    final style = TextStyle(fontSize: 12, color: colors.muted, height: 1.55);
+    final linkStyle = TextStyle(
       fontSize: 12,
-      color: Color(0xFF2A6B52),
+      color: AppColors.of(context).brand,
       height: 1.55,
     );
     final trial = trialOffer;
@@ -1276,7 +1274,7 @@ class _SubscriptionLegalFooter extends StatelessWidget {
             baseline: TextBaseline.alphabetic,
             child: GestureDetector(
               onTap: onPrivacy,
-              child: const Text('隐私政策', style: linkStyle),
+              child: Text('隐私政策', style: linkStyle),
             ),
           ),
           const TextSpan(text: '和'),
@@ -1285,7 +1283,7 @@ class _SubscriptionLegalFooter extends StatelessWidget {
             baseline: TextBaseline.alphabetic,
             child: GestureDetector(
               onTap: onUserAgreement,
-              child: const Text('用户条款', style: linkStyle),
+              child: Text('用户条款', style: linkStyle),
             ),
           ),
           const TextSpan(text: '。如果您已经订阅过但未生效，请恢复购买。'),

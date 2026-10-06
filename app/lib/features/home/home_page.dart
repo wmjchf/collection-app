@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:super_collection/core/analytics/analytics.dart';
 import 'package:super_collection/core/network/api_client.dart';
+import 'package:super_collection/core/theme/app_colors.dart';
 import 'package:super_collection/core/ui/app_toast.dart';
 import 'package:super_collection/core/ui/client_fetch_backfill.dart';
 import 'package:super_collection/core/ui/parse_progress_tracker.dart';
@@ -23,6 +24,7 @@ import 'package:super_collection/features/items/items_repository.dart';
 import 'package:super_collection/features/onboarding/coach_prefs.dart';
 import 'package:super_collection/features/onboarding/home_coach_overlay.dart';
 import 'package:super_collection/features/onboarding/shortcuts_help_page.dart';
+import 'package:super_collection/features/shell/theme_toggle_button.dart';
 import 'package:super_collection/features/shell/user_avatar_button.dart';
 import 'package:super_collection/features/settings/trial_expiry_banner.dart';
 import 'package:super_collection/features/settings/usage_repository.dart';
@@ -50,14 +52,11 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
-  static const _bg = Color(0xFFF7F7FA);
-  static const _text = Color(0xFF1F242E);
   static const _blue = Color(0xFF2F6FED);
 
   final _repo = HomeRepository();
   final _items = ItemsRepository();
   final _auth = AuthRepository();
-  final _usageRepo = UsageRepository();
   HomeData? _data;
   bool _loading = true;
   bool _pasting = false;
@@ -102,7 +101,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
 
   Future<void> _loadPro() async {
     try {
-      final usage = await _usageRepo.fetchUsage();
+      final usage = await UsageRefresh.ensure();
       if (!mounted) return;
       setState(() => _isPro = usage.isPro);
     } catch (_) {}
@@ -270,12 +269,12 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
           top: top,
           width: 188,
           child: Material(
-            color: Colors.white,
+            color: AppColors.of(context).card,
             elevation: 8,
             shadowColor: Colors.black.withValues(alpha: 0.14),
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(12),
-              side: const BorderSide(color: Color(0xFFE6E8EB)),
+              side: BorderSide(color: AppColors.of(context).hairline),
             ),
             clipBehavior: Clip.antiAlias,
             child: Column(
@@ -286,14 +285,14 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                   title: '添加链接',
                   subtitle: '手动输入或编辑链接',
                 ),
-                const Divider(height: 1, color: Color(0xFFE6E8EB)),
+                const Divider(height: 1),
                 _CoachMenuItem(
                   key: _pasteItemKey,
                   title: '粘贴链接',
                   subtitle: '从剪贴板直接保存',
                   onTap: () => unawaited(_coachTapPaste()),
                 ),
-                const Divider(height: 1, color: Color(0xFFE6E8EB)),
+                const Divider(height: 1),
                 const _CoachMenuItem(
                   title: '快捷指令',
                   subtitle: '说明与一键添加',
@@ -396,93 +395,39 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       context: context,
       position: position,
       elevation: 8,
-      color: Colors.white,
+      color: AppColors.of(context).card,
       shadowColor: Colors.black.withValues(alpha: 0.14),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
-        side: const BorderSide(color: Color(0xFFE6E8EB)),
+        side: BorderSide(color: AppColors.of(context).hairline),
       ),
       constraints: const BoxConstraints(minWidth: 188, maxWidth: 188),
-      items: const [
+      items: [
         PopupMenuItem<String>(
           value: 'add',
           height: 64,
-          padding: EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Text(
-                '添加链接',
-                style: TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w500,
-                  color: Color(0xFF1F242E),
-                ),
-              ),
-              SizedBox(height: 4),
-              Text(
-                '手动输入或编辑链接',
-                style: TextStyle(
-                  fontSize: 12,
-                  color: Color(0xFF737A85),
-                ),
-              ),
-            ],
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          child: const _CoachMenuItem(
+            title: '添加链接',
+            subtitle: '手动输入或编辑链接',
           ),
         ),
         PopupMenuItem<String>(
           value: 'paste',
           height: 64,
-          padding: EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Text(
-                '粘贴链接',
-                style: TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w500,
-                  color: Color(0xFF1F242E),
-                ),
-              ),
-              SizedBox(height: 4),
-              Text(
-                '从剪贴板直接保存',
-                style: TextStyle(
-                  fontSize: 12,
-                  color: Color(0xFF737A85),
-                ),
-              ),
-            ],
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          child: const _CoachMenuItem(
+            title: '粘贴链接',
+            subtitle: '从剪贴板直接保存',
           ),
         ),
         PopupMenuItem<String>(
           value: 'shortcuts',
           height: 64,
-          padding: EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Text(
-                '快捷指令',
-                style: TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w500,
-                  color: Color(0xFF1F242E),
-                ),
-              ),
-              SizedBox(height: 4),
-              Text(
-                '说明与一键添加',
-                style: TextStyle(
-                  fontSize: 12,
-                  color: Color(0xFF737A85),
-                ),
-              ),
-            ],
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          child: const _CoachMenuItem(
+            title: '快捷指令',
+            subtitle: '说明与一键添加',
           ),
         ),
       ],
@@ -648,16 +593,13 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) {
+    final colors = AppColors.of(context);
     final unread = _data?.unread.items ?? const <CollectionItem>[];
     final recentRead = _data?.recentRead.items ?? const <CollectionItem>[];
 
     return Scaffold(
-      backgroundColor: _bg,
+      backgroundColor: colors.pageBg,
       appBar: AppBar(
-        backgroundColor: Colors.white,
-        surfaceTintColor: Colors.transparent,
-        elevation: 0,
-        scrolledUnderElevation: 0,
         toolbarHeight: 56,
         titleSpacing: 0,
         automaticallyImplyLeading: false,
@@ -669,6 +611,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
           ),
         ),
         actions: [
+          const ThemeToggleButton(),
           Padding(
             padding: const EdgeInsets.only(right: 8),
             child: IconButton(
@@ -817,11 +760,9 @@ class _HomeSection extends StatelessWidget {
   final ValueChanged<HomeItemPreview> onItemTap;
   final String moreLabel;
 
-  static const _muted = Color(0xFF737A85);
-  static const _iconMuted = Color(0xFFC5CAD3);
-
   @override
   Widget build(BuildContext context) {
+    final colors = AppColors.of(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -829,10 +770,10 @@ class _HomeSection extends StatelessWidget {
           children: [
             Text(
               title,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 15,
                 fontWeight: FontWeight.w500,
-                color: _HomePageState._text,
+                color: colors.ink,
               ),
             ),
             const Spacer(),
@@ -843,10 +784,10 @@ class _HomeSection extends StatelessWidget {
                 padding: const EdgeInsets.symmetric(vertical: 2),
                 child: Text(
                   moreLabel,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 13,
                     fontWeight: FontWeight.w400,
-                    color: _HomePageState._blue,
+                    color: colors.brand,
                   ),
                 ),
               ),
@@ -859,20 +800,20 @@ class _HomeSection extends StatelessWidget {
             width: double.infinity,
             height: emptyHeight,
             decoration: BoxDecoration(
-              color: Colors.white,
+              color: AppColors.of(context).card,
               borderRadius: BorderRadius.circular(12),
             ),
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(emptyIcon, size: 42, color: _iconMuted),
+                Icon(emptyIcon, size: 42, color: AppColors.of(context).iconMuted),
                 const SizedBox(height: 10),
                 Text(
                   emptyText,
                   textAlign: TextAlign.center,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 14,
-                    color: _muted,
+                    color: AppColors.of(context).muted,
                   ),
                 ),
               ],
@@ -918,18 +859,18 @@ class _CoachMenuItem extends StatelessWidget {
           children: [
             Text(
               title,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 15,
                 fontWeight: FontWeight.w500,
-                color: Color(0xFF1F242E),
+                color: AppColors.of(context).ink,
               ),
             ),
             const SizedBox(height: 4),
             Text(
               subtitle,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 12,
-                color: Color(0xFF737A85),
+                color: AppColors.of(context).muted,
               ),
             ),
           ],

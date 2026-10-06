@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:super_collection/core/theme/app_colors.dart';
 import 'package:super_collection/core/analytics/screen_dwell_tracker.dart';
 
 /// 简易说明文稿页（协议 / 隐私等）
@@ -12,27 +13,21 @@ class SimpleDocPage extends StatelessWidget {
   final String title;
   final String body;
 
-  static const _bg = Color(0xFFF7F7FA);
-  static const _text = Color(0xFF1F242E);
-  static const _muted = Color(0xFF737A85);
-
   @override
   Widget build(BuildContext context) {
+    final colors = AppColors.of(context);
     return ScreenDwellScope(
       screen: AnalyticsScreens.doc,
       props: {'doc': title},
       child: Scaffold(
-      backgroundColor: _bg,
+      backgroundColor: colors.pageBg,
       appBar: AppBar(
-        backgroundColor: Colors.white,
-        surfaceTintColor: Colors.transparent,
-        elevation: 0,
         centerTitle: true,
         leadingWidth: 80,
         leading: TextButton.icon(
           onPressed: () => Navigator.of(context).maybePop(),
           style: TextButton.styleFrom(
-            foregroundColor: _text,
+            foregroundColor: colors.ink,
             padding: const EdgeInsets.only(left: 8),
           ),
           icon: const Icon(Icons.chevron_left, size: 30),
@@ -40,10 +35,10 @@ class SimpleDocPage extends StatelessWidget {
         ),
         title: Text(
           title,
-          style: const TextStyle(
+          style: TextStyle(
             fontSize: 17,
             fontWeight: FontWeight.w700,
-            color: _text,
+            color: colors.ink,
           ),
         ),
       ),
@@ -53,9 +48,9 @@ class SimpleDocPage extends StatelessWidget {
           children: [
             Text(
               body.trim(),
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 14,
-                color: _muted,
+                color: colors.muted,
                 height: 1.65,
               ),
             ),

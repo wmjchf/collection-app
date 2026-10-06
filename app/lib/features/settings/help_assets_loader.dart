@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:super_collection/core/network/api_client.dart';
+import 'package:super_collection/core/theme/app_colors.dart';
 import 'package:super_collection/features/settings/help_assets_repository.dart';
 
 /// 拉取 OSS 帮助配图、预解码后再渲染正文，减轻进页抖动。
@@ -67,9 +68,9 @@ class _HelpAssetsLoaderState extends State<HelpAssetsLoader> {
                   Text(
                     message,
                     textAlign: TextAlign.center,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 14,
-                      color: Color(0xFF737A85),
+                      color: AppColors.of(context).muted,
                     ),
                   ),
                   const SizedBox(height: 16),
@@ -150,12 +151,12 @@ class _Placeholder extends StatelessWidget {
     return Container(
       width: width,
       height: width != null ? width! * 1.35 : 120,
-      color: const Color(0xFFE8EBF0),
+      color: AppColors.of(context).inputBg,
       alignment: Alignment.center,
-      child: const Icon(
+      child: Icon(
         Icons.broken_image_outlined,
         size: 24,
-        color: Color(0xFF737A85),
+        color: AppColors.of(context).muted,
       ),
     );
   }

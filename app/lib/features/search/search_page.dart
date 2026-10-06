@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:super_collection/core/analytics/analytics.dart';
 import 'package:super_collection/core/analytics/screen_dwell_tracker.dart';
 import 'package:super_collection/core/network/api_client.dart';
+import 'package:super_collection/core/theme/app_colors.dart';
 import 'package:super_collection/core/ui/app_bottom_sheet.dart';
 import 'package:super_collection/core/ui/paged_list.dart';
 import 'package:super_collection/features/collection/tag_models.dart';
@@ -23,12 +24,9 @@ class SearchPage extends StatefulWidget {
 }
 
 class _SearchPageState extends State<SearchPage> with ScreenDwellMixin {
-  static const _bg = Color(0xFFF7F7FA);
   static const _text = Color(0xFF1F242E);
   static const _muted = Color(0xFF737A85);
-  static const _inputBg = Color(0xFFF5F7FA);
   static const _brand = Color(0xFF2F6FED);
-  static const _brandSoft = Color(0xFFE5EDFF);
   static const _hairline = Color(0xFFD5DAE2);
   static const _searchRadius = 20.0;
 
@@ -425,8 +423,9 @@ class _SearchPageState extends State<SearchPage> with ScreenDwellMixin {
 
   @override
   Widget build(BuildContext context) {
+    final colors = AppColors.of(context);
     return Scaffold(
-      backgroundColor: _bg,
+      backgroundColor: colors.pageBg,
       body: SafeArea(
         bottom: false,
         child: Column(
@@ -439,7 +438,7 @@ class _SearchPageState extends State<SearchPage> with ScreenDwellMixin {
                     child: Container(
                       height: 40,
                       decoration: BoxDecoration(
-                        color: _inputBg,
+                        color: colors.inputBg,
                         borderRadius: BorderRadius.circular(_searchRadius),
                         border: Border.all(
                           color: const Color(0xFFB8CCFA),
@@ -637,6 +636,7 @@ class _SearchPageState extends State<SearchPage> with ScreenDwellMixin {
                 (context, index) {
                   if (index == contentItems.length) {
                     return pagedListFooter(
+                      context: context,
                       loadingMore: _loadingMore,
                       hasMore: _hasMore,
                       isEmpty: false,
@@ -822,7 +822,7 @@ class _SearchTagFilterSheetState extends State<_SearchTagFilterSheet> {
     // 内容区上限，避免少量标签时 Flexible 把整页撑高留下大块空白
     final scrollMaxH = MediaQuery.sizeOf(context).height * 0.42;
     return Material(
-      color: Colors.white,
+      color: AppColors.of(context).card,
       borderRadius: BorderRadius.circular(24),
       clipBehavior: Clip.antiAlias,
       child: Padding(
@@ -937,11 +937,10 @@ class _FilterTagChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = AppColors.of(context);
     final radius = BorderRadius.circular(12);
     return Material(
-      color: selected
-          ? _SearchPageState._brandSoft
-          : Colors.white,
+      color: selected ? colors.brandSoft : colors.card,
       borderRadius: radius,
       child: InkWell(
         onTap: onTap,
