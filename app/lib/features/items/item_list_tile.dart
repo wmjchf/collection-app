@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:super_collection/features/items/cover_image.dart';
 import 'package:super_collection/features/items/item_models.dart';
+import 'package:super_collection/core/theme/app_colors.dart';
 
 /// 列表条目卡：封面 + 标题 + 可选标签 + 副文案（各列表页共用）
 class ItemListTile extends StatelessWidget {
@@ -54,11 +55,6 @@ class ItemListTile extends StatelessWidget {
   final VoidCallback? onLongPress;
   final bool selecting;
   final bool selected;
-
-  static const _text = Color(0xFF1F242E);
-  static const _muted = Color(0xFF737A85);
-  static const _tag = Color(0xFF2F6FED);
-  static const _selectedBorder = Color(0xFF2F6FED);
   /// 列表卡单行最多展示几个标签，超出用 +N
   static const _maxVisibleTags = 3;
 
@@ -85,6 +81,7 @@ class ItemListTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = AppColors.of(context);
     final tagsLine = _tagsLine(tags);
     final hasTags = tagsLine != null;
 
@@ -99,7 +96,7 @@ class ItemListTile extends StatelessWidget {
                   ? Icons.check_circle_rounded
                   : Icons.circle_outlined,
               size: 24,
-              color: selected ? _selectedBorder : const Color(0xFFC5CAD3),
+              color: selected ? colors.brand : colors.iconMuted,
             ),
           ),
           const SizedBox(width: 10),
@@ -122,11 +119,11 @@ class ItemListTile extends StatelessWidget {
                       title,
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 15,
                         fontWeight: FontWeight.w500,
                         height: 20 / 15,
-                        color: _text,
+                        color: colors.ink,
                       ),
                     ),
                     const SizedBox(height: 6),
@@ -134,11 +131,11 @@ class ItemListTile extends StatelessWidget {
                       tagsLine,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w500,
                         height: 16 / 12,
-                        color: _tag,
+                        color: colors.brand,
                       ),
                     ),
                     const SizedBox(height: 8),
@@ -146,10 +143,10 @@ class ItemListTile extends StatelessWidget {
                       subtitle,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w400,
-                        color: _muted,
+                        color: colors.muted,
                       ),
                     ),
                   ],
@@ -164,21 +161,21 @@ class ItemListTile extends StatelessWidget {
                         title,
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 15,
                           fontWeight: FontWeight.w500,
                           height: 20 / 15,
-                          color: _text,
+                          color: colors.ink,
                         ),
                       ),
                       Text(
                         subtitle,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 12,
                           fontWeight: FontWeight.w400,
-                          color: _muted,
+                          color: colors.muted,
                         ),
                       ),
                     ],
@@ -189,7 +186,7 @@ class ItemListTile extends StatelessWidget {
     );
 
     return Material(
-      color: selected ? const Color(0xFFF0F5FF) : Colors.white,
+      color: selected ? colors.selectedFill : colors.card,
       borderRadius: BorderRadius.circular(12),
       child: InkWell(
         onTap: onTap,

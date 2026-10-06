@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:super_collection/core/network/api_client.dart';
+import 'package:super_collection/core/theme/app_colors.dart';
 import 'package:super_collection/features/collection/tag_module_models.dart';
 import 'package:super_collection/features/collection/tag_modules_repository.dart';
 
@@ -48,12 +49,6 @@ class _ModuleNameSheet extends StatefulWidget {
 }
 
 class _ModuleNameSheetState extends State<_ModuleNameSheet> {
-  static const _text = Color(0xFF1F242E);
-  static const _muted = Color(0xFF737A85);
-  static const _fieldBg = Color(0xFFF5F7FA);
-  static const _blue = Color(0xFF2F6FED);
-  static const _handle = Color(0xFFE5E8ED);
-
   late final TextEditingController _controller;
   final _repo = TagModulesRepository();
   String? _error;
@@ -125,11 +120,12 @@ class _ModuleNameSheetState extends State<_ModuleNameSheet> {
   @override
   Widget build(BuildContext context) {
     final bottom = MediaQuery.paddingOf(context).bottom;
+    final colors = AppColors.of(context);
 
     return Padding(
       padding: EdgeInsets.fromLTRB(16, 0, 16, 16 + (bottom > 0 ? bottom : 0)),
       child: Material(
-        color: Colors.white,
+        color: colors.card,
         borderRadius: BorderRadius.circular(24),
         clipBehavior: Clip.antiAlias,
         child: Padding(
@@ -141,7 +137,7 @@ class _ModuleNameSheetState extends State<_ModuleNameSheet> {
                 width: 40,
                 height: 4,
                 decoration: BoxDecoration(
-                  color: _handle,
+                  color: colors.iconMuted,
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
@@ -152,10 +148,10 @@ class _ModuleNameSheetState extends State<_ModuleNameSheet> {
                   children: [
                     Text(
                       _isRename ? '修改名称' : '新建归类',
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.w700,
-                        color: _text,
+                        color: colors.ink,
                       ),
                     ),
                     const Spacer(),
@@ -167,8 +163,8 @@ class _ModuleNameSheetState extends State<_ModuleNameSheet> {
                         style: TextStyle(
                           fontSize: 14,
                           color: _submitting
-                              ? _muted.withValues(alpha: 0.4)
-                              : _muted,
+                              ? colors.muted.withValues(alpha: 0.4)
+                              : colors.muted,
                         ),
                       ),
                     ),
@@ -181,16 +177,19 @@ class _ModuleNameSheetState extends State<_ModuleNameSheet> {
                 enabled: !_submitting,
                 autofocus: true,
                 textInputAction: TextInputAction.done,
-                style: const TextStyle(fontSize: 15, color: _text),
+                style: TextStyle(fontSize: 15, color: colors.ink),
                 onChanged: (_) {
                   if (_error != null) setState(() => _error = null);
                 },
                 onSubmitted: (_) => _onSubmit(),
                 decoration: InputDecoration(
                   hintText: '例如：工作 / 学习',
-                  hintStyle: const TextStyle(fontSize: 15, color: _muted),
+                  hintStyle: TextStyle(
+                    fontSize: 15,
+                    color: colors.placeholder,
+                  ),
                   filled: true,
-                  fillColor: _fieldBg,
+                  fillColor: colors.inputBg,
                   contentPadding: const EdgeInsets.all(14),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
@@ -202,7 +201,7 @@ class _ModuleNameSheetState extends State<_ModuleNameSheet> {
                   ),
                   focusedBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
-                    borderSide: const BorderSide(color: _blue, width: 1.5),
+                    borderSide: BorderSide(color: colors.brand, width: 1.5),
                   ),
                   disabledBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
@@ -216,9 +215,9 @@ class _ModuleNameSheetState extends State<_ModuleNameSheet> {
                   alignment: Alignment.centerLeft,
                   child: Text(
                     _error!,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 12,
-                      color: Color(0xFFE34D59),
+                      color: colors.danger,
                     ),
                   ),
                 ),
@@ -229,8 +228,9 @@ class _ModuleNameSheetState extends State<_ModuleNameSheet> {
                 child: FilledButton(
                   onPressed: _submitting ? null : _onSubmit,
                   style: FilledButton.styleFrom(
-                    backgroundColor: _blue,
-                    disabledBackgroundColor: _blue.withValues(alpha: 0.6),
+                    backgroundColor: colors.brand,
+                    disabledBackgroundColor:
+                        colors.brand.withValues(alpha: 0.45),
                     foregroundColor: Colors.white,
                     disabledForegroundColor: Colors.white,
                     padding: const EdgeInsets.symmetric(vertical: 14),

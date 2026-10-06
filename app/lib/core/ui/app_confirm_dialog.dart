@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:super_collection/core/theme/app_colors.dart';
 
 /// 统一确认弹框（对齐回收站「彻底删除」/ 阅读页删除确认）
 Future<bool?> showAppConfirmDialog(
@@ -37,20 +38,15 @@ class _AppConfirmDialog extends StatelessWidget {
   final String confirmLabel;
   final bool dangerConfirm;
 
-  static const _text = Color(0xFF1F242E);
-  static const _muted = Color(0xFF737A85);
-  static const _cancelBg = Color(0xFFF5F7FA);
-  static const _danger = Color(0xFFBF3333);
-  static const _primary = Color(0xFF2F6FED);
-
   @override
   Widget build(BuildContext context) {
+    final colors = AppColors.of(context);
     return Dialog(
       backgroundColor: Colors.transparent,
       elevation: 0,
       insetPadding: const EdgeInsets.symmetric(horizontal: 45),
       child: Material(
-        color: Colors.white,
+        color: colors.card,
         borderRadius: BorderRadius.circular(16),
         clipBehavior: Clip.antiAlias,
         child: Padding(
@@ -61,10 +57,10 @@ class _AppConfirmDialog extends StatelessWidget {
               Text(
                 title,
                 textAlign: TextAlign.center,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 17,
                   fontWeight: FontWeight.w700,
-                  color: _text,
+                  color: colors.ink,
                   height: 1.2,
                 ),
               ),
@@ -72,10 +68,10 @@ class _AppConfirmDialog extends StatelessWidget {
               Text(
                 message,
                 textAlign: TextAlign.center,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 13,
                   fontWeight: FontWeight.w400,
-                  color: _muted,
+                  color: colors.muted,
                   height: 1.3,
                 ),
               ),
@@ -85,8 +81,8 @@ class _AppConfirmDialog extends StatelessWidget {
                   Expanded(
                     child: _ActionButton(
                       label: cancelLabel,
-                      background: _cancelBg,
-                      foreground: _text,
+                      background: colors.inputBg,
+                      foreground: colors.ink,
                       onTap: () => Navigator.pop(context, false),
                     ),
                   ),
@@ -94,7 +90,7 @@ class _AppConfirmDialog extends StatelessWidget {
                   Expanded(
                     child: _ActionButton(
                       label: confirmLabel,
-                      background: dangerConfirm ? _danger : _primary,
+                      background: dangerConfirm ? colors.danger : colors.brand,
                       foreground: Colors.white,
                       onTap: () => Navigator.pop(context, true),
                     ),

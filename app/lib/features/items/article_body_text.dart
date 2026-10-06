@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:super_collection/core/theme/app_colors.dart';
 import 'package:super_collection/features/items/article_content_blocks.dart';
 import 'package:super_collection/features/items/article_markdown.dart';
 
@@ -11,7 +12,7 @@ class ArticleBodyText extends StatelessWidget {
     this.fontSize = 15,
     this.lineHeight = 1.85,
     this.paragraphGap,
-    this.color = const Color(0xFF1F242E),
+    this.color,
   });
 
   final String content;
@@ -21,7 +22,7 @@ class ArticleBodyText extends StatelessWidget {
   final double fontSize;
   final double lineHeight;
   final double? paragraphGap;
-  final Color color;
+  final Color? color;
 
   static List<String> splitParagraphs(String content) {
     final normalized =
@@ -143,7 +144,7 @@ class ArticleBodyText extends StatelessWidget {
     return out;
   }
 
-  TextStyle _headingStyle(int level) {
+  TextStyle _headingStyle(int level, Color ink) {
     final size = switch (level) {
       1 => fontSize + 6,
       2 => fontSize + 4,
@@ -154,18 +155,20 @@ class ArticleBodyText extends StatelessWidget {
       fontSize: size,
       height: 1.35,
       fontWeight: FontWeight.w700,
-      color: color,
+      color: ink,
       letterSpacing: 0.2,
     );
   }
 
   @override
   Widget build(BuildContext context) {
+    final colors = AppColors.of(context);
+    final ink = color ?? colors.ink;
     final blocks = _visibleBlocks();
     if (blocks.isEmpty) {
       return Text(
         '暂无正文',
-        style: TextStyle(fontSize: fontSize, color: const Color(0xFF737A85)),
+        style: TextStyle(fontSize: fontSize, color: colors.muted),
       );
     }
 
@@ -174,7 +177,7 @@ class ArticleBodyText extends StatelessWidget {
       fontSize: fontSize,
       height: lineHeight,
       letterSpacing: 0.2,
-      color: color,
+      color: ink,
     );
 
     return Column(
@@ -191,7 +194,7 @@ class ArticleBodyText extends StatelessWidget {
               Builder(
                 builder: (_) {
                   final h = blocks[i] as ArticleHeadingBlock;
-                  final style = _headingStyle(h.level);
+                  final style = _headingStyle(h.level, ink);
                   final spans =
                       ArticleMarkdown.inlineSpans(h.text, style: style);
                   return Text.rich(
