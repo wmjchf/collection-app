@@ -35,7 +35,6 @@ class _ReadingFontSizeSheet extends StatefulWidget {
 
 class _ReadingFontSizeSheetState extends State<_ReadingFontSizeSheet> {
   static const _text = Color(0xFF1F242E);
-  static const _muted = Color(0xFF737A85);
   static const _blue = Color(0xFF2F6FED);
   static const _handle = Color(0xFFD9DBE0);
   static const _chipBg = Color(0xFFF5F7FA);
@@ -79,25 +78,16 @@ class _ReadingFontSizeSheetState extends State<_ReadingFontSizeSheet> {
                 ),
               ),
               const SizedBox(height: 12),
-              Row(
-                children: [
-                  const Text(
-                    '文字大小',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w700,
-                      color: _text,
-                    ),
+              const Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  '文字大小',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                    color: _text,
                   ),
-                  const Spacer(),
-                  GestureDetector(
-                    onTap: () => Navigator.pop(context),
-                    child: const Text(
-                      '完成',
-                      style: TextStyle(fontSize: 14, color: _muted),
-                    ),
-                  ),
-                ],
+                ),
               ),
               const SizedBox(height: 20),
               Row(
