@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:super_collection/features/items/item_transcript_page.dart';
+import 'package:super_collection/features/items/reading_font_prefs.dart';
 import 'package:super_collection/features/items/transcript_models.dart';
 
 /// 挂在播放器下方：loading / 失败提示；成功态为可点击预览，跳转文稿页
@@ -8,11 +9,14 @@ class TranscriptSegmentPanel extends StatelessWidget {
     super.key,
     required this.segment,
     this.hidePendingLoading = false,
+    this.fontSize = ReadingFontPrefs.defaultSize,
   });
 
   final TranscriptSegment? segment;
   /// 思维导图触发的自动转写时，进度已在脑图卡片展示，不重复显示 pending UI
   final bool hidePendingLoading;
+  /// 与阅读页正文字号同步（预览与文稿全文）
+  final double fontSize;
 
   static const _text = Color(0xFF1F242E);
   static const _muted = Color(0xFF737A85);
@@ -27,6 +31,7 @@ class TranscriptSegmentPanel extends StatelessWidget {
         builder: (_) => ItemTranscriptPage(
           text: text,
           cues: seg.cues,
+          fontSize: fontSize,
         ),
       ),
     );
@@ -36,6 +41,8 @@ class TranscriptSegmentPanel extends StatelessWidget {
   Widget build(BuildContext context) {
     final seg = segment;
     if (seg == null || seg.status == 'none') return const SizedBox.shrink();
+
+    final previewSize = ReadingFontPrefs.clamp(fontSize);
 
     if (seg.isPending) {
       if (hidePendingLoading) return const SizedBox.shrink();
@@ -146,8 +153,8 @@ class TranscriptSegmentPanel extends StatelessWidget {
                           text,
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            fontSize: 14,
+                          style: TextStyle(
+                            fontSize: previewSize,
                             height: 1.55,
                             color: _transcriptText,
                           ),

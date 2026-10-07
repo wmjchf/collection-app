@@ -1577,6 +1577,7 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
                         TranscriptTargets.segmentVideoUrl,
                       ),
                       hidePendingLoading: _item.isAiAwaitingTranscript,
+                      fontSize: _bodyFontSize,
                     ),
                     const SizedBox(height: 18),
                   ] else if (_showReadingImages) ...[
@@ -1930,6 +1931,7 @@ class _InlineArticleBody extends StatelessWidget {
               ),
               TranscriptSegmentPanel(
                 segment: transcriptSegments[segmentKey],
+                fontSize: fontSize,
               ),
             ],
           ),

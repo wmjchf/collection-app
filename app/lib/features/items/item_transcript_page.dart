@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:super_collection/core/ui/app_subpage_app_bar.dart';
+import 'package:super_collection/features/items/reading_font_prefs.dart';
 import 'package:super_collection/features/items/transcript_display.dart';
 import 'package:super_collection/features/items/transcript_models.dart';
 
@@ -9,24 +10,34 @@ class ItemTranscriptPage extends StatelessWidget {
     super.key,
     required this.text,
     this.cues = const [],
+    this.fontSize = ReadingFontPrefs.defaultSize,
   });
 
   final String text;
   final List<TranscriptCue> cues;
+  final double fontSize;
 
+  static const _text = Color(0xFF1F242E);
   static const _muted = Color(0xFF737A85);
 
   @override
   Widget build(BuildContext context) {
     final body = text.trim();
+    final size = ReadingFontPrefs.clamp(fontSize);
+    final bodyStyle = TextStyle(
+      fontSize: size,
+      height: 1.85,
+      letterSpacing: 0.2,
+      color: _text,
+    );
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: const AppSubpageAppBar(title: '文稿'),
       body: body.isEmpty
-          ? const Center(
+          ? Center(
               child: Text(
                 '暂无文稿',
-                style: TextStyle(fontSize: 15, color: _muted),
+                style: TextStyle(fontSize: size, color: _muted),
               ),
             )
           : ListView(
@@ -35,7 +46,7 @@ class ItemTranscriptPage extends StatelessWidget {
                 TranscriptDisplay(
                   text: body,
                   cues: cues,
-                  bodyStyle: TranscriptDisplay.defaultBodyStyle,
+                  bodyStyle: bodyStyle,
                 ),
               ],
             ),
