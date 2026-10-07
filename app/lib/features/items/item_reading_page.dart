@@ -26,6 +26,8 @@ import 'package:super_collection/features/items/items_repository.dart';
 import 'package:super_collection/features/items/reading_media_controller.dart';
 import 'package:super_collection/features/items/reading_annotation_sheet.dart';
 import 'package:super_collection/features/items/reading_delete_confirm_dialog.dart';
+import 'package:super_collection/features/items/reading_font_prefs.dart';
+import 'package:super_collection/features/items/reading_font_size_sheet.dart';
 import 'package:super_collection/features/items/reading_more_sheet.dart';
 import 'package:super_collection/features/items/reading_content_edit_page.dart';
 import 'package:super_collection/features/items/reading_mindmap_sheet.dart';
@@ -92,6 +94,7 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
   int _summaryPollGen = 0;
   int _mindmapPollGen = 0;
   late final DateTime _openedAt;
+  double _bodyFontSize = ReadingFontPrefs.defaultSize;
 
   /// 停留满此时长才标已读，避免误点进阅读页就从「未读」消失。
   static const _markReadDelay = Duration(seconds: 5);
@@ -101,6 +104,7 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
     super.initState();
     _openedAt = DateTime.now();
     unawaited(_loadPro());
+    unawaited(_loadBodyFontSize());
     final initial = widget.initialItem;
     _item = initial ??
         CollectionItem(
@@ -130,6 +134,35 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
       if (!mounted) return;
       setState(() => _isPro = usage.isPro);
     } catch (_) {}
+  }
+
+  Future<void> _loadBodyFontSize() async {
+    final size = await ReadingFontPrefs.load();
+    if (!mounted) return;
+    if (size == _bodyFontSize) return;
+    setState(() => _bodyFontSize = size);
+  }
+
+  TextStyle get _bodyTextStyle => TextStyle(
+        fontSize: _bodyFontSize,
+        height: 1.85,
+        letterSpacing: 0.2,
+        color: _text,
+      );
+
+  void _onBodyFontSizeChanged(double size) {
+    final next = ReadingFontPrefs.clamp(size);
+    if (next == _bodyFontSize) return;
+    setState(() => _bodyFontSize = next);
+    unawaited(ReadingFontPrefs.save(next));
+  }
+
+  Future<void> _openFontSizeSheet() {
+    return showReadingFontSizeSheet(
+      context,
+      fontSize: _bodyFontSize,
+      onChanged: _onBodyFontSizeChanged,
+    );
   }
 
   @override
@@ -1410,6 +1443,7 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
               onCopyLink: _copyLink,
               onReparse: _reparseItem,
               onDelete: _confirmDelete,
+              onFontSize: _openFontSizeSheet,
             ),
             const Expanded(
               child: Center(child: CircularProgressIndicator()),
@@ -1432,6 +1466,7 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
               onCopyLink: _copyLink,
               onReparse: _reparseItem,
               onDelete: _confirmDelete,
+              onFontSize: _openFontSizeSheet,
             ),
             Expanded(
               child: Center(
@@ -1560,6 +1595,7 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
                     _InlineArticleBody(
                       blocks: _bodyBlocks,
                       plainText: body,
+                      fontSize: _bodyFontSize,
                       annotationRanges: _annotationRanges(body),
                       toolbarAt: _toolbarAt,
                       onTapAnnotation: _openAnnotation,
@@ -1583,6 +1619,7 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
                       onTapAnnotation: _openAnnotation,
                       onBodyTap: _toggleReadingChrome,
                       onSelectionChanged: _onBodySelectionChanged,
+                      textStyle: _bodyTextStyle,
                     ),
                   if (_loadingAnns) ...[
                     const SizedBox(height: 16),
@@ -1622,6 +1659,7 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
                     onReparse: _reparseItem,
                     onDelete: _confirmDelete,
                     onMarkUnread: _markAsUnread,
+                    onFontSize: _openFontSizeSheet,
                   ),
                 ),
               ),
@@ -1779,6 +1817,7 @@ class _InlineArticleBody extends StatelessWidget {
   const _InlineArticleBody({
     required this.blocks,
     required this.plainText,
+    required this.fontSize,
     required this.annotationRanges,
     required this.toolbarAt,
     required this.onTapAnnotation,
@@ -1794,6 +1833,7 @@ class _InlineArticleBody extends StatelessWidget {
 
   final List<ArticleBlock> blocks;
   final String plainText;
+  final double fontSize;
   final List<({int start, int end, ItemAnnotation ann})> annotationRanges;
   final EditableTextContextMenuBuilder Function(int baseOffset) toolbarAt;
   final ValueChanged<ItemAnnotation> onTapAnnotation;
@@ -1809,19 +1849,19 @@ class _InlineArticleBody extends StatelessWidget {
   static const _text = Color(0xFF1F242E);
   static const _highlight = Color(0xFFFFF2C7);
 
-  static const _bodyStyle = TextStyle(
-    fontSize: 15,
-    height: 1.85,
-    letterSpacing: 0.2,
-    color: _text,
-  );
+  TextStyle get _bodyStyle => TextStyle(
+        fontSize: fontSize,
+        height: 1.85,
+        letterSpacing: 0.2,
+        color: _text,
+      );
 
   TextStyle _headingStyle(int level) {
     final size = switch (level) {
-      1 => 21.0,
-      2 => 19.0,
-      3 => 17.0,
-      _ => 16.0,
+      1 => fontSize + 6,
+      2 => fontSize + 4,
+      3 => fontSize + 2,
+      _ => fontSize + 1,
     };
     return TextStyle(
       fontSize: size,
@@ -1992,9 +2032,10 @@ class _InlineArticleBody extends StatelessWidget {
             .where((r) => r.start < r.end)
             .toList();
 
+        final bodyStyle = _bodyStyle;
         final spans = ArticleMarkdown.inlineSpans(
           md,
-          style: _bodyStyle,
+          style: bodyStyle,
           highlights: [
             for (final a in localAnns) (start: a.start, end: a.end),
           ],
@@ -2014,22 +2055,23 @@ class _InlineArticleBody extends StatelessWidget {
           _AnnotatedBodyStack(
             text: visible,
             spans: spans.isEmpty
-                ? [const TextSpan(text: '', style: _bodyStyle)]
+                ? [TextSpan(text: '', style: bodyStyle)]
                 : spans,
             annotations: localAnns,
             contextMenuBuilder: toolbarAt(pos.start),
             onTapAnnotation: onTapAnnotation,
             onBodyTap: onBodyTap,
             onSelectionChanged: onSelectionChanged,
+            textStyle: bodyStyle,
           ),
         );
       }
     }
 
     if (children.isEmpty) {
-      return const Text(
+      return Text(
         '暂无正文',
-        style: TextStyle(fontSize: 15, color: Color(0xFF737A85)),
+        style: TextStyle(fontSize: fontSize, color: const Color(0xFF737A85)),
       );
     }
     return Column(
@@ -2268,6 +2310,7 @@ class _AnnotatedBodyStackState extends State<_AnnotatedBodyStack> {
     if (oldWidget.text != widget.text ||
         oldWidget.annotations.length != widget.annotations.length ||
         oldWidget.spans.length != widget.spans.length ||
+        oldWidget.textStyle?.fontSize != widget.textStyle?.fontSize ||
         !_sameAnnotationIds(oldWidget.annotations, widget.annotations)) {
       _laidOutWidth = null;
       _measureMisses = 0;
@@ -2505,6 +2548,7 @@ class _ReadingTopBar extends StatelessWidget {
     required this.onReparse,
     required this.onDelete,
     required this.onEditContent,
+    required this.onFontSize,
     this.onMarkUnread,
     this.menuEnabled = true,
     this.editEnabled = false,
@@ -2517,6 +2561,7 @@ class _ReadingTopBar extends StatelessWidget {
   final VoidCallback onReparse;
   final VoidCallback onDelete;
   final VoidCallback onEditContent;
+  final VoidCallback onFontSize;
   final VoidCallback? onMarkUnread;
   final bool menuEnabled;
   final bool editEnabled;
@@ -2551,6 +2596,19 @@ class _ReadingTopBar extends StatelessWidget {
                   ),
                 ),
                 const Spacer(),
+                IconButton(
+                  tooltip: '文字大小',
+                  onPressed: onFontSize,
+                  icon: const Text(
+                    'Aa',
+                    style: TextStyle(
+                      fontSize: 17,
+                      fontWeight: FontWeight.w700,
+                      color: _text,
+                      height: 1,
+                    ),
+                  ),
+                ),
                 PopupMenuButton<String>(
                   enabled: menuEnabled,
                   tooltip: '更多',
