@@ -1514,7 +1514,9 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
               behavior: HitTestBehavior.translucent,
               child: ListView(
                 controller: _scrollController,
-                physics: const ClampingScrollPhysics(),
+                physics: const BouncingScrollPhysics(
+                  parent: AlwaysScrollableScrollPhysics(),
+                ),
                 // 避免播放器滚出视口后被 Platform View 回收/暂停（尤其播客音频）
                 cacheExtent: mq.size.height * 2,
                 padding: const EdgeInsets.fromLTRB(22, 18, 22, 28),
