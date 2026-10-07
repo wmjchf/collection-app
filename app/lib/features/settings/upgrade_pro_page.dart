@@ -34,8 +34,8 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
   static const _bg = Color(0xFFF7F7FA);
   static const _text = Color(0xFF1F242E);
   static const _muted = Color(0xFF737A85);
-  static const _accent = Color(0xFF2A6B52);
-  static const _accentSoft = Color(0xFFE8F3EE);
+  static const _accent = Color(0xFF2F6FED);
+  static const _accentSoft = Color(0xFFE8F0FF);
   static const _border = Color(0xFFE8EBF0);
 
   final _iap = AppleIapService();
@@ -706,7 +706,7 @@ class _TierProductsSyncHint extends StatelessWidget {
   final VoidCallback? onRetry;
 
   static const _muted = Color(0xFF737A85);
-  static const _accent = Color(0xFF2A6B52);
+  static const _accent = Color(0xFF2F6FED);
 
   @override
   Widget build(BuildContext context) {
@@ -715,9 +715,9 @@ class _TierProductsSyncHint extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
       decoration: BoxDecoration(
-        color: const Color(0xFFF0F4F2),
+        color: const Color(0xFFF0F4FA),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFFD8E4DE)),
+        border: Border.all(color: const Color(0xFFD5DAE8)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -784,9 +784,9 @@ class _MembershipIntro extends StatelessWidget {
             begin: Alignment(-0.85, -0.4),
             end: Alignment(0.9, 1.0),
             colors: [
-              Color(0xFF121F1C),
-              Color(0xFF1A382E),
-              Color(0xFF24473D),
+              Color(0xFF12151A),
+              Color(0xFF1C2A48),
+              Color(0xFF243B6E),
             ],
             stops: [0.0, 0.55, 1.0],
           ),
@@ -802,7 +802,7 @@ class _MembershipIntro extends StatelessWidget {
                 height: 90,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: const Color(0xFF8CD9B8).withValues(alpha: 0.2),
+                  color: const Color(0xFF5B8FF9).withValues(alpha: 0.22),
                 ),
               ),
             ),
@@ -814,7 +814,7 @@ class _MembershipIntro extends StatelessWidget {
                   style: TextStyle(
                     fontSize: 26,
                     fontWeight: FontWeight.w700,
-                    color: Color(0xFFC7EDDB),
+                    color: Color(0xFFE8EEF8),
                     height: 1.2,
                   ),
                 ),
@@ -1097,7 +1097,7 @@ class _SubscribeButton extends StatelessWidget {
           boxShadow: (canTap || busy)
               ? [
                   BoxShadow(
-                    color: const Color(0xFF2A6B52).withValues(alpha: 0.22),
+                    color: const Color(0xFF2F6FED).withValues(alpha: 0.22),
                     blurRadius: 16,
                     offset: const Offset(0, 6),
                   ),
@@ -1254,7 +1254,7 @@ class _SubscriptionLegalFooter extends StatelessWidget {
     const style = TextStyle(fontSize: 12, color: Color(0xFF737A85), height: 1.55);
     const linkStyle = TextStyle(
       fontSize: 12,
-      color: Color(0xFF2A6B52),
+      color: Color(0xFF2F6FED),
       height: 1.55,
     );
     final trial = trialOffer;

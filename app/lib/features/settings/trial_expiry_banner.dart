@@ -141,7 +141,6 @@ class TrialExpiryBannerHost extends StatefulWidget {
 }
 
 class _TrialExpiryBannerHostState extends State<TrialExpiryBannerHost> {
-  final _repo = UsageRepository();
   TrialReminder? _reminder;
 
   @override
@@ -167,7 +166,7 @@ class _TrialExpiryBannerHostState extends State<TrialExpiryBannerHost> {
 
   Future<void> _reload() async {
     try {
-      final usage = await _repo.fetchUsage();
+      final usage = await UsageRefresh.ensure();
       final reminder = usage.trialReminder;
       if (reminder == null) {
         if (mounted) setState(() => _reminder = null);

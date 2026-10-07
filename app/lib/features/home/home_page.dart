@@ -57,7 +57,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   final _repo = HomeRepository();
   final _items = ItemsRepository();
   final _auth = AuthRepository();
-  final _usageRepo = UsageRepository();
   HomeData? _data;
   bool _loading = true;
   bool _pasting = false;
@@ -102,7 +101,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
 
   Future<void> _loadPro() async {
     try {
-      final usage = await _usageRepo.fetchUsage();
+      final usage = await UsageRefresh.ensure();
       if (!mounted) return;
       setState(() => _isPro = usage.isPro);
     } catch (_) {}

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:super_collection/core/network/api_client.dart';
 import 'package:super_collection/features/auth/auth_repository.dart';
@@ -211,7 +213,39 @@ class UsageRefresh {
 
   static final ValueNotifier<int> version = ValueNotifier(0);
 
-  static void bump() => version.value++;
+  static UsageSummary? snapshot;
+  static Future<UsageSummary>? _inflight;
+  static int? _userId;
+
+  static void bump() {
+    snapshot = null;
+    version.value++;
+    unawaited(ensure(force: true));
+  }
+
+  /// 进主壳预取；与首页/收藏/抽屉/账户页共用同一请求。
+  static Future<UsageSummary> ensure({bool force = false}) async {
+    final session = await AuthRepository().readSession();
+    final uid = session?.userId;
+    if (uid != _userId) {
+      snapshot = null;
+      _inflight = null;
+      _userId = uid;
+      force = true;
+    }
+    if (!force && snapshot != null) return snapshot!;
+    if (!force && _inflight != null) return _inflight!;
+
+    final future = UsageRepository().fetchUsage();
+    _inflight = future;
+    try {
+      final usage = await future;
+      snapshot = usage;
+      return usage;
+    } finally {
+      if (identical(_inflight, future)) _inflight = null;
+    }
+  }
 }
 
 class TierProductIds {

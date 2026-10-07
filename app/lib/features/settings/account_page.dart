@@ -21,7 +21,6 @@ class _AccountPageState extends State<AccountPage> with ScreenDwellMixin {
   static const _blue = Color(0xFF2F6FED);
 
   final _auth = AuthRepository();
-  final _usageRepo = UsageRepository();
 
   AuthSession? _session;
   UsageSummary? _usage;
@@ -35,6 +34,11 @@ class _AccountPageState extends State<AccountPage> with ScreenDwellMixin {
   void initState() {
     super.initState();
     UsageRefresh.version.addListener(_onUsageRefresh);
+    final cached = UsageRefresh.snapshot;
+    if (cached != null) {
+      _usage = cached;
+      _loading = false;
+    }
     _load();
   }
 
@@ -51,7 +55,7 @@ class _AccountPageState extends State<AccountPage> with ScreenDwellMixin {
     UsageSummary? usage;
     TrialReminder? trial;
     try {
-      usage = await _usageRepo.fetchUsage();
+      usage = await UsageRefresh.ensure();
       final rem = usage.trialReminder;
       if (rem != null &&
           !(await TrialExpiryBanner.isDismissed(rem.endsAt))) {

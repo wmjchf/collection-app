@@ -16,7 +16,6 @@ class _AccountDrawerState extends State<AccountDrawer> {
   static const _bg = Color(0xFFF7F7FA);
   static const _text = Color(0xFF1F242E);
 
-  final _usageRepo = UsageRepository();
   bool _isPaid = false;
   bool _canUpgradeToEmperor = false;
   String _planLabel = '普通';
@@ -26,6 +25,10 @@ class _AccountDrawerState extends State<AccountDrawer> {
   void initState() {
     super.initState();
     UsageRefresh.version.addListener(_onUsageRefresh);
+    final cached = UsageRefresh.snapshot;
+    if (cached != null) {
+      _apply(cached);
+    }
     _loadPlan();
   }
 
@@ -37,16 +40,18 @@ class _AccountDrawerState extends State<AccountDrawer> {
 
   void _onUsageRefresh() => _loadPlan();
 
+  void _apply(UsageSummary usage) {
+    _isPaid = usage.isPrince;
+    _canUpgradeToEmperor = usage.isPrince && !usage.isEmperor;
+    _planLabel = usage.displayPlan;
+    _planLoaded = true;
+  }
+
   Future<void> _loadPlan() async {
     try {
-      final usage = await _usageRepo.fetchUsage();
+      final usage = await UsageRefresh.ensure();
       if (!mounted) return;
-      setState(() {
-        _isPaid = usage.isPrince;
-        _canUpgradeToEmperor = usage.isPrince && !usage.isEmperor;
-        _planLabel = usage.displayPlan;
-        _planLoaded = true;
-      });
+      setState(() => _apply(usage));
     } catch (_) {
       if (!mounted) return;
       setState(() {
@@ -129,6 +134,7 @@ class _AccountDrawerState extends State<AccountDrawer> {
   }
 }
 
+/// 身份卡：方案 + 订阅入口 + 账户和用量，同一白底，无分割线、无双色底。
 class _AccountPlanCard extends StatelessWidget {
   const _AccountPlanCard({
     required this.loaded,
@@ -152,7 +158,24 @@ class _AccountPlanCard extends StatelessWidget {
   static const _muted = Color(0xFF737A85);
   static const _blue = Color(0xFF2F6FED);
   static const _blueSoft = Color(0xFFE8F0FF);
-  static const _divider = Color(0xFFECEEF2);
+
+  String get _subtitle {
+    if (!isPaid) return '免费额度 · 收藏有上限';
+    if (canUpgradeToEmperor) return '可升级帝王 · 脑图与转写';
+    return '当前方案 · 会员权益已生效';
+  }
+
+  VoidCallback? get _planAction {
+    if (!isPaid) return onUpgrade;
+    if (canUpgradeToEmperor) return onUpgradeToEmperor;
+    return null;
+  }
+
+  String? get _actionLabel {
+    if (!isPaid) return '订阅会员';
+    if (canUpgradeToEmperor) return '升级帝王';
+    return null;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -163,12 +186,9 @@ class _AccountPlanCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(12),
       ),
       clipBehavior: Clip.antiAlias,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          if (!loaded)
-            const SizedBox(
-              height: 64,
+      child: !loaded
+          ? const SizedBox(
+              height: 96,
               child: Center(
                 child: SizedBox(
                   width: 18,
@@ -177,166 +197,111 @@ class _AccountPlanCard extends StatelessWidget {
                 ),
               ),
             )
-          else if (isPaid)
-            InkWell(
-              onTap: canUpgradeToEmperor ? onUpgradeToEmperor : null,
-              child: ColoredBox(
-                color: _blueSoft,
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 14, 12, 14),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              planLabel,
-                              style: const TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.w700,
-                                color: _blue,
-                                height: 1.2,
-                              ),
-                            ),
-                            const SizedBox(height: 2),
-                            Text(
-                              canUpgradeToEmperor
-                                  ? '可升级帝王 · 脑图与转写'
-                                  : '当前方案 · 会员权益已生效',
-                              style: const TextStyle(
-                                fontSize: 12,
-                                color: _muted,
-                                height: 1.3,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      if (canUpgradeToEmperor)
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                InkWell(
+                  onTap: _planAction,
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 16, 12, 12),
+                    child: Row(
+                      children: [
                         Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 10,
-                            vertical: 6,
+                          width: 40,
+                          height: 40,
+                          decoration: const BoxDecoration(
+                            color: _blueSoft,
+                            shape: BoxShape.circle,
                           ),
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(20),
+                          child: Icon(
+                            isPaid
+                                ? Icons.workspace_premium_rounded
+                                : Icons.person_rounded,
+                            size: 22,
+                            color: _blue,
                           ),
-                          child: const Row(
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                isPaid ? planLabel : '普通',
+                                style: TextStyle(
+                                  fontSize: 17,
+                                  fontWeight: FontWeight.w700,
+                                  color: isPaid ? _blue : _text,
+                                  height: 1.2,
+                                ),
+                              ),
+                              const SizedBox(height: 3),
+                              Text(
+                                _subtitle,
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  color: _muted,
+                                  height: 1.3,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        if (_actionLabel != null)
+                          Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
                               Text(
-                                '升级帝王',
-                                style: TextStyle(
+                                _actionLabel!,
+                                style: const TextStyle(
                                   fontSize: 13,
                                   fontWeight: FontWeight.w600,
                                   color: _blue,
                                 ),
                               ),
-                              SizedBox(width: 2),
-                              Icon(Icons.chevron_right, size: 22, color: _blue),
+                              const Icon(
+                                Icons.chevron_right,
+                                size: 20,
+                                color: _blue,
+                              ),
                             ],
+                          )
+                        else
+                          const Icon(
+                            Icons.verified_rounded,
+                            color: _blue,
+                            size: 22,
                           ),
-                        )
-                      else
-                        const Icon(Icons.verified_rounded, color: _blue, size: 24),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
-              ),
-            )
-          else
-            InkWell(
-              onTap: onUpgrade,
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 14, 12, 14),
-                child: Row(
-                  children: [
-                    const Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            '普通',
+                InkWell(
+                  onTap: onOpenAccount,
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 4, 12, 16),
+                    child: Row(
+                      children: [
+                        const Expanded(
+                          child: Text(
+                            '账户和用量',
                             style: TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.w700,
+                              fontSize: 15,
                               color: _text,
-                              height: 1.2,
                             ),
                           ),
-                          SizedBox(height: 2),
-                          Text(
-                            '免费额度 · 收藏有上限',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: _muted,
-                              height: 1.3,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 6,
-                      ),
-                      decoration: BoxDecoration(
-                        color: _blueSoft,
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      child: const Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(
-                            '订阅会员',
-                            style: TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w600,
-                              color: _blue,
-                            ),
-                          ),
-                          SizedBox(width: 2),
-                          Icon(Icons.chevron_right, size: 22, color: _blue),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          if (loaded) ...[
-            const Divider(height: 1, thickness: 1, color: _divider),
-            InkWell(
-              onTap: onOpenAccount,
-              child: Padding(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-                child: Row(
-                  children: [
-                    const Expanded(
-                      child: Text(
-                        '账户和用量',
-                        style: TextStyle(
-                          fontSize: 15,
-                          color: _text,
                         ),
-                      ),
+                        Icon(
+                          Icons.chevron_right,
+                          size: 22,
+                          color: _muted.withValues(alpha: 0.9),
+                        ),
+                      ],
                     ),
-                    Icon(
-                      Icons.chevron_right,
-                      size: 22,
-                      color: _muted.withValues(alpha: 0.9),
-                    ),
-                  ],
+                  ),
                 ),
-              ),
+              ],
             ),
-          ],
-        ],
-      ),
     );
   }
 }

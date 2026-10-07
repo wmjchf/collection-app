@@ -14,6 +14,7 @@ import 'package:super_collection/features/home/home_page.dart';
 import 'package:super_collection/features/search/search_page.dart';
 import 'package:super_collection/features/settings/account_drawer.dart';
 import 'package:super_collection/features/settings/app_update_prompt.dart';
+import 'package:super_collection/features/settings/usage_repository.dart';
 import 'package:super_collection/features/shell/app_bottom_nav_bar.dart';
 import 'package:super_collection/features/shortcuts/shortcut_inbound.dart';
 
@@ -74,6 +75,7 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
     WidgetsBinding.instance.addObserver(this);
     Analytics.instance.appOpen(coldStart: true);
     _startTabDwell(_index);
+    unawaited(UsageRefresh.ensure());
     void bumpLists() {
       if (!mounted) return;
       setState(() => _homeRefreshTick++);

@@ -48,7 +48,6 @@ class _CollectionPageState extends State<CollectionPage> {
   final _tagsRepo = TagsRepository();
   final _tagModulesRepo = TagModulesRepository();
   final _systemFiltersRepo = SystemFiltersRepository();
-  final _usageRepo = UsageRepository();
   final _scrollController = ScrollController();
   final _tagsHeaderKey = GlobalKey();
 
@@ -83,7 +82,7 @@ class _CollectionPageState extends State<CollectionPage> {
 
   Future<void> _loadPro() async {
     try {
-      final usage = await _usageRepo.fetchUsage();
+      final usage = await UsageRefresh.ensure();
       if (!mounted) return;
       setState(() => _isPro = usage.isPro);
     } catch (_) {}
