@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:super_collection/core/theme/app_colors.dart';
 
 /// 顶栏用户入口（打开账户抽屉）
 class UserAvatarButton extends StatelessWidget {
@@ -10,9 +9,11 @@ class UserAvatarButton extends StatelessWidget {
 
   final VoidCallback onPressed;
 
+  static const _bg = Color(0xFFE8EEF5);
+  static const _icon = Color(0xFF5B6575);
+
   @override
   Widget build(BuildContext context) {
-    final colors = AppColors.of(context);
     return IconButton(
       tooltip: '账户',
       padding: EdgeInsets.zero,
@@ -21,18 +22,15 @@ class UserAvatarButton extends StatelessWidget {
       icon: Container(
         width: 32,
         height: 32,
-        decoration: BoxDecoration(
-          color: Color.alphaBlend(
-            colors.ink.withValues(alpha: 0.08),
-            colors.card,
-          ),
+        decoration: const BoxDecoration(
+          color: _bg,
           shape: BoxShape.circle,
         ),
         alignment: Alignment.center,
-        child: Icon(
+        child: const Icon(
           Icons.person_rounded,
           size: 22,
-          color: colors.muted,
+          color: _icon,
         ),
       ),
     );

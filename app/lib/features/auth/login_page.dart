@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:super_collection/core/config/app_brand.dart';
-import 'package:super_collection/core/theme/app_colors.dart';
 import 'package:super_collection/core/network/api_client.dart';
 import 'package:super_collection/core/ui/app_toast.dart';
 import 'package:super_collection/features/auth/auth_repository.dart';
@@ -22,7 +21,13 @@ class LoginPage extends StatefulWidget {
 }
 
 class _LoginPageState extends State<LoginPage> {
+  static const _bg = Color(0xFFF7F7FA);
+  static const _text = Color(0xFF1F242E);
+  static const _muted = Color(0xFF737A85);
+  static const _placeholder = Color(0xFFB2B8BF);
+  static const _border = Color(0xFFD1D6DE);
   static const _blue = Color(0xFF2F6FED);
+  static const _blueSoft = Color(0xFFE8F0FF);
 
   late final AuthRepository _auth =
       widget.authRepository ?? AuthRepository();
@@ -129,78 +134,76 @@ class _LoginPageState extends State<LoginPage> {
     }
   }
 
-  InputDecoration _fieldDecoration(BuildContext context, String hint) {
-    final colors = AppColors.of(context);
+  InputDecoration _fieldDecoration(String hint) {
     return InputDecoration(
       hintText: hint,
-      hintStyle: TextStyle(color: colors.placeholder, fontSize: 16),
+      hintStyle: const TextStyle(color: _placeholder, fontSize: 16),
       filled: true,
-      fillColor: colors.card,
+      fillColor: Colors.white,
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
       enabledBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
-        borderSide: BorderSide(color: colors.hairline),
+        borderSide: const BorderSide(color: _border),
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
-        borderSide: BorderSide(color: colors.brand, width: 1.5),
+        borderSide: const BorderSide(color: _blue, width: 1.5),
       ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    final colors = AppColors.of(context);
     final canSend = !_sending && _countdown == 0;
 
     return Scaffold(
-      backgroundColor: colors.pageBg,
+      backgroundColor: _bg,
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.fromLTRB(24, 48, 24, 24),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Text(
+              const Text(
                 AppBrand.name,
                 style: TextStyle(
                   fontSize: 32,
                   fontWeight: FontWeight.w700,
-                  color: colors.ink,
+                  color: _text,
                 ),
               ),
               const SizedBox(height: 16),
-              Text(
+              const Text(
                 '手机号验证码登录',
-                style: TextStyle(fontSize: 16, color: colors.muted),
+                style: TextStyle(fontSize: 16, color: _muted),
               ),
               const SizedBox(height: 32),
-              Text(
+              const Text(
                 '手机号',
                 style: TextStyle(
                   fontSize: 13,
                   fontWeight: FontWeight.w500,
-                  color: colors.muted,
+                  color: _muted,
                 ),
               ),
               const SizedBox(height: 8),
               TextField(
                 controller: _phoneController,
                 keyboardType: TextInputType.phone,
-                style: TextStyle(fontSize: 16, color: colors.ink),
+                style: const TextStyle(fontSize: 16, color: _text),
                 inputFormatters: [
                   FilteringTextInputFormatter.digitsOnly,
                   LengthLimitingTextInputFormatter(11),
                 ],
-                decoration: _fieldDecoration(context, '请输入手机号'),
+                decoration: _fieldDecoration('请输入手机号'),
               ),
               const SizedBox(height: 16),
-              Text(
+              const Text(
                 '验证码',
                 style: TextStyle(
                   fontSize: 13,
                   fontWeight: FontWeight.w500,
-                  color: colors.muted,
+                  color: _muted,
                 ),
               ),
               const SizedBox(height: 8),
@@ -211,12 +214,12 @@ class _LoginPageState extends State<LoginPage> {
                     child: TextField(
                       controller: _codeController,
                       keyboardType: TextInputType.number,
-                      style: TextStyle(fontSize: 16, color: colors.ink),
+                      style: const TextStyle(fontSize: 16, color: _text),
                       inputFormatters: [
                         FilteringTextInputFormatter.digitsOnly,
                         LengthLimitingTextInputFormatter(6),
                       ],
-                      decoration: _fieldDecoration(context, '请输入验证码'),
+                      decoration: _fieldDecoration('请输入验证码'),
                     ),
                   ),
                   const SizedBox(width: 12),
@@ -226,12 +229,12 @@ class _LoginPageState extends State<LoginPage> {
                     child: TextButton(
                       onPressed: canSend ? _onSendCode : null,
                       style: TextButton.styleFrom(
-                        backgroundColor: colors.brandSoft,
-                        disabledBackgroundColor: colors.brandSoft.withValues(
+                        backgroundColor: _blueSoft,
+                        disabledBackgroundColor: _blueSoft.withValues(
                           alpha: 0.6,
                         ),
-                        foregroundColor: colors.brand,
-                        disabledForegroundColor: colors.brand.withValues(alpha: 0.5),
+                        foregroundColor: _blue,
+                        disabledForegroundColor: _blue.withValues(alpha: 0.5),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(12),
                         ),
@@ -258,13 +261,13 @@ class _LoginPageState extends State<LoginPage> {
                     child: Checkbox(
                       value: _agreed,
                       onChanged: (v) => setState(() => _agreed = v ?? false),
-                      activeColor: colors.brand,
+                      activeColor: _blue,
                       materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                       visualDensity: const VisualDensity(
                         horizontal: -4,
                         vertical: -4,
                       ),
-                      side: BorderSide(color: colors.hairline, width: 1.5),
+                      side: const BorderSide(color: _border, width: 1.5),
                     ),
                   ),
                   const SizedBox(width: 8),
@@ -272,11 +275,11 @@ class _LoginPageState extends State<LoginPage> {
                     child: Wrap(
                       crossAxisAlignment: WrapCrossAlignment.center,
                       children: [
-                        Text(
+                        const Text(
                           '我已阅读并同意',
                           style: TextStyle(
                             fontSize: 12,
-                            color: colors.muted,
+                            color: _muted,
                             height: 1.2,
                           ),
                         ),
@@ -300,11 +303,11 @@ class _LoginPageState extends State<LoginPage> {
                             ),
                           ),
                         ),
-                        Text(
+                        const Text(
                           '与',
                           style: TextStyle(
                             fontSize: 12,
-                            color: colors.muted,
+                            color: _muted,
                             height: 1.2,
                           ),
                         ),

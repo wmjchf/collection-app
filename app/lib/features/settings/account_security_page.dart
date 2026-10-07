@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:super_collection/core/theme/app_colors.dart';
 import 'package:super_collection/core/analytics/screen_dwell_tracker.dart';
 import 'package:super_collection/core/network/api_client.dart';
 import 'package:super_collection/core/ui/app_toast.dart';
@@ -19,6 +18,10 @@ class AccountSecurityPage extends StatefulWidget {
 
 class _AccountSecurityPageState extends State<AccountSecurityPage>
     with ScreenDwellMixin {
+  static const _bg = Color(0xFFF7F7FA);
+  static const _text = Color(0xFF1F242E);
+  static const _muted = Color(0xFF737A85);
+  static const _danger = Color(0xFFD14343);
 
   final _auth = AuthRepository();
   bool _deleting = false;
@@ -57,41 +60,43 @@ class _AccountSecurityPageState extends State<AccountSecurityPage>
 
   @override
   Widget build(BuildContext context) {
-    final colors = AppColors.of(context);
     return Scaffold(
-      backgroundColor: colors.pageBg,
+      backgroundColor: _bg,
       appBar: AppBar(
+        backgroundColor: Colors.white,
+        surfaceTintColor: Colors.transparent,
+        elevation: 0,
         centerTitle: true,
         leadingWidth: 80,
         leading: TextButton.icon(
           onPressed: () => Navigator.of(context).maybePop(),
           style: TextButton.styleFrom(
-            foregroundColor: colors.ink,
+            foregroundColor: _text,
             padding: const EdgeInsets.only(left: 8),
           ),
           icon: const Icon(Icons.chevron_left, size: 30),
           label: const Text('返回', style: TextStyle(fontSize: 15)),
         ),
-        title: Text(
+        title: const Text(
           '账号安全',
           style: TextStyle(
             fontSize: 17,
             fontWeight: FontWeight.w700,
-            color: colors.ink,
+            color: _text,
           ),
         ),
       ),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 20, 16, 40),
         children: [
-          Padding(
-            padding: const EdgeInsets.only(left: 4, bottom: 8),
+          const Padding(
+            padding: EdgeInsets.only(left: 4, bottom: 8),
             child: Text(
               '危险操作',
               style: TextStyle(
                 fontSize: 13,
                 fontWeight: FontWeight.w500,
-                color: colors.muted,
+                color: _muted,
               ),
             ),
           ),
@@ -99,12 +104,12 @@ class _AccountSecurityPageState extends State<AccountSecurityPage>
             width: double.infinity,
             padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
             decoration: BoxDecoration(
-              color: colors.card,
+              color: Colors.white,
               borderRadius: BorderRadius.circular(12),
             ),
-            child: Text(
+            child: const Text(
               '永久删除当前账号及全部数据（收藏、标注、转写与 AI 相关数据等），且无法恢复。同一手机号之后可重新注册。\n\n若仅换设备使用，返回上一页选择「退出账户」即可。',
-              style: TextStyle(fontSize: 14, color: colors.muted, height: 1.65),
+              style: TextStyle(fontSize: 14, color: _muted, height: 1.65),
             ),
           ),
           const SizedBox(height: 16),
@@ -114,9 +119,9 @@ class _AccountSecurityPageState extends State<AccountSecurityPage>
             child: TextButton(
               onPressed: _deleting ? null : _deleteAccount,
               style: TextButton.styleFrom(
-                backgroundColor: colors.card,
-                foregroundColor: colors.danger,
-                disabledForegroundColor: colors.danger.withValues(alpha: 0.5),
+                backgroundColor: Colors.white,
+                foregroundColor: _danger,
+                disabledForegroundColor: _danger.withValues(alpha: 0.5),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12),
                 ),

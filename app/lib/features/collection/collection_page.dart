@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:super_collection/core/network/api_client.dart';
-import 'package:super_collection/core/theme/app_colors.dart';
 import 'package:super_collection/core/ui/app_confirm_dialog.dart';
 import 'package:super_collection/core/ui/app_toast.dart';
 import 'package:super_collection/core/ui/pro_copy.dart';
@@ -18,7 +17,6 @@ import 'package:super_collection/features/collection/tag_modules_repository.dart
 import 'package:super_collection/features/collection/tags_repository.dart';
 import 'package:super_collection/features/settings/quota_gate.dart';
 import 'package:super_collection/features/settings/usage_repository.dart';
-import 'package:super_collection/features/shell/theme_toggle_button.dart';
 import 'package:super_collection/features/shell/user_avatar_button.dart';
 
 /// 我的收藏（系统分类 + 标签）
@@ -44,10 +42,13 @@ class CollectionPage extends StatefulWidget {
 }
 
 class _CollectionPageState extends State<CollectionPage> {
+  static const _bg = Color(0xFFF7F7FA);
+  static const _text = Color(0xFF1F242E);
 
   final _tagsRepo = TagsRepository();
   final _tagModulesRepo = TagModulesRepository();
   final _systemFiltersRepo = SystemFiltersRepository();
+  final _usageRepo = UsageRepository();
   final _scrollController = ScrollController();
   final _tagsHeaderKey = GlobalKey();
 
@@ -82,7 +83,7 @@ class _CollectionPageState extends State<CollectionPage> {
 
   Future<void> _loadPro() async {
     try {
-      final usage = await UsageRefresh.ensure();
+      final usage = await _usageRepo.fetchUsage();
       if (!mounted) return;
       setState(() => _isPro = usage.isPro);
     } catch (_) {}
@@ -340,6 +341,10 @@ class _CollectionPageState extends State<CollectionPage> {
   PreferredSizeWidget _buildAppBar() {
     // 头像放 leading，与阅读页同槽位，避免 Tab 切换时左右错位
     return AppBar(
+      backgroundColor: Colors.white,
+      surfaceTintColor: Colors.transparent,
+      elevation: 0,
+      scrolledUnderElevation: 0,
       toolbarHeight: 56,
       titleSpacing: 0,
       actionsPadding: EdgeInsets.zero,
@@ -393,12 +398,12 @@ class _CollectionPageState extends State<CollectionPage> {
               opacity: t,
               child: Transform.translate(
                 offset: Offset(0, 10 * (1 - t)),
-                child: Text(
+                child: const Text(
                   '归类标签',
                   style: TextStyle(
                     fontSize: 17,
                     fontWeight: FontWeight.w700,
-                    color: AppColors.of(context).ink,
+                    color: _text,
                   ),
                 ),
               ),
@@ -411,34 +416,18 @@ class _CollectionPageState extends State<CollectionPage> {
           animation: _tagsFocusT,
           builder: (context, _) {
             final t = Curves.easeInOutCubic.transform(_tagsFocusT.value);
-            return SizedBox(
-              width: 48,
-              child: Stack(
-                alignment: Alignment.center,
-                children: [
-                  IgnorePointer(
-                    ignoring: t > 0.45,
-                    child: Opacity(
-                      opacity: (1 - t).clamp(0.0, 1.0),
-                      child: const ThemeToggleButton(),
-                    ),
-                  ),
-                  IgnorePointer(
-                    ignoring: t < 0.45,
-                    child: Opacity(
-                      opacity: t,
-                      child: CollectionCreateModuleButton(
-                        onPressed: _createModule,
-                        iconPadding: const EdgeInsets.symmetric(horizontal: 8),
-                      ),
-                    ),
-                  ),
-                ],
+            return IgnorePointer(
+              ignoring: t < 0.45,
+              child: Opacity(
+                opacity: t,
+                child: CollectionCreateModuleButton(
+                  onPressed: _createModule,
+                  iconPadding: const EdgeInsets.symmetric(horizontal: 12),
+                ),
               ),
             );
           },
         ),
-        const SizedBox(width: 8),
       ],
     );
   }
@@ -446,7 +435,7 @@ class _CollectionPageState extends State<CollectionPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.of(context).pageBg,
+      backgroundColor: _bg,
       appBar: _buildAppBar(),
       body: RefreshIndicator(
         onRefresh: _load,
@@ -590,22 +579,24 @@ class _EntityGroup extends StatelessWidget {
   final List<_EntityEntry> entries;
 
   static const _panelRadius = 16.0;
+  static const _tileFill = Color(0xFFF4F6F9);
+  static const _ink = Color(0xFF1F242E);
+  static const _muted = Color(0xFF8B929C);
 
   @override
   Widget build(BuildContext context) {
-    final colors = AppColors.of(context);
     if (entries.isEmpty) {
       return Container(
         width: double.infinity,
         padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
-          color: AppColors.of(context).card,
+          color: Colors.white,
           borderRadius: BorderRadius.circular(_panelRadius),
         ),
-        child: Text(
+        child: const Text(
           '暂无内容',
           textAlign: TextAlign.center,
-          style: TextStyle(fontSize: 14, color: colors.muted),
+          style: TextStyle(fontSize: 14, color: _CollectionColors.muted),
         ),
       );
     }
@@ -614,7 +605,7 @@ class _EntityGroup extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
       decoration: BoxDecoration(
-          color: AppColors.of(context).card,
+        color: Colors.white,
         borderRadius: BorderRadius.circular(_panelRadius),
       ),
       child: LayoutBuilder(
@@ -633,9 +624,9 @@ class _EntityGroup extends StatelessWidget {
                     countLabel: e.countLabel,
                     icon: e.icon,
                     onTap: e.onTap,
-                    fill: colors.inputBg,
-                    ink: colors.ink,
-                    muted: colors.muted,
+                    fill: _tileFill,
+                    ink: _ink,
+                    muted: _muted,
                   ),
                 ),
             ],
@@ -743,14 +734,14 @@ class _ErrorCard extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-          color: AppColors.of(context).card,
+        color: Colors.white,
         borderRadius: BorderRadius.circular(16),
       ),
       child: Column(
         children: [
           Text(
             message,
-            style: TextStyle(fontSize: 14, color: AppColors.of(context).muted),
+            style: const TextStyle(fontSize: 14, color: _CollectionColors.muted),
           ),
           const SizedBox(height: 10),
           TextButton(onPressed: onRetry, child: const Text('重试')),
@@ -758,4 +749,8 @@ class _ErrorCard extends StatelessWidget {
       ),
     );
   }
+}
+
+abstract final class _CollectionColors {
+  static const muted = Color(0xFF737A85);
 }

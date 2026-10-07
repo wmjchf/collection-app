@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:super_collection/core/theme/app_colors.dart';
 import 'package:super_collection/core/analytics/screen_dwell_tracker.dart';
 import 'package:super_collection/core/config/app_brand.dart';
 import 'package:super_collection/features/items/item_image_gallery.dart';
@@ -12,34 +11,42 @@ import 'package:super_collection/features/shortcuts/shortcut_install.dart';
 class ShortcutsHelpPage extends StatelessWidget {
   const ShortcutsHelpPage({super.key});
 
+  static const _bg = Color(0xFFF7F7FA);
+  static const _text = Color(0xFF1F242E);
+  static const _muted = Color(0xFF737A85);
+  static const _blue = Color(0xFF2F6FED);
+  static const _tint = Color(0xFFEAF1FE);
+
   @override
   Widget build(BuildContext context) {
-    final colors = AppColors.of(context);
     final hasOneTap = ShortcutConfig.installIcloudUrl.trim().isNotEmpty;
     final name = AppBrand.shortcutInstallName;
 
     return ScreenDwellScope(
       screen: AnalyticsScreens.shortcutsHelp,
       child: Scaffold(
-        backgroundColor: colors.pageBg,
+        backgroundColor: _bg,
         appBar: AppBar(
+          backgroundColor: Colors.white,
+          surfaceTintColor: Colors.transparent,
+          elevation: 0,
           centerTitle: true,
           leadingWidth: 80,
           leading: TextButton.icon(
             onPressed: () => Navigator.of(context).maybePop(),
             style: TextButton.styleFrom(
-              foregroundColor: colors.ink,
+              foregroundColor: _text,
               padding: const EdgeInsets.only(left: 8),
             ),
             icon: const Icon(Icons.chevron_left, size: 30),
             label: const Text('返回', style: TextStyle(fontSize: 15)),
           ),
-          title: Text(
+          title: const Text(
             '快捷指令',
             style: TextStyle(
               fontSize: 17,
               fontWeight: FontWeight.w700,
-              color: colors.ink,
+              color: _text,
             ),
           ),
         ),
@@ -68,7 +75,7 @@ class ShortcutsHelpPage extends StatelessWidget {
             const SizedBox(height: 24),
             Text(
               '装好后，主屏幕、控制中心、轻点背面三种入口互不影响，任选其一或一起开。',
-              style: TextStyle(fontSize: 14, color: colors.muted, height: 1.5),
+              style: const TextStyle(fontSize: 14, color: _muted, height: 1.5),
             ),
             const SizedBox(height: 24),
             const _SectionHeading('加到主屏幕'),
@@ -123,10 +130,10 @@ class ShortcutsHelpPage extends StatelessWidget {
             const SizedBox(height: 10),
             _UsageTip('之后：复制链接 → 在手机背面连点两下。'),
             const SizedBox(height: 20),
-            Text(
+            const Text(
               '快捷指令设置指引 · 功能指引',
               textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 12, color: colors.muted),
+              style: TextStyle(fontSize: 12, color: _muted),
             ),
           ],
         ),
@@ -145,10 +152,10 @@ class _SectionHeading extends StatelessWidget {
   Widget build(BuildContext context) {
     return Text(
       text,
-      style: TextStyle(
+      style: const TextStyle(
         fontSize: 13,
         fontWeight: FontWeight.w600,
-        color: AppColors.of(context).muted,
+        color: ShortcutsHelpPage._muted,
       ),
     );
   }
@@ -161,12 +168,11 @@ class _InstallCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = AppColors.of(context);
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: colors.card,
+        color: Colors.white,
         borderRadius: BorderRadius.circular(14),
       ),
       child: Column(
@@ -177,19 +183,19 @@ class _InstallCard extends StatelessWidget {
                 ? '复制链接后，通过快捷指令一键保存到 ${AppBrand.name}。'
                 '只需安装一次，之后任选下面一种方式触发即可。'
                 : '预置安装链接配置后，点下方按钮即可一键添加，无需自己搜索拼接。',
-            style: TextStyle(
+            style: const TextStyle(
               fontSize: 15,
-              color: colors.ink,
+              color: ShortcutsHelpPage._text,
               height: 1.55,
             ),
           ),
           const SizedBox(height: 16),
-          Text(
+          const Text(
             '只需一次，点击按钮添加快捷指令',
             style: TextStyle(
               fontSize: 13,
               fontWeight: FontWeight.w600,
-              color: colors.brand,
+              color: ShortcutsHelpPage._blue,
             ),
           ),
           const SizedBox(height: 10),
@@ -199,8 +205,8 @@ class _InstallCard extends StatelessWidget {
             child: FilledButton(
               onPressed: hasOneTap ? () => openShortcutInstall(context) : null,
               style: FilledButton.styleFrom(
-                backgroundColor: colors.brand,
-                disabledBackgroundColor: colors.iconMuted,
+                backgroundColor: ShortcutsHelpPage._blue,
+                disabledBackgroundColor: const Color(0xFFB8C4D9),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(14),
                 ),
@@ -217,11 +223,11 @@ class _InstallCard extends StatelessWidget {
           ),
           if (!hasOneTap) ...[
             const SizedBox(height: 8),
-            Text(
+            const Text(
               '开发者尚未配置 iCloud 预置链接，按钮暂不可用。',
               style: TextStyle(
                 fontSize: 12,
-                color: colors.muted,
+                color: ShortcutsHelpPage._muted,
                 height: 1.35,
               ),
             ),
@@ -239,19 +245,18 @@ class _UsageTip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = AppColors.of(context);
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       decoration: BoxDecoration(
-        color: colors.brandSoft,
+        color: ShortcutsHelpPage._tint,
         borderRadius: BorderRadius.circular(12),
       ),
       child: Text(
         text,
-        style: TextStyle(
+        style: const TextStyle(
           fontSize: 13,
-          color: colors.ink,
+          color: ShortcutsHelpPage._text,
           height: 1.45,
         ),
       ),
@@ -266,19 +271,18 @@ class _TextGuideCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = AppColors.of(context);
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: colors.card,
+        color: Colors.white,
         borderRadius: BorderRadius.circular(14),
       ),
       child: Text(
         body,
-        style: TextStyle(
+        style: const TextStyle(
           fontSize: 14,
-          color: colors.muted,
+          color: ShortcutsHelpPage._muted,
           height: 1.5,
         ),
       ),
@@ -301,13 +305,12 @@ class _GuideStepCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = AppColors.of(context);
     final url = urls[figureIndex.clamp(0, urls.length - 1)];
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: colors.card,
+        color: Colors.white,
         borderRadius: BorderRadius.circular(14),
       ),
       child: Row(
@@ -331,18 +334,18 @@ class _GuideStepCard extends StatelessWidget {
                 children: [
                   Text(
                     title,
-                    style: TextStyle(
+                    style: const TextStyle(
                       fontSize: 15,
                       fontWeight: FontWeight.w700,
-                      color: colors.ink,
+                      color: ShortcutsHelpPage._text,
                     ),
                   ),
                   const SizedBox(height: 6),
                   Text(
                     desc,
-                    style: TextStyle(
+                    style: const TextStyle(
                       fontSize: 13,
-                      color: colors.muted,
+                      color: ShortcutsHelpPage._muted,
                       height: 1.45,
                     ),
                   ),

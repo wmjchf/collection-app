@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:super_collection/core/theme/app_colors.dart';
 import 'package:super_collection/core/analytics/screen_dwell_tracker.dart';
 import 'package:super_collection/core/ui/paged_list.dart';
 import 'package:super_collection/features/items/item_reading_page.dart';
@@ -23,6 +22,7 @@ class UsageEventsPage extends StatefulWidget {
 }
 
 class _UsageEventsPageState extends State<UsageEventsPage> with ScreenDwellMixin {
+  static const _bg = Color(0xFFF7F7FA);
   static const _text = Color(0xFF1F242E);
   static const _muted = Color(0xFF737A85);
   static const _divider = Color(0xFFECEEF2);
@@ -150,7 +150,7 @@ class _UsageEventsPageState extends State<UsageEventsPage> with ScreenDwellMixin
     final sectionTitle = ym.isEmpty ? '本月' : '本月（$ym）';
 
     return Scaffold(
-      backgroundColor: AppColors.of(context).pageBg,
+      backgroundColor: _bg,
       appBar: AppBar(
         backgroundColor: Colors.white,
         surfaceTintColor: Colors.transparent,
@@ -242,7 +242,6 @@ class _UsageEventsPageState extends State<UsageEventsPage> with ScreenDwellMixin
                                 ],
                               ),
                             pagedListFooter(
-                              context: context,
                               loadingMore: _loadingMore,
                               hasMore: _hasMore,
                               isEmpty: _items.isEmpty,

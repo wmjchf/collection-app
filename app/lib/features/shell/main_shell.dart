@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:super_collection/core/analytics/analytics.dart';
 import 'package:super_collection/core/analytics/screen_dwell_tracker.dart';
 import 'package:super_collection/core/network/client_page_fetch.dart';
-import 'package:super_collection/core/theme/app_colors.dart';
 import 'package:super_collection/core/network/client_webview_fetch.dart';
 import 'package:super_collection/core/ui/client_fetch_backfill.dart';
 import 'package:super_collection/core/ui/parse_progress_banner.dart';
@@ -15,7 +14,6 @@ import 'package:super_collection/features/home/home_page.dart';
 import 'package:super_collection/features/search/search_page.dart';
 import 'package:super_collection/features/settings/account_drawer.dart';
 import 'package:super_collection/features/settings/app_update_prompt.dart';
-import 'package:super_collection/features/settings/usage_repository.dart';
 import 'package:super_collection/features/shell/app_bottom_nav_bar.dart';
 import 'package:super_collection/features/shortcuts/shortcut_inbound.dart';
 
@@ -76,7 +74,6 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
     WidgetsBinding.instance.addObserver(this);
     Analytics.instance.appOpen(coldStart: true);
     _startTabDwell(_index);
-    unawaited(UsageRefresh.ensure());
     void bumpLists() {
       if (!mounted) return;
       setState(() => _homeRefreshTick++);
@@ -180,7 +177,7 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
         ),
       ),
       bottomNavigationBar: BottomAppBar(
-        color: AppColors.of(context).card,
+        color: Colors.white,
         elevation: 0,
         shadowColor: Colors.black.withValues(alpha: 0.08),
         surfaceTintColor: Colors.transparent,

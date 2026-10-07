@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:super_collection/core/theme/app_colors.dart';
 import 'package:super_collection/core/analytics/analytics.dart';
 import 'package:super_collection/core/network/api_client.dart';
 import 'package:super_collection/core/ui/app_bottom_sheet.dart';
@@ -47,6 +46,12 @@ class _ReadingSummarySheet extends StatefulWidget {
 }
 
 class _ReadingSummarySheetState extends State<_ReadingSummarySheet> {
+  static const _text = Color(0xFF1F242E);
+  static const _muted = Color(0xFF737A85);
+  static const _blue = Color(0xFF2F6FED);
+  static const _handle = Color(0xFFE5E8ED);
+  static const _surface = Color(0xFFF3F6FA);
+
   final _repo = ItemsRepository();
   late CollectionItem _item;
   bool _requesting = false;
@@ -254,7 +259,7 @@ class _ReadingSummarySheetState extends State<_ReadingSummarySheet> {
     final showRegen = _hasResult && !_meta.isPending && !_requesting;
 
     return Material(
-      color: AppColors.of(context).card,
+      color: Colors.white,
       borderRadius: BorderRadius.circular(24),
       clipBehavior: Clip.antiAlias,
       child: ConstrainedBox(
@@ -270,7 +275,7 @@ class _ReadingSummarySheetState extends State<_ReadingSummarySheet> {
                   width: 40,
                   height: 4,
                   decoration: BoxDecoration(
-                    color: AppColors.of(context).iconMuted,
+                    color: _handle,
                     borderRadius: BorderRadius.circular(2),
                   ),
                 ),
@@ -278,13 +283,13 @@ class _ReadingSummarySheetState extends State<_ReadingSummarySheet> {
               const SizedBox(height: 12),
               Row(
                 children: [
-                  Expanded(
+                  const Expanded(
                     child: Text(
                       'AI 解读',
                       style: TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.w700,
-                        color: AppColors.of(context).ink,
+                        color: _text,
                       ),
                     ),
                   ),
@@ -292,21 +297,21 @@ class _ReadingSummarySheetState extends State<_ReadingSummarySheet> {
                     GestureDetector(
                       onTap: () => unawaited(_generate(force: true)),
                       behavior: HitTestBehavior.opaque,
-                      child: Padding(
-                        padding: const EdgeInsets.all(4),
+                      child: const Padding(
+                        padding: EdgeInsets.all(4),
                         child: Icon(
                           Icons.refresh_rounded,
                           size: 20,
-                          color: AppColors.of(context).muted,
+                          color: _muted,
                         ),
                       ),
                     ),
                   if (showRegen) const SizedBox(width: 8),
                   GestureDetector(
                     onTap: () => Navigator.pop(context),
-                    child: Text(
+                    child: const Text(
                       '关闭',
-                      style: TextStyle(fontSize: 14, color: AppColors.of(context).muted),
+                      style: TextStyle(fontSize: 14, color: _muted),
                     ),
                   ),
                 ],
@@ -332,7 +337,7 @@ class _ReadingSummarySheetState extends State<_ReadingSummarySheet> {
         width: double.infinity,
         padding: const EdgeInsets.fromLTRB(16, 18, 16, 18),
         decoration: BoxDecoration(
-          color: AppColors.of(context).inputBg,
+          color: _surface,
           borderRadius: BorderRadius.circular(12),
         ),
         child: Row(
@@ -342,7 +347,7 @@ class _ReadingSummarySheetState extends State<_ReadingSummarySheet> {
               height: 18,
               child: CircularProgressIndicator(
                 strokeWidth: 2,
-                color: AppColors.of(context).brand.withValues(alpha: 0.85),
+                color: _blue.withValues(alpha: 0.85),
               ),
             ),
             const SizedBox(width: 10),
@@ -351,7 +356,7 @@ class _ReadingSummarySheetState extends State<_ReadingSummarySheet> {
                 label,
                 style: TextStyle(
                   fontSize: 14,
-                  color: AppColors.of(context).muted.withValues(alpha: 0.85),
+                  color: _muted.withValues(alpha: 0.85),
                 ),
               ),
             ),
@@ -366,7 +371,7 @@ class _ReadingSummarySheetState extends State<_ReadingSummarySheet> {
         width: double.infinity,
         padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
         decoration: BoxDecoration(
-          color: AppColors.of(context).inputBg,
+          color: _surface,
           borderRadius: BorderRadius.circular(12),
         ),
         child: Column(
@@ -375,21 +380,21 @@ class _ReadingSummarySheetState extends State<_ReadingSummarySheet> {
           children: [
             Text(
               err.isEmpty ? 'AI 解读生成失败' : 'AI 解读失败：$err',
-              style: TextStyle(
+              style: const TextStyle(
                 fontSize: 13,
-                color: AppColors.of(context).muted,
+                color: _muted,
                 height: 1.4,
               ),
             ),
             const SizedBox(height: 10),
             GestureDetector(
               onTap: () => unawaited(_generate(force: true)),
-              child: Text(
+              child: const Text(
                 '重试',
                 style: TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.w600,
-                  color: AppColors.of(context).brand,
+                  color: _blue,
                 ),
               ),
             ),
@@ -403,15 +408,15 @@ class _ReadingSummarySheetState extends State<_ReadingSummarySheet> {
         width: double.infinity,
         padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
         decoration: BoxDecoration(
-          color: AppColors.of(context).inputBg,
+          color: _surface,
           borderRadius: BorderRadius.circular(12),
         ),
         child: SingleChildScrollView(
           child: Text(
             _meta.text!.trim(),
-            style: TextStyle(
+            style: const TextStyle(
               fontSize: 15,
-              color: AppColors.of(context).ink,
+              color: _text,
               height: 1.65,
             ),
           ),
@@ -426,7 +431,7 @@ class _ReadingSummarySheetState extends State<_ReadingSummarySheet> {
         textAlign: TextAlign.center,
         style: TextStyle(
           fontSize: 14,
-          color: AppColors.of(context).muted.withValues(alpha: 0.9),
+          color: _muted.withValues(alpha: 0.9),
           height: 1.5,
         ),
       ),

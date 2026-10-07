@@ -32,4 +32,4 @@ If using a grid: two-column masonry, rounded cards, image fills the card, metada
 
 ## Reading vs brand
 
-Long-form reading follows the app `ThemeMode` (`AppColors.card` paper, `ink` body). Do not restyle branded splash surfaces to match the reading page.
+Long-form reading stays paper-white for legibility. Do not restyle the reading page to dark unless asked. The alignment rule above still applies.

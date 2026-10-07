@@ -8,7 +8,6 @@ abstract final class AnalyticsScreens {
   static const search = 'search';
   static const pro = 'pro';
   static const settings = 'settings';
-  static const usageHelp = 'usage_help';
   static const reading = 'reading';
   static const filterList = 'filter_list';
   static const tagList = 'tag_list';
