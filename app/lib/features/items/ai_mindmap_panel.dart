@@ -2,7 +2,6 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:super_collection/core/theme/app_colors.dart';
 import 'package:super_collection/core/ui/app_toast.dart';
 import 'package:super_collection/features/items/ai_meta_models.dart';
 import 'package:super_collection/features/items/ai_scholar_copy.dart';
@@ -23,6 +22,11 @@ class AiMindmapPanel extends StatefulWidget {
   final String? sourceTitle;
   final VoidCallback? onRetry;
   final bool isPro;
+
+  static const _text = Color(0xFF1F242E);
+  static const _muted = Color(0xFF737A85);
+  static const _brand = Color(0xFF2F6FED);
+  static const _surface = Color(0xFFF3F6FA);
 
   @override
   State<AiMindmapPanel> createState() => _AiMindmapPanelState();
@@ -76,7 +80,6 @@ class _AiMindmapPanelState extends State<AiMindmapPanel> {
 
     if (meta.isFailed) {
       final err = (meta.error ?? '').trim();
-      final colors = AppColors.of(context);
       return Padding(
         padding: const EdgeInsets.only(top: 12),
         child: _AiCard(
@@ -88,15 +91,15 @@ class _AiMindmapPanelState extends State<AiMindmapPanel> {
                 style: TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.w600,
-                  color: colors.ink,
+                  color: AiMindmapPanel._text,
                 ),
               ),
               const SizedBox(height: 8),
               Text(
                 err.isEmpty ? '思维导图生成失败' : '生成失败：$err',
-                style: TextStyle(
+                style: const TextStyle(
                   fontSize: 13,
-                  color: colors.muted,
+                  color: AiMindmapPanel._muted,
                   height: 1.4,
                 ),
               ),
@@ -104,12 +107,12 @@ class _AiMindmapPanelState extends State<AiMindmapPanel> {
                 const SizedBox(height: 10),
                 GestureDetector(
                   onTap: widget.onRetry,
-                  child: Text(
+                  child: const Text(
                     '重试',
                     style: TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.w600,
-                      color: colors.brand,
+                      color: AiMindmapPanel._brand,
                     ),
                   ),
                 ),
@@ -124,7 +127,6 @@ class _AiMindmapPanelState extends State<AiMindmapPanel> {
       return const SizedBox.shrink();
     }
 
-    final colors = AppColors.of(context);
     return Padding(
       padding: const EdgeInsets.only(top: 12),
       child: _AiCard(
@@ -134,12 +136,12 @@ class _AiMindmapPanelState extends State<AiMindmapPanel> {
             Row(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                Text(
+                const Text(
                   '思维导图',
                   style: TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.w600,
-                    color: colors.ink,
+                    color: AiMindmapPanel._text,
                     height: 1,
                   ),
                 ),
@@ -155,7 +157,7 @@ class _AiMindmapPanelState extends State<AiMindmapPanel> {
             ClipRRect(
               borderRadius: BorderRadius.circular(8),
               child: ColoredBox(
-                color: colors.card,
+                color: Colors.white,
                 child: MindmapInteractiveView(
                   root: meta.tree!,
                   collapsed: const {},
@@ -174,12 +176,12 @@ class _AiMindmapPanelState extends State<AiMindmapPanel> {
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  Expanded(
+                  const Expanded(
                     child: Text(
                       '点击思维导图进入全屏；全屏内可折叠节点、双指缩放',
                       style: TextStyle(
                         fontSize: 12,
-                        color: colors.muted,
+                        color: AiMindmapPanel._muted,
                         height: 1.4,
                       ),
                     ),
@@ -420,6 +422,9 @@ class MindmapFullscreenPage extends StatefulWidget {
   final AiMindmapNode root;
   final Set<String>? initialCollapsed;
 
+  static const _text = Color(0xFF1F242E);
+  static const _muted = Color(0xFF737A85);
+
   @override
   State<MindmapFullscreenPage> createState() => _MindmapFullscreenPageState();
 }
@@ -468,24 +473,23 @@ class _MindmapFullscreenPageState extends State<MindmapFullscreenPage> {
 
   @override
   Widget build(BuildContext context) {
-    final colors = AppColors.of(context);
     return Scaffold(
-      backgroundColor: colors.pageBg,
+      backgroundColor: Colors.white,
       appBar: AppBar(
-        backgroundColor: colors.card,
-        surfaceTintColor: Colors.transparent,
+        backgroundColor: Colors.white,
+        surfaceTintColor: Colors.white,
         elevation: 0,
         scrolledUnderElevation: 0,
         leading: IconButton(
-          icon: Icon(Icons.close_rounded, color: colors.ink),
+          icon: const Icon(Icons.close_rounded, color: MindmapFullscreenPage._text),
           onPressed: () => Navigator.of(context).pop(),
         ),
-        title: Text(
+        title: const Text(
           '思维导图',
           style: TextStyle(
             fontSize: 17,
             fontWeight: FontWeight.w600,
-            color: colors.ink,
+            color: MindmapFullscreenPage._text,
           ),
         ),
         centerTitle: true,
@@ -496,7 +500,7 @@ class _MindmapFullscreenPageState extends State<MindmapFullscreenPage> {
               _landscape
                   ? Icons.screen_lock_portrait_rounded
                   : Icons.screen_rotation_alt_rounded,
-              color: colors.muted,
+              color: MindmapFullscreenPage._muted,
             ),
             onPressed: _toggleScreenRotation,
           ),
@@ -506,7 +510,7 @@ class _MindmapFullscreenPageState extends State<MindmapFullscreenPage> {
         children: [
           Expanded(
             child: ColoredBox(
-              color: colors.pageBg,
+              color: Colors.white,
               child: MindmapInteractiveView(
                 root: widget.root,
                 collapsed: _collapsed,
@@ -522,7 +526,7 @@ class _MindmapFullscreenPageState extends State<MindmapFullscreenPage> {
               '点击节点可折叠/展开分支；双指缩放查看',
               style: TextStyle(
                 fontSize: 12,
-                color: colors.muted,
+                color: MindmapFullscreenPage._muted,
                 height: 1.4,
               ),
               textAlign: TextAlign.center,
@@ -547,13 +551,12 @@ class _MindmapCanvas extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final layout = MindmapLayout.compute(root, collapsed);
-    final palette = MindmapPalette.fromAppColors(AppColors.of(context));
     return SizedBox(
       width: layout.width,
       height: layout.height,
       child: CustomPaint(
         size: Size(layout.width, layout.height),
-        painter: MindmapPainter(layout: layout, palette: palette),
+        painter: MindmapPainter(layout: layout),
       ),
     );
   }
@@ -578,14 +581,13 @@ class _MindmapShareButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final brand = AppColors.of(context).brand;
     return GestureDetector(
       onTap: onTap == null ? null : () => onTap!(_shareOriginFor(context)),
       behavior: HitTestBehavior.opaque,
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
         decoration: BoxDecoration(
-          color: brand.withValues(alpha: 0.1),
+          color: AiMindmapPanel._brand.withValues(alpha: 0.1),
           borderRadius: BorderRadius.circular(6),
         ),
         child: Row(
@@ -597,22 +599,22 @@ class _MindmapShareButton extends StatelessWidget {
                 height: 16,
                 child: CircularProgressIndicator(
                   strokeWidth: 2,
-                  color: brand.withValues(alpha: 0.85),
+                  color: AiMindmapPanel._brand.withValues(alpha: 0.85),
                 ),
               )
             else
-              Icon(
+              const Icon(
                 Icons.ios_share_rounded,
                 size: 18,
-                color: brand,
+                color: AiMindmapPanel._brand,
               ),
             const SizedBox(width: 4),
-            Text(
+            const Text(
               '分享',
               style: TextStyle(
                 fontSize: 13,
                 fontWeight: FontWeight.w600,
-                color: brand,
+                color: AiMindmapPanel._brand,
                 height: 1,
               ),
             ),
@@ -647,7 +649,7 @@ class _MindmapActionIcon extends StatelessWidget {
           child: Icon(
             icon,
             size: _iconSize,
-            color: AppColors.of(context).muted,
+            color: AiMindmapPanel._muted,
           ),
         ),
       ),
@@ -666,7 +668,6 @@ class _MindmapLoadingCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = AppColors.of(context);
     final title = awaitTranscript
         ? '正在转写，完成后生成思维导图…'
         : aiScholarGeneratingLabel('思维导图', isPro: isPro);
@@ -677,7 +678,7 @@ class _MindmapLoadingCard extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: colors.inputBg,
+        color: AiMindmapPanel._surface,
         borderRadius: BorderRadius.circular(8),
       ),
       child: Column(
@@ -690,17 +691,17 @@ class _MindmapLoadingCard extends StatelessWidget {
                 height: 18,
                 child: CircularProgressIndicator(
                   strokeWidth: 2,
-                  color: colors.brand.withValues(alpha: 0.85),
+                  color: AiMindmapPanel._brand.withValues(alpha: 0.85),
                 ),
               ),
               const SizedBox(width: 10),
               Expanded(
                 child: Text(
                   title,
-                  style: TextStyle(
+                  style: const TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.w600,
-                    color: colors.muted,
+                    color: AiMindmapPanel._muted,
                   ),
                 ),
               ),
@@ -711,7 +712,7 @@ class _MindmapLoadingCard extends StatelessWidget {
             subtitle,
             style: TextStyle(
               fontSize: 12,
-              color: colors.muted.withValues(alpha: 0.85),
+              color: AiMindmapPanel._muted.withValues(alpha: 0.85),
               height: 1.4,
             ),
           ),
@@ -732,7 +733,7 @@ class _AiCard extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
       decoration: BoxDecoration(
-        color: AppColors.of(context).inputBg,
+        color: AiMindmapPanel._surface,
         borderRadius: BorderRadius.circular(8),
       ),
       child: child,

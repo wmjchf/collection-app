@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:super_collection/core/theme/app_colors.dart';
 import 'package:super_collection/core/analytics/screen_dwell_tracker.dart';
 import 'package:super_collection/core/network/api_client.dart';
 import 'package:super_collection/core/ui/app_subpage_app_bar.dart';
@@ -29,6 +28,7 @@ class SystemFilterListPage extends StatefulWidget {
 
 class _SystemFilterListPageState extends State<SystemFilterListPage>
     with ScreenDwellMixin {
+  static const _bg = Color(0xFFF7F7FA);
   static const _muted = Color(0xFF737A85);
 
   final _repo = SystemFiltersRepository();
@@ -278,10 +278,9 @@ class _SystemFilterListPageState extends State<SystemFilterListPage>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.of(context).pageBg,
+      backgroundColor: _bg,
       appBar: _selecting
           ? itemsBatchSelectAppBar(
-              context: context,
               selectedCount: _selectedIds.length,
               allSelected: _allSelected,
               onCancel: _exitSelecting,
@@ -291,7 +290,6 @@ class _SystemFilterListPageState extends State<SystemFilterListPage>
               title: widget.title,
               actions: [
                 itemsBatchEnterSelectAction(
-                  context: context,
                   onPressed: _items.isEmpty ? null : () => _enterSelecting(),
                 ),
               ],
@@ -356,7 +354,6 @@ class _SystemFilterListPageState extends State<SystemFilterListPage>
                       final itemIndex = index - 1;
                       if (itemIndex >= _items.length) {
                         return pagedListFooter(
-                          context: context,
                           loadingMore: _loadingMore,
                           hasMore: _hasMore,
                           isEmpty: false,

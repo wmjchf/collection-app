@@ -1,7 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:super_collection/core/theme/app_colors.dart';
 import 'package:super_collection/features/settings/account_page.dart';
-import 'package:super_collection/features/settings/settings_list.dart';
 import 'package:super_collection/features/settings/settings_panel.dart';
 import 'package:super_collection/features/settings/upgrade_pro_page.dart';
 import 'package:super_collection/features/settings/usage_repository.dart';
@@ -15,6 +13,9 @@ class AccountDrawer extends StatefulWidget {
 }
 
 class _AccountDrawerState extends State<AccountDrawer> {
+  static const _bg = Color(0xFFF7F7FA);
+  static const _text = Color(0xFF1F242E);
+
   bool _isPaid = false;
   bool _canUpgradeToEmperor = false;
   String _planLabel = '普通';
@@ -83,10 +84,9 @@ class _AccountDrawerState extends State<AccountDrawer> {
 
   @override
   Widget build(BuildContext context) {
-    final colors = AppColors.of(context);
     final maxW = MediaQuery.sizeOf(context).width * 0.86;
     return Drawer(
-      backgroundColor: colors.pageBg,
+      backgroundColor: _bg,
       width: maxW.clamp(280.0, 340.0),
       child: SafeArea(
         child: Column(
@@ -96,20 +96,20 @@ class _AccountDrawerState extends State<AccountDrawer> {
               padding: const EdgeInsets.fromLTRB(20, 12, 12, 8),
               child: Row(
                 children: [
-                  Expanded(
+                  const Expanded(
                     child: Text(
                       '账户与设置',
                       style: TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.w700,
-                        color: colors.ink,
+                        color: _text,
                       ),
                     ),
                   ),
                   IconButton(
                     tooltip: '关闭',
                     onPressed: () => Navigator.of(context).maybePop(),
-                    icon: Icon(Icons.close_rounded, color: colors.ink),
+                    icon: const Icon(Icons.close_rounded, color: _text),
                   ),
                 ],
               ),
@@ -134,6 +134,7 @@ class _AccountDrawerState extends State<AccountDrawer> {
   }
 }
 
+/// 身份卡：方案 + 订阅入口 + 账户和用量，同一白底，无分割线、无双色底。
 class _AccountPlanCard extends StatelessWidget {
   const _AccountPlanCard({
     required this.loaded,
@@ -153,19 +154,41 @@ class _AccountPlanCard extends StatelessWidget {
   final VoidCallback onUpgradeToEmperor;
   final VoidCallback onOpenAccount;
 
+  static const _text = Color(0xFF1F242E);
+  static const _muted = Color(0xFF737A85);
+  static const _blue = Color(0xFF2F6FED);
+  static const _blueSoft = Color(0xFFE8F0FF);
+
+  String get _subtitle {
+    if (!isPaid) return '免费额度 · 收藏有上限';
+    if (canUpgradeToEmperor) return '可升级帝王 · 脑图与转写';
+    return '当前方案 · 会员权益已生效';
+  }
+
+  VoidCallback? get _planAction {
+    if (!isPaid) return onUpgrade;
+    if (canUpgradeToEmperor) return onUpgradeToEmperor;
+    return null;
+  }
+
+  String? get _actionLabel {
+    if (!isPaid) return '订阅会员';
+    if (canUpgradeToEmperor) return '升级帝王';
+    return null;
+  }
+
   @override
   Widget build(BuildContext context) {
-    final colors = AppColors.of(context);
     return Container(
       width: double.infinity,
       decoration: BoxDecoration(
-        color: colors.card,
+        color: Colors.white,
         borderRadius: BorderRadius.circular(12),
       ),
       clipBehavior: Clip.antiAlias,
       child: !loaded
           ? const SizedBox(
-              height: 88,
+              height: 96,
               child: Center(
                 child: SizedBox(
                   width: 18,
@@ -175,16 +198,29 @@ class _AccountPlanCard extends StatelessWidget {
               ),
             )
           : Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 InkWell(
-                  onTap: isPaid
-                      ? (canUpgradeToEmperor ? onUpgradeToEmperor : null)
-                      : onUpgrade,
+                  onTap: _planAction,
                   child: Padding(
                     padding: const EdgeInsets.fromLTRB(16, 16, 12, 12),
                     child: Row(
                       children: [
-                        _PlanGlyph(isPaid: isPaid),
+                        Container(
+                          width: 40,
+                          height: 40,
+                          decoration: const BoxDecoration(
+                            color: _blueSoft,
+                            shape: BoxShape.circle,
+                          ),
+                          child: Icon(
+                            isPaid
+                                ? Icons.workspace_premium_rounded
+                                : Icons.person_rounded,
+                            size: 22,
+                            color: _blue,
+                          ),
+                        ),
                         const SizedBox(width: 12),
                         Expanded(
                           child: Column(
@@ -195,91 +231,77 @@ class _AccountPlanCard extends StatelessWidget {
                                 style: TextStyle(
                                   fontSize: 17,
                                   fontWeight: FontWeight.w700,
-                                  color: isPaid ? colors.brand : colors.ink,
+                                  color: isPaid ? _blue : _text,
                                   height: 1.2,
                                 ),
                               ),
-                              const SizedBox(height: 4),
+                              const SizedBox(height: 3),
                               Text(
-                                isPaid
-                                    ? (canUpgradeToEmperor
-                                        ? '可升级帝王 · 脑图与转写'
-                                        : '会员权益已生效')
-                                    : '免费额度 · 收藏有上限',
-                                style: TextStyle(
+                                _subtitle,
+                                style: const TextStyle(
                                   fontSize: 12,
-                                  color: colors.muted,
+                                  color: _muted,
                                   height: 1.3,
                                 ),
                               ),
                             ],
                           ),
                         ),
-                        if (!isPaid)
-                          const _TextAction(label: '订阅会员')
-                        else if (canUpgradeToEmperor)
-                          const _TextAction(label: '升级帝王'),
+                        if (_actionLabel != null)
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                _actionLabel!,
+                                style: const TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600,
+                                  color: _blue,
+                                ),
+                              ),
+                              const Icon(
+                                Icons.chevron_right,
+                                size: 20,
+                                color: _blue,
+                              ),
+                            ],
+                          )
+                        else
+                          const Icon(
+                            Icons.verified_rounded,
+                            color: _blue,
+                            size: 22,
+                          ),
                       ],
                     ),
                   ),
                 ),
-                SettingsInfoRow(
-                  title: '账户和用量',
-                  showChevron: true,
+                InkWell(
                   onTap: onOpenAccount,
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 4, 12, 16),
+                    child: Row(
+                      children: [
+                        const Expanded(
+                          child: Text(
+                            '账户和用量',
+                            style: TextStyle(
+                              fontSize: 15,
+                              color: _text,
+                            ),
+                          ),
+                        ),
+                        Icon(
+                          Icons.chevron_right,
+                          size: 22,
+                          color: _muted.withValues(alpha: 0.9),
+                        ),
+                      ],
+                    ),
+                  ),
                 ),
               ],
             ),
-    );
-  }
-}
-
-class _PlanGlyph extends StatelessWidget {
-  const _PlanGlyph({required this.isPaid});
-
-  final bool isPaid;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = AppColors.of(context);
-    return Container(
-      width: 40,
-      height: 40,
-      decoration: BoxDecoration(
-        color: isPaid ? colors.brandSoft : colors.inputBg,
-        shape: BoxShape.circle,
-      ),
-      alignment: Alignment.center,
-      child: Icon(
-        isPaid ? Icons.workspace_premium_rounded : Icons.person_rounded,
-        size: 22,
-        color: isPaid ? colors.brand : colors.muted,
-      ),
-    );
-  }
-}
-
-class _TextAction extends StatelessWidget {
-  const _TextAction({required this.label});
-
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = AppColors.of(context);
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Text(
-          label,
-          style: TextStyle(
-            fontSize: 13,
-            fontWeight: FontWeight.w600,
-            color: colors.brand,
-          ),
-        ),
-        Icon(Icons.chevron_right, size: 20, color: colors.brand),
-      ],
     );
   }
 }

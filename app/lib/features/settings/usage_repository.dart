@@ -223,7 +223,7 @@ class UsageRefresh {
     unawaited(ensure(force: true));
   }
 
-  /// 进主壳预取；与首页/收藏/抽屉共用同一请求。
+  /// 进主壳预取；与首页/收藏/抽屉/账户页共用同一请求。
   static Future<UsageSummary> ensure({bool force = false}) async {
     final session = await AuthRepository().readSession();
     final uid = session?.userId;

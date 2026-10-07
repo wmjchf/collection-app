@@ -2,7 +2,6 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:super_collection/core/theme/app_colors.dart';
 import 'package:flutter/services.dart';
 import 'package:super_collection/features/collection/tag_models.dart';
 import 'package:super_collection/features/collection/tag_module_models.dart';
@@ -40,6 +39,18 @@ class CollectionTagModulesSection extends StatelessWidget {
   final Key? headerKey;
   /// 0 展开页内标题，1 收进顶栏；为 null 则始终展开。
   final ValueListenable<double>? headerCollapse;
+
+  static const ink = Color(0xFF1F242E);
+  static const muted = Color(0xFF8B929C);
+  static const hairline = Color(0xFFD5DAE2);
+  static const brand = Color(0xFF2F6FED);
+  static const brandSoft = Color(0xFFE5EDFF);
+  static const panel = Color(0xFFFFFFFF);
+  static const ungroupedFill = Color(0xFFF4F6F9);
+  static const ungroupedLine = Color(0xFFC5CAD3);
+  /// 未归类标签色（与主题蓝 / AI 入口区分）
+  static const ungroupedTag = Color(0xFF5C6675);
+  static const ungroupedTagSoft = Color(0xFFECEEF2);
 
   @override
   Widget build(BuildContext context) {
@@ -84,7 +95,7 @@ class CollectionTagModulesSection extends StatelessWidget {
       key: headerKey,
       child: DecoratedBox(
         decoration: BoxDecoration(
-          color: AppColors.of(context).card,
+          color: panel,
           borderRadius: BorderRadius.circular(16),
         ),
         child: Padding(
@@ -97,14 +108,14 @@ class CollectionTagModulesSection extends StatelessWidget {
                 onCreateModule: onCreateModule,
               ),
               if (!hasContent)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 12),
+                const Padding(
+                  padding: EdgeInsets.only(bottom: 12),
                   child: Text(
                     '还没有归类。可用未归类旁的 AI 标签归类，或点右侧 + 新建归类。',
                     style: TextStyle(
                       fontSize: 13,
                       height: 1.45,
-                      color: AppColors.of(context).muted,
+                      color: muted,
                     ),
                   ),
                 ),
@@ -173,17 +184,17 @@ class _SectionHeader extends StatelessWidget {
       padding: const EdgeInsets.only(right: 4),
       child: Row(
         children: [
-          Text(
+          const Text(
             '归类标签',
             style: TextStyle(
               fontSize: 16,
               fontWeight: FontWeight.w700,
               letterSpacing: 0.2,
-              color: AppColors.of(context).ink,
+              color: CollectionTagModulesSection.ink,
             ),
           ),
           const SizedBox(width: 8),
-          Expanded(
+          const Expanded(
             child: Text(
               '长按标签可拖动归类',
               maxLines: 1,
@@ -191,7 +202,7 @@ class _SectionHeader extends StatelessWidget {
               style: TextStyle(
                 fontSize: 12,
                 height: 1.2,
-                color: AppColors.of(context).muted,
+                color: CollectionTagModulesSection.muted,
               ),
             ),
           ),
@@ -223,10 +234,10 @@ class CollectionCreateModuleButton extends StatelessWidget {
         visualDensity: VisualDensity.compact,
         padding: EdgeInsets.zero,
         constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
-        icon: Icon(
+        icon: const Icon(
           Icons.add_rounded,
           size: 26,
-          color: AppColors.of(context).ink,
+          color: CollectionTagModulesSection.ink,
         ),
       ),
     );
@@ -258,68 +269,67 @@ Future<void> _showModuleActionsMenu(
     overlay.size.height - (topLeft.dy + size.height + 4),
   );
 
-  final colors = AppColors.of(context);
-  final ink = colors.ink;
-  final danger = colors.danger;
+  const text = Color(0xFF1F242E);
+  const danger = Color(0xFFD14343);
 
   final action = await showMenu<String>(
     context: context,
     position: position,
     elevation: 8,
-    color: colors.card,
-    shadowColor: Colors.black.withValues(alpha: 0.28),
+    color: Colors.white,
+    shadowColor: Colors.black.withValues(alpha: 0.14),
     shape: RoundedRectangleBorder(
       borderRadius: BorderRadius.circular(12),
-      side: BorderSide(color: colors.hairline),
+      side: const BorderSide(color: Color(0xFFE6E8EB)),
     ),
     constraints: const BoxConstraints(minWidth: 160, maxWidth: 160),
     items: [
       if (onRename != null)
-        PopupMenuItem<String>(
+        const PopupMenuItem<String>(
           value: 'rename',
           height: 44,
           child: Row(
             children: [
-              Icon(Icons.edit_outlined, size: 20, color: ink),
-              const SizedBox(width: 10),
+              Icon(Icons.edit_outlined, size: 20, color: text),
+              SizedBox(width: 10),
               Text(
                 '修改名称',
                 style: TextStyle(
                   fontSize: 15,
                   fontWeight: FontWeight.w500,
-                  color: ink,
+                  color: text,
                 ),
               ),
             ],
           ),
         ),
       if (onAddTag != null)
-        PopupMenuItem<String>(
+        const PopupMenuItem<String>(
           value: 'add',
           height: 44,
           child: Row(
             children: [
-              Icon(Icons.add_rounded, size: 20, color: ink),
-              const SizedBox(width: 10),
+              Icon(Icons.add_rounded, size: 20, color: text),
+              SizedBox(width: 10),
               Text(
                 '添加标签',
                 style: TextStyle(
                   fontSize: 15,
                   fontWeight: FontWeight.w500,
-                  color: ink,
+                  color: text,
                 ),
               ),
             ],
           ),
         ),
       if (onDelete != null)
-        PopupMenuItem<String>(
+        const PopupMenuItem<String>(
           value: 'delete',
           height: 44,
           child: Row(
             children: [
               Icon(Icons.delete_outline_rounded, size: 20, color: danger),
-              const SizedBox(width: 10),
+              SizedBox(width: 10),
               Text(
                 '删除归类',
                 style: TextStyle(
@@ -402,8 +412,8 @@ class _ModuleBlock extends StatelessWidget {
       fontWeight: FontWeight.w600,
       letterSpacing: ungrouped ? 0.2 : 0.4,
       color: ungrouped || titleMuted
-          ? AppColors.of(context).muted
-          : AppColors.of(context).ink.withValues(alpha: 0.78),
+          ? CollectionTagModulesSection.muted
+          : CollectionTagModulesSection.ink.withValues(alpha: 0.78),
     );
     final titleText = Text(
       title,
@@ -420,10 +430,10 @@ class _ModuleBlock extends StatelessWidget {
           child: Row(
             children: [
               if (ungrouped) ...[
-                Icon(
+                const Icon(
                   Icons.inbox_outlined,
                   size: 16,
-                  color: AppColors.of(context).muted,
+                  color: CollectionTagModulesSection.muted,
                 ),
                 const SizedBox(width: 6),
               ] else
@@ -433,8 +443,8 @@ class _ModuleBlock extends StatelessWidget {
                     width: 6,
                     height: 6,
                     margin: const EdgeInsets.only(right: 8),
-                    decoration: BoxDecoration(
-                      color: AppColors.of(context).brand,
+                    decoration: const BoxDecoration(
+                      color: CollectionTagModulesSection.brand,
                       shape: BoxShape.circle,
                     ),
                   ),
@@ -456,7 +466,7 @@ class _ModuleBlock extends StatelessWidget {
                               Icon(
                                 Icons.chevron_right_rounded,
                                 size: 20,
-                                color: AppColors.of(context).ink
+                                color: CollectionTagModulesSection.ink
                                     .withValues(alpha: 0.35),
                               ),
                             ],
@@ -468,7 +478,7 @@ class _ModuleBlock extends StatelessWidget {
               if (_hasActions)
                 Builder(
                   builder: (anchorContext) {
-                    final color = AppColors.of(context).ink
+                    final color = CollectionTagModulesSection.ink
                         .withValues(alpha: 0.45);
                     return Material(
                       color: Colors.transparent,
@@ -494,23 +504,23 @@ class _ModuleBlock extends StatelessWidget {
                   child: InkWell(
                     onTap: onAiOrganize,
                     borderRadius: BorderRadius.circular(8),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    child: const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           Icon(
                             Icons.auto_awesome_outlined,
                             size: 15,
-                            color: AppColors.of(context).brand,
+                            color: CollectionTagModulesSection.brand,
                           ),
-                          const SizedBox(width: 4),
+                          SizedBox(width: 4),
                           Text(
                             'AI 标签归类',
                             style: TextStyle(
                               fontSize: 14,
                               fontWeight: FontWeight.w600,
-                              color: AppColors.of(context).brand,
+                              color: CollectionTagModulesSection.brand,
                             ),
                           ),
                         ],
@@ -523,7 +533,7 @@ class _ModuleBlock extends StatelessWidget {
         ),
         SizedBox(height: ungrouped ? 12 : 6),
         if (tags.isEmpty)
-          SizedBox(
+          const SizedBox(
             height: 40,
             child: Align(
               alignment: Alignment.centerLeft,
@@ -532,7 +542,7 @@ class _ModuleBlock extends StatelessWidget {
                 style: TextStyle(
                   fontSize: 14,
                   height: 1.35,
-                  color: AppColors.of(context).muted,
+                  color: CollectionTagModulesSection.muted,
                 ),
               ),
             ),
@@ -563,15 +573,15 @@ class _ModuleBlock extends StatelessWidget {
       );
     } else {
       block = CustomPaint(
-        painter: _DashedRRectPainter(
-          color: AppColors.of(context).iconMuted,
+        painter: const _DashedRRectPainter(
+          color: CollectionTagModulesSection.ungroupedLine,
           radius: 14,
         ),
         child: Container(
           width: double.infinity,
           padding: const EdgeInsets.fromLTRB(12, 12, 10, 14),
           decoration: BoxDecoration(
-            color: AppColors.of(context).inputBg,
+            color: CollectionTagModulesSection.ungroupedFill,
             borderRadius: BorderRadius.circular(14),
           ),
           child: body,
@@ -585,7 +595,8 @@ class _ModuleBlock extends StatelessWidget {
           : block;
     }
 
-    // 上方空隙要能接住拖放（透明色参与 hitTest），但不要把悬停底色涂进空隙。
+    // DragTarget 命中按「指尖」而不是浮层芯片；间距须在带 decoration 的容器内，
+    // 否则纯 Padding 空隙不参与 hitTest，松手仍会落空。
     return DragTarget<Tag>(
       onWillAcceptWithDetails: (details) => _canAccept(details.data),
       onAcceptWithDetails: (details) {
@@ -594,22 +605,17 @@ class _ModuleBlock extends StatelessWidget {
       },
       builder: (context, candidateData, rejectedData) {
         final hovering = candidateData.any((t) => t != null && _canAccept(t));
-        return Container(
-          width: double.infinity,
-          color: Colors.transparent,
+        return AnimatedContainer(
+          duration: const Duration(milliseconds: 120),
+          curve: Curves.easeOutCubic,
           padding: EdgeInsets.only(top: topInset),
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 120),
-            curve: Curves.easeOutCubic,
-            width: double.infinity,
-            decoration: BoxDecoration(
-              color: hovering
-                  ? AppColors.of(context).brandSoft.withValues(alpha: 0.55)
-                  : Colors.transparent,
-              borderRadius: BorderRadius.circular(ungrouped ? 14 : 10),
-            ),
-            child: block,
+          decoration: BoxDecoration(
+            color: hovering
+                ? CollectionTagModulesSection.brandSoft.withValues(alpha: 0.55)
+                : Colors.transparent,
+            borderRadius: BorderRadius.circular(ungrouped ? 14 : 10),
           ),
+          child: block,
         );
       },
     );
@@ -711,10 +717,13 @@ class _TagChipState extends State<_TagChip> {
     required bool pressed,
     required bool feedback,
   }) {
-    final colors = AppColors.of(context);
     final text = _hashLabel(widget.tag.name);
-    final color = widget.muted ? colors.muted : colors.brand;
-    final soft = widget.muted ? colors.inputBg : colors.brandSoft;
+    final color = widget.muted
+        ? CollectionTagModulesSection.ungroupedTag
+        : CollectionTagModulesSection.brand;
+    final soft = widget.muted
+        ? CollectionTagModulesSection.ungroupedTagSoft
+        : CollectionTagModulesSection.brandSoft;
 
     return Material(
       color: Colors.transparent,

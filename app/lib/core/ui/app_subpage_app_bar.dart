@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:super_collection/core/theme/app_colors.dart';
 
 /// 子页顶栏：标题居中，返回与详情页一致（‹ 返回）。
 class AppSubpageAppBar extends StatelessWidget implements PreferredSizeWidget {
@@ -12,6 +11,7 @@ class AppSubpageAppBar extends StatelessWidget implements PreferredSizeWidget {
   final String title;
   final List<Widget>? actions;
 
+  static const _text = Color(0xFF1F242E);
   static const _side = 88.0;
 
   @override
@@ -19,14 +19,17 @@ class AppSubpageAppBar extends StatelessWidget implements PreferredSizeWidget {
 
   @override
   Widget build(BuildContext context) {
-    final ink = AppColors.of(context).ink;
     return AppBar(
+      backgroundColor: Colors.white,
+      surfaceTintColor: Colors.transparent,
+      elevation: 0,
+      scrolledUnderElevation: 0,
       centerTitle: true,
       leadingWidth: _side,
       leading: TextButton.icon(
         onPressed: () => Navigator.of(context).maybePop(),
         style: TextButton.styleFrom(
-          foregroundColor: ink,
+          foregroundColor: _text,
           padding: const EdgeInsets.symmetric(horizontal: 8),
         ),
         icon: const Icon(Icons.chevron_left, size: 28),
@@ -37,10 +40,10 @@ class AppSubpageAppBar extends StatelessWidget implements PreferredSizeWidget {
       ),
       title: Text(
         title,
-        style: TextStyle(
+        style: const TextStyle(
           fontSize: 17,
           fontWeight: FontWeight.w700,
-          color: ink,
+          color: _text,
         ),
       ),
       actions: actions ?? const [SizedBox(width: _side)],

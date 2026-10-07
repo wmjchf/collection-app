@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:super_collection/core/theme/app_colors.dart';
 import 'package:super_collection/core/network/api_client.dart';
 import 'package:super_collection/core/ui/app_toast.dart';
 import 'package:super_collection/features/items/item_models.dart';
@@ -36,6 +35,11 @@ class ReadingContentEditPage extends StatefulWidget {
 }
 
 class _ReadingContentEditPageState extends State<ReadingContentEditPage> {
+  static const _text = Color(0xFF1F242E);
+  static const _muted = Color(0xFF737A85);
+  static const _blue = Color(0xFF2F6FED);
+  static const _surface = Color(0xFFF5F7FA);
+
   late final TextEditingController _controller;
   final _repo = ItemsRepository();
   bool _saving = false;
@@ -100,7 +104,6 @@ class _ReadingContentEditPageState extends State<ReadingContentEditPage> {
 
   @override
   Widget build(BuildContext context) {
-    final colors = AppColors.of(context);
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, result) async {
@@ -110,10 +113,10 @@ class _ReadingContentEditPageState extends State<ReadingContentEditPage> {
         }
       },
       child: Scaffold(
-        backgroundColor: colors.card,
+        backgroundColor: Colors.white,
         appBar: AppBar(
-          backgroundColor: colors.card,
-          foregroundColor: colors.ink,
+          backgroundColor: Colors.white,
+          foregroundColor: _text,
           elevation: 0,
           scrolledUnderElevation: 0,
           leading: IconButton(
@@ -124,12 +127,12 @@ class _ReadingContentEditPageState extends State<ReadingContentEditPage> {
               }
             },
           ),
-          title: Text(
+          title: const Text(
             '编辑正文',
             style: TextStyle(
               fontSize: 17,
               fontWeight: FontWeight.w600,
-              color: colors.ink,
+              color: _text,
             ),
           ),
           actions: [
@@ -140,7 +143,7 @@ class _ReadingContentEditPageState extends State<ReadingContentEditPage> {
                 style: TextStyle(
                   fontSize: 15,
                   fontWeight: FontWeight.w600,
-                  color: _saving ? colors.muted : colors.brand,
+                  color: _saving ? _muted : _blue,
                 ),
               ),
             ),
@@ -155,7 +158,7 @@ class _ReadingContentEditPageState extends State<ReadingContentEditPage> {
                 '编辑 Markdown 原文。含图片 ![]()、内嵌视频 !v[]() 等语法，请勿随意删改标记行。',
                 style: TextStyle(
                   fontSize: 12,
-                  color: colors.muted.withValues(alpha: 0.95),
+                  color: _muted.withValues(alpha: 0.95),
                   height: 1.45,
                 ),
               ),
@@ -168,15 +171,15 @@ class _ReadingContentEditPageState extends State<ReadingContentEditPage> {
                   maxLines: null,
                   expands: true,
                   textAlignVertical: TextAlignVertical.top,
-                  style: TextStyle(
+                  style: const TextStyle(
                     fontSize: 15,
-                    color: colors.ink,
+                    color: _text,
                     height: 1.55,
                     fontFamily: 'Menlo',
                   ),
                   decoration: InputDecoration(
                     filled: true,
-                    fillColor: colors.inputBg,
+                    fillColor: _surface,
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
                       borderSide: BorderSide.none,

@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:super_collection/core/theme/app_colors.dart';
 import 'package:flutter/services.dart';
 import 'package:super_collection/core/analytics/analytics.dart';
 import 'package:super_collection/core/network/api_client.dart';
@@ -79,6 +78,13 @@ class _ReadingTagsSheet extends StatefulWidget {
 }
 
 class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
+  static const _text = Color(0xFF1F242E);
+  static const _muted = Color(0xFF737A85);
+  static const _sectionMuted = Color(0xFF8B929C);
+  static const _blue = Color(0xFF2F6FED);
+  static const _chipBg = Color(0xFFF5F7FA);
+  static const _surface = Color(0xFFF3F6FA);
+  static const _handle = Color(0xFFE5E8ED);
 
   final _modulesRepo = TagModulesRepository();
   final _tagsRepo = TagsRepository();
@@ -503,7 +509,7 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
     VoidCallback? onRemove,
     bool isNew = false,
   }) {
-    final fg = selected ? Colors.white : AppColors.of(context).ink;
+    final fg = selected ? Colors.white : _text;
     return GestureDetector(
       onTap: onTap,
       behavior: HitTestBehavior.opaque,
@@ -511,7 +517,7 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
         // 略放大但仍保证常见「三个四字标签」一排放下
         padding: EdgeInsets.fromLTRB(isNew ? 6 : 10, 7, onRemove != null ? 7 : 10, 7),
         decoration: BoxDecoration(
-          color: selected ? AppColors.of(context).brand : AppColors.of(context).inputBg,
+          color: selected ? _blue : _chipBg,
           borderRadius: BorderRadius.circular(999),
         ),
         child: Row(
@@ -525,7 +531,7 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
                 decoration: BoxDecoration(
                   color: selected
                       ? Colors.white.withValues(alpha: 0.22)
-                      : AppColors.of(context).brandSoft,
+                      : const Color(0xFFE8F0FE),
                   borderRadius: BorderRadius.circular(5),
                 ),
                 child: Text(
@@ -534,7 +540,7 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
                     fontSize: 12,
                     fontWeight: FontWeight.w800,
                     height: 1,
-                    color: selected ? Colors.white : AppColors.of(context).brand,
+                    color: selected ? Colors.white : _blue,
                   ),
                 ),
               ),
@@ -557,7 +563,7 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
                 child: Icon(
                   Icons.close_rounded,
                   size: 15,
-                  color: selected ? Colors.white : AppColors.of(context).muted,
+                  color: selected ? Colors.white : _muted,
                 ),
               ),
             ],
@@ -570,21 +576,21 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
   Widget _buildTitleRow() {
     return Row(
       children: [
-        Expanded(
+        const Expanded(
           child: Text(
             '选择标签',
             style: TextStyle(
               fontSize: 16,
               fontWeight: FontWeight.w700,
-              color: AppColors.of(context).ink,
+              color: _text,
             ),
           ),
         ),
         GestureDetector(
           onTap: () => Navigator.pop(context),
-          child: Text(
+          child: const Text(
             '关闭',
-            style: TextStyle(fontSize: 14, color: AppColors.of(context).muted),
+            style: TextStyle(fontSize: 14, color: _muted),
           ),
         ),
       ],
@@ -601,13 +607,13 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
         onSubmitted: (_) => _dismissSearchFocus(),
         onTapOutside: (_) => _dismissSearchFocus(),
         textInputAction: TextInputAction.search,
-        style: TextStyle(fontSize: 14, color: AppColors.of(context).ink),
+        style: const TextStyle(fontSize: 14, color: _text),
         decoration: InputDecoration(
           hintText: '搜索或新建标签',
-          hintStyle: TextStyle(fontSize: 14, color: AppColors.of(context).muted),
-          prefixIcon: Icon(
+          hintStyle: const TextStyle(fontSize: 14, color: _muted),
+          prefixIcon: const Icon(
             Icons.search_rounded,
-            color: AppColors.of(context).muted,
+            color: _muted,
             size: 20,
           ),
           prefixIconConstraints: const BoxConstraints(
@@ -617,9 +623,9 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
           suffixIcon: _query.isEmpty
               ? null
               : IconButton(
-                  icon: Icon(
+                  icon: const Icon(
                     Icons.close_rounded,
-                    color: AppColors.of(context).muted,
+                    color: _muted,
                     size: 18,
                   ),
                   onPressed: () {
@@ -628,7 +634,7 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
                   },
                 ),
           filled: true,
-          fillColor: AppColors.of(context).inputBg,
+          fillColor: _surface,
           contentPadding: const EdgeInsets.symmetric(vertical: 0),
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(999),
@@ -640,8 +646,8 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
           ),
           focusedBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(999),
-            borderSide: BorderSide(
-              color: AppColors.of(context).brand,
+            borderSide: const BorderSide(
+              color: Color(0xFFB8CCFA),
               width: 1,
             ),
           ),
@@ -657,21 +663,21 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
       children: [
         Row(
           children: [
-            Text(
+            const Text(
               '已选标签',
               style: TextStyle(
                 fontSize: 15,
                 fontWeight: FontWeight.w700,
-                color: AppColors.of(context).ink,
+                color: _text,
               ),
             ),
             const Spacer(),
             Text(
               '$_selectedCount',
-              style: TextStyle(
+              style: const TextStyle(
                 fontSize: 14,
                 fontWeight: FontWeight.w600,
-                color: AppColors.of(context).muted,
+                color: _muted,
               ),
             ),
           ],
@@ -731,9 +737,9 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
                   padding:
                       const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
                   decoration: BoxDecoration(
-                    color: AppColors.of(context).inputBg,
+                    color: _chipBg,
                     borderRadius: BorderRadius.circular(999),
-                    border: Border.all(color: AppColors.of(context).hairline),
+                    border: Border.all(color: const Color(0xFFE8ECF0)),
                   ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
@@ -741,7 +747,7 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
                       Icon(
                         Icons.auto_awesome_outlined,
                         size: 16,
-                        color: enabled ? AppColors.of(context).brand : AppColors.of(context).muted,
+                        color: enabled ? _blue : _muted,
                       ),
                       const SizedBox(width: 4),
                       Text(
@@ -753,7 +759,7 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
                         style: TextStyle(
                           fontSize: 13,
                           fontWeight: FontWeight.w600,
-                          color: enabled ? AppColors.of(context).brand : AppColors.of(context).muted,
+                          color: enabled ? _blue : _muted,
                         ),
                       ),
                     ],
@@ -762,12 +768,12 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
               ),
             ),
             const SizedBox(width: 10),
-            Expanded(
+            const Expanded(
               child: Text(
                 '点击生成 AI 推荐标签，生成后默认为选择，可点击相应标签取消选择',
                 style: TextStyle(
                   fontSize: 12,
-                  color: AppColors.of(context).muted,
+                  color: _muted,
                   height: 1.35,
                 ),
               ),
@@ -778,7 +784,7 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
           const SizedBox(height: 10),
           Text(
             aiScholarGeneratingLabel('推荐', isPro: _isPro),
-            style: TextStyle(fontSize: 13, color: AppColors.of(context).muted),
+            style: const TextStyle(fontSize: 13, color: _muted),
           ),
         ] else if (meta.isFailed) ...[
           const SizedBox(height: 10),
@@ -786,13 +792,13 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
             (meta.error ?? '').trim().isEmpty
                 ? '推荐生成失败，可重试'
                 : '推荐失败：${meta.error}',
-            style: TextStyle(fontSize: 13, color: AppColors.of(context).muted, height: 1.4),
+            style: const TextStyle(fontSize: 13, color: _muted, height: 1.4),
           ),
         ] else if (meta.isEmpty) ...[
           const SizedBox(height: 10),
-          Text(
+          const Text(
             '暂无新的推荐',
-            style: TextStyle(fontSize: 13, color: AppColors.of(context).muted),
+            style: TextStyle(fontSize: 13, color: _muted),
           ),
         ] else if (meta.hasSuggestions) ...[
           const SizedBox(height: 10),
@@ -828,10 +834,10 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
         children: [
           Text(
             title,
-            style: TextStyle(
+            style: const TextStyle(
               fontSize: 13,
               fontWeight: FontWeight.w600,
-              color: AppColors.of(context).muted,
+              color: _sectionMuted,
             ),
           ),
           const SizedBox(height: 8),
@@ -856,12 +862,12 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Text(
+        const Text(
           '我的标签',
           style: TextStyle(
             fontSize: 15,
             fontWeight: FontWeight.w700,
-            color: AppColors.of(context).ink,
+            color: _text,
           ),
         ),
         const SizedBox(height: 12),
@@ -874,7 +880,7 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
                 padding:
                     const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                 decoration: BoxDecoration(
-                  color: AppColors.of(context).inputBg,
+                  color: _chipBg,
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Row(
@@ -882,7 +888,7 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
                     Icon(
                       Icons.add_rounded,
                       size: 20,
-                      color: _creating ? AppColors.of(context).muted : AppColors.of(context).brand,
+                      color: _creating ? _muted : _blue,
                     ),
                     const SizedBox(width: 8),
                     Expanded(
@@ -893,7 +899,7 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
                         style: TextStyle(
                           fontSize: 14,
                           fontWeight: FontWeight.w600,
-                          color: _creating ? AppColors.of(context).muted : AppColors.of(context).brand,
+                          color: _creating ? _muted : _blue,
                         ),
                       ),
                     ),
@@ -903,14 +909,14 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
             ),
           ),
         if (_allTags.isEmpty)
-          Text(
+          const Text(
             '还没有标签，可搜索新建或使用 AI 推荐',
-            style: TextStyle(fontSize: 13, color: AppColors.of(context).muted, height: 1.4),
+            style: TextStyle(fontSize: 13, color: _muted, height: 1.4),
           )
         else if (!_allTags.any(_tagMatches) && !_canCreateFromQuery)
           Text(
             '没有「$_query」相关的标签',
-            style: TextStyle(fontSize: 13, color: AppColors.of(context).muted, height: 1.4),
+            style: const TextStyle(fontSize: 13, color: _muted, height: 1.4),
           )
         else ...[
           _buildModuleSection(title: '未归类', tags: _ungrouped),
@@ -933,8 +939,8 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
         padding: const EdgeInsets.symmetric(vertical: 24),
         child: Column(
           children: [
-            Text(_error!, style: TextStyle(color: AppColors.of(context).muted)),
-            TextButton(onPressed: _load, child: Text('重试')),
+            Text(_error!, style: const TextStyle(color: _muted)),
+            TextButton(onPressed: _load, child: const Text('重试')),
           ],
         ),
       );
@@ -955,7 +961,7 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
     final maxSheetHeight = MediaQuery.sizeOf(context).height * 0.82;
 
     return Material(
-      color: AppColors.of(context).card,
+      color: Colors.white,
       borderRadius: BorderRadius.circular(24),
       clipBehavior: Clip.antiAlias,
       child: SizedBox(
@@ -970,7 +976,7 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
                   width: 40,
                   height: 4,
                   decoration: BoxDecoration(
-                    color: AppColors.of(context).iconMuted,
+                    color: _handle,
                     borderRadius: BorderRadius.circular(2),
                   ),
                 ),
@@ -1010,14 +1016,14 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
                           unawaited(_save());
                         },
                   style: FilledButton.styleFrom(
-                    backgroundColor: AppColors.of(context).brand,
+                    backgroundColor: _blue,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12),
                     ),
                   ),
                   child: Text(
                     _saving ? '保存中…' : '完成 ($_selectedCount)',
-                    style: TextStyle(
+                    style: const TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.w600,
                     ),

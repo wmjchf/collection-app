@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:super_collection/core/theme/app_colors.dart';
 import 'package:super_collection/core/analytics/screen_dwell_tracker.dart';
 import 'package:super_collection/features/auth/auth_repository.dart';
 import 'package:super_collection/features/settings/trial_expiry_banner.dart';
@@ -16,9 +15,12 @@ class AccountPage extends StatefulWidget {
 }
 
 class _AccountPageState extends State<AccountPage> with ScreenDwellMixin {
+  static const _bg = Color(0xFFF7F7FA);
+  static const _text = Color(0xFF1F242E);
+  static const _muted = Color(0xFF737A85);
+  static const _blue = Color(0xFF2F6FED);
 
   final _auth = AuthRepository();
-  final _usageRepo = UsageRepository();
 
   AuthSession? _session;
   UsageSummary? _usage;
@@ -32,6 +34,11 @@ class _AccountPageState extends State<AccountPage> with ScreenDwellMixin {
   void initState() {
     super.initState();
     UsageRefresh.version.addListener(_onUsageRefresh);
+    final cached = UsageRefresh.snapshot;
+    if (cached != null) {
+      _usage = cached;
+      _loading = false;
+    }
     _load();
   }
 
@@ -48,7 +55,7 @@ class _AccountPageState extends State<AccountPage> with ScreenDwellMixin {
     UsageSummary? usage;
     TrialReminder? trial;
     try {
-      usage = await _usageRepo.fetchUsage();
+      usage = await UsageRefresh.ensure();
       final rem = usage.trialReminder;
       if (rem != null &&
           !(await TrialExpiryBanner.isDismissed(rem.endsAt))) {
@@ -125,27 +132,29 @@ class _AccountPageState extends State<AccountPage> with ScreenDwellMixin {
 
   @override
   Widget build(BuildContext context) {
-    final colors = AppColors.of(context);
     return Scaffold(
-      backgroundColor: colors.pageBg,
+      backgroundColor: _bg,
       appBar: AppBar(
+        backgroundColor: Colors.white,
+        surfaceTintColor: Colors.transparent,
+        elevation: 0,
         centerTitle: true,
         leadingWidth: 80,
         leading: TextButton.icon(
           onPressed: () => Navigator.of(context).maybePop(),
           style: TextButton.styleFrom(
-            foregroundColor: colors.ink,
+            foregroundColor: _text,
             padding: const EdgeInsets.only(left: 8),
           ),
           icon: const Icon(Icons.chevron_left, size: 30),
           label: const Text('返回', style: TextStyle(fontSize: 15)),
         ),
-        title: Text(
+        title: const Text(
           '账户和用量',
           style: TextStyle(
             fontSize: 17,
             fontWeight: FontWeight.w700,
-            color: colors.ink,
+            color: _text,
           ),
         ),
       ),
@@ -167,7 +176,7 @@ class _AccountPageState extends State<AccountPage> with ScreenDwellMixin {
                       title: '手机号',
                       trailing: Text(
                         _maskedPhone(_session?.phone),
-                        style: TextStyle(fontSize: 14, color: colors.muted),
+                        style: const TextStyle(fontSize: 14, color: _muted),
                       ),
                     ),
                     if (_session?.nickname.isNotEmpty == true)
@@ -175,7 +184,7 @@ class _AccountPageState extends State<AccountPage> with ScreenDwellMixin {
                         title: '昵称',
                         trailing: Text(
                           _session!.nickname,
-                          style: TextStyle(fontSize: 14, color: colors.muted),
+                          style: const TextStyle(fontSize: 14, color: _muted),
                         ),
                       ),
                     _InfoRow(
@@ -185,7 +194,7 @@ class _AccountPageState extends State<AccountPage> with ScreenDwellMixin {
                         style: TextStyle(
                           fontSize: 14,
                           fontWeight: FontWeight.w600,
-                          color: _usage!.isPrince ? colors.brand : colors.muted,
+                          color: _usage!.isPrince ? _blue : _muted,
                         ),
                       ),
                     ),
@@ -194,7 +203,7 @@ class _AccountPageState extends State<AccountPage> with ScreenDwellMixin {
                         title: '订阅',
                         trailing: Text(
                           _planExpiresLabel(_usage)!,
-                          style: TextStyle(fontSize: 14, color: colors.muted),
+                          style: const TextStyle(fontSize: 14, color: _muted),
                         ),
                       ),
                   ],
@@ -207,8 +216,8 @@ class _AccountPageState extends State<AccountPage> with ScreenDwellMixin {
                     child: TextButton(
                       onPressed: _openUpgrade,
                       style: TextButton.styleFrom(
-                        backgroundColor: colors.brandSoft,
-                        foregroundColor: colors.brand,
+                        backgroundColor: const Color(0xFFE8F0FF),
+                        foregroundColor: _blue,
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(12),
                         ),
@@ -234,8 +243,8 @@ class _AccountPageState extends State<AccountPage> with ScreenDwellMixin {
                       onPressed: () =>
                           _openUpgrade(initialTier: UsagePlan.emperor),
                       style: TextButton.styleFrom(
-                        backgroundColor: colors.brandSoft,
-                        foregroundColor: colors.brand,
+                        backgroundColor: const Color(0xFFE8F0FF),
+                        foregroundColor: _blue,
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(12),
                         ),
@@ -269,11 +278,11 @@ class _AccountPageState extends State<AccountPage> with ScreenDwellMixin {
                         showProgress: _usage!.itemLimit != null,
                       )
                     else
-                      _InfoRow(
+                      const _InfoRow(
                         title: '收藏条目',
                         trailing: Text(
                           '—',
-                          style: TextStyle(fontSize: 14, color: colors.muted),
+                          style: TextStyle(fontSize: 14, color: _muted),
                         ),
                       ),
                   ],
@@ -284,9 +293,9 @@ class _AccountPageState extends State<AccountPage> with ScreenDwellMixin {
                     _usage?.itemLimit != null
                         ? '统计当前在库收藏（不含已删除）；免费账户上限 ${_usage!.itemLimit} 条。'
                         : '统计当前在库收藏（不含已删除）；会员不限条数。',
-                    style: TextStyle(
+                    style: const TextStyle(
                       fontSize: 12,
-                      color: colors.muted,
+                      color: _muted,
                       height: 1.45,
                     ),
                   ),
@@ -304,13 +313,13 @@ class _AccountPageState extends State<AccountPage> with ScreenDwellMixin {
                   ),
                   if (_usage!.isTrial) ...[
                     const SizedBox(height: 6),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 4),
+                    const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 4),
                       child: Text(
                         '试用期间为正式月额度的约 1/4；订阅后按完整月额度计算。',
                         style: TextStyle(
                           fontSize: 12,
-                          color: colors.muted,
+                          color: _muted,
                           height: 1.45,
                         ),
                       ),
@@ -377,10 +386,10 @@ class _SectionLabel extends StatelessWidget {
       padding: const EdgeInsets.only(left: 4),
       child: Text(
         text,
-        style: TextStyle(
+        style: const TextStyle(
           fontSize: 13,
           fontWeight: FontWeight.w500,
-          color: AppColors.of(context).muted,
+          color: Color(0xFF737A85),
         ),
       ),
     );
@@ -397,7 +406,7 @@ class _CardGroup extends StatelessWidget {
     return Container(
       width: double.infinity,
       decoration: BoxDecoration(
-        color: AppColors.of(context).card,
+        color: Colors.white,
         borderRadius: BorderRadius.circular(12),
       ),
       clipBehavior: Clip.antiAlias,
@@ -424,9 +433,9 @@ class _InfoRow extends StatelessWidget {
           Expanded(
             child: Text(
               title,
-              style: TextStyle(
+              style: const TextStyle(
                 fontSize: 15,
-                color: AppColors.of(context).ink,
+                color: Color(0xFF1F242E),
               ),
             ),
           ),
@@ -452,9 +461,12 @@ class _UsageRow extends StatelessWidget {
   final bool showProgress;
   final VoidCallback? onTap;
 
+  static const _muted = Color(0xFF737A85);
+  static const _track = Color(0xFFECEEF2);
+  static const _fill = Color(0xFF2F6FED);
+
   @override
   Widget build(BuildContext context) {
-    final colors = AppColors.of(context);
     final content = Padding(
       padding: EdgeInsets.fromLTRB(16, 16, onTap != null ? 12 : 16, 16),
       child: Column(
@@ -465,22 +477,22 @@ class _UsageRow extends StatelessWidget {
               Expanded(
                 child: Text(
                   title,
-                  style: TextStyle(
+                  style: const TextStyle(
                     fontSize: 15,
-                    color: colors.ink,
+                    color: Color(0xFF1F242E),
                   ),
                 ),
               ),
               Text(
                 valueLabel,
-                style: TextStyle(fontSize: 14, color: colors.muted),
+                style: const TextStyle(fontSize: 14, color: _muted),
               ),
               if (onTap != null) ...[
                 const SizedBox(width: 2),
-                Icon(
+                const Icon(
                   Icons.chevron_right,
                   size: 22,
-                  color: colors.muted,
+                  color: _muted,
                 ),
               ],
             ],
@@ -492,8 +504,8 @@ class _UsageRow extends StatelessWidget {
               child: LinearProgressIndicator(
                 value: progress,
                 minHeight: 6,
-                backgroundColor: colors.hairline,
-                color: colors.brand,
+                backgroundColor: _track,
+                color: _fill,
               ),
             ),
           ],
@@ -504,7 +516,7 @@ class _UsageRow extends StatelessWidget {
     if (onTap == null) return content;
 
     return Material(
-      color: colors.card,
+      color: Colors.white,
       child: InkWell(onTap: onTap, child: content),
     );
   }

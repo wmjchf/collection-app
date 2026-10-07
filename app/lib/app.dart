@@ -4,8 +4,7 @@ import 'package:app_links/app_links.dart';
 import 'package:flutter/material.dart';
 import 'package:super_collection/core/network/api_client.dart';
 import 'package:super_collection/core/config/app_brand.dart';
-import 'package:super_collection/core/theme/app_theme.dart';
-import 'package:super_collection/core/theme/theme_controller.dart';
+import 'package:super_collection/core/ui/app_icon_sizes.dart';
 import 'package:super_collection/features/auth/auth_repository.dart';
 import 'package:super_collection/features/auth/login_page.dart';
 import 'package:super_collection/features/onboarding/onboarding_flow.dart';
@@ -57,19 +56,24 @@ class _SuperCollectionAppState extends State<SuperCollectionApp> {
 
   @override
   Widget build(BuildContext context) {
-    return ListenableBuilder(
-      listenable: ThemeController.instance,
-      builder: (context, _) {
-        return MaterialApp(
-          title: AppBrand.name,
-          debugShowCheckedModeBanner: false,
-          navigatorKey: AppNavigator.key,
-          theme: AppTheme.light(),
-          darkTheme: AppTheme.dark(),
-          themeMode: ThemeController.instance.mode,
-          home: const _AuthGate(),
-        );
-      },
+    return MaterialApp(
+      title: AppBrand.name,
+      debugShowCheckedModeBanner: false,
+      navigatorKey: AppNavigator.key,
+      theme: ThemeData(
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: const Color(0xFF2F6FED),
+          brightness: Brightness.light,
+        ),
+        useMaterial3: true,
+        scaffoldBackgroundColor: const Color(0xFFF7F7FA),
+        iconTheme: const IconThemeData(size: AppIconSizes.theme),
+        iconButtonTheme: IconButtonThemeData(
+          style: IconButton.styleFrom(iconSize: AppIconSizes.theme),
+        ),
+        appBarTheme: const AppBarTheme(centerTitle: false),
+      ),
+      home: const _AuthGate(),
     );
   }
 }

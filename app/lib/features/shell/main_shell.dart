@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:super_collection/core/analytics/analytics.dart';
 import 'package:super_collection/core/analytics/screen_dwell_tracker.dart';
 import 'package:super_collection/core/network/client_page_fetch.dart';
-import 'package:super_collection/core/theme/app_colors.dart';
 import 'package:super_collection/core/network/client_webview_fetch.dart';
 import 'package:super_collection/core/ui/client_fetch_backfill.dart';
 import 'package:super_collection/core/ui/parse_progress_banner.dart';
@@ -180,7 +179,7 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
         ),
       ),
       bottomNavigationBar: BottomAppBar(
-        color: AppColors.of(context).card,
+        color: Colors.white,
         elevation: 0,
         shadowColor: Colors.black.withValues(alpha: 0.08),
         surfaceTintColor: Colors.transparent,
