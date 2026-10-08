@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:super_collection/core/network/api_client.dart';
+import 'package:super_collection/core/ui/app_bottom_sheet.dart';
 import 'package:super_collection/core/ui/app_confirm_dialog.dart';
 import 'package:super_collection/core/ui/app_toast.dart';
 import 'package:super_collection/core/ui/pro_copy.dart';
 import 'package:super_collection/features/items/item_models.dart';
 import 'package:super_collection/features/items/items_repository.dart';
-
 
 Future<void> showAnnotationDetailSheet(
   BuildContext context, {
@@ -14,25 +14,15 @@ Future<void> showAnnotationDetailSheet(
   required VoidCallback onChanged,
   bool isPro = false,
 }) {
-  return showModalBottomSheet<void>(
+  return showAppBottomSheet<void>(
     context: context,
-    isScrollControlled: true,
-    backgroundColor: Colors.transparent,
-    barrierColor: const Color(0x59000000),
-    useSafeArea: false,
-    builder: (context) => Padding(
-      padding: EdgeInsets.only(
-        bottom: MediaQuery.viewInsetsOf(context).bottom +
-            MediaQuery.paddingOf(context).bottom,
-      ),
-      child: _AnnotationNoteSheet(
-        itemId: itemId,
-        annotation: annotation,
-        selectedText: annotation.selectedText,
-        initialNote: annotation.note,
-        onChanged: onChanged,
-        isPro: isPro,
-      ),
+    builder: (context) => _AnnotationNoteSheet(
+      itemId: itemId,
+      annotation: annotation,
+      selectedText: annotation.selectedText,
+      initialNote: annotation.note,
+      onChanged: onChanged,
+      isPro: isPro,
     ),
   );
 }
@@ -46,25 +36,15 @@ Future<ItemAnnotation?> showCreateAnnotationNoteSheet(
   int? endOffset,
   bool isPro = false,
 }) {
-  return showModalBottomSheet<ItemAnnotation>(
+  return showAppBottomSheet<ItemAnnotation>(
     context: context,
-    isScrollControlled: true,
-    backgroundColor: Colors.transparent,
-    barrierColor: const Color(0x59000000),
-    useSafeArea: false,
-    builder: (context) => Padding(
-      padding: EdgeInsets.only(
-        bottom: MediaQuery.viewInsetsOf(context).bottom +
-            MediaQuery.paddingOf(context).bottom,
-      ),
-      child: _AnnotationNoteSheet(
-        itemId: itemId,
-        selectedText: selectedText,
-        startOffset: startOffset,
-        endOffset: endOffset,
-        isCreate: true,
-        isPro: isPro,
-      ),
+    builder: (context) => _AnnotationNoteSheet(
+      itemId: itemId,
+      selectedText: selectedText,
+      startOffset: startOffset,
+      endOffset: endOffset,
+      isCreate: true,
+      isPro: isPro,
     ),
   );
 }
@@ -185,150 +165,132 @@ class _AnnotationNoteSheetState extends State<_AnnotationNoteSheet> {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-      child: Align(
-        alignment: Alignment.bottomCenter,
-        child: Material(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(24),
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
+    return Material(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(24),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Center(
+              child: Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: _handle,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              annotationSheetTitle(
+                isPro: widget.isPro,
+                isCreate: widget.isCreate,
+              ),
+              style: const TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w700,
+                color: _text,
+              ),
+            ),
+            const SizedBox(height: 12),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: _fieldBg,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Text(
+                _quotePreview,
+                style: const TextStyle(
+                  fontSize: 13,
+                  color: _muted,
+                  height: 1.4,
+                ),
+              ),
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              controller: _controller,
+              maxLines: 4,
+              minLines: 3,
+              maxLength: 500,
+              autofocus: true,
+              style: const TextStyle(
+                fontSize: 14,
+                color: _text,
+                height: 1.45,
+              ),
+              decoration: InputDecoration(
+                hintText: annotationNoteHint(isPro: widget.isPro),
+                hintStyle: const TextStyle(color: _muted, fontSize: 14),
+                filled: true,
+                fillColor: _fieldBg,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide.none,
+                ),
+                contentPadding: const EdgeInsets.all(12),
+                counterText: '',
+              ),
+            ),
+            const SizedBox(height: 12),
+            Row(
               children: [
-                Center(
-                  child: Container(
-                    width: 40,
-                    height: 4,
-                    decoration: BoxDecoration(
-                      color: _handle,
-                      borderRadius: BorderRadius.circular(2),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    Text(
-                      annotationSheetTitle(
-                        isPro: widget.isPro,
-                        isCreate: widget.isCreate,
+                Expanded(
+                  child: SizedBox(
+                    height: 48,
+                    child: FilledButton(
+                      onPressed: _delete,
+                      style: FilledButton.styleFrom(
+                        backgroundColor: _fieldBg,
+                        foregroundColor: _text,
+                        elevation: 0,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
                       ),
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w700,
-                        color: _text,
-                      ),
-                    ),
-                    const Spacer(),
-                    GestureDetector(
-                      onTap: () => Navigator.pop(context),
-                      child: const Text(
-                        '关闭',
-                        style: TextStyle(fontSize: 14, color: _muted),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: _fieldBg,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Text(
-                    _quotePreview,
-                    style: const TextStyle(
-                      fontSize: 13,
-                      color: _muted,
-                      height: 1.4,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 10),
-                TextField(
-                  controller: _controller,
-                  maxLines: 4,
-                  minLines: 3,
-                  maxLength: 500,
-                  autofocus: true,
-                  style: const TextStyle(
-                    fontSize: 14,
-                    color: _text,
-                    height: 1.45,
-                  ),
-                  decoration: InputDecoration(
-                    hintText: annotationNoteHint(isPro: widget.isPro),
-                    hintStyle: const TextStyle(color: _muted, fontSize: 14),
-                    filled: true,
-                    fillColor: _fieldBg,
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide.none,
-                    ),
-                    contentPadding: const EdgeInsets.all(12),
-                    counterText: '',
-                  ),
-                ),
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    Expanded(
-                      child: SizedBox(
-                        height: 48,
-                        child: FilledButton(
-                          onPressed: _delete,
-                          style: FilledButton.styleFrom(
-                            backgroundColor: _fieldBg,
-                            foregroundColor: _text,
-                            elevation: 0,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                          ),
-                          child: Text(
-                            widget.isCreate
-                                ? '取消'
-                                : deleteAnnotationLabel(isPro: widget.isPro),
-                            style: const TextStyle(
-                              fontSize: 15,
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
+                      child: Text(
+                        widget.isCreate
+                            ? '取消'
+                            : deleteAnnotationLabel(isPro: widget.isPro),
+                        style: const TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w500,
                         ),
                       ),
                     ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: SizedBox(
-                        height: 48,
-                        child: FilledButton(
-                          onPressed: _saving ? null : _save,
-                          style: FilledButton.styleFrom(
-                            backgroundColor: _blue,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                          ),
-                          child: Text(
-                            _saving ? '保存中…' : '保存',
-                            style: const TextStyle(
-                              fontSize: 15,
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: SizedBox(
+                    height: 48,
+                    child: FilledButton(
+                      onPressed: _saving ? null : _save,
+                      style: FilledButton.styleFrom(
+                        backgroundColor: _blue,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      child: Text(
+                        _saving ? '保存中…' : '保存',
+                        style: const TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w500,
                         ),
                       ),
                     ),
-                  ],
+                  ),
                 ),
               ],
             ),
-          ),
+          ],
         ),
       ),
     );

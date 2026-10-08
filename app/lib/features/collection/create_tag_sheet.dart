@@ -100,11 +100,6 @@ class _TagNameSheetState extends State<_TagNameSheet> {
     super.dispose();
   }
 
-  void _close() {
-    if (_submitting) return;
-    Navigator.of(context).pop();
-  }
-
   Future<void> _onSubmit() async {
     if (_submitting) return;
     final name = _controller.text.trim();
@@ -243,32 +238,13 @@ class _TagNameSheetState extends State<_TagNameSheet> {
               ),
             ),
             const SizedBox(height: 12),
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    _isRename ? '修改标签' : '新建标签',
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w700,
-                      color: _text,
-                    ),
-                  ),
-                ),
-                GestureDetector(
-                  onTap: _close,
-                  behavior: HitTestBehavior.opaque,
-                  child: Text(
-                    '关闭',
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: _submitting
-                          ? _muted.withValues(alpha: 0.4)
-                          : _muted,
-                    ),
-                  ),
-                ),
-              ],
+            Text(
+              _isRename ? '修改标签' : '新建标签',
+              style: const TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w700,
+                color: _text,
+              ),
             ),
             const SizedBox(height: 16),
             _fieldLabel('名称'),

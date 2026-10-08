@@ -56,25 +56,13 @@ class _ReadingMoreSheet extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 12),
-              Row(
-                children: [
-                  const Text(
-                    '更多操作',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w700,
-                      color: _text,
-                    ),
-                  ),
-                  const Spacer(),
-                  GestureDetector(
-                    onTap: () => Navigator.pop(context),
-                    child: const Text(
-                      '关闭',
-                      style: TextStyle(fontSize: 14, color: _muted),
-                    ),
-                  ),
-                ],
+              const Text(
+                '更多操作',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                  color: _text,
+                ),
               ),
               const SizedBox(height: 16),
               Align(

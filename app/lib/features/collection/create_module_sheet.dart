@@ -73,11 +73,6 @@ class _ModuleNameSheetState extends State<_ModuleNameSheet> {
     super.dispose();
   }
 
-  void _close() {
-    if (_submitting) return;
-    Navigator.of(context).pop();
-  }
-
   Future<void> _onSubmit() async {
     if (_submitting) return;
     final name = _controller.text.trim();
@@ -148,31 +143,16 @@ class _ModuleNameSheetState extends State<_ModuleNameSheet> {
               const SizedBox(height: 12),
               SizedBox(
                 height: 27,
-                child: Row(
-                  children: [
-                    Text(
-                      _isRename ? '修改名称' : '新建归类',
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w700,
-                        color: _text,
-                      ),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    _isRename ? '修改名称' : '新建归类',
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                      color: _text,
                     ),
-                    const Spacer(),
-                    GestureDetector(
-                      onTap: _close,
-                      behavior: HitTestBehavior.opaque,
-                      child: Text(
-                        '关闭',
-                        style: TextStyle(
-                          fontSize: 14,
-                          color: _submitting
-                              ? _muted.withValues(alpha: 0.4)
-                              : _muted,
-                        ),
-                      ),
-                    ),
-                  ],
+                  ),
                 ),
               ),
               const SizedBox(height: 12),

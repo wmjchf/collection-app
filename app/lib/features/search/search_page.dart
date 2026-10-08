@@ -849,8 +849,8 @@ class _SearchTagFilterSheetState extends State<_SearchTagFilterSheet> {
                     color: _text,
                   ),
                 ),
-                const Spacer(),
                 if (_selected.isNotEmpty) ...[
+                  const Spacer(),
                   GestureDetector(
                     onTap: _clear,
                     child: const Text(
@@ -858,15 +858,7 @@ class _SearchTagFilterSheetState extends State<_SearchTagFilterSheet> {
                       style: TextStyle(fontSize: 14, color: _muted),
                     ),
                   ),
-                  const SizedBox(width: 16),
                 ],
-                GestureDetector(
-                  onTap: () => Navigator.of(context).pop(),
-                  child: const Text(
-                    '关闭',
-                    style: TextStyle(fontSize: 14, color: _muted),
-                  ),
-                ),
               ],
             ),
             const SizedBox(height: 12),
