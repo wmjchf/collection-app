@@ -298,10 +298,13 @@ class _RoamSwipeDeckState extends State<_RoamSwipeDeck> {
         final hasNext = remaining > 1;
         // 始终预留顶边，最后一张也不改 frontH，避免高度跳导致行数变
         const topReserve = peekStep;
-        final frontH =
+        final maxH =
             (constraints.maxHeight - topReserve - 8).clamp(200.0, 10000.0);
+        // 比满屏矮一截，叠卡仍贴底（底边对齐）
+        final frontH = (maxH * 0.72).clamp(280.0, maxH);
         final fullW = constraints.maxWidth;
         final nextScale = hasNext ? (0.94 + 0.06 * p) : 1.0;
+        final stackH = frontH + topReserve;
 
         final front = SizedBox(
           width: fullW,
@@ -309,63 +312,70 @@ class _RoamSwipeDeckState extends State<_RoamSwipeDeck> {
           child: _cardAt(index, elevation: 12, muteAction: !onDone),
         );
 
-        return Stack(
-          clipBehavior: Clip.none,
-          children: [
-            // 完成卡也保留顶边空壳，避免滑到最后一张时层级突然消失
-            Positioned(
-              left: sideStep,
-              right: sideStep,
-              top: 0,
-              height: frontH,
-              child: const IgnorePointer(
-                child: Material(
-                  color: Colors.white,
-                  elevation: 0,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.all(Radius.circular(16)),
-                    side: BorderSide(color: Color(0xFFE6E8ED)),
-                  ),
-                ),
-              ),
-            ),
-            if (hasNext)
-              Positioned(
-                left: 0,
-                right: 0,
-                top: topReserve,
-                height: frontH,
-                child: IgnorePointer(
-                  child: Transform.scale(
-                    scale: nextScale,
-                    alignment: Alignment.topCenter,
-                    child: SizedBox(
-                      width: fullW,
-                      height: frontH,
-                      child: _cardAt(index + 1, elevation: 0),
+        return Align(
+          alignment: Alignment.bottomCenter,
+          child: SizedBox(
+            width: fullW,
+            height: stackH,
+            child: Stack(
+              clipBehavior: Clip.none,
+              children: [
+                // 完成卡也保留顶边空壳，避免滑到最后一张时层级突然消失
+                Positioned(
+                  left: sideStep,
+                  right: sideStep,
+                  top: 0,
+                  height: frontH,
+                  child: const IgnorePointer(
+                    child: Material(
+                      color: Colors.white,
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.all(Radius.circular(16)),
+                        side: BorderSide(color: Color(0xFFE6E8ED)),
+                      ),
                     ),
                   ),
                 ),
-              ),
-            Positioned(
-              left: 0,
-              right: 0,
-              top: topReserve,
-              height: frontH,
-              child: onDone
-                  ? front
-                  : _SwipeCard(
-                      key: _swipeKey,
-                      onTap: () => widget.onOpen(widget.snippets[index]),
-                      onProgress: (value) {
-                        if (_progress == value) return;
-                        setState(() => _progress = value);
-                      },
-                      onDismissed: widget.onDismissed,
-                      child: front,
+                if (hasNext)
+                  Positioned(
+                    left: 0,
+                    right: 0,
+                    top: topReserve,
+                    height: frontH,
+                    child: IgnorePointer(
+                      child: Transform.scale(
+                        scale: nextScale,
+                        alignment: Alignment.topCenter,
+                        child: SizedBox(
+                          width: fullW,
+                          height: frontH,
+                          child: _cardAt(index + 1, elevation: 0),
+                        ),
+                      ),
                     ),
+                  ),
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  top: topReserve,
+                  height: frontH,
+                  child: onDone
+                      ? front
+                      : _SwipeCard(
+                          key: _swipeKey,
+                          onTap: () => widget.onOpen(widget.snippets[index]),
+                          onProgress: (value) {
+                            if (_progress == value) return;
+                            setState(() => _progress = value);
+                          },
+                          onDismissed: widget.onDismissed,
+                          child: front,
+                        ),
+                ),
+              ],
             ),
-          ],
+          ),
         );
       },
     );
