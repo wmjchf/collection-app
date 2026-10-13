@@ -212,10 +212,10 @@ class _RoamSwipeDeckState extends State<_RoamSwipeDeck> {
     if (absoluteIndex < snips.length) {
       return RoamQuoteCard(
         snippet: snips[absoluteIndex],
-        maxLines: 12,
         showMeta: true,
         elevation: elevation,
         color: color ?? Colors.white,
+        scrollBody: true,
       );
     }
     return _RoamDoneCard(
