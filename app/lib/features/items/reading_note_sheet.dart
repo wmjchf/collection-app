@@ -38,8 +38,11 @@ class _ReadingNoteSheetState extends State<_ReadingNoteSheet> {
   static const _blue = Color(0xFF2F6FED);
   static const _fieldBg = Color(0xFFF5F7FA);
   static const _handle = Color(0xFFE5E8ED);
+  static const _fieldHeight = 148.0;
+  static const _fieldPad = EdgeInsets.all(14);
 
   late final TextEditingController _controller;
+  late final FocusNode _focus;
   final _repo = ItemsRepository();
   bool _saving = false;
   late bool _editing;
@@ -50,18 +53,28 @@ class _ReadingNoteSheetState extends State<_ReadingNoteSheet> {
   void initState() {
     super.initState();
     _controller = TextEditingController(text: widget.initialNote ?? '');
+    _focus = FocusNode();
     // 已有内容先看；空白才直接编辑
     _editing = _savedNote.isEmpty;
+    if (_editing) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _focus.requestFocus();
+      });
+    }
   }
 
   @override
   void dispose() {
+    _focus.dispose();
     _controller.dispose();
     super.dispose();
   }
 
   void _startEdit() {
     setState(() => _editing = true);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _focus.requestFocus();
+    });
   }
 
   Future<void> _save() async {
@@ -124,7 +137,10 @@ class _ReadingNoteSheetState extends State<_ReadingNoteSheet> {
                         : _startEdit,
                     style: TextButton.styleFrom(
                       foregroundColor: _blue,
-                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                      padding: EdgeInsets.zero,
+                      minimumSize: Size.zero,
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      visualDensity: VisualDensity.compact,
                     ),
                     child: Text(
                       _editing ? (_saving ? '保存中…' : '保存') : '编辑',
@@ -138,44 +154,67 @@ class _ReadingNoteSheetState extends State<_ReadingNoteSheet> {
               ),
             ),
             const SizedBox(height: 4),
-            if (_editing)
-              TextField(
-                controller: _controller,
-                maxLines: 5,
-                maxLength: 2000,
-                autofocus: true,
-                style: const TextStyle(fontSize: 15, color: _text, height: 1.5),
-                decoration: InputDecoration(
-                  hintText: '写下读后的感想，方便以后找回…',
-                  hintStyle: const TextStyle(color: _muted, fontSize: 14),
-                  filled: true,
-                  fillColor: _fieldBg,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide.none,
-                  ),
-                  contentPadding: const EdgeInsets.all(14),
-                  counterStyle: const TextStyle(fontSize: 11, color: _muted),
-                ),
-              )
-            else
-              Container(
-                width: double.infinity,
-                constraints: const BoxConstraints(minHeight: 120),
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: _fieldBg,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Text(
-                  _savedNote,
-                  style: const TextStyle(
-                    fontSize: 15,
-                    color: _text,
-                    height: 1.5,
-                  ),
-                ),
+            // 外层固定装饰+padding；TextField 零内边距，看/编不换壳、不改 padding。
+            Container(
+              height: _fieldHeight,
+              width: double.infinity,
+              padding: _fieldPad,
+              decoration: BoxDecoration(
+                color: _fieldBg,
+                borderRadius: BorderRadius.circular(12),
               ),
+              child: Stack(
+                children: [
+                  Positioned.fill(
+                    child: TextField(
+                      controller: _controller,
+                      focusNode: _focus,
+                      readOnly: !_editing,
+                      showCursor: _editing,
+                      enableInteractiveSelection: _editing,
+                      maxLines: null,
+                      expands: true,
+                      textAlignVertical: TextAlignVertical.top,
+                      maxLength: 2000,
+                      onChanged: (_) => setState(() {}),
+                      style: const TextStyle(
+                        fontSize: 15,
+                        color: _text,
+                        height: 1.5,
+                      ),
+                      cursorColor: _blue,
+                      decoration: InputDecoration(
+                        isCollapsed: true,
+                        border: InputBorder.none,
+                        hintText: _editing
+                            ? '写下读后的感想，方便以后找回…'
+                            : null,
+                        hintStyle: const TextStyle(
+                          color: _muted,
+                          fontSize: 14,
+                        ),
+                        contentPadding: EdgeInsets.zero,
+                        counterText: '',
+                      ),
+                    ),
+                  ),
+                  if (_editing)
+                    Positioned(
+                      right: 0,
+                      bottom: 0,
+                      child: IgnorePointer(
+                        child: Text(
+                          '${_controller.text.characters.length}/2000',
+                          style: const TextStyle(
+                            fontSize: 11,
+                            color: _muted,
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
           ],
         ),
       ),
