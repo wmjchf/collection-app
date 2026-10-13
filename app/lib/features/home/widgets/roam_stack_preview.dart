@@ -13,7 +13,8 @@ class RoamStackPreview extends StatelessWidget {
   final List<RoamSnippet> items;
   final VoidCallback onTap;
 
-  static const _height = 168.0;
+  // 批注卡要放下引号 + 正文约 2 行 + 批注 + 元信息
+  static const _height = 196.0;
   static const _peekStep = 10.0;
   static const _sideStep = 12.0;
 
