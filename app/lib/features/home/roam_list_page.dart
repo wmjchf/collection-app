@@ -6,6 +6,7 @@ import 'package:super_collection/core/ui/app_toast.dart';
 import 'package:super_collection/core/ui/paged_list.dart';
 import 'package:super_collection/features/home/home_repository.dart';
 import 'package:super_collection/features/home/roam_models.dart';
+import 'package:super_collection/features/home/roam_mute.dart';
 import 'package:super_collection/features/home/widgets/roam_quote_card.dart';
 import 'package:super_collection/features/items/item_reading_page.dart';
 import 'package:super_collection/features/items/items_repository.dart';
@@ -62,9 +63,10 @@ class _RoamListPageState extends State<RoamListPage> with ScreenDwellMixin {
     }
     try {
       final data = await _repo.fetchRoam(limit: 20, offset: 0);
+      final items = await RoamMute.visible(data.items);
       if (!mounted) return;
       setState(() {
-        _itemsList = data.items;
+        _itemsList = items;
         _total = data.total;
         _loading = false;
         _error = null;
@@ -92,9 +94,10 @@ class _RoamListPageState extends State<RoamListPage> with ScreenDwellMixin {
         limit: 20,
         offset: _itemsList.length,
       );
+      final more = await RoamMute.visible(data.items);
       if (!mounted) return;
       setState(() {
-        _itemsList = [..._itemsList, ...data.items];
+        _itemsList = [..._itemsList, ...more];
         _total = data.total;
         _loadingMore = false;
       });

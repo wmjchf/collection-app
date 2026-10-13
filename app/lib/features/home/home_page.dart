@@ -18,6 +18,7 @@ import 'package:super_collection/features/home/home_mock_data.dart';
 import 'package:super_collection/features/home/home_repository.dart';
 import 'package:super_collection/features/home/roam_list_page.dart';
 import 'package:super_collection/features/home/roam_models.dart';
+import 'package:super_collection/features/home/roam_mute.dart';
 import 'package:super_collection/features/home/roam_player_page.dart';
 import 'package:super_collection/features/home/widgets/home_item_card.dart';
 import 'package:super_collection/features/home/widgets/roam_stack_preview.dart';
@@ -62,6 +63,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   final _items = ItemsRepository();
   final _auth = AuthRepository();
   HomeData? _data;
+  Set<String> _roamMuted = {};
   bool _loading = true;
   bool _pasting = false;
   bool _isPro = false;
@@ -149,9 +151,11 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     }
     try {
       final data = await _repo.fetchHome();
+      final muted = await RoamMute.ids();
       if (!mounted) return;
       setState(() {
         _data = data;
+        _roamMuted = muted;
         _loading = false;
         _error = null;
       });
@@ -605,11 +609,22 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     }
   }
 
+  Future<void> _refreshRoamMuted() async {
+    final muted = await RoamMute.ids();
+    if (!mounted) return;
+    setState(() => _roamMuted = muted);
+  }
+
+  List<RoamSnippet> get _roamItems =>
+      RoamMute.filter(_data?.roam.items ?? const <RoamSnippet>[], _roamMuted);
+
   Future<void> _openRoamPlayer() async {
-    final items = _data?.roam.items ?? const <RoamSnippet>[];
+    final items = _roamItems;
     if (items.isEmpty) return;
     await showRoamPlayer(context, snippets: items);
-    if (mounted) await _load(quiet: true);
+    if (!mounted) return;
+    await _refreshRoamMuted();
+    await _load(quiet: true);
   }
 
   void _openRoamList() {
@@ -676,7 +691,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   @override
   Widget build(BuildContext context) {
     final unread = _data?.unread.items ?? const <CollectionItem>[];
-    final roam = _data?.roam.items ?? const <RoamSnippet>[];
+    final roam = _roamItems;
 
     return Scaffold(
       backgroundColor: _bg,
