@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui' show BoxHeightStyle, BoxWidthStyle;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
@@ -1392,7 +1393,9 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
         start = idx;
         end = idx + ann.selectedText.length;
       }
-      ranges.add((start: start, end: end, ann: ann));
+      final trimmed = _trimReadingSelectionRange(text, start, end);
+      if (trimmed.start >= trimmed.end) continue;
+      ranges.add((start: trimmed.start, end: trimmed.end, ann: ann));
     }
     ranges.sort((a, b) => a.start.compareTo(b.start));
     return ranges;
@@ -1416,13 +1419,18 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
     final localText = plainText.substring(globalStart, globalEnd);
     final ranges = _annotationRanges(plainText)
         .where((r) => r.end > globalStart && r.start < globalEnd)
-        .map(
-          (r) => (
-            start: (r.start - globalStart).clamp(0, localText.length),
-            end: (r.end - globalStart).clamp(0, localText.length),
+        .map((r) {
+          final trimmed = _trimReadingSelectionRange(
+            localText,
+            (r.start - globalStart).clamp(0, localText.length),
+            (r.end - globalStart).clamp(0, localText.length),
+          );
+          return (
+            start: trimmed.start,
+            end: trimmed.end,
             ann: r.ann,
-          ),
-        )
+          );
+        })
         .where((r) => r.start < r.end)
         .toList();
 
@@ -1459,7 +1467,7 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
     int baseOffset = 0,
   }) {
     final value = editableTextState.textEditingValue;
-    final sel = value.selection;
+    final sel = _trimReadingTextSelection(value.text, value.selection);
     if (!sel.isValid || sel.isCollapsed) {
       return const SizedBox.shrink();
     }
@@ -2023,13 +2031,18 @@ class _InlineArticleBody extends StatelessWidget {
       final base = islandBase < 0 ? 0 : islandBase;
       final localAnns = annotationRanges
           .where((r) => r.end > base && r.start < base + text.length)
-          .map(
-            (r) => (
-              start: (r.start - base).clamp(0, text.length),
-              end: (r.end - base).clamp(0, text.length),
+          .map((r) {
+            final trimmed = _trimReadingSelectionRange(
+              text,
+              (r.start - base).clamp(0, text.length),
+              (r.end - base).clamp(0, text.length),
+            );
+            return (
+              start: trimmed.start,
+              end: trimmed.end,
               ann: r.ann,
-            ),
-          )
+            );
+          })
           .where((r) => r.start < r.end)
           .toList();
 
@@ -2092,13 +2105,18 @@ class _InlineArticleBody extends StatelessWidget {
       flushIsland();
       final localAnns = annotationRanges
           .where((r) => r.end > posStart && r.start < posEnd)
-          .map(
-            (r) => (
-              start: (r.start - posStart).clamp(0, visible.length),
-              end: (r.end - posStart).clamp(0, visible.length),
+          .map((r) {
+            final trimmed = _trimReadingSelectionRange(
+              visible,
+              (r.start - posStart).clamp(0, visible.length),
+              (r.end - posStart).clamp(0, visible.length),
+            );
+            return (
+              start: trimmed.start,
+              end: trimmed.end,
               ann: r.ann,
-            ),
-          )
+            );
+          })
           .where((r) => r.start < r.end)
           .toList();
       final bodyStyle = _bodyStyle;
@@ -2201,12 +2219,14 @@ class _InlineArticleBody extends StatelessWidget {
 
         final segAnns = annotationRanges
             .where((r) => r.end > pos.start && r.start < pos.end)
-            .map(
-              (r) => (
-                start: (r.start - pos.start).clamp(0, visible.length),
-                end: (r.end - pos.start).clamp(0, visible.length),
-              ),
-            )
+            .map((r) {
+              final trimmed = _trimReadingSelectionRange(
+                visible,
+                (r.start - pos.start).clamp(0, visible.length),
+                (r.end - pos.start).clamp(0, visible.length),
+              );
+              return (start: trimmed.start, end: trimmed.end);
+            })
             .where((r) => r.start < r.end)
             .toList();
         final style = _headingStyle(block.level);
@@ -2248,12 +2268,14 @@ class _InlineArticleBody extends StatelessWidget {
 
         final segAnns = annotationRanges
             .where((r) => r.end > pos.start && r.start < pos.end)
-            .map(
-              (r) => (
-                start: (r.start - pos.start).clamp(0, visible.length),
-                end: (r.end - pos.start).clamp(0, visible.length),
-              ),
-            )
+            .map((r) {
+              final trimmed = _trimReadingSelectionRange(
+                visible,
+                (r.start - pos.start).clamp(0, visible.length),
+                (r.end - pos.start).clamp(0, visible.length),
+              );
+              return (start: trimmed.start, end: trimmed.end);
+            })
             .where((r) => r.start < r.end)
             .toList();
         final bodyStyle = _bodyStyle;
@@ -2467,6 +2489,49 @@ class _InlineEmoji extends StatelessWidget {
   }
 }
 
+/// 选区末尾的换行/空白：Flutter 会画满整行，需从选区与高亮范围里去掉。
+bool _isReadingSelectionTrimUnit(int unit) {
+  return unit == 0x0A || // \n
+      unit == 0x0D || // \r
+      unit == 0x20 || // space
+      unit == 0x09 || // \t
+      unit == 0x3000; // ideographic space
+}
+
+({int start, int end}) _trimReadingSelectionRange(
+  String text,
+  int start,
+  int end,
+) {
+  var s = start.clamp(0, text.length);
+  var e = end.clamp(0, text.length);
+  if (e < s) {
+    final t = s;
+    s = e;
+    e = t;
+  }
+  while (e > s && _isReadingSelectionTrimUnit(text.codeUnitAt(e - 1))) {
+    e--;
+  }
+  while (s < e && _isReadingSelectionTrimUnit(text.codeUnitAt(s))) {
+    s++;
+  }
+  return (start: s, end: e);
+}
+
+TextSelection _trimReadingTextSelection(String text, TextSelection sel) {
+  if (!sel.isValid || sel.isCollapsed) return sel;
+  final t = _trimReadingSelectionRange(text, sel.start, sel.end);
+  if (t.start == sel.start && t.end == sel.end) return sel;
+  if (t.start >= t.end) {
+    return TextSelection.collapsed(offset: t.start);
+  }
+  if (sel.baseOffset <= sel.extentOffset) {
+    return TextSelection(baseOffset: t.start, extentOffset: t.end);
+  }
+  return TextSelection(baseOffset: t.end, extentOffset: t.start);
+}
+
 /// 正文可选中；批注热区与批注图标用 Stack 绝对定位，不抢 SelectableText 手势状态。
 class _AnnotatedBodyStack extends StatefulWidget {
   const _AnnotatedBodyStack({
@@ -2514,6 +2579,7 @@ class _AnnotatedBodyStackState extends State<_AnnotatedBodyStack> {
   double? _laidOutWidth;
   int _measureToken = 0;
   int _measureMisses = 0;
+  bool _clampingSelection = false;
 
   @override
   void didUpdateWidget(covariant _AnnotatedBodyStack oldWidget) {
@@ -2569,6 +2635,53 @@ class _AnnotatedBodyStackState extends State<_AnnotatedBodyStack> {
     return found;
   }
 
+  EditableTextState? _findEditableTextState() {
+    final ctx = _textKey.currentContext;
+    if (ctx == null) return null;
+    EditableTextState? found;
+    void visit(Element element) {
+      if (found != null) return;
+      if (element is StatefulElement && element.state is EditableTextState) {
+        found = element.state as EditableTextState;
+        return;
+      }
+      element.visitChildren(visit);
+    }
+
+    ctx.visitChildElements(visit);
+    if (found == null && ctx is StatefulElement && ctx.state is EditableTextState) {
+      found = ctx.state as EditableTextState;
+    }
+    return found;
+  }
+
+  /// 段末 `\n` 被划进选区时仍可能多出空白盒；同步收紧到正文末字。
+  void _onSelectionChanged(TextSelection selection, SelectionChangedCause? cause) {
+    if (_clampingSelection) {
+      widget.onSelectionChanged?.call(selection);
+      return;
+    }
+    if (!selection.isValid || selection.isCollapsed) {
+      widget.onSelectionChanged?.call(selection);
+      return;
+    }
+    final state = _findEditableTextState();
+    final text = state?.textEditingValue.text ?? widget.text;
+    final clamped = _trimReadingTextSelection(text, selection);
+    if (clamped.start == selection.start && clamped.end == selection.end) {
+      widget.onSelectionChanged?.call(selection);
+      return;
+    }
+    widget.onSelectionChanged?.call(clamped);
+    if (state == null) return;
+    _clampingSelection = true;
+    state.userUpdateTextEditingValue(
+      state.textEditingValue.copyWith(selection: clamped),
+      cause ?? SelectionChangedCause.toolbar,
+    );
+    _clampingSelection = false;
+  }
+
   /// 去掉选区末尾换行/空白对应的空盒子，避免图标落到段间距里。
   List<TextBox> _meaningfulBoxes(List<TextBox> boxes) {
     return boxes
@@ -2600,8 +2713,13 @@ class _AnnotatedBodyStackState extends State<_AnnotatedBodyStack> {
 
     final next = <({Rect rect, ItemAnnotation ann, bool showNoteIcon})>[];
     for (final r in widget.annotations) {
+      final trimmed = _trimReadingSelectionRange(widget.text, r.start, r.end);
+      if (trimmed.start >= trimmed.end) continue;
       final raw = editable.getBoxesForSelection(
-        TextSelection(baseOffset: r.start, extentOffset: r.end),
+        TextSelection(
+          baseOffset: trimmed.start,
+          extentOffset: trimmed.end,
+        ),
       );
       final boxes = _meaningfulBoxes(raw);
       if (boxes.isEmpty) continue;
@@ -2676,12 +2794,12 @@ class _AnnotatedBodyStackState extends State<_AnnotatedBodyStack> {
                       rich,
                       key: _textKey,
                       textAlign: TextAlign.justify,
+                      // 平台默认 max：短行选区会拉满到段落最宽行；tight 贴齐字形。
+                      selectionWidthStyle: BoxWidthStyle.tight,
+                      selectionHeightStyle: BoxHeightStyle.tight,
                       contextMenuBuilder: widget.contextMenuBuilder,
                       onTap: widget.onBodyTap,
-                      onSelectionChanged: widget.onSelectionChanged == null
-                          ? null
-                          : (selection, _) =>
-                              widget.onSelectionChanged!(selection),
+                      onSelectionChanged: _onSelectionChanged,
                     ),
             ),
             // 透明热区盖住高亮，稳定响应点击（不与选区手势打架）
