@@ -114,6 +114,8 @@ class _RoamListPageState extends State<RoamListPage> with ScreenDwellMixin {
             itemId: item.id,
             initialItem: item,
             openEntry: 'roam',
+            focusAnnotationId: snippet.annotationId,
+            openNoteOnLaunch: snippet.isThought,
           ),
         ),
       );

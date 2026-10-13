@@ -39,19 +39,36 @@ String annotationEditBodyWarning({required bool isPro}) => isPro
     ? '本篇已有高亮朱批，修改正文后朱批位置可能不准确。'
     : '本篇已有高亮批注，修改正文后批注位置可能不准确。';
 
-String annotationSheetTitle({required bool isPro, required bool isCreate}) {
-  if (isCreate) return isPro ? '添加朱批' : '添加批注';
+String annotationSheetTitle({
+  required bool isPro,
+  required bool isCreate,
+  bool highlightOnly = false,
+}) {
+  if (isCreate || highlightOnly) {
+    return isPro ? '添加朱批' : '添加批注';
+  }
   return isPro ? '编辑朱批' : '编辑批注';
 }
 
 String annotationNoteHint({required bool isPro}) =>
     isPro ? '可选：写一句朱批' : '可选：写一句批注';
 
-String deleteAnnotationTitle({required bool isPro}) =>
-    isPro ? '删除朱批？' : '删除批注？';
+/// [highlightOnly]：仅高亮、尚无批注正文时用「删除高亮」
+String deleteAnnotationTitle({
+  required bool isPro,
+  bool highlightOnly = false,
+}) {
+  if (highlightOnly) return '删除高亮？';
+  return isPro ? '删除朱批？' : '删除批注？';
+}
 
-String deleteAnnotationLabel({required bool isPro}) =>
-    isPro ? '删除朱批' : '删除批注';
+String deleteAnnotationLabel({
+  required bool isPro,
+  bool highlightOnly = false,
+}) {
+  if (highlightOnly) return '删除高亮';
+  return isPro ? '删除朱批' : '删除批注';
+}
 
 /// 系统筛选展示名（按 code 覆写）
 String systemFilterDisplayName(String code, String fallback, {required bool isPro}) {

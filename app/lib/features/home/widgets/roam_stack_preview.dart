@@ -13,12 +13,17 @@ class RoamStackPreview extends StatelessWidget {
   final List<RoamSnippet> items;
   final VoidCallback onTap;
 
-  static const _height = 232.0;
+  static const _height = 168.0;
+  static const _peekStep = 10.0;
+  static const _sideStep = 12.0;
 
   @override
   Widget build(BuildContext context) {
     final show = items.take(3).toList();
     if (show.isEmpty) return const SizedBox.shrink();
+
+    final peekCount = (show.length - 1).clamp(0, 2);
+    final frontTop = peekCount * _peekStep;
 
     return GestureDetector(
       onTap: onTap,
@@ -26,31 +31,35 @@ class RoamStackPreview extends StatelessWidget {
       child: SizedBox(
         height: _height,
         child: Stack(
-          alignment: Alignment.topCenter,
+          clipBehavior: Clip.hardEdge,
           children: [
             if (show.length >= 3)
               Positioned(
-                top: 22,
-                left: 20,
-                right: 20,
+                top: 0,
+                left: _sideStep * 2,
+                right: _sideStep * 2,
+                height: _height - frontTop,
                 child: _PeekCard(snippet: show[2], dim: 0.55),
               ),
             if (show.length >= 2)
               Positioned(
-                top: 11,
-                left: 10,
-                right: 10,
+                top: peekCount >= 2 ? _peekStep : 0,
+                left: _sideStep,
+                right: _sideStep,
+                height: _height - frontTop,
                 child: _PeekCard(snippet: show[1], dim: 0.28),
               ),
             Positioned(
-              top: 0,
+              top: frontTop,
               left: 0,
               right: 0,
+              bottom: 0,
               child: IgnorePointer(
                 child: RoamQuoteCard(
                   snippet: show.first,
                   maxLines: 3,
                   elevation: 8,
+                  fillHeight: true,
                 ),
               ),
             ),
@@ -76,7 +85,8 @@ class _PeekCard extends StatelessWidget {
           snippet: snippet,
           maxLines: 2,
           showMeta: false,
-          elevation: 3,
+          elevation: 0,
+          fillHeight: true,
         ),
       ),
     );

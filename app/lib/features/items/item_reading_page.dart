@@ -48,13 +48,21 @@ class ItemReadingPage extends StatefulWidget {
     required this.itemId,
     this.initialItem,
     this.openEntry = 'unknown',
+    this.focusAnnotationId,
+    this.openNoteOnLaunch = false,
   });
 
   final int itemId;
   final CollectionItem? initialItem;
 
-  /// 打开来源：home / unread / library / search / star / tag / paste / unknown
+  /// 打开来源：home / unread / library / search / star / tag / paste / roam / unknown
   final String openEntry;
+
+  /// 打开后滚动到该标注/批注在正文中的位置（如漫游进入）
+  final int? focusAnnotationId;
+
+  /// 打开后直接弹出感想（如漫游点感想进入）
+  final bool openNoteOnLaunch;
 
   @override
   State<ItemReadingPage> createState() => _ItemReadingPageState();
@@ -95,6 +103,8 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
   int _mindmapPollGen = 0;
   late final DateTime _openedAt;
   double _bodyFontSize = ReadingFontPrefs.defaultSize;
+  bool _focusScrollDone = false;
+  bool _noteSheetLaunched = false;
 
   /// 停留满此时长才标已读，避免误点进阅读页就从「未读」消失。
   static const _markReadDelay = Duration(seconds: 5);
@@ -124,8 +134,18 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
         _scheduleMarkReadIfNeeded();
         _onItemReadyForReading(initial);
       }
+      _scheduleOpenNoteOnLaunch();
     }
     unawaited(_bootstrapItem());
+  }
+
+  void _scheduleOpenNoteOnLaunch() {
+    if (!widget.openNoteOnLaunch || _noteSheetLaunched) return;
+    _noteSheetLaunched = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      unawaited(_onNote());
+    });
   }
 
   Future<void> _loadPro() async {
@@ -204,6 +224,7 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
         _scheduleMarkReadIfNeeded();
         _onItemReadyForReading(item);
       }
+      _scheduleOpenNoteOnLaunch();
     } on ApiException catch (e) {
       if (!mounted) return;
       setState(() {
@@ -531,10 +552,75 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
         _annotations = list;
         _loadingAnns = false;
       });
+      _scheduleFocusScrollFallback();
     } catch (_) {
       if (!mounted) return;
       setState(() => _loadingAnns = false);
     }
+  }
+
+  void _onFocusAnnotationRect(Rect localRect, RenderBox stackBox) {
+    if (_focusScrollDone || !mounted) return;
+    if (!_scrollController.hasClients) return;
+    _focusScrollDone = true;
+
+    final scrollCtx =
+        _scrollController.position.context.notificationContext;
+    final scrollBox = scrollCtx?.findRenderObject() as RenderBox?;
+    if (scrollBox == null || !scrollBox.hasSize) return;
+
+    final global = stackBox.localToGlobal(localRect.topLeft);
+    final viewportTop = scrollBox.localToGlobal(Offset.zero).dy;
+    const align = 0.22;
+    final desired = scrollBox.size.height * align;
+    final delta = (global.dy - viewportTop) - desired;
+    final target = (_scrollController.offset + delta).clamp(
+      0.0,
+      _scrollController.position.maxScrollExtent,
+    );
+    _scrollController.jumpTo(target);
+  }
+
+  /// 量不到热区时（如表情 WidgetSpan）用 TextPainter 估算滚动
+  void _scheduleFocusScrollFallback() {
+    final id = widget.focusAnnotationId;
+    if (id == null || _focusScrollDone) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      Future<void>.delayed(const Duration(milliseconds: 480), () {
+        if (!mounted || _focusScrollDone) return;
+        _focusScrollByPainter(id);
+      });
+    });
+  }
+
+  void _focusScrollByPainter(int annotationId) {
+    if (_focusScrollDone || !_scrollController.hasClients) return;
+    final body = _bodyText;
+    if (body.isEmpty) return;
+    ({int start, int end, ItemAnnotation ann})? target;
+    for (final r in _annotationRanges(body)) {
+      if (r.ann.id == annotationId) {
+        target = r;
+        break;
+      }
+    }
+    if (target == null) return;
+
+    final width = MediaQuery.sizeOf(context).width - 44;
+    final painter = TextPainter(
+      text: TextSpan(
+        text: body.substring(0, target.start),
+        style: _bodyTextStyle,
+      ),
+      textDirection: TextDirection.ltr,
+    )..layout(maxWidth: width);
+
+    // 标题/元信息等上方内容的粗估；有图/视频时可能偏一点，优于完全不滚
+    const aboveBody = 160.0;
+    final targetOffset = (aboveBody + painter.height - 80)
+        .clamp(0.0, _scrollController.position.maxScrollExtent);
+    _focusScrollDone = true;
+    _scrollController.jumpTo(targetOffset);
   }
 
   Future<void> _openSummarySheet() async {
@@ -1604,6 +1690,8 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
                       onTapAnnotation: _openAnnotation,
                       onBodyTap: _toggleReadingChrome,
                       onSelectionChanged: _onBodySelectionChanged,
+                      focusAnnotationId: widget.focusAnnotationId,
+                      onFocusAnnotationRect: _onFocusAnnotationRect,
                       itemId: _item.id,
                       pageUrl: _item.sourcePageUrl,
                       transcriptSegments: _item.transcriptSegments,
@@ -1623,6 +1711,8 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
                       onBodyTap: _toggleReadingChrome,
                       onSelectionChanged: _onBodySelectionChanged,
                       textStyle: _bodyTextStyle,
+                      focusAnnotationId: widget.focusAnnotationId,
+                      onFocusAnnotationRect: _onFocusAnnotationRect,
                     ),
                   if (_loadingAnns) ...[
                     const SizedBox(height: 16),
@@ -1826,6 +1916,8 @@ class _InlineArticleBody extends StatelessWidget {
     required this.onTapAnnotation,
     this.onBodyTap,
     this.onSelectionChanged,
+    this.focusAnnotationId,
+    this.onFocusAnnotationRect,
     this.itemId,
     this.pageUrl,
     this.transcriptSegments = const {},
@@ -1842,6 +1934,8 @@ class _InlineArticleBody extends StatelessWidget {
   final ValueChanged<ItemAnnotation> onTapAnnotation;
   final VoidCallback? onBodyTap;
   final ValueChanged<TextSelection>? onSelectionChanged;
+  final int? focusAnnotationId;
+  final void Function(Rect localRect, RenderBox stackBox)? onFocusAnnotationRect;
   final int? itemId;
   final String? pageUrl;
   final Map<String, TranscriptSegment> transcriptSegments;
@@ -2003,6 +2097,8 @@ class _InlineArticleBody extends StatelessWidget {
             onBodyTap: onBodyTap,
             onSelectionChanged: onSelectionChanged,
             textStyle: style,
+            focusAnnotationId: focusAnnotationId,
+            onFocusAnnotationRect: onFocusAnnotationRect,
           ),
         );
         continue;
@@ -2067,6 +2163,8 @@ class _InlineArticleBody extends StatelessWidget {
             onBodyTap: onBodyTap,
             onSelectionChanged: onSelectionChanged,
             textStyle: bodyStyle,
+            focusAnnotationId: focusAnnotationId,
+            onFocusAnnotationRect: onFocusAnnotationRect,
           ),
         );
       }
@@ -2275,6 +2373,8 @@ class _AnnotatedBodyStack extends StatefulWidget {
     this.onBodyTap,
     this.onSelectionChanged,
     this.textStyle,
+    this.focusAnnotationId,
+    this.onFocusAnnotationRect,
   });
 
   final String text;
@@ -2285,6 +2385,8 @@ class _AnnotatedBodyStack extends StatefulWidget {
   final VoidCallback? onBodyTap;
   final ValueChanged<TextSelection>? onSelectionChanged;
   final TextStyle? textStyle;
+  final int? focusAnnotationId;
+  final void Function(Rect localRect, RenderBox stackBox)? onFocusAnnotationRect;
 
   static const _text = Color(0xFF1F242E);
   static const _blue = Color(0xFF2F6FED);
@@ -2422,6 +2524,20 @@ class _AnnotatedBodyStackState extends State<_AnnotatedBodyStack> {
           ..clear()
           ..addAll(next);
       });
+    }
+
+    final focusId = widget.focusAnnotationId;
+    final onFocus = widget.onFocusAnnotationRect;
+    if (focusId != null && onFocus != null) {
+      for (final h in next) {
+        if (h.ann.id == focusId) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (!mounted) return;
+            onFocus(h.rect, stackBox);
+          });
+          break;
+        }
+      }
     }
   }
 

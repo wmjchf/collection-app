@@ -42,17 +42,26 @@ class _ReadingNoteSheetState extends State<_ReadingNoteSheet> {
   late final TextEditingController _controller;
   final _repo = ItemsRepository();
   bool _saving = false;
+  late bool _editing;
+
+  String get _savedNote => (widget.initialNote ?? '').trim();
 
   @override
   void initState() {
     super.initState();
     _controller = TextEditingController(text: widget.initialNote ?? '');
+    // 已有内容先看；空白才直接编辑
+    _editing = _savedNote.isEmpty;
   }
 
   @override
   void dispose() {
     _controller.dispose();
     super.dispose();
+  }
+
+  void _startEdit() {
+    setState(() => _editing = true);
   }
 
   Future<void> _save() async {
@@ -94,50 +103,79 @@ class _ReadingNoteSheetState extends State<_ReadingNoteSheet> {
                 borderRadius: BorderRadius.circular(2),
               ),
             ),
-            const SizedBox(height: 12),
-            const Text(
-              '编辑感想',
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w700,
-                color: _text,
-              ),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _controller,
-              maxLines: 5,
-              maxLength: 2000,
-              autofocus: true,
-              style: const TextStyle(fontSize: 15, color: _text, height: 1.5),
-              decoration: InputDecoration(
-                hintText: '写下读后的感想，方便以后找回…',
-                hintStyle: const TextStyle(color: _muted, fontSize: 14),
-                filled: true,
-                fillColor: _fieldBg,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide.none,
-                ),
-                contentPadding: const EdgeInsets.all(14),
-                counterStyle: const TextStyle(fontSize: 11, color: _muted),
-              ),
-            ),
             const SizedBox(height: 8),
             SizedBox(
-              width: double.infinity,
-              height: 48,
-              child: FilledButton(
-                onPressed: _saving ? null : _save,
-                style: FilledButton.styleFrom(
-                  backgroundColor: _blue,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
+              height: 40,
+              child: Row(
+                children: [
+                  const Expanded(
+                    child: Text(
+                      '感想',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                        color: _text,
+                      ),
+                    ),
                   ),
-                ),
-                child: Text(_saving ? '保存中…' : '保存'),
+                  TextButton(
+                    onPressed: _editing
+                        ? (_saving ? null : _save)
+                        : _startEdit,
+                    style: TextButton.styleFrom(
+                      foregroundColor: _blue,
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                    ),
+                    child: Text(
+                      _editing ? (_saving ? '保存中…' : '保存') : '编辑',
+                      style: const TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
+            const SizedBox(height: 4),
+            if (_editing)
+              TextField(
+                controller: _controller,
+                maxLines: 5,
+                maxLength: 2000,
+                autofocus: true,
+                style: const TextStyle(fontSize: 15, color: _text, height: 1.5),
+                decoration: InputDecoration(
+                  hintText: '写下读后的感想，方便以后找回…',
+                  hintStyle: const TextStyle(color: _muted, fontSize: 14),
+                  filled: true,
+                  fillColor: _fieldBg,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide.none,
+                  ),
+                  contentPadding: const EdgeInsets.all(14),
+                  counterStyle: const TextStyle(fontSize: 11, color: _muted),
+                ),
+              )
+            else
+              Container(
+                width: double.infinity,
+                constraints: const BoxConstraints(minHeight: 120),
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: _fieldBg,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  _savedNote,
+                  style: const TextStyle(
+                    fontSize: 15,
+                    color: _text,
+                    height: 1.5,
+                  ),
+                ),
+              ),
           ],
         ),
       ),

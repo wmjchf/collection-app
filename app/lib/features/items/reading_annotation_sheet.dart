@@ -105,6 +105,12 @@ class _AnnotationNoteSheetState extends State<_AnnotationNoteSheet> {
     return '「${q.substring(0, 36)}…」';
   }
 
+  /// 已有高亮记录、但还没有批注正文
+  bool get _highlightOnly {
+    if (widget.isCreate || widget.annotation == null) return false;
+    return (widget.annotation!.note ?? '').trim().isEmpty;
+  }
+
   Future<void> _save() async {
     if (_saving) return;
     setState(() => _saving = true);
@@ -147,7 +153,10 @@ class _AnnotationNoteSheetState extends State<_AnnotationNoteSheet> {
     }
     final ok = await showAppConfirmDialog(
       context,
-      title: deleteAnnotationTitle(isPro: widget.isPro),
+      title: deleteAnnotationTitle(
+        isPro: widget.isPro,
+        highlightOnly: _highlightOnly,
+      ),
       message: '删除后不可恢复。',
       confirmLabel: '删除',
     );
@@ -189,6 +198,7 @@ class _AnnotationNoteSheetState extends State<_AnnotationNoteSheet> {
               annotationSheetTitle(
                 isPro: widget.isPro,
                 isCreate: widget.isCreate,
+                highlightOnly: _highlightOnly,
               ),
               style: const TextStyle(
                 fontSize: 16,
@@ -257,7 +267,10 @@ class _AnnotationNoteSheetState extends State<_AnnotationNoteSheet> {
                       child: Text(
                         widget.isCreate
                             ? '取消'
-                            : deleteAnnotationLabel(isPro: widget.isPro),
+                            : deleteAnnotationLabel(
+                                isPro: widget.isPro,
+                                highlightOnly: _highlightOnly,
+                              ),
                         style: const TextStyle(
                           fontSize: 15,
                           fontWeight: FontWeight.w500,
