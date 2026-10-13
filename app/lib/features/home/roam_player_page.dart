@@ -6,6 +6,7 @@ import 'package:super_collection/core/network/api_client.dart';
 import 'package:super_collection/core/ui/app_bottom_sheet.dart';
 import 'package:super_collection/core/ui/app_toast.dart';
 import 'package:super_collection/features/home/roam_models.dart';
+import 'package:super_collection/features/home/roam_mute.dart';
 import 'package:super_collection/features/home/roam_stats.dart';
 import 'package:super_collection/features/home/widgets/roam_quote_card.dart';
 import 'package:super_collection/features/items/item_reading_page.dart';
@@ -14,14 +15,15 @@ import 'package:super_collection/features/items/items_repository.dart';
 Future<void> showRoamPlayer(
   BuildContext context, {
   required List<RoamSnippet> snippets,
-}) {
-  if (snippets.isEmpty) return Future.value();
+}) async {
+  final visible = await RoamMute.visible(snippets);
+  if (!context.mounted || visible.isEmpty) return;
   return showGeneralDialog<void>(
     context: context,
     barrierDismissible: true,
     barrierLabel: '关闭漫游',
     barrierColor: Colors.transparent,
-    pageBuilder: (ctx, _, _) => RoamPlayerPage(snippets: snippets),
+    pageBuilder: (ctx, _, _) => RoamPlayerPage(snippets: visible),
     transitionBuilder: (ctx, animation, _, child) {
       return FadeTransition(
         opacity: animation,
@@ -52,12 +54,11 @@ class RoamPlayerPage extends StatefulWidget {
 class _RoamPlayerPageState extends State<RoamPlayerPage>
     with ScreenDwellMixin {
   final _items = ItemsRepository();
+  late List<RoamSnippet> _snips;
   int _index = 0;
   bool _recorded = false;
   int _uniqueCount = 0;
   int _sessionCount = 0;
-
-  List<RoamSnippet> get _snips => widget.snippets;
 
   /// 摘录 + 最后一张「继续漫游」
   int get _deckLength => _snips.length + 1;
@@ -70,6 +71,7 @@ class _RoamPlayerPageState extends State<RoamPlayerPage>
   @override
   void initState() {
     super.initState();
+    _snips = List<RoamSnippet>.of(widget.snippets);
     unawaited(_loadStats());
   }
 
@@ -126,6 +128,27 @@ class _RoamPlayerPageState extends State<RoamPlayerPage>
     });
   }
 
+  Future<void> _muteCurrent() async {
+    if (_onDoneCard || _index < 0 || _index >= _snips.length) return;
+    final id = _snips[_index].id;
+    await RoamMute.mute(id);
+    if (!mounted) return;
+    setState(() {
+      _snips = List<RoamSnippet>.of(_snips)..removeAt(_index);
+      if (_snips.isEmpty) {
+        _index = 0;
+      } else if (_index > _snips.length) {
+        _index = _snips.length;
+      }
+      // 去掉当前张后，同一 index 自然变成下一张；不额外 +1
+    });
+    if (_snips.isEmpty && mounted) {
+      Navigator.of(context).maybePop();
+      return;
+    }
+    AppToast.show(context, '已不再回顾');
+  }
+
   @override
   Widget build(BuildContext context) {
     final pad = MediaQuery.paddingOf(context);
@@ -158,6 +181,7 @@ class _RoamPlayerPageState extends State<RoamPlayerPage>
                 sessionCount: _sessionCount,
                 onDismissed: () => unawaited(_advance()),
                 onOpen: (s) => unawaited(_openSource(s)),
+                onMute: () => unawaited(_muteCurrent()),
                 onFinish: () => Navigator.of(context).maybePop(),
                 onContinue: _continue,
               ),
@@ -177,6 +201,7 @@ class _RoamSwipeDeck extends StatefulWidget {
     required this.sessionCount,
     required this.onDismissed,
     required this.onOpen,
+    required this.onMute,
     required this.onFinish,
     required this.onContinue,
   });
@@ -187,6 +212,7 @@ class _RoamSwipeDeck extends StatefulWidget {
   final int sessionCount;
   final VoidCallback onDismissed;
   final ValueChanged<RoamSnippet> onOpen;
+  final VoidCallback onMute;
   final VoidCallback onFinish;
   final VoidCallback onContinue;
 
@@ -196,18 +222,46 @@ class _RoamSwipeDeck extends StatefulWidget {
 
 class _RoamSwipeDeckState extends State<_RoamSwipeDeck> {
   double _progress = 0;
+  GlobalKey<_SwipeCardState> _swipeKey = GlobalKey<_SwipeCardState>();
+  bool _muting = false;
 
   int get _deckLength => widget.snippets.length + 1;
+
+  String? _frontId() {
+    if (widget.index < 0 || widget.index >= widget.snippets.length) {
+      return null;
+    }
+    return widget.snippets[widget.index].id;
+  }
 
   @override
   void didUpdateWidget(_RoamSwipeDeck oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.index != widget.index) {
+    final oldId = oldWidget.index >= 0 &&
+            oldWidget.index < oldWidget.snippets.length
+        ? oldWidget.snippets[oldWidget.index].id
+        : null;
+    if (oldWidget.index != widget.index || oldId != _frontId()) {
       _progress = 0;
+      _muting = false;
+      _swipeKey = GlobalKey<_SwipeCardState>();
     }
   }
 
-  Widget _cardAt(int absoluteIndex, {required double elevation, Color? color}) {
+  Future<void> _muteWithAnimation() async {
+    if (_muting) return;
+    _muting = true;
+    await _swipeKey.currentState?.dismissAway();
+    if (!mounted) return;
+    widget.onMute();
+  }
+
+  Widget _cardAt(
+    int absoluteIndex, {
+    required double elevation,
+    Color? color,
+    bool muteAction = false,
+  }) {
     final snips = widget.snippets;
     if (absoluteIndex < snips.length) {
       return RoamQuoteCard(
@@ -216,6 +270,7 @@ class _RoamSwipeDeckState extends State<_RoamSwipeDeck> {
         elevation: elevation,
         color: color ?? Colors.white,
         scrollBody: true,
+        onMute: muteAction ? () => unawaited(_muteWithAnimation()) : null,
       );
     }
     return _RoamDoneCard(
@@ -251,7 +306,7 @@ class _RoamSwipeDeckState extends State<_RoamSwipeDeck> {
         final front = SizedBox(
           width: fullW,
           height: frontH,
-          child: _cardAt(index, elevation: 12),
+          child: _cardAt(index, elevation: 12, muteAction: !onDone),
         );
 
         return Stack(
@@ -300,7 +355,7 @@ class _RoamSwipeDeckState extends State<_RoamSwipeDeck> {
               child: onDone
                   ? front
                   : _SwipeCard(
-                      key: ValueKey('roam-$index'),
+                      key: _swipeKey,
                       onTap: () => widget.onOpen(widget.snippets[index]),
                       onProgress: (value) {
                         if (_progress == value) return;
@@ -403,6 +458,17 @@ class _SwipeCardState extends State<_SwipeCard>
     _anim.forward(from: 0).whenComplete(() {
       if (mounted) widget.onDismissed();
     });
+  }
+
+  /// 「不再回顾」：右上飞出，结束后由外层换卡
+  Future<void> dismissAway() async {
+    if (_settling) return;
+    _settling = true;
+    final w = MediaQuery.sizeOf(context).width;
+    _from = _offset;
+    _to = Offset(w + 80, -48);
+    _anim.duration = const Duration(milliseconds: 280);
+    await _anim.forward(from: 0);
   }
 
   @override

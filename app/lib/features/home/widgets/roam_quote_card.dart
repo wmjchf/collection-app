@@ -7,6 +7,7 @@ class RoamQuoteCard extends StatelessWidget {
     super.key,
     required this.snippet,
     this.onTap,
+    this.onMute,
     this.maxLines = 4,
     this.showMeta = true,
     this.elevation = 0,
@@ -17,6 +18,8 @@ class RoamQuoteCard extends StatelessWidget {
 
   final RoamSnippet snippet;
   final VoidCallback? onTap;
+  /// 弹层：元信息右侧「不再回顾」
+  final VoidCallback? onMute;
   final int maxLines;
   final bool showMeta;
   final double elevation;
@@ -122,14 +125,54 @@ class RoamQuoteCard extends StatelessWidget {
       timeStr,
       if (titleStr.isNotEmpty) titleStr,
     ];
-    final metaBlock = showMeta && metaParts.any((e) => e.isNotEmpty)
+    final metaText = metaParts.where((e) => e.isNotEmpty).join(' · ');
+    final showMetaRow =
+        showMeta && (metaText.isNotEmpty || onMute != null);
+    final metaBlock = showMetaRow
         ? Padding(
             padding: EdgeInsets.only(top: hasQuote ? 12 : 10),
-            child: Text(
-              metaParts.where((e) => e.isNotEmpty).join(' · '),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontSize: 12, color: _meta),
+            child: Row(
+              children: [
+                Expanded(
+                  child: metaText.isEmpty
+                      ? const SizedBox.shrink()
+                      : Text(
+                          metaText,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontSize: 12, color: _meta),
+                        ),
+                ),
+                if (onMute != null) ...[
+                  const SizedBox(width: 16),
+                  FilledButton(
+                    onPressed: onMute,
+                    style: FilledButton.styleFrom(
+                      backgroundColor: const Color(0xFFE8EBF0),
+                      foregroundColor: _note,
+                      elevation: 0,
+                      shadowColor: Colors.transparent,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 10,
+                      ),
+                      minimumSize: Size.zero,
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      visualDensity: VisualDensity.compact,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    ),
+                    child: const Text(
+                      '不再回顾',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                ],
+              ],
             ),
           )
         : null;
