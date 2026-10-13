@@ -1,5 +1,6 @@
 import 'package:super_collection/core/network/api_client.dart';
 import 'package:super_collection/features/auth/auth_repository.dart';
+import 'package:super_collection/features/home/roam_models.dart';
 import 'package:super_collection/features/items/item_models.dart';
 
 class HomeSectionData {
@@ -26,19 +27,19 @@ class HomeSectionData {
 class HomeData {
   const HomeData({
     required this.unread,
-    required this.recentRead,
+    required this.roam,
   });
 
   final HomeSectionData unread;
-  final HomeSectionData recentRead;
+  final RoamSectionData roam;
 
   factory HomeData.fromJson(Map<String, dynamic> json) {
     return HomeData(
       unread: HomeSectionData.fromJson(
         json['unread'] as Map<String, dynamic>? ?? const {},
       ),
-      recentRead: HomeSectionData.fromJson(
-        json['recentRead'] as Map<String, dynamic>? ?? const {},
+      roam: RoamSectionData.fromJson(
+        json['roam'] as Map<String, dynamic>? ?? const {},
       ),
     );
   }
@@ -70,5 +71,14 @@ class HomeRepository {
       accessToken: token,
     );
     return HomeData.fromJson(json);
+  }
+
+  Future<RoamSectionData> fetchRoam({int limit = 20, int offset = 0}) async {
+    final token = await _token();
+    final json = await _api.get(
+      '/api/home/roam?limit=$limit&offset=$offset',
+      accessToken: token,
+    );
+    return RoamSectionData.fromJson(json);
   }
 }

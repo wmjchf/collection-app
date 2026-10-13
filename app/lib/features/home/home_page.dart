@@ -16,7 +16,11 @@ import 'package:super_collection/features/home/add_link_sheet.dart';
 import 'package:super_collection/features/home/home_format.dart';
 import 'package:super_collection/features/home/home_mock_data.dart';
 import 'package:super_collection/features/home/home_repository.dart';
+import 'package:super_collection/features/home/roam_list_page.dart';
+import 'package:super_collection/features/home/roam_models.dart';
+import 'package:super_collection/features/home/roam_player_page.dart';
 import 'package:super_collection/features/home/widgets/home_item_card.dart';
+import 'package:super_collection/features/home/widgets/roam_stack_preview.dart';
 import 'package:super_collection/features/items/item_reading_page.dart';
 import 'package:super_collection/features/items/item_models.dart';
 import 'package:super_collection/features/items/items_repository.dart';
@@ -27,7 +31,7 @@ import 'package:super_collection/features/shell/user_avatar_button.dart';
 import 'package:super_collection/features/settings/trial_expiry_banner.dart';
 import 'package:super_collection/features/settings/usage_repository.dart';
 
-/// 一级页：首页 — 未读 / 最近阅读
+/// 一级页：首页 — 未读 / 漫游
 class HomePage extends StatefulWidget {
   const HomePage({
     super.key,
@@ -601,6 +605,25 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     }
   }
 
+  Future<void> _openRoamPlayer() async {
+    final items = _data?.roam.items ?? const <RoamSnippet>[];
+    if (items.isEmpty) return;
+    await showRoamPlayer(context, snippets: items);
+    if (mounted) await _load(quiet: true);
+  }
+
+  void _openRoamList() {
+    Navigator.of(context)
+        .push(
+      MaterialPageRoute<void>(
+        builder: (_) => const RoamListPage(),
+      ),
+    )
+        .then((_) {
+      if (mounted) _load();
+    });
+  }
+
   void _openFilter(String code, String title) {
     Navigator.of(context).push(
       MaterialPageRoute<void>(
@@ -611,7 +634,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     });
   }
 
-  void _openItem(CollectionItem item, {String entry = 'home'}) async {
+  Future<void> _openItem(CollectionItem item, {String entry = 'home'}) async {
     final deleted = await Navigator.of(context).push<bool>(
       MaterialPageRoute(
         builder: (_) => ItemReadingPage(
@@ -636,7 +659,12 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       setState(() {
         _data = HomeData(
           unread: strip(data.unread),
-          recentRead: strip(data.recentRead),
+          roam: RoamSectionData(
+            total: (data.roam.total -
+                    data.roam.items.where((e) => e.itemId == item.id).length)
+                .clamp(0, 1 << 30),
+            items: data.roam.items.where((e) => e.itemId != item.id).toList(),
+          ),
         );
       });
       return;
@@ -648,7 +676,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   @override
   Widget build(BuildContext context) {
     final unread = _data?.unread.items ?? const <CollectionItem>[];
-    final recentRead = _data?.recentRead.items ?? const <CollectionItem>[];
+    final roam = _data?.roam.items ?? const <RoamSnippet>[];
 
     return Scaffold(
       backgroundColor: _bg,
@@ -767,30 +795,111 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                             },
                           ),
                           const SizedBox(height: sectionGap),
-                          _HomeSection(
-                            title: recentReadSectionTitle(isPro: _isPro),
-                            emptyText: recentReadEmptyText(isPro: _isPro),
-                            emptyIcon: Icons.schedule_rounded,
+                          _HomeRoamSection(
+                            title: roamSectionTitle(isPro: _isPro),
+                            emptyText: roamEmptyText(isPro: _isPro),
                             emptyHeight: emptyCardH,
-                            items: [
-                              for (final item in recentRead)
-                                previewForRecentRead(item),
-                            ],
-                            onMore: () => _openFilter(
-                              'recent_read',
-                              recentReadSectionTitle(isPro: _isPro),
-                            ),
-                            onItemTap: (preview) {
-                              final item = recentRead
-                                  .firstWhere((e) => e.id == preview.id);
-                              _openItem(item, entry: 'recent_read');
-                            },
+                            items: roam,
+                            moreLabel: roamMoreLabel(isPro: _isPro),
+                            onMore: _openRoamList,
+                            onPlay: _openRoamPlayer,
                           ),
                         ],
                       );
                     },
                   ),
       ),
+    );
+  }
+}
+
+class _HomeRoamSection extends StatelessWidget {
+  const _HomeRoamSection({
+    required this.title,
+    required this.emptyText,
+    required this.emptyHeight,
+    required this.items,
+    required this.onMore,
+    required this.onPlay,
+    this.moreLabel = '全部 ›',
+  });
+
+  final String title;
+  final String emptyText;
+  final double emptyHeight;
+  final List<RoamSnippet> items;
+  final VoidCallback onMore;
+  final VoidCallback onPlay;
+  final String moreLabel;
+
+  static const _muted = Color(0xFF737A85);
+  static const _iconMuted = Color(0xFFC5CAD3);
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          children: [
+            Text(
+              title,
+              style: const TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w500,
+                color: _HomePageState._text,
+              ),
+            ),
+            const Spacer(),
+            GestureDetector(
+              onTap: onMore,
+              behavior: HitTestBehavior.opaque,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 2),
+                child: Text(
+                  moreLabel,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w400,
+                    color: _HomePageState._blue,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        if (items.isEmpty)
+          Container(
+            width: double.infinity,
+            height: emptyHeight,
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Icon(
+                  Icons.format_quote_rounded,
+                  size: 42,
+                  color: _iconMuted,
+                ),
+                const SizedBox(height: 10),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 24),
+                  child: Text(
+                    emptyText,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(fontSize: 14, color: _muted),
+                  ),
+                ),
+              ],
+            ),
+          )
+        else
+          RoamStackPreview(items: items, onTap: onPlay),
+      ],
     );
   }
 }

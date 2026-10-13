@@ -10,11 +10,12 @@ String markAsUnreadLabel({required bool isPro}) =>
 String markedAsUnreadToast({required bool isPro}) =>
     isPro ? '已标为待阅' : '已标为未读';
 
-String recentReadSectionTitle({required bool isPro}) =>
-    isPro ? '朕已阅' : '最近阅读';
+String roamSectionTitle({required bool isPro}) => '漫游';
 
-String recentReadEmptyText({required bool isPro}) =>
-    isPro ? '暂无朕已阅' : '暂无最近阅读';
+String roamEmptyText({required bool isPro}) =>
+    '读的时候划重点、写批注或感想，就会出现在这里';
+
+String roamMoreLabel({required bool isPro}) => '全部 ›';
 
 /// 收藏页筛选 / 列表标题：批注 → 朕的朱批
 String annotationSectionTitle({required bool isPro}) =>
