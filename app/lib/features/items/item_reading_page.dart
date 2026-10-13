@@ -1979,15 +1979,30 @@ class _InlineArticleBody extends StatelessWidget {
     var start = plainText.indexOf(visible, cursor);
     if (start < 0) start = cursor;
     final end = (start + visible.length).clamp(0, plainText.length);
-    var next = end;
-    if (next + 2 <= plainText.length &&
-        plainText.substring(next, next + 2) == '\n\n') {
-      next += 2;
-    } else if (next + 1 <= plainText.length &&
-        plainText.substring(next, next + 1) == '\n') {
-      next += 1;
-    }
     return (start: start, end: end, visible: visible);
+  }
+
+  /// 跳过 plainText 中可见段落后的换行，返回新 cursor。
+  int _skipTrailingNewlines(int at) {
+    var cursor = at;
+    if (cursor + 2 <= plainText.length &&
+        plainText.substring(cursor, cursor + 2) == '\n\n') {
+      return cursor + 2;
+    }
+    if (cursor < plainText.length && plainText[cursor] == '\n') {
+      return cursor + 1;
+    }
+    return cursor;
+  }
+
+  static bool _hasInlineEmoji(String md) {
+    for (final m in ArticleContentBlocks.imageInline.allMatches(md)) {
+      final size = ArticleContentBlocks.sizeFromAlt(m.group(1));
+      if (ArticleContentBlocks.isInlineEmojiSize(size.$1, size.$2)) {
+        return true;
+      }
+    }
+    return false;
   }
 
   @override
@@ -1996,10 +2011,138 @@ class _InlineArticleBody extends StatelessWidget {
     var cursor = 0;
     var videoIndex = 0;
 
+    // 相邻纯文本/标题合并为同一 SelectableText；图/视频/表情段打断。
+    final islandSpans = <InlineSpan>[];
+    final islandBuf = StringBuffer();
+    var islandBase = -1;
+    var islandContentEnd = -1;
+
+    void flushIsland() {
+      if (islandBuf.isEmpty) return;
+      final text = islandBuf.toString();
+      final base = islandBase < 0 ? 0 : islandBase;
+      final localAnns = annotationRanges
+          .where((r) => r.end > base && r.start < base + text.length)
+          .map(
+            (r) => (
+              start: (r.start - base).clamp(0, text.length),
+              end: (r.end - base).clamp(0, text.length),
+              ann: r.ann,
+            ),
+          )
+          .where((r) => r.start < r.end)
+          .toList();
+
+      if (children.isNotEmpty) children.add(const SizedBox(height: 14));
+      children.add(
+        _AnnotatedBodyStack(
+          text: text,
+          spans: islandSpans.isEmpty
+              ? [TextSpan(text: text, style: _bodyStyle)]
+              : List<InlineSpan>.from(islandSpans),
+          annotations: localAnns,
+          contextMenuBuilder: toolbarAt(base),
+          onTapAnnotation: onTapAnnotation,
+          onBodyTap: onBodyTap,
+          onSelectionChanged: onSelectionChanged,
+          textStyle: _bodyStyle,
+          focusAnnotationId: focusAnnotationId,
+          onFocusAnnotationRect: onFocusAnnotationRect,
+        ),
+      );
+      islandSpans.clear();
+      islandBuf.clear();
+      islandBase = -1;
+      islandContentEnd = -1;
+    }
+
+    void appendSelectableSegment({
+      required String visible,
+      required int posStart,
+      required int posEnd,
+      required List<InlineSpan> spans,
+      required TextStyle fallbackStyle,
+    }) {
+      if (islandBuf.isNotEmpty) {
+        final sep = (posStart > islandContentEnd)
+            ? plainText.substring(islandContentEnd, posStart)
+            : '\n\n';
+        if (sep.isNotEmpty) {
+          islandBuf.write(sep);
+          islandSpans.add(TextSpan(text: sep, style: _bodyStyle));
+        }
+      } else {
+        islandBase = posStart;
+      }
+      if (spans.isEmpty) {
+        islandSpans.add(TextSpan(text: visible, style: fallbackStyle));
+      } else {
+        islandSpans.addAll(spans);
+      }
+      islandBuf.write(visible);
+      islandContentEnd = posEnd;
+    }
+
+    void emitEmojiParagraph({
+      required String md,
+      required String visible,
+      required int posStart,
+      required int posEnd,
+    }) {
+      flushIsland();
+      final localAnns = annotationRanges
+          .where((r) => r.end > posStart && r.start < posEnd)
+          .map(
+            (r) => (
+              start: (r.start - posStart).clamp(0, visible.length),
+              end: (r.end - posStart).clamp(0, visible.length),
+              ann: r.ann,
+            ),
+          )
+          .where((r) => r.start < r.end)
+          .toList();
+      final bodyStyle = _bodyStyle;
+      final spans = ArticleMarkdown.inlineSpans(
+        md,
+        style: bodyStyle,
+        highlights: [
+          for (final a in localAnns) (start: a.start, end: a.end),
+        ],
+        highlightColor: _highlight,
+        imageBuilder: (url, w, h) => WidgetSpan(
+          alignment: PlaceholderAlignment.middle,
+          child: _InlineEmoji(
+            url: url,
+            width: w,
+            height: h,
+            pageUrl: pageUrl,
+          ),
+        ),
+      );
+      if (children.isNotEmpty) children.add(const SizedBox(height: 14));
+      children.add(
+        _AnnotatedBodyStack(
+          text: visible,
+          spans: spans.isEmpty
+              ? [TextSpan(text: '', style: bodyStyle)]
+              : spans,
+          annotations: localAnns,
+          contextMenuBuilder: toolbarAt(posStart),
+          onTapAnnotation: onTapAnnotation,
+          onBodyTap: onBodyTap,
+          onSelectionChanged: onSelectionChanged,
+          textStyle: bodyStyle,
+          focusAnnotationId: focusAnnotationId,
+          onFocusAnnotationRect: onFocusAnnotationRect,
+        ),
+      );
+    }
+
     for (var i = 0; i < blocks.length; i++) {
       final block = blocks[i];
 
       if (block is ArticleVideoBlock) {
+        flushIsland();
         if (children.isNotEmpty) children.add(const SizedBox(height: 18));
         final index = videoIndex++;
         final segmentKey = 'inline:$index';
@@ -2036,6 +2179,7 @@ class _InlineArticleBody extends StatelessWidget {
       }
 
       if (block is ArticleImageBlock) {
+        flushIsland();
         if (children.isNotEmpty) children.add(const SizedBox(height: 18));
         children.add(
           _ReadingInlineImage(
@@ -2048,58 +2192,36 @@ class _InlineArticleBody extends StatelessWidget {
         continue;
       }
 
-      if (children.isNotEmpty) children.add(const SizedBox(height: 14));
-
       if (block is ArticleHeadingBlock) {
         final md = block.text.trim();
         final visible = ArticleMarkdown.stripMarkers(md);
         if (visible.isEmpty) continue;
         final pos = _advance(visible, cursor);
-        cursor = pos.end;
-        if (cursor + 2 <= plainText.length &&
-            plainText.substring(cursor, cursor + 2) == '\n\n') {
-          cursor += 2;
-        } else if (cursor < plainText.length && plainText[cursor] == '\n') {
-          cursor += 1;
-        }
+        cursor = _skipTrailingNewlines(pos.end);
 
-        final localAnns = annotationRanges
+        final segAnns = annotationRanges
             .where((r) => r.end > pos.start && r.start < pos.end)
             .map(
               (r) => (
                 start: (r.start - pos.start).clamp(0, visible.length),
                 end: (r.end - pos.start).clamp(0, visible.length),
-                ann: r.ann,
               ),
             )
             .where((r) => r.start < r.end)
             .toList();
-
         final style = _headingStyle(block.level);
         final spans = ArticleMarkdown.inlineSpans(
           md,
           style: style,
-          highlights: [
-            for (final a in localAnns) (start: a.start, end: a.end),
-          ],
+          highlights: segAnns,
           highlightColor: _highlight,
         );
-
-        children.add(
-          _AnnotatedBodyStack(
-            text: visible,
-            spans: spans.isEmpty
-                ? [TextSpan(text: visible, style: style)]
-                : spans,
-            annotations: localAnns,
-            contextMenuBuilder: toolbarAt(pos.start),
-            onTapAnnotation: onTapAnnotation,
-            onBodyTap: onBodyTap,
-            onSelectionChanged: onSelectionChanged,
-            textStyle: style,
-            focusAnnotationId: focusAnnotationId,
-            onFocusAnnotationRect: onFocusAnnotationRect,
-          ),
+        appendSelectableSegment(
+          visible: visible,
+          posStart: pos.start,
+          posEnd: pos.end,
+          spans: spans,
+          fallbackStyle: style,
         );
         continue;
       }
@@ -2107,68 +2229,51 @@ class _InlineArticleBody extends StatelessWidget {
       if (block is! ArticleTextBlock) continue;
 
       final mdParagraphs = ArticleBodyText.splitParagraphs(block.text);
-      for (var pi = 0; pi < mdParagraphs.length; pi++) {
-        if (pi > 0) children.add(const SizedBox(height: 14));
-        final md = mdParagraphs[pi];
+      for (final md in mdParagraphs) {
         final visible = ArticleMarkdown.visiblePlain(md);
         if (visible.isEmpty) continue;
 
         final pos = _advance(visible, cursor);
-        cursor = pos.end;
-        if (cursor + 2 <= plainText.length &&
-            plainText.substring(cursor, cursor + 2) == '\n\n') {
-          cursor += 2;
+        cursor = _skipTrailingNewlines(pos.end);
+
+        if (_hasInlineEmoji(md)) {
+          emitEmojiParagraph(
+            md: md,
+            visible: visible,
+            posStart: pos.start,
+            posEnd: pos.end,
+          );
+          continue;
         }
 
-        final localAnns = annotationRanges
+        final segAnns = annotationRanges
             .where((r) => r.end > pos.start && r.start < pos.end)
             .map(
               (r) => (
                 start: (r.start - pos.start).clamp(0, visible.length),
                 end: (r.end - pos.start).clamp(0, visible.length),
-                ann: r.ann,
               ),
             )
             .where((r) => r.start < r.end)
             .toList();
-
         final bodyStyle = _bodyStyle;
         final spans = ArticleMarkdown.inlineSpans(
           md,
           style: bodyStyle,
-          highlights: [
-            for (final a in localAnns) (start: a.start, end: a.end),
-          ],
+          highlights: segAnns,
           highlightColor: _highlight,
-          imageBuilder: (url, w, h) => WidgetSpan(
-            alignment: PlaceholderAlignment.middle,
-            child: _InlineEmoji(
-              url: url,
-              width: w,
-              height: h,
-              pageUrl: pageUrl,
-            ),
-          ),
         );
-
-        children.add(
-          _AnnotatedBodyStack(
-            text: visible,
-            spans: spans.isEmpty
-                ? [TextSpan(text: '', style: bodyStyle)]
-                : spans,
-            annotations: localAnns,
-            contextMenuBuilder: toolbarAt(pos.start),
-            onTapAnnotation: onTapAnnotation,
-            onBodyTap: onBodyTap,
-            onSelectionChanged: onSelectionChanged,
-            textStyle: bodyStyle,
-            focusAnnotationId: focusAnnotationId,
-            onFocusAnnotationRect: onFocusAnnotationRect,
-          ),
+        appendSelectableSegment(
+          visible: visible,
+          posStart: pos.start,
+          posEnd: pos.end,
+          spans: spans,
+          fallbackStyle: bodyStyle,
         );
       }
     }
+
+    flushIsland();
 
     if (children.isEmpty) {
       return Text(
