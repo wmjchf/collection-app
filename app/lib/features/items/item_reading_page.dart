@@ -2794,9 +2794,10 @@ class _AnnotatedBodyStackState extends State<_AnnotatedBodyStack> {
                       rich,
                       key: _textKey,
                       textAlign: TextAlign.justify,
-                      // 平台默认 max：短行选区会拉满到段落最宽行；tight 贴齐字形。
+                      // width tight：短行不拉满到最宽行；height 含行距：避免行间露白缝。
                       selectionWidthStyle: BoxWidthStyle.tight,
-                      selectionHeightStyle: BoxHeightStyle.tight,
+                      selectionHeightStyle:
+                          BoxHeightStyle.includeLineSpacingMiddle,
                       contextMenuBuilder: widget.contextMenuBuilder,
                       onTap: widget.onBodyTap,
                       onSelectionChanged: _onSelectionChanged,
