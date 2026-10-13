@@ -748,11 +748,15 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
     );
   }
 
+  /// 本地临时 id：先画出高亮再清选区，避免「选区黄 → 空白 → 高亮黄」闪一下。
+  static int _optimisticAnnId = -1;
+
   Future<ItemAnnotation?> _createHighlight(
     String text,
     int start,
     int end, {
     String? note,
+    int? replaceOptimisticId,
   }) async {
     final selected = text.trim();
     if (selected.isEmpty) return null;
@@ -765,10 +769,27 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
         note: note,
       );
       if (!mounted) return null;
-      setState(() => _annotations = [..._annotations, ann]);
+      setState(() {
+        if (replaceOptimisticId != null) {
+          _annotations = [
+            for (final a in _annotations)
+              if (a.id == replaceOptimisticId) ann else a,
+          ];
+        } else {
+          _annotations = [..._annotations, ann];
+        }
+      });
       return ann;
     } on ApiException catch (e) {
       if (!mounted) return null;
+      if (replaceOptimisticId != null) {
+        setState(() {
+          _annotations = [
+            for (final a in _annotations)
+              if (a.id != replaceOptimisticId) a,
+          ];
+        });
+      }
       AppToast.show(context, e.message);
       return null;
     }
@@ -780,8 +801,28 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
     int start,
     int end,
   ) async {
+    final selected = text.trim();
+    if (selected.isEmpty) {
+      _clearToolbar(state);
+      return;
+    }
+    final optimisticId = _optimisticAnnId--;
+    final optimistic = ItemAnnotation(
+      id: optimisticId,
+      itemId: _item.id,
+      selectedText: selected,
+      startOffset: start,
+      endOffset: end,
+    );
+    // 先落背景高亮，再收起选区，视觉上连续。
+    setState(() => _annotations = [..._annotations, optimistic]);
     _clearToolbar(state);
-    final ann = await _createHighlight(text, start, end);
+    final ann = await _createHighlight(
+      text,
+      start,
+      end,
+      replaceOptimisticId: optimisticId,
+    );
     if (ann != null && mounted) {
       AppToast.show(context, '已高亮');
     }
