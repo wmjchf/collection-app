@@ -12,6 +12,7 @@ class RoamQuoteCard extends StatelessWidget {
     this.elevation = 0,
     this.color = Colors.white,
     this.fillHeight = false,
+    this.scrollBody = false,
   });
 
   final RoamSnippet snippet;
@@ -23,6 +24,9 @@ class RoamQuoteCard extends StatelessWidget {
 
   /// 叠卡预览等：铺满父级高度，多余正文裁切
   final bool fillHeight;
+
+  /// 弹层：铺满高度，正文/批注完整可滚、不省略
+  final bool scrollBody;
 
   static const _text = Color(0xFF1F242E);
   static const _note = Color(0xFF5C6370);
@@ -37,74 +41,81 @@ class RoamQuoteCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final quote = snippet.quote;
     final hasQuote = quote != null && quote.isNotEmpty;
-    // 叠卡预览批注少行；弹层/列表给批注更多行，避免动不动省略号
-    final noteLines = !hasQuote
-        ? 0
-        : fillHeight
-            ? 1
-            : (maxLines >= 10
-                ? 8
-                : (maxLines >= 6 ? 4 : 2));
-    final quoteLines = !hasQuote
-        ? maxLines
-        : fillHeight
-            ? (maxLines - noteLines).clamp(1, maxLines)
-            : (maxLines - noteLines).clamp(2, maxLines);
+    final expand = fillHeight || scrollBody;
+    // 叠卡预览批注少行；列表给更多行；弹层滚动则不限行
+    final noteLines = scrollBody
+        ? null
+        : !hasQuote
+            ? 0
+            : fillHeight
+                ? 1
+                : (maxLines >= 10
+                    ? 8
+                    : (maxLines >= 6 ? 4 : 2));
+    final quoteLines = scrollBody
+        ? null
+        : !hasQuote
+            ? maxLines
+            : fillHeight
+                ? (maxLines - (noteLines ?? 1)).clamp(1, maxLines)
+                : (maxLines - (noteLines ?? 2)).clamp(2, maxLines);
     final primary = hasQuote ? quote! : snippet.text;
     final timeStr = formatRelativeTime(snippet.createdAt);
     final titleStr = (snippet.itemTitle ?? '').trim();
 
-    // 批注：浅底+标签，色阶介于正文与底部元信息之间
-    final noteBlock = hasQuote && snippet.text.isNotEmpty
-        ? Padding(
-            padding: const EdgeInsets.only(top: 8),
-            child: Container(
-              width: double.infinity,
-              padding: const EdgeInsets.fromLTRB(8, 8, 10, 8),
-              decoration: BoxDecoration(
-                color: _noteBg,
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 6,
-                      vertical: 2,
-                    ),
-                    decoration: BoxDecoration(
-                      color: _brandSoft,
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                    child: Text(
-                      snippet.kindLabel,
-                      style: const TextStyle(
-                        fontSize: 11,
-                        height: 1.2,
-                        fontWeight: FontWeight.w600,
-                        color: _quote,
-                      ),
-                    ),
+    Widget? noteBlock({int? lines}) {
+      if (!hasQuote || snippet.text.isEmpty) return null;
+      return Padding(
+        padding: const EdgeInsets.only(top: 8),
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.fromLTRB(8, 8, 10, 8),
+          decoration: BoxDecoration(
+            color: _noteBg,
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 6,
+                  vertical: 2,
+                ),
+                decoration: BoxDecoration(
+                  color: _brandSoft,
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: Text(
+                  snippet.kindLabel,
+                  style: const TextStyle(
+                    fontSize: 11,
+                    height: 1.2,
+                    fontWeight: FontWeight.w600,
+                    color: _quote,
                   ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      snippet.text,
-                      maxLines: noteLines,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontSize: 13,
-                        height: 1.45,
-                        color: _note,
-                      ),
-                    ),
-                  ),
-                ],
+                ),
               ),
-            ),
-          )
-        : null;
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  snippet.text,
+                  maxLines: lines,
+                  overflow: lines == null
+                      ? TextOverflow.visible
+                      : TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    height: 1.45,
+                    color: _note,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
 
     final metaParts = [
       if (!hasQuote) snippet.kindLabel,
@@ -123,11 +134,12 @@ class RoamQuoteCard extends StatelessWidget {
           )
         : null;
 
-    Widget bodyText({required int lines}) {
+    Widget bodyText({int? lines}) {
       return Text(
         primary,
         maxLines: lines,
-        overflow: TextOverflow.ellipsis,
+        overflow:
+            lines == null ? TextOverflow.visible : TextOverflow.ellipsis,
         style: const TextStyle(
           fontSize: _bodySize,
           height: _bodyHeight,
@@ -136,40 +148,77 @@ class RoamQuoteCard extends StatelessWidget {
       );
     }
 
-    final body = Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisSize: fillHeight ? MainAxisSize.max : MainAxisSize.min,
-      children: [
-        Text(
-          '“',
-          style: TextStyle(
-            fontSize: fillHeight ? 28 : 36,
-            height: 0.85,
-            fontWeight: FontWeight.w600,
-            color: _quote,
+    final quoteMark = Text(
+      '“',
+      style: TextStyle(
+        fontSize: expand ? 28 : 36,
+        height: 0.85,
+        fontWeight: FontWeight.w600,
+        color: _quote,
+      ),
+    );
+
+    late final Widget body;
+    if (scrollBody) {
+      final note = noteBlock(lines: null);
+      body = Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          quoteMark,
+          const SizedBox(height: 4),
+          Expanded(
+            child: SingleChildScrollView(
+              physics: const BouncingScrollPhysics(),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  bodyText(lines: null),
+                  if (note != null) note,
+                ],
+              ),
+            ),
           ),
-        ),
-        SizedBox(height: fillHeight ? 4 : 6),
-        if (fillHeight)
+          if (metaBlock != null) metaBlock,
+        ],
+      );
+    } else if (fillHeight) {
+      final note = noteBlock(lines: noteLines);
+      body = Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          quoteMark,
+          const SizedBox(height: 4),
           Expanded(
             child: LayoutBuilder(
               builder: (context, constraints) {
                 final lineH = _bodySize * _bodyHeight;
                 final fit = (constraints.maxHeight / lineH).floor();
-                final lines = fit.clamp(1, quoteLines);
+                final lines = fit.clamp(1, quoteLines ?? maxLines);
                 return Align(
                   alignment: Alignment.topLeft,
                   child: bodyText(lines: lines),
                 );
               },
             ),
-          )
-        else
+          ),
+          if (note != null) note,
+          if (metaBlock != null) metaBlock,
+        ],
+      );
+    } else {
+      final note = noteBlock(lines: noteLines);
+      body = Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          quoteMark,
+          const SizedBox(height: 6),
           bodyText(lines: quoteLines),
-        if (noteBlock != null) noteBlock,
-        if (metaBlock != null) metaBlock,
-      ],
-    );
+          if (note != null) note,
+          if (metaBlock != null) metaBlock,
+        ],
+      );
+    }
 
     return Material(
       color: color,
@@ -185,11 +234,11 @@ class RoamQuoteCard extends StatelessWidget {
         child: Padding(
           padding: EdgeInsets.fromLTRB(
             18,
-            fillHeight ? 14 : 16,
+            expand ? 14 : 16,
             18,
-            fillHeight ? 14 : 16,
+            expand ? 14 : 16,
           ),
-          child: fillHeight ? SizedBox.expand(child: body) : body,
+          child: expand ? SizedBox.expand(child: body) : body,
         ),
       ),
     );
