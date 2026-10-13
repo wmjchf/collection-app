@@ -109,11 +109,6 @@ class _AiOrganizeSheetState extends State<_AiOrganizeSheet> {
     }
   }
 
-  void _close() {
-    if (_applying) return;
-    Navigator.of(context).pop();
-  }
-
   @override
   Widget build(BuildContext context) {
     final bottom = MediaQuery.paddingOf(context).bottom;
@@ -141,36 +136,22 @@ class _AiOrganizeSheetState extends State<_AiOrganizeSheet> {
                   ),
                 ),
                 const SizedBox(height: 12),
-                SizedBox(
+                const SizedBox(
                   height: 27,
                   child: Row(
                     children: [
-                      const Icon(
+                      Icon(
                         Icons.auto_awesome_outlined,
                         size: 18,
                         color: _blue,
                       ),
-                      const SizedBox(width: 6),
-                      const Text(
+                      SizedBox(width: 6),
+                      Text(
                         'AI 标签归类',
                         style: TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.w700,
                           color: _text,
-                        ),
-                      ),
-                      const Spacer(),
-                      GestureDetector(
-                        onTap: _close,
-                        behavior: HitTestBehavior.opaque,
-                        child: const SizedBox(
-                          width: 32,
-                          height: 32,
-                          child: Icon(
-                            Icons.close_rounded,
-                            size: 22,
-                            color: _muted,
-                          ),
                         ),
                       ),
                     ],

@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:super_collection/core/analytics/analytics.dart';
 import 'package:super_collection/core/network/api_client.dart';
 import 'package:super_collection/core/ui/app_bottom_sheet.dart';
@@ -175,6 +176,14 @@ class _ReadingSummarySheetState extends State<_ReadingSummarySheet> {
     }
   }
 
+  Future<void> _copySummary() async {
+    final text = (_meta.text ?? '').trim();
+    if (text.isEmpty) return;
+    await Clipboard.setData(ClipboardData(text: text));
+    if (!mounted) return;
+    AppToast.show(context, '已复制');
+  }
+
   Future<void> _poll() async {
     final gen = ++_pollGen;
     final awaitingTranscript = _meta.awaitTranscript;
@@ -293,7 +302,20 @@ class _ReadingSummarySheetState extends State<_ReadingSummarySheet> {
                       ),
                     ),
                   ),
-                  if (showRegen)
+                  if (showRegen) ...[
+                    GestureDetector(
+                      onTap: () => unawaited(_copySummary()),
+                      behavior: HitTestBehavior.opaque,
+                      child: const Padding(
+                        padding: EdgeInsets.all(4),
+                        child: Icon(
+                          Icons.copy_rounded,
+                          size: 20,
+                          color: _muted,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
                     GestureDetector(
                       onTap: () => unawaited(_generate(force: true)),
                       behavior: HitTestBehavior.opaque,
@@ -306,14 +328,7 @@ class _ReadingSummarySheetState extends State<_ReadingSummarySheet> {
                         ),
                       ),
                     ),
-                  if (showRegen) const SizedBox(width: 8),
-                  GestureDetector(
-                    onTap: () => Navigator.pop(context),
-                    child: const Text(
-                      '关闭',
-                      style: TextStyle(fontSize: 14, color: _muted),
-                    ),
-                  ),
+                  ],
                 ],
               ),
               const SizedBox(height: 12),

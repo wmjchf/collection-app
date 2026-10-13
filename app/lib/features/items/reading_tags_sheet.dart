@@ -574,26 +574,13 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
   }
 
   Widget _buildTitleRow() {
-    return Row(
-      children: [
-        const Expanded(
-          child: Text(
-            '选择标签',
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w700,
-              color: _text,
-            ),
-          ),
-        ),
-        GestureDetector(
-          onTap: () => Navigator.pop(context),
-          child: const Text(
-            '关闭',
-            style: TextStyle(fontSize: 14, color: _muted),
-          ),
-        ),
-      ],
+    return const Text(
+      '选择标签',
+      style: TextStyle(
+        fontSize: 16,
+        fontWeight: FontWeight.w700,
+        color: _text,
+      ),
     );
   }
 

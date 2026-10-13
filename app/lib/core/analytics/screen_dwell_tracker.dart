@@ -11,6 +11,8 @@ abstract final class AnalyticsScreens {
   static const settings = 'settings';
   static const reading = 'reading';
   static const filterList = 'filter_list';
+  static const roamList = 'roam_list';
+  static const roamPlayer = 'roam_player';
   static const tagList = 'tag_list';
   static const tagSearch = 'tag_search';
   static const trash = 'trash';

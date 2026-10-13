@@ -332,14 +332,6 @@ class _ReadingMindmapSheetState extends State<_ReadingMindmapSheet> {
                         ),
                       ),
                     ),
-                  if (showRegen) const SizedBox(width: 8),
-                  GestureDetector(
-                    onTap: () => Navigator.pop(context),
-                    child: const Text(
-                      '关闭',
-                      style: TextStyle(fontSize: 14, color: _muted),
-                    ),
-                  ),
                 ],
               ),
               const SizedBox(height: 12),
