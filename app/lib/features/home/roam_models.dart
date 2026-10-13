@@ -26,7 +26,7 @@ class RoamSnippet {
   String get kindLabel {
     if (isThought) return '感想';
     if (isNote) return '批注';
-    return '标注';
+    return '高亮';
   }
 
   factory RoamSnippet.fromJson(Map<String, dynamic> json) {
