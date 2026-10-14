@@ -17,8 +17,9 @@ class _AccountDrawerState extends State<AccountDrawer> {
   static const _text = Color(0xFF1F242E);
 
   bool _isPaid = false;
+  bool _canUpgradeToPrince = false;
   bool _canUpgradeToEmperor = false;
-  String _planLabel = '普通';
+  String _planLabel = '免费';
   bool _planLoaded = false;
 
   @override
@@ -41,7 +42,8 @@ class _AccountDrawerState extends State<AccountDrawer> {
   void _onUsageRefresh() => _loadPlan();
 
   void _apply(UsageSummary usage) {
-    _isPaid = usage.isPrince;
+    _isPaid = usage.isPaid;
+    _canUpgradeToPrince = usage.isPaid && !usage.isPrince;
     _canUpgradeToEmperor = usage.isPrince && !usage.isEmperor;
     _planLabel = usage.displayPlan;
     _planLoaded = true;
@@ -56,8 +58,9 @@ class _AccountDrawerState extends State<AccountDrawer> {
       if (!mounted) return;
       setState(() {
         _isPaid = false;
+        _canUpgradeToPrince = false;
         _canUpgradeToEmperor = false;
-        _planLabel = '普通';
+        _planLabel = '免费';
         _planLoaded = true;
       });
     }
@@ -73,6 +76,8 @@ class _AccountDrawerState extends State<AccountDrawer> {
       ),
     );
   }
+
+  void _openUpgradeToPrince() => _openUpgrade(initialTier: UsagePlan.prince);
 
   void _openUpgradeToEmperor() => _openUpgrade(initialTier: UsagePlan.emperor);
 
@@ -120,8 +125,10 @@ class _AccountDrawerState extends State<AccountDrawer> {
                 loaded: _planLoaded,
                 planLabel: _planLabel,
                 isPaid: _isPaid,
+                canUpgradeToPrince: _canUpgradeToPrince,
                 canUpgradeToEmperor: _canUpgradeToEmperor,
                 onUpgrade: _openUpgrade,
+                onUpgradeToPrince: _openUpgradeToPrince,
                 onUpgradeToEmperor: _openUpgradeToEmperor,
                 onOpenAccount: _openAccount,
               ),
@@ -140,8 +147,10 @@ class _AccountPlanCard extends StatelessWidget {
     required this.loaded,
     required this.planLabel,
     required this.isPaid,
+    required this.canUpgradeToPrince,
     required this.canUpgradeToEmperor,
     required this.onUpgrade,
+    required this.onUpgradeToPrince,
     required this.onUpgradeToEmperor,
     required this.onOpenAccount,
   });
@@ -149,8 +158,10 @@ class _AccountPlanCard extends StatelessWidget {
   final bool loaded;
   final String planLabel;
   final bool isPaid;
+  final bool canUpgradeToPrince;
   final bool canUpgradeToEmperor;
   final VoidCallback onUpgrade;
+  final VoidCallback onUpgradeToPrince;
   final VoidCallback onUpgradeToEmperor;
   final VoidCallback onOpenAccount;
 
@@ -162,18 +173,21 @@ class _AccountPlanCard extends StatelessWidget {
   String get _subtitle {
     if (!isPaid) return '免费额度 · 收藏有上限';
     if (canUpgradeToEmperor) return '可升级帝王 · 脑图与转写';
+    if (canUpgradeToPrince) return '无限收藏 · 可升级解锁 AI';
     return '当前方案 · 会员权益已生效';
   }
 
   VoidCallback? get _planAction {
     if (!isPaid) return onUpgrade;
     if (canUpgradeToEmperor) return onUpgradeToEmperor;
+    if (canUpgradeToPrince) return onUpgradeToPrince;
     return null;
   }
 
   String? get _actionLabel {
     if (!isPaid) return '订阅会员';
     if (canUpgradeToEmperor) return '升级帝王';
+    if (canUpgradeToPrince) return '升级太子';
     return null;
   }
 
@@ -227,7 +241,7 @@ class _AccountPlanCard extends StatelessWidget {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                isPaid ? planLabel : '普通',
+                                isPaid ? planLabel : '免费',
                                 style: TextStyle(
                                   fontSize: 17,
                                   fontWeight: FontWeight.w700,

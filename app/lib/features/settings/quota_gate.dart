@@ -19,7 +19,9 @@ Future<void> handleApiException(
   String? tier;
   if (required == UsagePlan.emperor) {
     tier = UsagePlan.emperor;
-  } else if (e.isPlanRequired || e.quotaKind == 'storage') {
+  } else if (required == UsagePlan.basic || e.quotaKind == 'storage') {
+    tier = UsagePlan.basic;
+  } else if (required == UsagePlan.prince || e.isPlanRequired) {
     tier = UsagePlan.prince;
   } else if (e.quotaKind == 'transcript') {
     tier = UsagePlan.emperor;
