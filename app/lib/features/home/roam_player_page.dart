@@ -270,7 +270,11 @@ class _RoamSwipeDeckState extends State<_RoamSwipeDeck> {
         elevation: elevation,
         color: color ?? Colors.white,
         scrollBody: true,
-        onMute: muteAction ? () => unawaited(_muteWithAnimation()) : null,
+        // 下一张也预挂元信息行（含「不再回顾」），避免滑完才突然出现；
+        // 背后卡外层 IgnorePointer，无动作回调不会误触。
+        onMute: muteAction
+            ? () => unawaited(_muteWithAnimation())
+            : () {},
       );
     }
     return _RoamDoneCard(
