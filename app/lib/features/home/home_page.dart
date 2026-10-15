@@ -29,6 +29,7 @@ import 'package:super_collection/features/onboarding/coach_prefs.dart';
 import 'package:super_collection/features/onboarding/home_coach_overlay.dart';
 import 'package:super_collection/features/onboarding/shortcuts_help_page.dart';
 import 'package:super_collection/features/shell/user_avatar_button.dart';
+import 'package:super_collection/features/settings/quota_gate.dart';
 import 'package:super_collection/features/settings/trial_expiry_banner.dart';
 import 'package:super_collection/features/settings/usage_repository.dart';
 
@@ -595,7 +596,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         errorCode: e.code ?? e.message,
       );
       if (!mounted) return;
-      AppToast.show(context, e.message);
+      await handleApiException(context, e);
     } catch (_) {
       ParseProgressTracker.cancel();
       Analytics.instance.itemSaveFail(

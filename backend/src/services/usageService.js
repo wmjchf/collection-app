@@ -101,6 +101,13 @@ function quotasForPlan(plan, { isTrial = false } = {}) {
       itemLimit: null,
     };
   }
+  if (p === planService.PLAN_BASIC) {
+    return {
+      transcriptMinutesPerMonth: 0,
+      aiTokensPerMonth: 0,
+      itemLimit: null,
+    };
+  }
   return {
     transcriptMinutesPerMonth: Number(u.freeTranscriptMinutesPerMonth ?? 0),
     aiTokensPerMonth: Number(u.freeAiTokensPerMonth ?? 0),
@@ -108,10 +115,11 @@ function quotasForPlan(plan, { isTrial = false } = {}) {
   };
 }
 
-/** 升级页对照表：free + prince + emperor（pro 别名太子） */
+/** 升级页对照表：free + basic + prince + emperor（pro 别名太子） */
 function planQuotasTable() {
   return {
     free: quotasForPlan('free'),
+    basic: quotasForPlan('basic'),
     prince: quotasForPlan('prince'),
     emperor: quotasForPlan('emperor'),
     pro: quotasForPlan('prince'),
@@ -356,13 +364,13 @@ async function assertItemQuota(userId) {
   if (itemCount >= quotas.itemLimit) {
     throw Object.assign(
       new Error(
-        `收藏已达 ${quotas.itemLimit} 条上限，订阅太子后可继续`,
+        `收藏已达 ${quotas.itemLimit} 条上限，订阅普通会员后可无限收藏`,
       ),
       {
         status: 402,
         code: 'QUOTA_EXCEEDED',
         quotaKind: KIND_STORAGE,
-        requiredPlan: planService.PLAN_PRINCE,
+        requiredPlan: planService.PLAN_BASIC,
       },
     );
   }
@@ -661,7 +669,7 @@ async function getUsageSummary(userId) {
       aiOrganize: planService.hasPrince(normalizedPlan),
       aiMindmap: planService.hasEmperor(normalizedPlan),
       transcript: planService.hasEmperor(normalizedPlan),
-      unlimitedItems: planService.hasPrince(normalizedPlan),
+      unlimitedItems: planService.hasBasic(normalizedPlan),
     },
   };
 }

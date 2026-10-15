@@ -194,7 +194,7 @@ class _AccountPageState extends State<AccountPage> with ScreenDwellMixin {
                         style: TextStyle(
                           fontSize: 14,
                           fontWeight: FontWeight.w600,
-                          color: _usage!.isPrince ? _blue : _muted,
+                          color: _usage!.isPaid ? _blue : _muted,
                         ),
                       ),
                     ),
@@ -208,7 +208,7 @@ class _AccountPageState extends State<AccountPage> with ScreenDwellMixin {
                       ),
                   ],
                 ),
-                if (_usage != null && !_usage!.isPrince) ...[
+                if (_usage != null && !_usage!.isPaid) ...[
                   const SizedBox(height: 12),
                   SizedBox(
                     width: double.infinity,
@@ -224,6 +224,33 @@ class _AccountPageState extends State<AccountPage> with ScreenDwellMixin {
                       ),
                       child: const Text(
                         '订阅会员',
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+                if (_usage != null &&
+                    _usage!.isPaid &&
+                    !_usage!.isPrince) ...[
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 44,
+                    child: TextButton(
+                      onPressed: () =>
+                          _openUpgrade(initialTier: UsagePlan.prince),
+                      style: TextButton.styleFrom(
+                        backgroundColor: const Color(0xFFE8F0FF),
+                        foregroundColor: _blue,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      child: const Text(
+                        '升级太子',
                         style: TextStyle(
                           fontSize: 15,
                           fontWeight: FontWeight.w600,

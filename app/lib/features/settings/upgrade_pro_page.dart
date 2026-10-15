@@ -12,7 +12,7 @@ import 'package:super_collection/features/settings/legal_docs.dart';
 import 'package:super_collection/features/settings/simple_doc_page.dart';
 import 'package:super_collection/features/settings/usage_repository.dart';
 
-/// 订阅升级页（太子 / 帝王；iOS StoreKit）
+/// 订阅升级页（普通 / 太子 / 帝王；iOS StoreKit）
 class UpgradeProPage extends StatefulWidget {
   const UpgradeProPage({
     super.key,
@@ -23,7 +23,7 @@ class UpgradeProPage extends StatefulWidget {
   /// settings | quota | feature_gate
   final String from;
 
-  /// 引导订阅时预选档位：`prince` | `emperor`
+  /// 引导订阅时预选档位：`basic` | `prince` | `emperor`
   final String? initialTier;
 
   @override
@@ -69,8 +69,16 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
     }
   }
 
-  String _tierDisplayName(String tier) =>
-      tier == UsagePlan.emperor ? '帝王Pro' : '太子Pro';
+  String _tierDisplayName(String tier) {
+    switch (UsagePlan.normalize(tier)) {
+      case UsagePlan.basic:
+        return '普通会员';
+      case UsagePlan.emperor:
+        return '帝王Pro';
+      default:
+        return '太子Pro';
+    }
+  }
 
   @override
   String get dwellScreen => AnalyticsScreens.pro;
@@ -82,7 +90,13 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
   void initState() {
     super.initState();
     final t = UsagePlan.normalize(widget.initialTier);
-    if (t == UsagePlan.emperor) _selectedTier = UsagePlan.emperor;
+    if (t == UsagePlan.emperor) {
+      _selectedTier = UsagePlan.emperor;
+    } else if (t == UsagePlan.basic) {
+      _selectedTier = UsagePlan.basic;
+    } else if (t == UsagePlan.prince) {
+      _selectedTier = UsagePlan.prince;
+    }
     Analytics.instance.proPageView(from: widget.from);
     _load();
   }
@@ -140,38 +154,57 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
     }
   }
 
-  TierProductIds get _tierIds {
-    final billing = _billing;
-    if (billing == null) {
-      return const TierProductIds(
-        monthly: IapProductIds.princeMonthly,
-        yearly: IapProductIds.princeYearly,
-      );
-    }
-    return _selectedTier == UsagePlan.emperor
-        ? billing.emperor
-        : billing.prince;
-  }
+  bool get _isBasicSelected =>
+      UsagePlan.normalize(_selectedTier) == UsagePlan.basic;
+
+  String get _basicLifetimeId =>
+      _billing?.basicLifetime ?? IapProductIds.basicLifetime;
+
+  TierProductIds get _tierIds => _idsForTier(_selectedTier);
 
   ProductDetails? get _selected => _productForTier(_selectedTier);
 
   TierProductIds _idsForTier(String tier) {
     final billing = _billing;
+    final t = UsagePlan.normalize(tier);
     if (billing == null) {
-      return tier == UsagePlan.emperor
-          ? const TierProductIds(
-              monthly: IapProductIds.emperorMonthly,
-              yearly: IapProductIds.emperorYearly,
-            )
-          : const TierProductIds(
-              monthly: IapProductIds.princeMonthly,
-              yearly: IapProductIds.princeYearly,
-            );
+      switch (t) {
+        case UsagePlan.emperor:
+          return const TierProductIds(
+            monthly: IapProductIds.emperorMonthly,
+            yearly: IapProductIds.emperorYearly,
+          );
+        default:
+          return const TierProductIds(
+            monthly: IapProductIds.princeMonthly,
+            yearly: IapProductIds.princeYearly,
+          );
+      }
     }
-    return tier == UsagePlan.emperor ? billing.emperor : billing.prince;
+    switch (t) {
+      case UsagePlan.emperor:
+        return billing.emperor;
+      default:
+        return billing.prince;
+    }
   }
 
   ProductDetails? _productForTier(String tier) {
+    final t = UsagePlan.normalize(tier);
+    if (t == UsagePlan.basic) {
+      final direct = _products[_basicLifetimeId];
+      if (direct != null) return direct;
+      for (final p in _products.values) {
+        final id = p.id.toLowerCase();
+        if (id.contains('basic') &&
+            !id.contains('month') &&
+            !id.contains('year')) {
+          return p;
+        }
+      }
+      return null;
+    }
+
     final ids = _idsForTier(tier);
     final preferred = _yearlyBilling ? ids.yearly : ids.monthly;
     final direct = _products[preferred];
@@ -180,8 +213,9 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
     for (final p in _products.values) {
       final id = p.id.toLowerCase();
       final isEmperor = id.contains('emperor');
-      if (tier == UsagePlan.prince && isEmperor) continue;
-      if (tier == UsagePlan.emperor && !isEmperor) continue;
+      final isBasic = id.contains('basic');
+      if (t == UsagePlan.prince && (isEmperor || isBasic)) continue;
+      if (t == UsagePlan.emperor && !isEmperor) continue;
       final isYear = _isYearlyProduct(p);
       if (_yearlyBilling == isYear) return p;
     }
@@ -213,8 +247,22 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
 
   AppleFreeTrialOffer? get _selectedTrial => _trialForTier(_selectedTier);
 
-  /// 月付：价签文案；年付：删除线（月×12）+ 立省，实付价在底部 CTA。
+  /// 普通：买断价；太子/帝王月付价签；年付：删除线（月×12）+ 立省。
   Widget? _priceWidgetForTier(String tier, {required bool selected}) {
+    final t = UsagePlan.normalize(tier);
+    if (t == UsagePlan.basic) {
+      final p = _productForTier(tier);
+      if (p == null) return null;
+      return Text(
+        '${p.price} 一次买断',
+        style: TextStyle(
+          fontSize: 22,
+          fontWeight: FontWeight.w700,
+          color: selected ? _accent : _text,
+          height: 1.2,
+        ),
+      );
+    }
     if (_yearlyBilling) {
       return _yearlySavingsLabel(tier, selected: selected);
     }
@@ -299,6 +347,9 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
   }
 
   List<String> _missingIdsForSelectedTier() {
+    if (_isBasicSelected) {
+      return _products.containsKey(_basicLifetimeId) ? const [] : [_basicLifetimeId];
+    }
     final ids = _tierIds;
     return [ids.monthly, ids.yearly]
         .where((id) => !_products.containsKey(id))
@@ -318,6 +369,7 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
     if (_busy && !_restoreFlow) return _phaseLabel;
     final p = _selected;
     if (p == null) return '选择方案';
+    if (_isBasicSelected) return '一次买断 ${p.price}';
     if (_isYearlyProduct(p)) return '订阅 ${p.price} / 年';
     final trial = _selectedTrial;
     if (trial != null) return '免费试用 ${trial.days} 天';
@@ -445,7 +497,7 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
               children: [
                 const _MembershipIntro(),
                 const SizedBox(height: 16),
-                if (_isIos)
+                if (_isIos && !_isBasicSelected)
                   Padding(
                     padding: const EdgeInsets.only(bottom: 10),
                     child: Row(
@@ -462,8 +514,22 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
                     ),
                   ),
                 _TierPlanCard(
+                  title: '普通会员',
+                  tagline: '一次买断，永久无限收藏：突破免费条数上限',
+                  priceWidget: _isIos && !_productsLoading && _error == null
+                      ? _priceWidgetForTier(
+                          UsagePlan.basic,
+                          selected: _selectedTier == UsagePlan.basic,
+                        )
+                      : null,
+                  features: _basicFeatures(),
+                  selected: _selectedTier == UsagePlan.basic,
+                  onTap: () => _selectTier(UsagePlan.basic),
+                ),
+                const SizedBox(height: 10),
+                _TierPlanCard(
                   title: '太子Pro',
-                  tagline: '智能整理：不限收藏，解锁 AI 自动打标签、解读与标签归类',
+                  tagline: '智能整理：含普通会员，解锁 AI 自动打标签、解读与标签归类',
                   priceWidget: _isIos && !_productsLoading && _error == null
                       ? _priceWidgetForTier(
                           UsagePlan.prince,
@@ -490,7 +556,7 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  '普通用户收藏上限 ${_quotas.free.itemLimit ?? 300} 条；额度按自然月重置',
+                  '免费用户收藏上限 ${_quotas.free.itemLimit ?? 300} 条；AI / 转写额度按自然月重置',
                   style: const TextStyle(
                     fontSize: 12,
                     color: _muted,
@@ -547,8 +613,9 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
             busy: _busy,
             restoreFlow: _restoreFlow,
             subscribeEnabled: _selected != null && _selectedTierProductsReady,
-            trialOffer: _selectedTrial,
+            trialOffer: _isBasicSelected ? null : _selectedTrial,
             selectedPrice: _selected?.price,
+            lifetimePurchase: _isBasicSelected,
             onSubscribe: _buy,
             onRestore: _restore,
             onUserAgreement: () => _openLegal(
@@ -569,9 +636,21 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
     setState(() => _selectedTier = tier);
   }
 
+  List<_PlanFeature> _basicFeatures() {
+    return const [
+      _PlanFeature('一次买断，永久生效', included: true),
+      _PlanFeature('收藏不限条数', included: true),
+      _PlanFeature('AI 自动打标签', included: false),
+      _PlanFeature('AI 解读', included: false),
+      _PlanFeature('AI 标签归类', included: false),
+      _PlanFeature('AI 思维导图', included: false),
+      _PlanFeature('视频 / 音频转写', included: false),
+    ];
+  }
+
   List<_PlanFeature> _princeFeatures(PlanQuotasTable quotas) {
     return [
-      const _PlanFeature('收藏不限条数', included: true),
+      const _PlanFeature('含普通会员全部权益', included: true),
       const _PlanFeature('AI 自动打标签', included: true),
       const _PlanFeature('AI 解读', included: true),
       const _PlanFeature('AI 标签归类', included: true),
@@ -723,7 +802,7 @@ class _TierProductsSyncHint extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            '$tierLabel 订阅商品尚未从 App Store 同步',
+            '$tierLabel 商品尚未从 App Store 同步',
             style: const TextStyle(
               fontSize: 14,
               fontWeight: FontWeight.w600,
@@ -733,7 +812,7 @@ class _TierProductsSyncHint extends StatelessWidget {
           ),
           const SizedBox(height: 6),
           const Text(
-            'ASC 新建订阅后，沙盒通常需数小时才能查到。'
+            'ASC 新建商品后，沙盒通常需数小时才能查到。'
             '请确认商品已「准备提交」、id 与后端一致，稍后点重试；'
             '太子Pro档不受影响，可先订阅太子Pro。',
             style: TextStyle(fontSize: 13, color: _muted, height: 1.45),
@@ -1169,6 +1248,7 @@ class _BottomActionBar extends StatelessWidget {
     required this.onPrivacy,
     this.trialOffer,
     this.selectedPrice,
+    this.lifetimePurchase = false,
   });
 
   final bool showPurchaseActions;
@@ -1183,6 +1263,7 @@ class _BottomActionBar extends StatelessWidget {
   final VoidCallback onPrivacy;
   final AppleFreeTrialOffer? trialOffer;
   final String? selectedPrice;
+  final bool lifetimePurchase;
 
   @override
   Widget build(BuildContext context) {
@@ -1226,6 +1307,7 @@ class _BottomActionBar extends StatelessWidget {
                   onPrivacy: onPrivacy,
                   trialOffer: trialOffer,
                   selectedPrice: selectedPrice,
+                  lifetimePurchase: lifetimePurchase,
                 ),
               ],
             ),
@@ -1242,12 +1324,14 @@ class _SubscriptionLegalFooter extends StatelessWidget {
     required this.onPrivacy,
     this.trialOffer,
     this.selectedPrice,
+    this.lifetimePurchase = false,
   });
 
   final VoidCallback onUserAgreement;
   final VoidCallback onPrivacy;
   final AppleFreeTrialOffer? trialOffer;
   final String? selectedPrice;
+  final bool lifetimePurchase;
 
   @override
   Widget build(BuildContext context) {
@@ -1259,18 +1343,18 @@ class _SubscriptionLegalFooter extends StatelessWidget {
     );
     final trial = trialOffer;
     final price = selectedPrice;
-    final trialLead = trial != null && price != null
+    final trialLead = !lifetimePurchase && trial != null && price != null
         ? '符合条件的用户可免费试用 ${trial.days} 天，试用结束后将按 $price/月自动扣费并续订。'
         : '';
+    final lead = lifetimePurchase
+        ? '普通会员为一次买断、永久开通，不自动续费。购买即表示你接受我们的'
+        : '订阅会自动续费，除非您在当前订阅结束前 24 小时以上取消自动续订。订阅高级会员即表示你接受我们的';
     return Text.rich(
       TextSpan(
         style: style,
         children: [
           if (trialLead.isNotEmpty) TextSpan(text: trialLead),
-          const TextSpan(
-            text:
-                '订阅会自动续费，除非您在当前订阅结束前 24 小时以上取消自动续订。订阅高级会员即表示你接受我们的',
-          ),
+          TextSpan(text: lead),
           WidgetSpan(
             alignment: PlaceholderAlignment.baseline,
             baseline: TextBaseline.alphabetic,
@@ -1288,7 +1372,11 @@ class _SubscriptionLegalFooter extends StatelessWidget {
               child: const Text('用户条款', style: linkStyle),
             ),
           ),
-          const TextSpan(text: '。如果您已经订阅过但未生效，请恢复购买。'),
+          TextSpan(
+            text: lifetimePurchase
+                ? '。如果已购买但未生效，请恢复购买。'
+                : '。如果您已经订阅过但未生效，请恢复购买。',
+          ),
         ],
       ),
       textAlign: TextAlign.center,

@@ -62,12 +62,12 @@ module.exports = {
     aiModel: process.env.ALIYUN_AI_MODEL || 'qwen3.8-max',
   },
   /**
-   * 月额度：free / prince / emperor；USAGE_ENFORCING 控制触顶（默认 true）
+   * 月额度：free / basic / prince / emperor；USAGE_ENFORCING 控制触顶（默认 true）
    */
   usage: {
     enforcing: process.env.USAGE_ENFORCING !== 'false',
     freeItemLimit: Number(process.env.FREE_ITEM_LIMIT) || 300,
-    /** 普通用户 AI/转写均为 0（不可用） */
+    /** 免费用户 AI/转写均为 0（不可用）；basic 仅无限收藏 */
     freeAiTokensPerMonth: Number(process.env.FREE_AI_TOKENS_PER_MONTH) || 0,
     freeTranscriptMinutesPerMonth:
       Number(process.env.FREE_TRANSCRIPT_MINUTES_PER_MONTH) || 0,
@@ -143,6 +143,10 @@ module.exports = {
     productEmperorYearly:
       process.env.APPLE_IAP_PRODUCT_EMPEROR_YEARLY ||
       'com.bufang.supercollection.emperor.yearly',
+    /** 普通会员：非消耗型一次买断（永久无限收藏） */
+    productBasic:
+      process.env.APPLE_IAP_PRODUCT_BASIC ||
+      'com.bufang.supercollection.basic',
     /** auto | production | sandbox */
     env: process.env.APPLE_IAP_ENV || 'auto',
   },

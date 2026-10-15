@@ -201,6 +201,7 @@ async function activateSubscription({
 
   const normalizedPlan = planService.normalizePlan(plan);
   if (
+    normalizedPlan !== planService.PLAN_BASIC &&
     normalizedPlan !== planService.PLAN_PRINCE &&
     normalizedPlan !== planService.PLAN_EMPEROR
   ) {
@@ -219,6 +220,9 @@ async function activateSubscription({
     }
     expires = new Date(Date.now() + d * 24 * 60 * 60 * 1000);
   }
+  // 普通会员买断等：明确不限期时清空 expires_at
+  const forceUnlimited = meta && meta.lifetime === true;
+  if (forceUnlimited) expires = null;
 
   if (externalId) {
     const [existingRows] = await pool.execute(
@@ -239,7 +243,9 @@ async function activateSubscription({
     const existing = existingRows[0];
     if (existing) {
       let nextExpires = expires;
-      if (existing.expires_at && expires) {
+      if (forceUnlimited) {
+        nextExpires = null;
+      } else if (existing.expires_at && expires) {
         const cur = new Date(existing.expires_at);
         nextExpires = expires > cur ? expires : cur;
       } else if (!expires && existing.expires_at) {

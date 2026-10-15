@@ -30,6 +30,10 @@ function mapRoamRow(row) {
     quote = text;
     body = extra;
   }
+  const annotationSource =
+    row.annotation_source != null
+      ? String(row.annotation_source).trim()
+      : '';
   return {
     id: String(row.sid),
     kind,
@@ -37,6 +41,7 @@ function mapRoamRow(row) {
     quote,
     itemId: Number(row.item_id),
     annotationId: row.annotation_id != null ? Number(row.annotation_id) : null,
+    annotationSource: annotationSource || null,
     itemTitle: row.item_title || null,
     createdAt: row.sort_at,
   };
@@ -51,6 +56,7 @@ const roamUnionSql = `
       a.note AS extra,
       i.id AS item_id,
       a.id AS annotation_id,
+      a.source AS annotation_source,
       i.title AS item_title,
       COALESCE(a.updated_at, a.created_at) AS sort_at
     FROM annotations a
@@ -66,6 +72,7 @@ const roamUnionSql = `
       NULL AS extra,
       i.id AS item_id,
       NULL AS annotation_id,
+      NULL AS annotation_source,
       i.title AS item_title,
       i.updated_at AS sort_at
     FROM items i

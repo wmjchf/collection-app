@@ -39,6 +39,7 @@ const MIGRATION_FILES = [
   '029_rename_annotated_filter.sql',
   '030_user_onboarding_survey.sql',
   '031_user_feedback.sql',
+  '032_annotation_source.sql',
 ];
 
 async function getConnection() {
@@ -249,6 +250,16 @@ async function apply026(conn, dbName) {
   );
 }
 
+async function apply032(conn, dbName) {
+  if (await columnExists(conn, dbName, 'annotations', 'source')) {
+    console.log('[db:migrate] 032: annotations.source 已存在，跳过');
+    return;
+  }
+  await conn.query(
+    "ALTER TABLE `annotations` ADD COLUMN `source` VARCHAR(64) NOT NULL DEFAULT 'body' COMMENT 'body | transcript:<segmentKey>' AFTER `item_id`",
+  );
+}
+
 async function applyMigration(conn, dbName, file) {
   if (file === '002_last_read_at.sql') {
     await apply002(conn, dbName);
@@ -284,6 +295,10 @@ async function applyMigration(conn, dbName, file) {
   }
   if (file === '026_help_page_blocks.sql') {
     await apply026(conn, dbName);
+    return;
+  }
+  if (file === '032_annotation_source.sql') {
+    await apply032(conn, dbName);
     return;
   }
   await runSqlFile(conn, file);

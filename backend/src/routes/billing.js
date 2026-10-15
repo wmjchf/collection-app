@@ -105,6 +105,45 @@ router.post('/checkout', async (req, res) => {
 });
 
 /**
+ * POST /api/billing/dev/grant-basic — 开发环境授予普通会员（仅 SMS_DEV_MODE）
+ * body: { days?: number } 默认永久（买断）；传正数可临时授予
+ */
+router.post('/dev/grant-basic', async (req, res, next) => {
+  try {
+    if (!config.auth?.smsDevMode) {
+      return res.status(403).json({ message: '仅开发模式可用' });
+    }
+    const rawDays = req.body?.days;
+    const unlimited =
+      rawDays == null ||
+      rawDays === '' ||
+      rawDays === 0 ||
+      rawDays === '0';
+    const days = unlimited ? null : Number(rawDays);
+    if (!unlimited && (!Number.isFinite(days) || days <= 0)) {
+      return res.status(400).json({ message: 'days 无效' });
+    }
+    const sub = await subscriptionService.activateSubscription({
+      userId: req.auth.userId,
+      plan: 'basic',
+      source: 'dev',
+      days: unlimited ? null : days,
+      expiresAt: unlimited ? null : undefined,
+      meta: { grantedVia: 'dev/grant-basic', lifetime: unlimited },
+    });
+    const summary = await usageService.getUsageSummary(req.auth.userId);
+    return res.json({
+      message: '已授予普通会员',
+      subscription: sub,
+      plan: summary.plan,
+      usage: summary,
+    });
+  } catch (err) {
+    return next(err);
+  }
+});
+
+/**
  * POST /api/billing/dev/grant-pro — 开发环境授予太子（仅 SMS_DEV_MODE）
  * body: { days?: number } 默认 30；传 0 表示不限期
  */

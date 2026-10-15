@@ -8,11 +8,15 @@ class TranscriptSegmentPanel extends StatelessWidget {
   const TranscriptSegmentPanel({
     super.key,
     required this.segment,
+    this.itemId,
+    this.segmentKey,
     this.hidePendingLoading = false,
     this.fontSize = ReadingFontPrefs.defaultSize,
   });
 
   final TranscriptSegment? segment;
+  final int? itemId;
+  final String? segmentKey;
   /// 思维导图触发的自动转写时，进度已在脑图卡片展示，不重复显示 pending UI
   final bool hidePendingLoading;
   /// 与阅读页正文字号同步（预览与文稿全文）
@@ -22,7 +26,6 @@ class TranscriptSegmentPanel extends StatelessWidget {
   static const _muted = Color(0xFF737A85);
   static const _brand = Color(0xFF2F6FED);
   static const _transcriptText = Color(0xFF3A404C);
-  static const _surface = Color(0xFFF3F6FA);
 
   void _openTranscriptPage(BuildContext context, TranscriptSegment seg) {
     final text = (seg.text ?? '').trim();
@@ -32,6 +35,8 @@ class TranscriptSegmentPanel extends StatelessWidget {
           text: text,
           cues: seg.cues,
           fontSize: fontSize,
+          itemId: itemId,
+          segmentKey: segmentKey,
         ),
       ),
     );
@@ -106,75 +111,113 @@ class TranscriptSegmentPanel extends StatelessWidget {
 
     final text = seg.text!.trim();
     final charCount = text.replaceAll(RegExp(r'\s'), '').length;
-    final metaLabel = charCount > 0 ? '· $charCount 字' : '· 已转写';
+    final metaLabel = charCount > 0 ? '$charCount 字' : '已转写';
 
     return Padding(
-      padding: const EdgeInsets.only(top: 12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(
-            children: [
-              const Text(
-                '文稿',
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: _text,
-                ),
-              ),
-              Text(
-                ' $metaLabel',
-                style: const TextStyle(fontSize: 12, color: _muted),
-              ),
-              const Spacer(),
-              Text(
-                '查看全文',
-                style: TextStyle(fontSize: 12, color: _brand),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Material(
-            color: _surface,
-            borderRadius: BorderRadius.circular(8),
-            clipBehavior: Clip.antiAlias,
-            child: InkWell(
-              onTap: () => _openTranscriptPage(context, seg),
-              child: IntrinsicHeight(
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Container(width: 3, color: _brand),
-                    Expanded(
-                      child: Padding(
-                        padding: const EdgeInsets.all(12),
-                        child: Text(
-                          text,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
+      padding: const EdgeInsets.only(top: 14),
+      child: Material(
+        color: const Color(0xFFEEF3FB),
+        borderRadius: BorderRadius.circular(12),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: () => _openTranscriptPage(context, seg),
+          child: Container(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: _brand.withValues(alpha: 0.22)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(14, 14, 14, 0),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 36,
+                        height: 36,
+                        decoration: BoxDecoration(
+                          color: _brand.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: const Icon(
+                          Icons.article_outlined,
+                          size: 20,
+                          color: _brand,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              '转写完成',
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w700,
+                                color: _text,
+                                height: 1.2,
+                              ),
+                            ),
+                            const SizedBox(height: 3),
+                            Text(
+                              '文稿已就绪 · $metaLabel',
+                              style: const TextStyle(
+                                fontSize: 13,
+                                color: _muted,
+                                height: 1.25,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 8,
+                        ),
+                        decoration: BoxDecoration(
+                          color: _brand,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: const Text(
+                          '查看全文',
                           style: TextStyle(
-                            fontSize: previewSize,
-                            height: 1.55,
-                            color: _transcriptText,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.white,
                           ),
                         ),
                       ),
+                    ],
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
+                  child: Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.fromLTRB(12, 11, 12, 11),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.85),
+                      borderRadius: BorderRadius.circular(8),
                     ),
-                    const Padding(
-                      padding: EdgeInsets.only(right: 10),
-                      child: Icon(
-                        Icons.chevron_right_rounded,
-                        size: 22,
-                        color: _muted,
+                    child: Text(
+                      text,
+                      maxLines: 4,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: previewSize,
+                        height: 1.55,
+                        color: _transcriptText,
                       ),
                     ),
-                  ],
+                  ),
                 ),
-              ),
+              ],
             ),
           ),
-        ],
+        ),
       ),
     );
   }

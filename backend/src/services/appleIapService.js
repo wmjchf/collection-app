@@ -231,16 +231,21 @@ async function verifyAndActivate({ userId, transactionId, productId, jws }) {
 
   const plan = planService.planFromProductId(tx.productId);
   if (!plan) {
-    throw Object.assign(new Error('未知的订阅商品'), { status: 400 });
+    throw Object.assign(new Error('未知的商品'), { status: 400 });
   }
 
-  const trial = trialFieldsFromTx(tx);
+  // 普通会员为非消耗型买断：不开到期时间
+  const effectiveExpires =
+    plan === planService.PLAN_BASIC ? null : expiresAt;
+
+  const trial =
+    plan === planService.PLAN_BASIC ? { isTrial: false } : trialFieldsFromTx(tx);
   const sub = await subscriptionService.activateSubscription({
     userId,
     plan,
     source: 'apple',
     externalId: originalId,
-    expiresAt,
+    expiresAt: effectiveExpires,
     meta: {
       productId: tx.productId,
       transactionId: String(tx.transactionId || tid),
@@ -248,7 +253,8 @@ async function verifyAndActivate({ userId, transactionId, productId, jws }) {
       environment,
       type: tx.type || null,
       purchaseDate: tx.purchaseDate || null,
-      expiresDate: tx.expiresDate || null,
+      expiresDate: effectiveExpires ? tx.expiresDate || null : null,
+      lifetime: plan === planService.PLAN_BASIC,
       ...trial,
     },
   });
@@ -399,6 +405,9 @@ function publicProductConfig() {
     configured: isConfigured(),
     bundleId: a.bundleId,
     products: {
+      basic: {
+        lifetime: a.productBasic,
+      },
       prince: {
         monthly: princeMonthly,
         yearly: princeYearly,

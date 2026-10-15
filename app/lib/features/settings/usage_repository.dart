@@ -4,16 +4,18 @@ import 'package:flutter/foundation.dart';
 import 'package:super_collection/core/network/api_client.dart';
 import 'package:super_collection/features/auth/auth_repository.dart';
 
+const _kDefaultBasicLifetimeId = 'com.bufang.supercollection.basic';
 const _kDefaultPrinceMonthlyId = 'com.bufang.supercollection.monthly';
 const _kDefaultPrinceYearlyId = 'com.bufang.supercollection.yearly';
 const _kDefaultEmperorMonthlyId = 'com.bufang.supercollection.emperor.monthly';
 const _kDefaultEmperorYearlyId = 'com.bufang.supercollection.emperor.yearly';
 
-/// `free` | `prince` | `emperor`（`pro` 等同太子）
+/// `free` | `basic` | `prince` | `emperor`（`pro` 等同太子）
 class UsagePlan {
   UsagePlan._();
 
   static const free = 'free';
+  static const basic = 'basic';
   static const prince = 'prince';
   static const emperor = 'emperor';
   static const pro = 'pro';
@@ -22,8 +24,10 @@ class UsagePlan {
     final p = normalize(plan);
     switch (p) {
       case emperor:
-        return 2;
+        return 3;
       case prince:
+        return 2;
+      case basic:
         return 1;
       default:
         return 0;
@@ -33,18 +37,20 @@ class UsagePlan {
   static String normalize(String? plan) {
     final p = (plan ?? free).trim().toLowerCase();
     if (p == pro) return prince;
-    if (p == prince || p == emperor) return p;
+    if (p == basic || p == prince || p == emperor) return p;
     return free;
   }
 
   static String label(String? plan) {
     switch (normalize(plan)) {
+      case basic:
+        return '普通';
       case prince:
         return '太子';
       case emperor:
         return '帝王';
       default:
-        return '普通';
+        return '免费';
     }
   }
 }
@@ -128,10 +134,15 @@ class UsageSummary {
 
   String get displayPlan => planLabel ?? UsagePlan.label(plan);
 
-  bool get isPrince => UsagePlan.rank(plan) >= 1;
-  bool get isEmperor => UsagePlan.rank(plan) >= 2;
+  /// 任一付费档（普通 / 太子 / 帝王）
+  bool get isPaid => UsagePlan.rank(plan) >= UsagePlan.rank(UsagePlan.basic);
+  bool get isBasic => UsagePlan.normalize(plan) == UsagePlan.basic;
+  bool get isPrince =>
+      UsagePlan.rank(plan) >= UsagePlan.rank(UsagePlan.prince);
+  bool get isEmperor =>
+      UsagePlan.rank(plan) >= UsagePlan.rank(UsagePlan.emperor);
 
-  /// 兼容旧逻辑
+  /// 兼容旧逻辑：曾指「已付费」；现指太子及以上（含 AI）
   bool get isPro => isPrince;
 
   factory UsageSummary.fromJson(Map<String, dynamic> json) {
@@ -202,7 +213,7 @@ class TrialReminder {
   String get bodyText {
     final remain = remainingLabel;
     if (autoRenewEnabled == false) {
-      return '免费试用$remain，到期后将恢复为普通方案。';
+      return '免费试用$remain，到期后将恢复为免费方案。';
     }
     return '免费试用$remain，到期后将按月自动续订。';
   }
@@ -257,17 +268,21 @@ class TierProductIds {
 
 class BillingProductsConfig {
   const BillingProductsConfig({
+    required this.basicLifetime,
     required this.prince,
     required this.emperor,
     required this.quotas,
   });
 
+  /// 普通会员一次买断商品 id
+  final String basicLifetime;
   final TierProductIds prince;
   final TierProductIds emperor;
   final PlanQuotasTable quotas;
 
   /// 全部商品 id（StoreKit 查询用）
   Set<String> get allIds => {
+        basicLifetime,
         prince.monthly,
         prince.yearly,
         emperor.monthly,
@@ -317,12 +332,18 @@ class UsageRepository {
     try {
       final json = await _api.get('/api/billing/products', accessToken: token);
       final products = json['products'];
+      var basicLifetime = _kDefaultBasicLifetimeId;
       var princeMonthly = _kDefaultPrinceMonthlyId;
       var princeYearly = _kDefaultPrinceYearlyId;
       var emperorMonthly = _kDefaultEmperorMonthlyId;
       var emperorYearly = _kDefaultEmperorYearlyId;
 
       if (products is Map) {
+        final basic = products['basic'];
+        if (basic is Map) {
+          final life = (basic['lifetime'] as String?)?.trim();
+          if (life != null && life.isNotEmpty) basicLifetime = life;
+        }
         final prince = products['prince'];
         if (prince is Map) {
           final m = (prince['monthly'] as String?)?.trim();
@@ -352,6 +373,7 @@ class UsageRepository {
         );
       }
       return BillingProductsConfig(
+        basicLifetime: basicLifetime,
         prince: TierProductIds(monthly: princeMonthly, yearly: princeYearly),
         emperor: TierProductIds(
           monthly: emperorMonthly,
@@ -361,6 +383,7 @@ class UsageRepository {
       );
     } catch (_) {
       return const BillingProductsConfig(
+        basicLifetime: _kDefaultBasicLifetimeId,
         prince: TierProductIds(
           monthly: _kDefaultPrinceMonthlyId,
           yearly: _kDefaultPrinceYearlyId,
@@ -535,11 +558,13 @@ class PlanQuota {
 class PlanQuotasTable {
   const PlanQuotasTable({
     required this.free,
+    required this.basic,
     required this.prince,
     required this.emperor,
   });
 
   final PlanQuota free;
+  final PlanQuota basic;
   final PlanQuota prince;
   final PlanQuota emperor;
 
@@ -547,6 +572,7 @@ class PlanQuotasTable {
 
   static const defaults = PlanQuotasTable(
     free: PlanQuota(transcriptMinutes: 0, aiTokens: 0, itemLimit: 300),
+    basic: PlanQuota(transcriptMinutes: 0, aiTokens: 0),
     prince: PlanQuota(transcriptMinutes: 0, aiTokens: 500000),
     emperor: PlanQuota(transcriptMinutes: 400, aiTokens: 800000),
   );
@@ -563,6 +589,7 @@ class PlanQuotasTable {
     final princeRaw = json['prince'] ?? json['pro'];
     return PlanQuotasTable(
       free: PlanQuota.fromJson(asMap(json['free'])),
+      basic: PlanQuota.fromJson(asMap(json['basic'])),
       prince: PlanQuota.fromJson(asMap(princeRaw)),
       emperor: PlanQuota.fromJson(asMap(json['emperor'])),
     );

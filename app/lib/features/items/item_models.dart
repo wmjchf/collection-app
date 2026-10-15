@@ -394,6 +394,7 @@ class ItemAnnotation {
     required this.id,
     required this.itemId,
     required this.selectedText,
+    this.source = 'body',
     this.startOffset,
     this.endOffset,
     this.color,
@@ -403,6 +404,8 @@ class ItemAnnotation {
 
   final int id;
   final int itemId;
+  /// `body` 或 `transcript:<segmentKey>`
+  final String source;
   final String selectedText;
   final int? startOffset;
   final int? endOffset;
@@ -410,10 +413,26 @@ class ItemAnnotation {
   final String? note;
   final DateTime? createdAt;
 
+  bool get isBodySource {
+    final s = source.trim();
+    return s.isEmpty || s == 'body';
+  }
+
+  bool get isTranscriptSource => source.startsWith('transcript:');
+
+  String? get transcriptSegmentKey {
+    if (!isTranscriptSource) return null;
+    final key = source.substring('transcript:'.length).trim();
+    return key.isEmpty ? null : key;
+  }
+
   factory ItemAnnotation.fromJson(Map<String, dynamic> json) {
     return ItemAnnotation(
       id: (json['id'] as num).toInt(),
       itemId: (json['itemId'] as num).toInt(),
+      source: (json['source'] as String?)?.trim().isNotEmpty == true
+          ? (json['source'] as String).trim()
+          : 'body',
       selectedText: json['selectedText'] as String? ?? '',
       startOffset: (json['startOffset'] as num?)?.toInt(),
       endOffset: (json['endOffset'] as num?)?.toInt(),

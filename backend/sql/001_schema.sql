@@ -142,6 +142,7 @@ CREATE TABLE `item_tags` (
 CREATE TABLE `annotations` (
   `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
   `item_id` BIGINT UNSIGNED NOT NULL,
+  `source` VARCHAR(64) NOT NULL DEFAULT 'body' COMMENT 'body | transcript:<segmentKey>',
   `selected_text` TEXT NOT NULL,
   `start_offset` INT UNSIGNED DEFAULT NULL,
   `end_offset` INT UNSIGNED DEFAULT NULL,
