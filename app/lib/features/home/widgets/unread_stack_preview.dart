@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:super_collection/core/ui/app_haptics.dart';
 import 'package:super_collection/features/home/home_mock_data.dart';
 import 'package:super_collection/features/items/cover_image.dart';
 
@@ -116,6 +117,7 @@ class _UnreadStackPreviewState extends State<UnreadStackPreview>
     final target = toLeft ? -(w + 100) : (w + 100);
     // 飞出过程中锁定露出方向，与最终 index 一致
     _revealStep = toLeft ? 1 : -1;
+    AppHaptics.tap();
     unawaited(_animateTo(
       target,
       onDone: () {
@@ -233,7 +235,10 @@ class _UnreadStackPreviewState extends State<UnreadStackPreview>
             height: UnreadStackPreview.cardHeight,
             child: GestureDetector(
               onTap: _dx.abs() < 8 && !_settling
-                  ? () => widget.onTap(front)
+                  ? () {
+                      AppHaptics.select();
+                      widget.onTap(front);
+                    }
                   : null,
               onPanStart: _onPanStart,
               onPanUpdate: _onPanUpdate,

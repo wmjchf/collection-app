@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:super_collection/core/ui/app_haptics.dart';
 import 'package:super_collection/features/home/roam_models.dart';
 import 'package:super_collection/features/home/widgets/roam_quote_card.dart';
 
@@ -27,7 +28,10 @@ class RoamStackPreview extends StatelessWidget {
     final frontTop = peekCount * _peekStep;
 
     return GestureDetector(
-      onTap: onTap,
+      onTap: () {
+        AppHaptics.select();
+        onTap();
+      },
       behavior: HitTestBehavior.opaque,
       child: SizedBox(
         height: height,
