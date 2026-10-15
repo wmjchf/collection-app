@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:super_collection/core/ui/app_haptics.dart';
 import 'package:super_collection/features/collection/tag_models.dart';
 import 'package:super_collection/features/collection/tag_module_models.dart';
 
@@ -601,6 +602,7 @@ class _ModuleBlock extends StatelessWidget {
       onWillAcceptWithDetails: (details) => _canAccept(details.data),
       onAcceptWithDetails: (details) {
         if (!_canAccept(details.data)) return;
+        AppHaptics.select();
         onPlaceTag!(details.data, moduleId);
       },
       builder: (context, candidateData, rejectedData) {
@@ -808,12 +810,13 @@ class _TagChipState extends State<_TagChip> {
 
     return LongPressDraggable<Tag>(
       data: widget.tag,
-      hapticFeedbackOnStart: true,
+      // 用 AppHaptics（AudioToolbox），不依赖系统触感开关
+      hapticFeedbackOnStart: false,
       // 略抬高以免指腹挡住；不可过大——落点按指尖算，偏移过大会「看着在区、松手落空」。
       feedbackOffset: const Offset(0, -28),
       onDragStarted: () {
         _setPressed(false);
-        HapticFeedback.mediumImpact();
+        AppHaptics.select();
       },
       onDragUpdate: _onDragUpdate,
       onDragEnd: (_) => _stopAutoScroll(),
