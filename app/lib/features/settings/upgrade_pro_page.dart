@@ -47,6 +47,8 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
   PlanQuotasTable _quotas = PlanQuotasTable.defaults;
   BillingProductsConfig? _billing;
   String _selectedTier = UsagePlan.basic;
+  /// 当前账号已生效档位（`free` / `basic` / `prince` / `emperor`）
+  String _currentPlan = UsagePlan.free;
   bool _productsLoading = true;
   AppleIapPhase? _phase;
   bool _restoreFlow = false;
@@ -55,6 +57,24 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
 
   bool get _isIos => !kIsWeb && Platform.isIOS;
   bool get _busy => _phase != null;
+
+  /// 该档位及更低档是否已包含在当前会员里（不可再买）
+  bool _isTierOwned(String tier) =>
+      UsagePlan.rank(_currentPlan) >= UsagePlan.rank(tier);
+
+  bool get _selectedOwned => _isTierOwned(_selectedTier);
+
+  /// 仍可升级的最低一档；全开通则 `null`
+  String? get _nextUpgradeableTier {
+    for (final t in [
+      UsagePlan.basic,
+      UsagePlan.prince,
+      UsagePlan.emperor,
+    ]) {
+      if (!_isTierOwned(t)) return t;
+    }
+    return null;
+  }
 
   String get _phaseLabel {
     switch (_phase) {
@@ -113,12 +133,23 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
       _error = null;
     });
 
-    // 1) 先拉额度（快），立刻上屏；商品 id 一并拿到
-    final billing = await _usageRepo.fetchBillingProducts();
+    // 1) 先拉额度与当前方案（快），立刻上屏；商品 id 一并拿到
+    final billingFuture = _usageRepo.fetchBillingProducts();
+    UsageSummary? usage;
+    try {
+      usage = await _usageRepo.fetchUsage();
+    } catch (_) {
+      usage = null;
+    }
+    final billing = await billingFuture;
     if (!mounted) return;
     setState(() {
       _quotas = billing.quotas;
       _billing = billing;
+      if (usage != null) {
+        _currentPlan = UsagePlan.normalize(usage.plan);
+        _ensureSelectedTierUpgradeable();
+      }
     });
 
     if (!_isIos) {
@@ -152,6 +183,13 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
         _error = '无法加载订阅商品';
       });
     }
+  }
+
+  /// 若当前选中档已开通，自动切到下一可升级档（仍可手动点回已开通档查看权益）
+  void _ensureSelectedTierUpgradeable() {
+    if (!_isTierOwned(_selectedTier)) return;
+    final next = _nextUpgradeableTier;
+    if (next != null) _selectedTier = next;
   }
 
   bool get _isBasicSelected =>
@@ -246,6 +284,23 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
   }
 
   AppleFreeTrialOffer? get _selectedTrial => _trialForTier(_selectedTier);
+
+  /// 已开通档始终显示文案；其余等 Store 商品就绪后再出价。
+  Widget? _cardPriceWidget(String tier, {required bool selected}) {
+    if (_isTierOwned(tier)) {
+      return Text(
+        '已开通',
+        style: TextStyle(
+          fontSize: 18,
+          fontWeight: FontWeight.w700,
+          color: selected ? _accent : _muted,
+          height: 1.2,
+        ),
+      );
+    }
+    if (!_isIos || _productsLoading || _error != null) return null;
+    return _priceWidgetForTier(tier, selected: selected);
+  }
 
   /// 普通：买断价；太子/帝王月付价签；年付：删除线（月×12）+ 立省。
   Widget? _priceWidgetForTier(String tier, {required bool selected}) {
@@ -367,6 +422,7 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
 
   String _subscribeLabel() {
     if (_busy && !_restoreFlow) return _phaseLabel;
+    if (_selectedOwned) return '已开通 ${_tierDisplayName(_selectedTier)}';
     final p = _selected;
     if (p == null) return '选择方案';
     if (_isBasicSelected) return '一次买断 ${p.price}';
@@ -383,7 +439,7 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
 
   Future<void> _buy() async {
     final product = _selected;
-    if (product == null || _busy) return;
+    if (product == null || _busy || _selectedOwned) return;
     setState(() {
       _restoreFlow = false;
       _phase = AppleIapPhase.paying;
@@ -496,8 +552,12 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
               padding: const EdgeInsets.fromLTRB(16, 14, 16, 20),
               children: [
                 const _MembershipIntro(),
+                if (_nextUpgradeableTier == null) ...[
+                  const SizedBox(height: 12),
+                  const _AlreadyTopPlanHint(),
+                ],
                 const SizedBox(height: 16),
-                if (_isIos && !_isBasicSelected)
+                if (_isIos && !_isBasicSelected && !_selectedOwned)
                   Padding(
                     padding: const EdgeInsets.only(bottom: 10),
                     child: Row(
@@ -516,12 +576,11 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
                 _TierPlanCard(
                   title: '普通会员',
                   tagline: '一次买断，永久无限收藏：突破免费条数上限',
-                  priceWidget: _isIos && !_productsLoading && _error == null
-                      ? _priceWidgetForTier(
-                          UsagePlan.basic,
-                          selected: _selectedTier == UsagePlan.basic,
-                        )
-                      : null,
+                  owned: _isTierOwned(UsagePlan.basic),
+                  priceWidget: _cardPriceWidget(
+                    UsagePlan.basic,
+                    selected: _selectedTier == UsagePlan.basic,
+                  ),
                   features: _basicFeatures(),
                   selected: _selectedTier == UsagePlan.basic,
                   onTap: () => _selectTier(UsagePlan.basic),
@@ -530,12 +589,11 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
                 _TierPlanCard(
                   title: '太子Pro',
                   tagline: '智能整理：含普通会员，解锁 AI 自动打标签、解读与标签归类',
-                  priceWidget: _isIos && !_productsLoading && _error == null
-                      ? _priceWidgetForTier(
-                          UsagePlan.prince,
-                          selected: _selectedTier == UsagePlan.prince,
-                        )
-                      : null,
+                  owned: _isTierOwned(UsagePlan.prince),
+                  priceWidget: _cardPriceWidget(
+                    UsagePlan.prince,
+                    selected: _selectedTier == UsagePlan.prince,
+                  ),
                   features: _princeFeatures(_quotas),
                   selected: _selectedTier == UsagePlan.prince,
                   onTap: () => _selectTier(UsagePlan.prince),
@@ -544,12 +602,11 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
                 _TierPlanCard(
                   title: '帝王Pro',
                   tagline: '深度加工：含太子Pro，另解锁脑图与转写',
-                  priceWidget: _isIos && !_productsLoading && _error == null
-                      ? _priceWidgetForTier(
-                          UsagePlan.emperor,
-                          selected: _selectedTier == UsagePlan.emperor,
-                        )
-                      : null,
+                  owned: _isTierOwned(UsagePlan.emperor),
+                  priceWidget: _cardPriceWidget(
+                    UsagePlan.emperor,
+                    selected: _selectedTier == UsagePlan.emperor,
+                  ),
                   features: _emperorFeatures(_quotas),
                   selected: _selectedTier == UsagePlan.emperor,
                   onTap: () => _selectTier(UsagePlan.emperor),
@@ -594,7 +651,7 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
                     onPressed: _busy ? null : _load,
                     child: const Text('重试'),
                   ),
-                ] else if (!_selectedTierProductsReady) ...[
+                ] else if (!_selectedOwned && !_selectedTierProductsReady) ...[
                   const SizedBox(height: 16),
                   _TierProductsSyncHint(
                     tierLabel: _tierDisplayName(_selectedTier),
@@ -612,9 +669,13 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
             restoreLabel: _busy && _restoreFlow ? _phaseLabel : '恢复购买',
             busy: _busy,
             restoreFlow: _restoreFlow,
-            subscribeEnabled: _selected != null && _selectedTierProductsReady,
-            trialOffer: _isBasicSelected ? null : _selectedTrial,
-            selectedPrice: _selected?.price,
+            subscribeEnabled: !_selectedOwned &&
+                _selected != null &&
+                _selectedTierProductsReady,
+            trialOffer: (_isBasicSelected || _selectedOwned)
+                ? null
+                : _selectedTrial,
+            selectedPrice: _selectedOwned ? null : _selected?.price,
             lifetimePurchase: _isBasicSelected,
             onSubscribe: _buy,
             onRestore: _restore,
@@ -848,6 +909,32 @@ class _TierProductsSyncHint extends StatelessWidget {
   }
 }
 
+class _AlreadyTopPlanHint extends StatelessWidget {
+  const _AlreadyTopPlanHint();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFE8F0FF),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFD0DFFC)),
+      ),
+      child: const Text(
+        '你已开通最高档帝王Pro，下方可查看各档权益；管理续订请前往系统设置。',
+        style: TextStyle(
+          fontSize: 13,
+          color: Color(0xFF2F6FED),
+          height: 1.45,
+          fontWeight: FontWeight.w500,
+        ),
+      ),
+    );
+  }
+}
+
 class _MembershipIntro extends StatelessWidget {
   const _MembershipIntro();
 
@@ -995,6 +1082,7 @@ class _TierPlanCard extends StatelessWidget {
     required this.features,
     required this.selected,
     required this.onTap,
+    this.owned = false,
     this.priceWidget,
   });
 
@@ -1002,79 +1090,118 @@ class _TierPlanCard extends StatelessWidget {
   final String tagline;
   final List<_PlanFeature> features;
   final bool selected;
+  final bool owned;
   final VoidCallback onTap;
   final Widget? priceWidget;
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: selected
-          ? _UpgradeProPageState._accentSoft
-          : Colors.white,
-      borderRadius: BorderRadius.circular(16),
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: onTap,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 180),
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 14),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(
-              color: selected
-                  ? _UpgradeProPageState._accent
-                  : _UpgradeProPageState._border,
-              width: selected ? 2 : 1,
+    final titleColor = selected
+        ? _UpgradeProPageState._accent
+        : owned
+            ? _UpgradeProPageState._muted
+            : _UpgradeProPageState._text;
+    return Opacity(
+      opacity: owned && !selected ? 0.72 : 1,
+      child: Material(
+        color: selected
+            ? _UpgradeProPageState._accentSoft
+            : Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onTap,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 180),
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 14),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: selected
+                    ? _UpgradeProPageState._accent
+                    : _UpgradeProPageState._border,
+                width: selected ? 2 : 1,
+              ),
             ),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          title,
-                          style: TextStyle(
-                            fontSize: 20,
-                            fontWeight: FontWeight.w700,
-                            color: selected
-                                ? _UpgradeProPageState._accent
-                                : _UpgradeProPageState._text,
-                            height: 1.2,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Flexible(
+                                child: Text(
+                                  title,
+                                  style: TextStyle(
+                                    fontSize: 20,
+                                    fontWeight: FontWeight.w700,
+                                    color: titleColor,
+                                    height: 1.2,
+                                  ),
+                                ),
+                              ),
+                              if (owned) ...[
+                                const SizedBox(width: 8),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 8,
+                                    vertical: 3,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: selected
+                                        ? _UpgradeProPageState._accent
+                                            .withValues(alpha: 0.12)
+                                        : const Color(0xFFF0F2F5),
+                                    borderRadius: BorderRadius.circular(6),
+                                  ),
+                                  child: Text(
+                                    '已开通',
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w600,
+                                      color: selected
+                                          ? _UpgradeProPageState._accent
+                                          : _UpgradeProPageState._muted,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ],
                           ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          tagline,
-                          style: const TextStyle(
-                            fontSize: 13,
-                            color: _UpgradeProPageState._muted,
-                            height: 1.4,
+                          const SizedBox(height: 4),
+                          Text(
+                            tagline,
+                            style: const TextStyle(
+                              fontSize: 13,
+                              color: _UpgradeProPageState._muted,
+                              height: 1.4,
+                            ),
                           ),
-                        ),
-                        if (priceWidget != null) ...[
-                          const SizedBox(height: 10),
-                          priceWidget!,
+                          if (priceWidget != null) ...[
+                            const SizedBox(height: 10),
+                            priceWidget!,
+                          ],
                         ],
-                      ],
+                      ),
                     ),
-                  ),
-                  _TierRadioMark(selected: selected),
-                ],
-              ),
-              const SizedBox(height: 14),
-              ...features.map(
-                (f) => Padding(
-                  padding: const EdgeInsets.only(bottom: 8),
-                  child: _FeatureLine(feature: f),
+                    _TierRadioMark(selected: selected),
+                  ],
                 ),
-              ),
-            ],
+                const SizedBox(height: 14),
+                ...features.map(
+                  (f) => Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: _FeatureLine(feature: f),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
