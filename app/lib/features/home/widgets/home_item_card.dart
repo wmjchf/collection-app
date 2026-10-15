@@ -1,23 +1,23 @@
 import 'package:flutter/material.dart';
 import 'package:super_collection/features/home/home_mock_data.dart';
-import 'package:super_collection/features/items/item_list_tile.dart';
+import 'package:super_collection/features/items/item_cover_card.dart';
 
-/// 首页条目卡片（对齐 Figma：左缩略图 + 标题 + 副文案；有标签时一并展示）
+/// 首页条目卡片（封面卡）；行列表样式见 [ItemListTile]
 class HomeItemCard extends StatelessWidget {
   const HomeItemCard({
     super.key,
     required this.item,
     this.onTap,
-    this.backgroundColor,
+    this.height,
   });
 
   final HomeItemPreview item;
   final VoidCallback? onTap;
-  final Color? backgroundColor;
+  final double? height;
 
   @override
   Widget build(BuildContext context) {
-    return ItemListTile(
+    return ItemCoverCard(
       title: item.title,
       subtitle: item.subtitle,
       coverUrl: item.coverImageUrl,
@@ -25,7 +25,7 @@ class HomeItemCard extends StatelessWidget {
       coverKey: ValueKey('cover-${item.id}'),
       tags: item.tags,
       onTap: onTap,
-      backgroundColor: backgroundColor,
+      height: height,
     );
   }
 }
