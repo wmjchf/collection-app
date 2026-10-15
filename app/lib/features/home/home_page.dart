@@ -803,9 +803,10 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                               'unread',
                               unreadSectionTitle(isPro: _isPro),
                             ),
-                            onOpenFront: () {
-                              if (unread.isEmpty) return;
-                              _openItem(unread.first, entry: 'unread');
+                            onOpenFront: (preview) {
+                              final item = unread
+                                  .firstWhere((e) => e.id == preview.id);
+                              _openItem(item, entry: 'unread');
                             },
                           ),
                           const SizedBox(height: sectionGap),
@@ -832,9 +833,10 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                               'recent_read',
                               recentReadSectionTitle(isPro: _isPro),
                             ),
-                            onOpenFront: () {
-                              if (recentRead.isEmpty) return;
-                              _openItem(recentRead.first, entry: 'recent_read');
+                            onOpenFront: (preview) {
+                              final item = recentRead
+                                  .firstWhere((e) => e.id == preview.id);
+                              _openItem(item, entry: 'recent_read');
                             },
                           ),
                         ],
@@ -957,7 +959,7 @@ class _HomeItemStackSection extends StatelessWidget {
   final double emptyHeight;
   final List<HomeItemPreview> items;
   final VoidCallback onMore;
-  final VoidCallback onOpenFront;
+  final ValueChanged<HomeItemPreview> onOpenFront;
   final String moreLabel;
 
   static const _muted = Color(0xFF737A85);
