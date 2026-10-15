@@ -496,6 +496,7 @@ class ItemsRepository {
     int? startOffset,
     int? endOffset,
     String? note,
+    String? source,
   }) async {
     final token = await _token();
     final json = await _api.post(
@@ -505,6 +506,7 @@ class ItemsRepository {
         if (startOffset != null) 'startOffset': startOffset,
         if (endOffset != null) 'endOffset': endOffset,
         if (note != null) 'note': note,
+        if (source != null && source.isNotEmpty) 'source': source,
       },
       accessToken: token,
     );

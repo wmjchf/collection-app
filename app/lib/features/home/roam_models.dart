@@ -6,6 +6,7 @@ class RoamSnippet {
     required this.itemId,
     this.quote,
     this.annotationId,
+    this.annotationSource,
     this.itemTitle,
     this.createdAt,
   });
@@ -17,11 +18,15 @@ class RoamSnippet {
   final String? quote;
   final int itemId;
   final int? annotationId;
+  /// `body` 或 `transcript:<segmentKey>`；感想为 null
+  final String? annotationSource;
   final String? itemTitle;
   final DateTime? createdAt;
 
   bool get isNote => kind == 'note';
   bool get isThought => kind == 'thought';
+  bool get isTranscriptAnnotation =>
+      (annotationSource ?? '').startsWith('transcript:');
 
   String get kindLabel {
     if (isThought) return '感想';
@@ -37,6 +42,7 @@ class RoamSnippet {
       quote: (json['quote'] as String?)?.trim(),
       itemId: (json['itemId'] as num).toInt(),
       annotationId: (json['annotationId'] as num?)?.toInt(),
+      annotationSource: (json['annotationSource'] as String?)?.trim(),
       itemTitle: json['itemTitle'] as String?,
       createdAt: _parseTime(json['createdAt']),
     );

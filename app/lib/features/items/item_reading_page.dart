@@ -40,6 +40,7 @@ import 'package:super_collection/features/settings/usage_repository.dart';
 import 'package:super_collection/features/items/reading_tags_sheet.dart';
 import 'package:super_collection/features/items/transcript_models.dart';
 import 'package:super_collection/features/items/transcript_picker_sheet.dart';
+import 'package:super_collection/features/items/item_transcript_page.dart';
 import 'package:super_collection/features/items/transcript_segment_panel.dart';
 
 /// 本地阅读页：标题 + 可读正文（含标注高亮）；顶栏更多；底栏 标签 / AI 解读 / 思维导图 / 感想（或转写条目下的「更多」）；解读与思维导图为底部弹层。
@@ -865,6 +866,26 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
   }
 
   void _openAnnotation(ItemAnnotation ann) {
+    final segmentKey = ann.transcriptSegmentKey;
+    if (segmentKey != null) {
+      final seg = _item.segmentTranscript(segmentKey);
+      final text = (seg?.text ?? '').trim();
+      if (text.isNotEmpty) {
+        Navigator.of(context).push(
+          MaterialPageRoute<void>(
+            builder: (_) => ItemTranscriptPage(
+              text: text,
+              cues: seg?.cues ?? const [],
+              fontSize: _bodyFontSize,
+              itemId: _item.id,
+              segmentKey: segmentKey,
+              focusAnnotationId: ann.id,
+            ),
+          ),
+        );
+        return;
+      }
+    }
     showAnnotationDetailSheet(
       context,
       itemId: _item.id,
@@ -1422,6 +1443,8 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
   ) {
     final ranges = <({int start, int end, ItemAnnotation ann})>[];
     for (final ann in _annotations) {
+      // 文稿标注用独立坐标系，不叠到正文
+      if (!ann.isBodySource) continue;
       int? start = ann.startOffset;
       int? end = ann.endOffset;
       if (start == null ||
@@ -1713,6 +1736,8 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
                       segment: _item.segmentTranscript(
                         TranscriptTargets.segmentVideoUrl,
                       ),
+                      itemId: _item.id,
+                      segmentKey: TranscriptTargets.segmentVideoUrl,
                       hidePendingLoading: _item.isAiAwaitingTranscript,
                       fontSize: _bodyFontSize,
                     ),
@@ -2229,6 +2254,8 @@ class _InlineArticleBody extends StatelessWidget {
               ),
               TranscriptSegmentPanel(
                 segment: transcriptSegments[segmentKey],
+                itemId: itemId,
+                segmentKey: segmentKey,
                 fontSize: fontSize,
               ),
             ],

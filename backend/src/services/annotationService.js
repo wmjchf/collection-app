@@ -5,6 +5,7 @@ function mapAnnotation(row) {
   return {
     id: row.id,
     itemId: row.item_id,
+    source: row.source || 'body',
     selectedText: row.selected_text,
     startOffset: row.start_offset,
     endOffset: row.end_offset,
@@ -13,6 +14,13 @@ function mapAnnotation(row) {
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
+}
+
+function normalizeSource(raw) {
+  const s = String(raw || 'body').trim().slice(0, 64);
+  if (!s || s === 'body') return 'body';
+  if (s.startsWith('transcript:')) return s;
+  return 'body';
 }
 
 async function assertItem(userId, itemId) {
@@ -62,14 +70,16 @@ async function create(userId, itemId, payload) {
   const note =
     payload?.note == null ? null : String(payload.note).trim().slice(0, 500);
   const color = payload?.color ? String(payload.color).slice(0, 16) : '#FFF5CC';
+  const source = normalizeSource(payload?.source);
 
   const [result] = await pool.execute(
     `INSERT INTO annotations
-       (item_id, selected_text, start_offset, end_offset, color, note)
+       (item_id, source, selected_text, start_offset, end_offset, color, note)
      VALUES
-       (:itemId, :selectedText, :startOffset, :endOffset, :color, :note)`,
+       (:itemId, :source, :selectedText, :startOffset, :endOffset, :color, :note)`,
     {
       itemId,
+      source,
       selectedText,
       startOffset,
       endOffset,

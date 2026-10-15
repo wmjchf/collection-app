@@ -34,6 +34,7 @@ Future<ItemAnnotation?> showCreateAnnotationNoteSheet(
   required String selectedText,
   int? startOffset,
   int? endOffset,
+  String? source,
   bool isPro = false,
 }) {
   return showAppBottomSheet<ItemAnnotation>(
@@ -43,6 +44,7 @@ Future<ItemAnnotation?> showCreateAnnotationNoteSheet(
       selectedText: selectedText,
       startOffset: startOffset,
       endOffset: endOffset,
+      source: source,
       isCreate: true,
       isPro: isPro,
     ),
@@ -57,6 +59,7 @@ class _AnnotationNoteSheet extends StatefulWidget {
     this.initialNote,
     this.startOffset,
     this.endOffset,
+    this.source,
     this.onChanged,
     this.isCreate = false,
     this.isPro = false,
@@ -68,6 +71,7 @@ class _AnnotationNoteSheet extends StatefulWidget {
   final String? initialNote;
   final int? startOffset;
   final int? endOffset;
+  final String? source;
   final VoidCallback? onChanged;
   final bool isCreate;
   final bool isPro;
@@ -123,6 +127,7 @@ class _AnnotationNoteSheetState extends State<_AnnotationNoteSheet> {
           startOffset: widget.startOffset,
           endOffset: widget.endOffset,
           note: note.isEmpty ? null : note,
+          source: widget.source,
         );
         if (!mounted) return;
         Navigator.pop(context, ann);

@@ -7,9 +7,9 @@ import 'package:super_collection/core/ui/app_bottom_sheet.dart';
 import 'package:super_collection/core/ui/app_toast.dart';
 import 'package:super_collection/features/home/roam_models.dart';
 import 'package:super_collection/features/home/roam_mute.dart';
+import 'package:super_collection/features/home/roam_open.dart';
 import 'package:super_collection/features/home/roam_stats.dart';
 import 'package:super_collection/features/home/widgets/roam_quote_card.dart';
-import 'package:super_collection/features/items/item_reading_page.dart';
 import 'package:super_collection/features/items/items_repository.dart';
 
 Future<void> showRoamPlayer(
@@ -99,19 +99,7 @@ class _RoamPlayerPageState extends State<RoamPlayerPage>
 
   Future<void> _openSource(RoamSnippet snippet) async {
     try {
-      final item = await _items.getItem(snippet.itemId);
-      if (!mounted) return;
-      await Navigator.of(context).push<bool>(
-        MaterialPageRoute(
-          builder: (_) => ItemReadingPage(
-            itemId: item.id,
-            initialItem: item,
-            openEntry: 'roam',
-            focusAnnotationId: snippet.annotationId,
-            openNoteOnLaunch: snippet.isThought,
-          ),
-        ),
-      );
+      await openRoamSnippet(context, snippet, itemsRepository: _items);
     } on ApiException catch (e) {
       if (!mounted) return;
       AppToast.show(context, e.message);
