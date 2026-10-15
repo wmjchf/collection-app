@@ -42,9 +42,22 @@ class CoverImage extends StatelessWidget {
                 gaplessPlayback: true,
                 filterQuality: FilterQuality.low,
                 errorBuilder: (_, __, ___) => const DefaultItemCover(),
+                // 加载中用同色底，避免先闪默认植物图再换成真封面
                 loadingBuilder: (context, child, progress) {
                   if (progress == null) return child;
-                  return const DefaultItemCover(showSpinner: true);
+                  return const ColoredBox(
+                    color: DefaultItemCover.fallbackColor,
+                    child: Center(
+                      child: SizedBox(
+                        width: 22,
+                        height: 22,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2.2,
+                          color: Color(0xFFB8D4C4),
+                        ),
+                      ),
+                    ),
+                  );
                 },
               )
             : const DefaultItemCover(),

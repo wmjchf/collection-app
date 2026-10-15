@@ -5,8 +5,14 @@ class DefaultItemCover extends StatelessWidget {
   const DefaultItemCover({super.key, this.showSpinner = false});
 
   static const assetPath = 'assets/branding/default-cover.jpg';
+  static const fallbackColor = Color(0xFF1A2A22);
 
   final bool showSpinner;
+
+  /// 首页叠卡等：提前解码，避免滑到默认图卡时闪一下
+  static Future<void> precache(BuildContext context) {
+    return precacheImage(const AssetImage(assetPath), context);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -16,10 +22,9 @@ class DefaultItemCover extends StatelessWidget {
         Image.asset(
           assetPath,
           fit: BoxFit.cover,
+          gaplessPlayback: true,
           filterQuality: FilterQuality.medium,
-          errorBuilder: (_, __, ___) => const ColoredBox(
-            color: Color(0xFF1A2A22),
-          ),
+          errorBuilder: (_, __, ___) => const ColoredBox(color: fallbackColor),
         ),
         if (showSpinner)
           const Center(
