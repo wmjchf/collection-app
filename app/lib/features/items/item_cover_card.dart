@@ -22,6 +22,7 @@ class ItemCoverCard extends StatelessWidget {
     this.showMeta = true,
     this.fillHeight = false,
     this.height,
+    this.coverHeight,
   });
 
   factory ItemCoverCard.fromItem(
@@ -36,6 +37,7 @@ class ItemCoverCard extends StatelessWidget {
     bool showMeta = true,
     bool fillHeight = false,
     double? height,
+    double? coverHeight,
   }) {
     final title = item.title?.isNotEmpty == true ? item.title! : item.url;
     return ItemCoverCard(
@@ -54,6 +56,7 @@ class ItemCoverCard extends StatelessWidget {
       showMeta: showMeta,
       fillHeight: fillHeight,
       height: height,
+      coverHeight: coverHeight,
     );
   }
 
@@ -69,9 +72,11 @@ class ItemCoverCard extends StatelessWidget {
   final bool selected;
   final double elevation;
   final bool showMeta;
-  /// 叠卡等：铺满父级；否则本征高度（瀑布流，封面按真实比例）
+  /// 叠卡等：铺满父级
   final bool fillHeight;
   final double? height;
+  /// 封面定高；标题区 1～2 行本征高度（首页未读/最近阅读）
+  final double? coverHeight;
 
   static const defaultHeight = 196.0;
   static const _selectedBorder = Color(0xFF2F6FED);
@@ -98,56 +103,82 @@ class ItemCoverCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tagsLine = showMeta ? _tagsLine(tags) : null;
+    final fixedCover = coverHeight != null && !fillHeight;
 
-    final body = fillHeight
-        ? Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Expanded(
-                flex: 5,
-                child: LayoutBuilder(
-                  builder: (context, constraints) {
-                    return CoverImage(
-                      key: coverKey,
-                      url: coverUrl,
-                      pageUrl: pageUrl,
-                      borderRadius: 0,
-                      width: constraints.maxWidth,
-                      height: constraints.maxHeight,
-                    );
-                  },
-                ),
-              ),
-              Expanded(
-                flex: 4,
-                child: _MetaBlock(
-                  title: title,
-                  subtitle: subtitle,
-                  tagsLine: tagsLine,
-                  showMeta: showMeta,
-                  expandTitle: true,
-                ),
-              ),
-            ],
-          )
-        : Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              NaturalAspectCover(
-                key: coverKey,
-                url: coverUrl,
-                pageUrl: pageUrl,
-              ),
-              _MetaBlock(
-                title: title,
-                subtitle: subtitle,
-                tagsLine: tagsLine,
-                showMeta: showMeta,
-                expandTitle: false,
-              ),
-            ],
-          );
+    late final Widget body;
+    if (fillHeight) {
+      body = Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Expanded(
+            flex: 5,
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                return CoverImage(
+                  key: coverKey,
+                  url: coverUrl,
+                  pageUrl: pageUrl,
+                  borderRadius: 0,
+                  width: constraints.maxWidth,
+                  height: constraints.maxHeight,
+                );
+              },
+            ),
+          ),
+          Expanded(
+            flex: 4,
+            child: _MetaBlock(
+              title: title,
+              subtitle: subtitle,
+              tagsLine: tagsLine,
+              showMeta: showMeta,
+              expandTitle: true,
+            ),
+          ),
+        ],
+      );
+    } else if (fixedCover) {
+      body = Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          CoverImage(
+            key: coverKey,
+            url: coverUrl,
+            pageUrl: pageUrl,
+            borderRadius: 0,
+            width: double.infinity,
+            height: coverHeight!,
+          ),
+          _MetaBlock(
+            title: title,
+            subtitle: subtitle,
+            tagsLine: tagsLine,
+            showMeta: showMeta,
+            expandTitle: false,
+          ),
+        ],
+      );
+    } else {
+      body = Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          NaturalAspectCover(
+            key: coverKey,
+            url: coverUrl,
+            pageUrl: pageUrl,
+          ),
+          _MetaBlock(
+            title: title,
+            subtitle: subtitle,
+            tagsLine: tagsLine,
+            showMeta: showMeta,
+            expandTitle: false,
+          ),
+        ],
+      );
+    }
 
     final card = Material(
       color: selected ? const Color(0xFFF0F5FF) : Colors.white,
@@ -223,7 +254,7 @@ class _MetaBlock extends StatelessWidget {
   Widget build(BuildContext context) {
     final titleText = Text(
       title,
-      maxLines: showMeta ? 2 : 3,
+      maxLines: 2,
       overflow: TextOverflow.ellipsis,
       style: const TextStyle(
         fontSize: 14,

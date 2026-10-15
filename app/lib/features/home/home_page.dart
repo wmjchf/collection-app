@@ -1002,34 +1002,35 @@ class _HomeUnreadSection extends StatelessWidget {
           ],
         ),
         const SizedBox(height: 8),
-        SizedBox(
-          height: emptyHeight,
-          width: double.infinity,
-          child: items.isEmpty
-              ? Container(
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(16),
+        if (items.isEmpty)
+          SizedBox(
+            height: emptyHeight,
+            width: double.infinity,
+            child: Container(
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(
+                    Icons.mark_email_unread_outlined,
+                    size: 42,
+                    color: _iconMuted,
                   ),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      const Icon(
-                        Icons.mark_email_unread_outlined,
-                        size: 42,
-                        color: _iconMuted,
-                      ),
-                      const SizedBox(height: 10),
-                      Text(
-                        emptyText,
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(fontSize: 14, color: _muted),
-                      ),
-                    ],
+                  const SizedBox(height: 10),
+                  Text(
+                    emptyText,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(fontSize: 14, color: _muted),
                   ),
-                )
-              : UnreadStackPreview(items: items, onTap: onOpenFront),
-        ),
+                ],
+              ),
+            ),
+          )
+        else
+          UnreadStackPreview(items: items, onTap: onOpenFront),
       ],
     );
   }

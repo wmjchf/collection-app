@@ -9,11 +9,14 @@ class HomeItemCard extends StatelessWidget {
     required this.item,
     this.onTap,
     this.height,
+    this.coverHeight = 112,
   });
 
   final HomeItemPreview item;
   final VoidCallback? onTap;
   final double? height;
+  /// 最近阅读等：封面定高，标题 1～2 行自适应
+  final double? coverHeight;
 
   @override
   Widget build(BuildContext context) {
@@ -26,6 +29,7 @@ class HomeItemCard extends StatelessWidget {
       tags: item.tags,
       onTap: onTap,
       height: height,
+      coverHeight: coverHeight,
     );
   }
 }

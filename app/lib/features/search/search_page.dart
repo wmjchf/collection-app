@@ -9,7 +9,7 @@ import 'package:super_collection/core/ui/paged_list.dart';
 import 'package:super_collection/features/collection/tag_models.dart';
 import 'package:super_collection/features/collection/tags_repository.dart';
 import 'package:super_collection/features/home/home_format.dart';
-import 'package:super_collection/features/items/item_cover_grid.dart';
+import 'package:super_collection/features/items/item_list_tile.dart';
 import 'package:super_collection/features/items/item_models.dart';
 import 'package:super_collection/features/items/item_reading_page.dart';
 import 'package:super_collection/features/items/items_repository.dart';
@@ -630,21 +630,32 @@ class _SearchPageState extends State<SearchPage> with ScreenDwellMixin {
               ),
             ),
           ),
-          ItemCoverGridSliver(
-            items: contentItems,
-            subtitleOf: _subtitle,
-            onItemTap: (item) => unawaited(
-              _openItem(item, entry: 'search'),
-            ),
-            padding: const EdgeInsets.fromLTRB(16, 10, 16, 8),
-          ),
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.only(bottom: 24),
-              child: pagedListFooter(
-                loadingMore: _loadingMore,
-                hasMore: _hasMore,
-                isEmpty: false,
+          SliverPadding(
+            padding: const EdgeInsets.fromLTRB(16, 10, 16, 24),
+            sliver: SliverList(
+              delegate: SliverChildBuilderDelegate(
+                (context, index) {
+                  if (index == contentItems.length) {
+                    return pagedListFooter(
+                      loadingMore: _loadingMore,
+                      hasMore: _hasMore,
+                      isEmpty: false,
+                    );
+                  }
+                  final item = contentItems[index];
+                  return Padding(
+                    key: ValueKey('search-item-${item.id}'),
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: ItemListTile.fromItem(
+                      item,
+                      subtitle: _subtitle(item),
+                      onTap: () => unawaited(
+                        _openItem(item, entry: 'search'),
+                      ),
+                    ),
+                  );
+                },
+                childCount: contentItems.length + 1,
               ),
             ),
           ),
