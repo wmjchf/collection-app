@@ -6,7 +6,6 @@ import 'package:in_app_purchase/in_app_purchase.dart';
 import 'package:super_collection/core/analytics/analytics.dart';
 import 'package:super_collection/core/analytics/screen_dwell_tracker.dart';
 import 'package:super_collection/core/network/api_client.dart';
-import 'package:super_collection/core/ui/app_haptics.dart';
 import 'package:super_collection/core/ui/app_toast.dart';
 import 'package:super_collection/features/settings/apple_iap_service.dart';
 import 'package:super_collection/features/settings/legal_docs.dart';
@@ -695,8 +694,6 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
   }
 
   void _selectTier(String tier) {
-    if (_selectedTier == tier) return;
-    AppHaptics.select();
     setState(() => _selectedTier = tier);
   }
 
