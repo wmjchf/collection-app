@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:super_collection/core/analytics/screen_dwell_tracker.dart';
 import 'package:super_collection/core/network/api_client.dart';
 import 'package:super_collection/core/ui/app_bottom_sheet.dart';
+import 'package:super_collection/core/ui/app_haptics.dart';
 import 'package:super_collection/core/ui/app_toast.dart';
 import 'package:super_collection/features/home/roam_models.dart';
 import 'package:super_collection/features/home/roam_mute.dart';
@@ -454,6 +455,7 @@ class _SwipeCardState extends State<_SwipeCard>
       });
       return;
     }
+    AppHaptics.tap();
     final dir = (_offset.dx == 0 ? vx : _offset.dx) >= 0 ? 1.0 : -1.0;
     _to = Offset(dir * (w + 80), _offset.dy * 0.4);
     _anim.duration = const Duration(milliseconds: 220);
@@ -466,6 +468,7 @@ class _SwipeCardState extends State<_SwipeCard>
   Future<void> dismissAway() async {
     if (_settling) return;
     _settling = true;
+    AppHaptics.tap();
     final w = MediaQuery.sizeOf(context).width;
     _from = _offset;
     _to = Offset(w + 80, -48);
@@ -476,7 +479,12 @@ class _SwipeCardState extends State<_SwipeCard>
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
-      onTap: _offset.distance < 8 && !_settling ? widget.onTap : null,
+      onTap: _offset.distance < 8 && !_settling
+          ? () {
+              AppHaptics.select();
+              widget.onTap?.call();
+            }
+          : null,
       onPanUpdate: _onPanUpdate,
       onPanEnd: _onPanEnd,
       child: Transform.translate(
