@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:super_collection/core/network/media_http_headers.dart';
+import 'package:super_collection/features/items/default_item_cover.dart';
 
 /// 封面图：有 URL 则加载网络图；无图或加载失败则显示默认封面。
 class CoverImage extends StatelessWidget {
@@ -40,52 +41,13 @@ class CoverImage extends StatelessWidget {
                 ),
                 gaplessPlayback: true,
                 filterQuality: FilterQuality.low,
-                errorBuilder: (_, __, ___) => const _DefaultCover(),
+                errorBuilder: (_, __, ___) => const DefaultItemCover(),
                 loadingBuilder: (context, child, progress) {
                   if (progress == null) return child;
-                  return const _DefaultCover(showSpinner: true);
+                  return const DefaultItemCover(showSpinner: true);
                 },
               )
-            : const _DefaultCover(),
-      ),
-    );
-  }
-}
-
-class _DefaultCover extends StatelessWidget {
-  const _DefaultCover({this.showSpinner = false});
-
-  final bool showSpinner;
-
-  @override
-  Widget build(BuildContext context) {
-    return DecoratedBox(
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            Color(0xFFE8EEF7),
-            Color(0xFFD5E0F0),
-            Color(0xFFC5D4E8),
-          ],
-        ),
-      ),
-      child: Center(
-        child: showSpinner
-            ? const SizedBox(
-                width: 22,
-                height: 22,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2.2,
-                  color: Color(0xFF8FA3BF),
-                ),
-              )
-            : const Icon(
-                Icons.auto_stories_outlined,
-                size: 38,
-                color: Color(0xFF8FA3BF),
-              ),
+            : const DefaultItemCover(),
       ),
     );
   }

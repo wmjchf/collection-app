@@ -5,7 +5,7 @@ import 'package:super_collection/core/ui/app_subpage_app_bar.dart';
 import 'package:super_collection/core/ui/paged_list.dart';
 import 'package:super_collection/features/collection/system_filters_repository.dart';
 import 'package:super_collection/features/home/home_format.dart';
-import 'package:super_collection/features/items/item_list_tile.dart';
+import 'package:super_collection/features/items/item_cover_grid.dart';
 import 'package:super_collection/features/items/item_reading_page.dart';
 import 'package:super_collection/features/items/item_models.dart';
 import 'package:super_collection/features/items/items_batch_delete.dart';
@@ -320,61 +320,65 @@ class _SystemFilterListPageState extends State<SystemFilterListPage>
                       ),
                     ],
                   )
-                : ListView.builder(
+                : CustomScrollView(
                     controller: _scroll,
                     physics: const AlwaysScrollableScrollPhysics(),
-                    padding: EdgeInsets.fromLTRB(
-                      16,
-                      12,
-                      16,
-                      _selecting ? 16 : 24,
-                    ),
-                    itemCount: _items.isEmpty ? 2 : (2 + _items.length),
-                    itemBuilder: (context, index) {
-                      if (index == 0) {
-                        return Padding(
-                          padding: const EdgeInsets.only(bottom: 12),
+                    slivers: [
+                      const SliverToBoxAdapter(
+                        child: SizedBox(height: 12),
+                      ),
+                      SliverToBoxAdapter(
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
                           child: Text(
                             '共 $_total 条',
                             style: const TextStyle(fontSize: 13, color: _muted),
                           ),
-                        );
-                      }
-                      if (_items.isEmpty) {
-                        return const Padding(
-                          padding: EdgeInsets.only(top: 48),
-                          child: Center(
-                            child: Text(
-                              '暂无内容',
-                              style: TextStyle(color: _muted),
+                        ),
+                      ),
+                      if (_items.isEmpty)
+                        const SliverToBoxAdapter(
+                          child: Padding(
+                            padding: EdgeInsets.only(top: 48),
+                            child: Center(
+                              child: Text(
+                                '暂无内容',
+                                style: TextStyle(color: _muted),
+                              ),
                             ),
                           ),
-                        );
-                      }
-                      final itemIndex = index - 1;
-                      if (itemIndex >= _items.length) {
-                        return pagedListFooter(
-                          loadingMore: _loadingMore,
-                          hasMore: _hasMore,
-                          isEmpty: false,
-                        );
-                      }
-                      final item = _items[itemIndex];
-                      return Padding(
-                        key: ValueKey('item-${item.id}'),
-                        padding: const EdgeInsets.only(bottom: 8),
-                        child: ItemListTile.fromItem(
-                          item,
-                          subtitle: _subtitle(item),
+                        )
+                      else ...[
+                        ItemCoverGridSliver(
+                          items: _items,
+                          subtitleOf: _subtitle,
                           selecting: _selecting,
-                          selected: _selectedIds.contains(item.id),
-                          onTap: () => _onItemTap(item),
-                          onLongPress: _selecting
+                          selectedIds: _selectedIds,
+                          onItemTap: _onItemTap,
+                          onItemLongPress: _selecting
                               ? null
-                              : () => _enterSelecting(item.id),
+                              : (item) => _enterSelecting(item.id),
+                          padding: EdgeInsets.fromLTRB(
+                            16,
+                            0,
+                            16,
+                            _selecting ? 8 : 8,
+                          ),
                         ),
-                      );
-                    },
+                        SliverToBoxAdapter(
+                          child: Padding(
+                            padding: EdgeInsets.only(
+                              bottom: _selecting ? 16 : 24,
+                            ),
+                            child: pagedListFooter(
+                              loadingMore: _loadingMore,
+                              hasMore: _hasMore,
+                              isEmpty: false,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
                   ),
       ),
     );

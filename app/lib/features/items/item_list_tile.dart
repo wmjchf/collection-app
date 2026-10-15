@@ -2,7 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:super_collection/features/items/cover_image.dart';
 import 'package:super_collection/features/items/item_models.dart';
 
-/// 列表条目卡：封面 + 标题 + 可选标签 + 副文案（各列表页共用）
+/// 列表行条目：左封面缩略图 + 标题/标签/副文案。
+/// 封面大卡见 [ItemCoverCard]；当前列表页默认用封面卡，本组件保留备用。
 class ItemListTile extends StatelessWidget {
   const ItemListTile({
     super.key,
