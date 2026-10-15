@@ -63,21 +63,7 @@ class CoverImage extends StatelessWidget {
                   errorBuilder: (_, __, ___) => const DefaultItemCover(),
                   loadingBuilder: (context, child, progress) {
                     if (progress == null) return child;
-                    return ColoredBox(
-                      color: brandIcon
-                          ? Colors.white
-                          : DefaultItemCover.fallbackColor,
-                      child: const Center(
-                        child: SizedBox(
-                          width: 22,
-                          height: 22,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2.2,
-                            color: Color(0xFFB8D4C4),
-                          ),
-                        ),
-                      ),
-                    );
+                    return const DefaultItemCover();
                   },
                 ),
               )

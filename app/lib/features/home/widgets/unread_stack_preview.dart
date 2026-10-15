@@ -4,7 +4,6 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:super_collection/features/home/home_mock_data.dart';
 import 'package:super_collection/features/items/cover_image.dart';
-import 'package:super_collection/features/items/default_item_cover.dart';
 
 /// 首页条目叠卡（未读 / 最近阅读）：拖动前卡飞出、后卡顶上；左右循环。
 class UnreadStackPreview extends StatefulWidget {
@@ -54,10 +53,6 @@ class _UnreadStackPreviewState extends State<UnreadStackPreview>
         final t = Curves.easeOutCubic.transform(_anim.value);
         setState(() => _dx = _animFrom + (_animTo - _animFrom) * t);
       });
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      unawaited(DefaultItemCover.precache(context));
-    });
   }
 
   @override
