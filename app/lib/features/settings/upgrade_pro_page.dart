@@ -46,7 +46,7 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
   Map<String, bool> _introEligible = {};
   PlanQuotasTable _quotas = PlanQuotasTable.defaults;
   BillingProductsConfig? _billing;
-  String _selectedTier = UsagePlan.prince;
+  String _selectedTier = UsagePlan.basic;
   bool _productsLoading = true;
   AppleIapPhase? _phase;
   bool _restoreFlow = false;
