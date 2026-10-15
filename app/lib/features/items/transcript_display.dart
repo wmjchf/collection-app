@@ -157,11 +157,11 @@ class _SpeakerBlock extends StatelessWidget {
     final timeLabel = TranscriptCue.formatTime(block.startMs);
 
     final labelStyle = bodyStyle.copyWith(
-      fontSize: 13,
-      height: 1.4,
-      fontWeight: FontWeight.w600,
-      color: TranscriptDisplay._muted,
-      letterSpacing: 0.1,
+      fontSize: ((bodyStyle.fontSize ?? 15) - 2).clamp(12, 15),
+      height: 1.45,
+      fontWeight: FontWeight.w700,
+      color: const Color(0xFF3D5A80),
+      letterSpacing: 0.15,
     );
     final timeStyle = bodyStyle.copyWith(
       fontSize: 12,

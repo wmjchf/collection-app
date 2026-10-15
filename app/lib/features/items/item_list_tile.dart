@@ -16,6 +16,7 @@ class ItemListTile extends StatelessWidget {
     this.onLongPress,
     this.selecting = false,
     this.selected = false,
+    this.backgroundColor,
   });
 
   factory ItemListTile.fromItem(
@@ -54,6 +55,7 @@ class ItemListTile extends StatelessWidget {
   final VoidCallback? onLongPress;
   final bool selecting;
   final bool selected;
+  final Color? backgroundColor;
 
   static const _text = Color(0xFF1F242E);
   static const _muted = Color(0xFF737A85);
@@ -189,7 +191,9 @@ class ItemListTile extends StatelessWidget {
     );
 
     return Material(
-      color: selected ? const Color(0xFFF0F5FF) : Colors.white,
+      color: selected
+          ? const Color(0xFFF0F5FF)
+          : (backgroundColor ?? Colors.white),
       borderRadius: BorderRadius.circular(12),
       child: InkWell(
         onTap: onTap,

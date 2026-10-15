@@ -770,7 +770,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                   )
                 : LayoutBuilder(
                     builder: (context, constraints) {
-                      // 仅空态均分可视高度；有数据时按内容高度
+                      // 未读区固定半屏高度（有数据/空态一致）；条目少时下方留白即可
                       const listPaddingV = 12.0 + 24.0;
                       const sectionGap = 16.0;
                       final emptyCardH =
@@ -978,42 +978,49 @@ class _HomeSection extends StatelessWidget {
           ],
         ),
         const SizedBox(height: 8),
-        if (items.isEmpty)
-          Container(
-            width: double.infinity,
-            height: emptyHeight,
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(emptyIcon, size: 42, color: _iconMuted),
-                const SizedBox(height: 10),
-                Text(
-                  emptyText,
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(
-                    fontSize: 14,
-                    color: _muted,
+        SizedBox(
+          height: emptyHeight,
+          width: double.infinity,
+          child: items.isEmpty
+              ? Container(
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(emptyIcon, size: 42, color: _iconMuted),
+                      const SizedBox(height: 10),
+                      Text(
+                        emptyText,
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          fontSize: 14,
+                          color: _muted,
+                        ),
+                      ),
+                    ],
+                  ),
+                )
+              : Align(
+                  alignment: Alignment.topCenter,
+                  child: SingleChildScrollView(
+                    physics: const ClampingScrollPhysics(),
+                    child: Column(
+                      children: [
+                        for (var i = 0; i < items.length; i++) ...[
+                          if (i > 0) const SizedBox(height: 8),
+                          HomeItemCard(
+                            item: items[i],
+                            onTap: () => onItemTap(items[i]),
+                          ),
+                        ],
+                      ],
+                    ),
                   ),
                 ),
-              ],
-            ),
-          )
-        else
-          Column(
-            children: [
-              for (var i = 0; i < items.length; i++) ...[
-                if (i > 0) const SizedBox(height: 8),
-                HomeItemCard(
-                  item: items[i],
-                  onTap: () => onItemTap(items[i]),
-                ),
-              ],
-            ],
-          ),
+        ),
       ],
     );
   }
