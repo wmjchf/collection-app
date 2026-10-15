@@ -8,10 +8,12 @@ class HomeItemCard extends StatelessWidget {
     super.key,
     required this.item,
     this.onTap,
+    this.backgroundColor,
   });
 
   final HomeItemPreview item;
   final VoidCallback? onTap;
+  final Color? backgroundColor;
 
   @override
   Widget build(BuildContext context) {
@@ -23,6 +25,7 @@ class HomeItemCard extends StatelessWidget {
       coverKey: ValueKey('cover-${item.id}'),
       tags: item.tags,
       onTap: onTap,
+      backgroundColor: backgroundColor,
     );
   }
 }

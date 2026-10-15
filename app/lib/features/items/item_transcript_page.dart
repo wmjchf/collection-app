@@ -194,29 +194,58 @@ class _ItemTranscriptPageState extends State<ItemTranscriptPage> {
     return ranges;
   }
 
+  static final _speakerLabelRe = RegExp(r'说话人\s*\d+\s*[：:]');
+
+  List<({int start, int end})> _speakerLabelRanges(String text) {
+    return [
+      for (final m in _speakerLabelRe.allMatches(text))
+        (start: m.start, end: m.end),
+    ];
+  }
+
+  TextStyle _speakerLabelStyle(TextStyle body) {
+    final size = body.fontSize ?? 15;
+    return body.copyWith(
+      fontSize: (size - 2).clamp(12, size),
+      height: 1.45,
+      fontWeight: FontWeight.w700,
+      color: const Color(0xFF3D5A80),
+      letterSpacing: 0.15,
+      backgroundColor: null,
+    );
+  }
+
   List<InlineSpan> _spans(String text, TextStyle style) {
-    final ranges = _ranges(text);
-    if (ranges.isEmpty) return [TextSpan(text: text, style: style)];
-    final spans = <InlineSpan>[];
-    var cursor = 0;
-    for (final r in ranges) {
-      if (r.start > cursor) {
-        spans.add(TextSpan(text: text.substring(cursor, r.start), style: style));
-      }
-      final from = r.start.clamp(cursor, text.length);
-      final to = r.end.clamp(from, text.length);
-      if (from < to) {
-        spans.add(
-          TextSpan(
-            text: text.substring(from, to),
-            style: style.copyWith(backgroundColor: _highlight),
-          ),
-        );
-      }
-      cursor = to > cursor ? to : cursor;
+    if (text.isEmpty) return const [];
+    final highlights = _ranges(text);
+    final labels = _speakerLabelRanges(text);
+    if (highlights.isEmpty && labels.isEmpty) {
+      return [TextSpan(text: text, style: style)];
     }
-    if (cursor < text.length) {
-      spans.add(TextSpan(text: text.substring(cursor), style: style));
+
+    final cuts = <int>{0, text.length};
+    for (final h in highlights) {
+      cuts.add(h.start);
+      cuts.add(h.end);
+    }
+    for (final l in labels) {
+      cuts.add(l.start);
+      cuts.add(l.end);
+    }
+    final points = cuts.toList()..sort();
+    final labelStyle = _speakerLabelStyle(style);
+    final spans = <InlineSpan>[];
+
+    for (var i = 0; i < points.length - 1; i++) {
+      final a = points[i];
+      final b = points[i + 1];
+      if (a >= b) continue;
+      final mid = (a + b) ~/ 2;
+      final inLabel = labels.any((l) => mid >= l.start && mid < l.end);
+      final inHi = highlights.any((h) => mid >= h.start && mid < h.end);
+      var s = inLabel ? labelStyle : style;
+      if (inHi) s = s.copyWith(backgroundColor: _highlight);
+      spans.add(TextSpan(text: text.substring(a, b), style: s));
     }
     return spans;
   }
