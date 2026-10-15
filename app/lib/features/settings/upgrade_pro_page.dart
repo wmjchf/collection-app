@@ -695,9 +695,8 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
   }
 
   void _selectTier(String tier) {
-    // lightImpact 比 selectionClick 更明显；与响铃/静音开关无关
-    HapticFeedback.lightImpact();
     if (_selectedTier == tier) return;
+    HapticFeedback.selectionClick();
     setState(() => _selectedTier = tier);
   }
 
