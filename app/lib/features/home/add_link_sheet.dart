@@ -7,6 +7,7 @@ import 'package:super_collection/core/utils/clipboard_utils.dart';
 import 'package:super_collection/core/utils/link_utils.dart';
 import 'package:super_collection/features/items/item_reading_page.dart';
 import 'package:super_collection/features/items/items_repository.dart';
+import 'package:super_collection/features/settings/quota_gate.dart';
 
 /// 弹出「添加链接」底部弹框（对齐 Figma）。
 /// 可预填 [initialUrl]；若为空则尝试读取剪贴板中的 URL。
@@ -135,10 +136,12 @@ class _AddLinkSheetState extends State<AddLinkSheet> {
         errorCode: e.code ?? e.message,
       );
       if (!mounted) return;
-      setState(() {
-        _saving = false;
-        _error = e.message;
-      });
+      setState(() => _saving = false);
+      if (e.isQuotaExceeded || e.isPlanRequired) {
+        await handleApiException(context, e);
+      } else {
+        setState(() => _error = e.message);
+      }
     } catch (_) {
       ParseProgressTracker.cancel();
       Analytics.instance.itemSaveFail(source: 'paste', errorCode: 'unknown');
