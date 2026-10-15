@@ -1,23 +1,12 @@
-import AudioToolbox
 import Flutter
 import UIKit
 
 @main
 @objc class AppDelegate: FlutterAppDelegate, FlutterImplicitEngineDelegate {
-  /// 必须强引用；局部创建 后立刻释放会导致触感发不出来
-  private static let lightImpact = UIImpactFeedbackGenerator(style: .light)
-  private static let mediumImpact = UIImpactFeedbackGenerator(style: .medium)
-  private static let heavyImpact = UIImpactFeedbackGenerator(style: .heavy)
-  private static let selectionGen = UISelectionFeedbackGenerator()
-
   override func application(
     _ application: UIApplication,
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
   ) -> Bool {
-    Self.lightImpact.prepare()
-    Self.mediumImpact.prepare()
-    Self.heavyImpact.prepare()
-    Self.selectionGen.prepare()
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
   }
 
@@ -41,48 +30,53 @@ import UIKit
       }
     }
 
-    // 触感：常驻 UIImpactFeedbackGenerator + AudioToolbox 兜底
+    // 触感：直接走 UIKit，比 Flutter HapticFeedback 更稳（与响铃/静音无关）
     let haptics = FlutterMethodChannel(
       name: "super_collection/haptics",
       binaryMessenger: messenger
     )
     haptics.setMethodCallHandler { call, result in
-      DispatchQueue.main.async {
-        switch call.method {
-        case "impact":
-          let styleName = (call.arguments as? [String: Any])?["style"] as? String
-          Self.impact(styleName: styleName)
-          result(nil)
-        case "selection":
-          Self.selectionGen.prepare()
-          Self.selectionGen.selectionChanged()
-          AudioServicesPlaySystemSound(1519)
-          result(nil)
-        default:
-          result(FlutterMethodNotImplemented)
-        }
+      switch call.method {
+      case "impact":
+        let styleName = (call.arguments as? [String: Any])?["style"] as? String
+        Self.impact(styleName: styleName)
+        result(nil)
+      case "selection":
+        let gen = UISelectionFeedbackGenerator()
+        gen.prepare()
+        gen.selectionChanged()
+        result(nil)
+      default:
+        result(FlutterMethodNotImplemented)
       }
     }
   }
 
   private static func impact(styleName: String?) {
-    let gen: UIImpactFeedbackGenerator
-    let tapticId: SystemSoundID
+    let style: UIImpactFeedbackGenerator.FeedbackStyle
     switch styleName {
     case "heavy":
-      gen = heavyImpact
-      tapticId = 1521
+      style = .heavy
     case "medium":
-      gen = mediumImpact
-      tapticId = 1520
+      style = .medium
+    case "rigid":
+      if #available(iOS 13.0, *) {
+        style = .rigid
+      } else {
+        style = .medium
+      }
+    case "soft":
+      if #available(iOS 13.0, *) {
+        style = .soft
+      } else {
+        style = .light
+      }
     default:
-      gen = lightImpact
-      tapticId = 1519
+      style = .light
     }
+    let gen = UIImpactFeedbackGenerator(style: style)
     gen.prepare()
     gen.impactOccurred()
-    // iPhone Taptic：不依赖 UIFeedback 生命周期；静音下仍有震感、无提示音
-    AudioServicesPlaySystemSound(tapticId)
   }
 
   /// iOS 16+：用 detectPatterns 判断是否像链接，不弹出「允许粘贴」
