@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:in_app_purchase/in_app_purchase.dart';
 import 'package:super_collection/core/analytics/analytics.dart';
 import 'package:super_collection/core/analytics/screen_dwell_tracker.dart';
@@ -694,6 +695,9 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
   }
 
   void _selectTier(String tier) {
+    // lightImpact 比 selectionClick 更明显；与响铃/静音开关无关
+    HapticFeedback.lightImpact();
+    if (_selectedTier == tier) return;
     setState(() => _selectedTier = tier);
   }
 
