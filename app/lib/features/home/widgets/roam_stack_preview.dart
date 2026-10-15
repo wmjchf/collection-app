@@ -13,15 +13,15 @@ class RoamStackPreview extends StatelessWidget {
   final List<RoamSnippet> items;
   final VoidCallback onTap;
 
-  // 批注卡要放下引号 + 正文约 2 行 + 批注 + 元信息
-  static const _height = 196.0;
+  /// 空态占位与有数据叠卡共用此高度，避免切换抖动
+  static const height = 196.0;
   static const _peekStep = 10.0;
   static const _sideStep = 12.0;
 
   @override
   Widget build(BuildContext context) {
     final show = items.take(3).toList();
-    if (show.isEmpty) return const SizedBox.shrink();
+    if (show.isEmpty) return const SizedBox(height: height);
 
     final peekCount = (show.length - 1).clamp(0, 2);
     final frontTop = peekCount * _peekStep;
@@ -30,7 +30,8 @@ class RoamStackPreview extends StatelessWidget {
       onTap: onTap,
       behavior: HitTestBehavior.opaque,
       child: SizedBox(
-        height: _height,
+        height: height,
+        width: double.infinity,
         child: Stack(
           clipBehavior: Clip.hardEdge,
           children: [
@@ -39,7 +40,7 @@ class RoamStackPreview extends StatelessWidget {
                 top: 0,
                 left: _sideStep * 2,
                 right: _sideStep * 2,
-                height: _height - frontTop,
+                height: height - frontTop,
                 child: _PeekCard(snippet: show[2], dim: 0.55),
               ),
             if (show.length >= 2)
@@ -47,7 +48,7 @@ class RoamStackPreview extends StatelessWidget {
                 top: peekCount >= 2 ? _peekStep : 0,
                 left: _sideStep,
                 right: _sideStep,
-                height: _height - frontTop,
+                height: height - frontTop,
                 child: _PeekCard(snippet: show[1], dim: 0.28),
               ),
             Positioned(

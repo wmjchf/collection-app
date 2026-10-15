@@ -237,7 +237,7 @@ API：`GET …/transcript-targets`、`POST …/transcript`（body.segmentKey）�
 | --- | --- |
 | `GET /api/system-filters` | 未读/所有/今天/无标签/批注/最近阅读 + 数量；`tzOffsetMinutes` 可选（默认 480） |
 | `GET /api/items?filter=` | 按系统筛选列条目；`filter` 同上；支持 `limit`/`offset`/`tzOffsetMinutes`；条目含 `tags:[{id,name}]` |
-| `GET /api/home` | 首页：未读（最多 3 条）+ 漫游摘录 `roam`（标注/批注/感想，最多 8 条）；仍返回 `recentRead` 给扩展 |
+| `GET /api/home` | 首页：未读（最多 3 条）+ `recentRead`（最多 3 条）+ 漫游摘录 `roam`（标注/批注/感想，最多 8 条） |
 | `GET /api/home/roam` | 漫游摘录分页（`limit`/`offset`） |
 | `GET /api/items/:id` | 单条详情；含 `tags` |
 | `GET /api/tags/:id/items` | 标签下条目列表；含 `tags` |

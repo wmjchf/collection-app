@@ -27,16 +27,21 @@ class HomeSectionData {
 class HomeData {
   const HomeData({
     required this.unread,
+    required this.recentRead,
     required this.roam,
   });
 
   final HomeSectionData unread;
+  final HomeSectionData recentRead;
   final RoamSectionData roam;
 
   factory HomeData.fromJson(Map<String, dynamic> json) {
     return HomeData(
       unread: HomeSectionData.fromJson(
         json['unread'] as Map<String, dynamic>? ?? const {},
+      ),
+      recentRead: HomeSectionData.fromJson(
+        json['recentRead'] as Map<String, dynamic>? ?? const {},
       ),
       roam: RoamSectionData.fromJson(
         json['roam'] as Map<String, dynamic>? ?? const {},
