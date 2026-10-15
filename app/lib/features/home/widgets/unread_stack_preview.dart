@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:super_collection/features/home/home_mock_data.dart';
 import 'package:super_collection/features/items/cover_image.dart';
+import 'package:super_collection/features/items/default_item_cover.dart';
 
 /// 首页条目叠卡（未读 / 最近阅读）：拖动前卡飞出、后卡顶上；左右循环。
 class UnreadStackPreview extends StatefulWidget {
@@ -38,6 +39,8 @@ class _UnreadStackPreviewState extends State<UnreadStackPreview>
   double _dx = 0;
   bool _dragging = false;
   bool _settling = false;
+  /// 露出层相对当前的偏移：左滑/下一张 = +1，右滑/上一张 = -1
+  int _revealStep = 1;
 
   late final AnimationController _anim;
   double _animFrom = 0;
@@ -51,6 +54,10 @@ class _UnreadStackPreviewState extends State<UnreadStackPreview>
         final t = Curves.easeOutCubic.transform(_anim.value);
         setState(() => _dx = _animFrom + (_animTo - _animFrom) * t);
       });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      unawaited(DefaultItemCover.precache(context));
+    });
   }
 
   @override
@@ -72,10 +79,17 @@ class _UnreadStackPreviewState extends State<UnreadStackPreview>
 
   HomeItemPreview _at(int offset) {
     final n = widget.items.length;
-    return widget.items[(_index + offset) % n];
+    var i = (_index + offset) % n;
+    if (i < 0) i += n;
+    return widget.items[i];
   }
 
   double get _progress => (_dx.abs() / _dismissPx).clamp(0.0, 1.0);
+
+  void _syncRevealStep() {
+    if (_dx.abs() < 1) return;
+    _revealStep = _dx < 0 ? 1 : -1;
+  }
 
   Future<void> _animateTo(
     double target, {
@@ -105,6 +119,8 @@ class _UnreadStackPreviewState extends State<UnreadStackPreview>
   void _commitDismiss({required bool toLeft}) {
     final w = MediaQuery.sizeOf(context).width;
     final target = toLeft ? -(w + 100) : (w + 100);
+    // 飞出过程中锁定露出方向，与最终 index 一致
+    _revealStep = toLeft ? 1 : -1;
     unawaited(_animateTo(
       target,
       onDone: () {
@@ -112,7 +128,9 @@ class _UnreadStackPreviewState extends State<UnreadStackPreview>
         final n = widget.items.length;
         setState(() {
           _dx = 0;
-          _index = toLeft ? (_index + 1) % n : (_index - 1 + n) % n;
+          _index = (_index + _revealStep) % n;
+          if (_index < 0) _index += n;
+          _revealStep = 1;
         });
       },
     ));
@@ -126,7 +144,10 @@ class _UnreadStackPreviewState extends State<UnreadStackPreview>
 
   void _onPanUpdate(DragUpdateDetails d) {
     if (!_dragging || _settling) return;
-    setState(() => _dx += d.delta.dx);
+    setState(() {
+      _dx += d.delta.dx;
+      _syncRevealStep();
+    });
   }
 
   void _onPanEnd(DragEndDetails d) {
@@ -188,7 +209,8 @@ class _UnreadStackPreviewState extends State<UnreadStackPreview>
               height: UnreadStackPreview.cardHeight,
               child: IgnorePointer(
                 child: _StackCard(
-                  item: _at(2),
+                  // 左滑底下是 +2，右滑底下是 -2，和松手后的前卡一致
+                  item: _at(_revealStep * 2),
                   dim: deepDim.clamp(0.28, 0.55),
                   showMeta: false,
                 ),
@@ -202,7 +224,7 @@ class _UnreadStackPreviewState extends State<UnreadStackPreview>
               height: UnreadStackPreview.cardHeight,
               child: IgnorePointer(
                 child: _StackCard(
-                  item: _at(1),
+                  item: _at(_revealStep),
                   dim: nextDim,
                   showMeta: p > 0.55,
                   elevation: nextElev,
@@ -269,7 +291,8 @@ class _StackCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           CoverImage(
-            key: ValueKey('unread-stack-cover-${item.id}'),
+            // GlobalKey：后卡顶成前卡时复用同一封面 Element，默认图不重载闪白
+            key: GlobalObjectKey(item.id),
             url: item.coverImageUrl,
             pageUrl: item.pageUrl,
             borderRadius: 0,
@@ -317,7 +340,7 @@ class _StackCard extends StatelessWidget {
       ),
     );
 
-    if (dim <= 0) return card;
-    return Opacity(opacity: 1 - dim, child: card);
+    // 始终包 Opacity，避免 dim 从有到无时拆掉父节点导致封面 Image 重建闪一下
+    return Opacity(opacity: (1 - dim).clamp(0.0, 1.0), child: card);
   }
 }
