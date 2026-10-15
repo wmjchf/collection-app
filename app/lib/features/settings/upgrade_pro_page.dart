@@ -399,6 +399,8 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
   }
 
   void _setBillingPeriod(bool yearly) {
+    if (_yearlyBilling == yearly) return;
+    AppHaptics.select();
     setState(() => _yearlyBilling = yearly);
   }
 
@@ -441,6 +443,8 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
   Future<void> _buy() async {
     final product = _selected;
     if (product == null || _busy || _selectedOwned) return;
+    await AppHaptics.select();
+    if (!mounted) return;
     setState(() {
       _restoreFlow = false;
       _phase = AppleIapPhase.paying;
@@ -695,6 +699,7 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
   }
 
   void _selectTier(String tier) {
+    // 不等待：立刻震，避免 await 推迟到下一帧
     AppHaptics.select();
     if (_selectedTier == tier) return;
     setState(() => _selectedTier = tier);
