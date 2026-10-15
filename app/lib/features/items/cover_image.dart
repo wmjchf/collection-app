@@ -11,6 +11,7 @@ class CoverImage extends StatelessWidget {
     this.height = 160,
     this.width,
     this.borderRadius = 12,
+    this.fit,
   });
 
   final String? url;
@@ -19,12 +20,26 @@ class CoverImage extends StatelessWidget {
   final double height;
   final double? width;
   final double borderRadius;
+  /// 缺省：普通图 cover；品牌方标（如使用指引）自动 contain，避免裁掉四角
+  final BoxFit? fit;
+
+  /// 使用指引等：封面是方形 App 图标，cover 会切顶
+  static bool isBrandIconUrl(String? raw) {
+    final u = (raw ?? '').trim().toLowerCase();
+    if (u.isEmpty) return false;
+    return u.endsWith('/assets/icon.png') ||
+        u.endsWith('/icon.png') ||
+        u.contains('/assets/icon.png?');
+  }
 
   @override
   Widget build(BuildContext context) {
     final radius = BorderRadius.circular(borderRadius);
     final trimmed = url?.trim();
     final hasUrl = trimmed != null && trimmed.isNotEmpty;
+    final resolvedFit = fit ??
+        (isBrandIconUrl(trimmed) ? BoxFit.contain : BoxFit.cover);
+    final brandIcon = isBrandIconUrl(trimmed);
 
     return ClipRRect(
       borderRadius: radius,
@@ -32,33 +47,39 @@ class CoverImage extends StatelessWidget {
         height: height,
         width: width ?? double.infinity,
         child: hasUrl
-            ? Image.network(
-                resolveMediaUrl(trimmed),
-                fit: BoxFit.cover,
-                headers: mediaHttpHeadersFor(
+            ? ColoredBox(
+                // 方标 contain 时露白底，不要墨绿/黑边
+                color: brandIcon ? Colors.white : Colors.transparent,
+                child: Image.network(
                   resolveMediaUrl(trimmed),
-                  pageUrl: pageUrl,
-                ),
-                gaplessPlayback: true,
-                filterQuality: FilterQuality.low,
-                errorBuilder: (_, __, ___) => const DefaultItemCover(),
-                // 加载中用同色底，避免先闪默认植物图再换成真封面
-                loadingBuilder: (context, child, progress) {
-                  if (progress == null) return child;
-                  return const ColoredBox(
-                    color: DefaultItemCover.fallbackColor,
-                    child: Center(
-                      child: SizedBox(
-                        width: 22,
-                        height: 22,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2.2,
-                          color: Color(0xFFB8D4C4),
+                  fit: resolvedFit,
+                  alignment: Alignment.center,
+                  headers: mediaHttpHeadersFor(
+                    resolveMediaUrl(trimmed),
+                    pageUrl: pageUrl,
+                  ),
+                  gaplessPlayback: true,
+                  filterQuality: FilterQuality.low,
+                  errorBuilder: (_, __, ___) => const DefaultItemCover(),
+                  loadingBuilder: (context, child, progress) {
+                    if (progress == null) return child;
+                    return ColoredBox(
+                      color: brandIcon
+                          ? Colors.white
+                          : DefaultItemCover.fallbackColor,
+                      child: const Center(
+                        child: SizedBox(
+                          width: 22,
+                          height: 22,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2.2,
+                            color: Color(0xFFB8D4C4),
+                          ),
                         ),
                       ),
-                    ),
-                  );
-                },
+                    );
+                  },
+                ),
               )
             : const DefaultItemCover(),
       ),
