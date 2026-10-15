@@ -122,7 +122,7 @@ async function listRoam(userId, { limit = 20, offset = 0 } = {}) {
   };
 }
 
-/** 首页两板块：未读 / 漫游（摘录）；recentRead 仍返回给扩展 */
+/** 首页三板块：未读 / 漫游（摘录）/ 最近阅读 */
 async function getHome(userId, tzOffsetMinutes = 480) {
   const [unread, recentRead, roam] = await Promise.all([
     section(userId, 'unread', tzOffsetMinutes),

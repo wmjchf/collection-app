@@ -4,6 +4,12 @@ String unreadSectionTitle({required bool isPro}) => isPro ? '待阅' : '未读';
 String unreadEmptyText({required bool isPro}) =>
     isPro ? '暂无待阅' : '暂无未读';
 
+String recentReadSectionTitle({required bool isPro}) =>
+    isPro ? '朕已阅' : '最近阅读';
+
+String recentReadEmptyText({required bool isPro}) =>
+    isPro ? '暂无朕已阅' : '暂无最近阅读';
+
 String markAsUnreadLabel({required bool isPro}) =>
     isPro ? '标为待阅' : '标为未读';
 
@@ -73,5 +79,7 @@ String deleteAnnotationLabel({
 /// 系统筛选展示名（按 code 覆写）
 String systemFilterDisplayName(String code, String fallback, {required bool isPro}) {
   if (code == 'annotated') return annotationSectionTitle(isPro: isPro);
+  if (code == 'recent_read') return recentReadSectionTitle(isPro: isPro);
+  if (code == 'unread') return unreadSectionTitle(isPro: isPro);
   return fallback;
 }
