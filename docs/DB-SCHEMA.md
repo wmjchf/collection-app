@@ -156,7 +156,7 @@
 | section | code | name |
 | --- | --- | --- |
 | system | unread / all / today / untagged / annotated / recent_read | 未读/所有/今天/无标签/批注/最近阅读 |
-| system | recent_read | 最近阅读（已读且有 `last_read_at`；排除未读，避免与未读区重复） |
+| system | recent_read | 最近阅读（已读、近 7 天内有 `last_read_at`；排除未读，避免与未读区重复） |
 | folder | uncategorized | 未分类 |
 | other | archived | 已归档（不在 App 导航展示；`filter=archived` API 仍可用） |
 | system | trash | 回收站（原 other，见 `009_trash_system_section.sql`） |

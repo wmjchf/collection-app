@@ -40,8 +40,8 @@ function filterClause(code, range = {}) {
         SELECT 1 FROM annotations a WHERE a.item_id = i.id
       )`;
     case 'recent_read':
-      // 未读优先出现在「未读」；最近阅读只展示已读足迹，避免首页两区重复
-      return `${baseWhere()} AND i.last_read_at IS NOT NULL AND i.is_unread = 0`;
+      // 未读优先在「未读」；最近阅读：已读且近 7 天内打开过
+      return `${baseWhere()} AND i.last_read_at IS NOT NULL AND i.is_unread = 0 AND i.last_read_at >= :recentReadSince`;
     case 'archived':
       return `i.user_id = :userId AND i.deleted_at IS NULL AND i.is_archived = 1`;
     default:
@@ -75,6 +75,8 @@ function todayRange(tzOffsetMinutes = 480) {
   return {
     dayStart: new Date(dayStartUtc),
     dayEnd: new Date(dayEndUtc),
+    /** 滚动近 7 天（用于 recent_read） */
+    recentReadSince: new Date(now - 7 * 24 * 60 * 60 * 1000),
   };
 }
 
@@ -84,6 +86,9 @@ async function countByFilter(userId, code, range) {
   if (code === 'today') {
     params.dayStart = range.dayStart;
     params.dayEnd = range.dayEnd;
+  }
+  if (code === 'recent_read') {
+    params.recentReadSince = range.recentReadSince;
   }
   const [rows] = await pool.execute(
     `SELECT COUNT(*) AS cnt FROM items i WHERE ${where}`,
@@ -180,6 +185,9 @@ async function listItemsBySystemFilter(
   if (code === 'today') {
     params.dayStart = range.dayStart;
     params.dayEnd = range.dayEnd;
+  }
+  if (code === 'recent_read') {
+    params.recentReadSince = range.recentReadSince;
   }
 
   const [rows] = await pool.execute(
