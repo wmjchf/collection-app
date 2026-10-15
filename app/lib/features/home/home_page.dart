@@ -20,7 +20,6 @@ import 'package:super_collection/features/home/roam_list_page.dart';
 import 'package:super_collection/features/home/roam_models.dart';
 import 'package:super_collection/features/home/roam_mute.dart';
 import 'package:super_collection/features/home/roam_player_page.dart';
-import 'package:super_collection/features/home/widgets/home_item_card.dart';
 import 'package:super_collection/features/home/widgets/roam_stack_preview.dart';
 import 'package:super_collection/features/home/widgets/unread_stack_preview.dart';
 import 'package:super_collection/features/items/item_reading_page.dart';
@@ -773,17 +772,10 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                   )
                 : LayoutBuilder(
                     builder: (context, constraints) {
-                      // 未读/漫游空态与叠卡同高，避免有无数据切换抖动
-                      const listPaddingV = 12.0 + 24.0;
+                      // 未读/最近阅读/漫游空态与叠卡同高，避免有无数据切换抖动
                       const sectionGap = 16.0;
-                      const unreadH = UnreadStackPreview.height;
+                      const stackH = UnreadStackPreview.height;
                       const roamH = RoamStackPreview.height;
-                      final emptyCardH = (constraints.maxHeight -
-                              listPaddingV -
-                              sectionGap * 2 -
-                              unreadH -
-                              roamH)
-                          .clamp(120.0, 240.0);
                       return ListView(
                         physics: const AlwaysScrollableScrollPhysics(),
                         padding: EdgeInsets.fromLTRB(
@@ -798,10 +790,11 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                             refreshTick:
                                 widget.refreshTick + _trialRefreshTick,
                           ),
-                          _HomeUnreadSection(
+                          _HomeItemStackSection(
                             title: unreadSectionTitle(isPro: _isPro),
                             emptyText: unreadEmptyText(isPro: _isPro),
-                            emptyHeight: unreadH,
+                            emptyIcon: Icons.mark_email_unread_outlined,
+                            emptyHeight: stackH,
                             items: [
                               for (final item in unread)
                                 previewForUnread(item),
@@ -810,9 +803,10 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                               'unread',
                               unreadSectionTitle(isPro: _isPro),
                             ),
-                            onOpenFront: () {
-                              if (unread.isEmpty) return;
-                              _openItem(unread.first, entry: 'unread');
+                            onOpenFront: (preview) {
+                              final item = unread
+                                  .firstWhere((e) => e.id == preview.id);
+                              _openItem(item, entry: 'unread');
                             },
                           ),
                           const SizedBox(height: sectionGap),
@@ -826,11 +820,11 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                             onPlay: _openRoamPlayer,
                           ),
                           const SizedBox(height: sectionGap),
-                          _HomeSection(
+                          _HomeItemStackSection(
                             title: recentReadSectionTitle(isPro: _isPro),
                             emptyText: recentReadEmptyText(isPro: _isPro),
                             emptyIcon: Icons.history_rounded,
-                            emptyHeight: emptyCardH,
+                            emptyHeight: stackH,
                             items: [
                               for (final item in recentRead)
                                 previewForRecentRead(item),
@@ -839,7 +833,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                               'recent_read',
                               recentReadSectionTitle(isPro: _isPro),
                             ),
-                            onItemTap: (preview) {
+                            onOpenFront: (preview) {
                               final item = recentRead
                                   .firstWhere((e) => e.id == preview.id);
                               _openItem(item, entry: 'recent_read');
@@ -946,10 +940,12 @@ class _HomeRoamSection extends StatelessWidget {
   }
 }
 
-class _HomeUnreadSection extends StatelessWidget {
-  const _HomeUnreadSection({
+/// 未读 / 最近阅读：封面叠卡，点整叠进首条
+class _HomeItemStackSection extends StatelessWidget {
+  const _HomeItemStackSection({
     required this.title,
     required this.emptyText,
+    required this.emptyIcon,
     required this.emptyHeight,
     required this.items,
     required this.onMore,
@@ -959,10 +955,11 @@ class _HomeUnreadSection extends StatelessWidget {
 
   final String title;
   final String emptyText;
+  final IconData emptyIcon;
   final double emptyHeight;
   final List<HomeItemPreview> items;
   final VoidCallback onMore;
-  final VoidCallback onOpenFront;
+  final ValueChanged<HomeItemPreview> onOpenFront;
   final String moreLabel;
 
   static const _muted = Color(0xFF737A85);
@@ -1014,11 +1011,7 @@ class _HomeUnreadSection extends StatelessWidget {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  const Icon(
-                    Icons.mark_email_unread_outlined,
-                    size: 42,
-                    color: _iconMuted,
-                  ),
+                  Icon(emptyIcon, size: 42, color: _iconMuted),
                   const SizedBox(height: 10),
                   Text(
                     emptyText,
@@ -1031,106 +1024,6 @@ class _HomeUnreadSection extends StatelessWidget {
           )
         else
           UnreadStackPreview(items: items, onTap: onOpenFront),
-      ],
-    );
-  }
-}
-
-class _HomeSection extends StatelessWidget {
-  const _HomeSection({
-    required this.title,
-    required this.emptyText,
-    required this.emptyIcon,
-    required this.emptyHeight,
-    required this.items,
-    required this.onMore,
-    required this.onItemTap,
-    this.moreLabel = '查看更多 ›',
-  });
-
-  final String title;
-  final String emptyText;
-  final IconData emptyIcon;
-  final double emptyHeight;
-  final List<HomeItemPreview> items;
-  final VoidCallback onMore;
-  final ValueChanged<HomeItemPreview> onItemTap;
-  final String moreLabel;
-
-  static const _muted = Color(0xFF737A85);
-  static const _iconMuted = Color(0xFFC5CAD3);
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Row(
-          children: [
-            Text(
-              title,
-              style: const TextStyle(
-                fontSize: 15,
-                fontWeight: FontWeight.w500,
-                color: _HomePageState._text,
-              ),
-            ),
-            const Spacer(),
-            GestureDetector(
-              onTap: onMore,
-              behavior: HitTestBehavior.opaque,
-              child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 2),
-                child: Text(
-                  moreLabel,
-                  style: const TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w400,
-                    color: _HomePageState._blue,
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 8),
-        if (items.isEmpty)
-          Container(
-            width: double.infinity,
-            height: emptyHeight,
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(emptyIcon, size: 42, color: _iconMuted),
-                const SizedBox(height: 10),
-                Text(
-                  emptyText,
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(
-                    fontSize: 14,
-                    color: _muted,
-                  ),
-                ),
-              ],
-            ),
-          )
-        else
-          Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              for (var i = 0; i < items.length; i++) ...[
-                if (i > 0) const SizedBox(height: 8),
-                HomeItemCard(
-                  item: items[i],
-                  onTap: () => onItemTap(items[i]),
-                ),
-              ],
-            ],
-          ),
       ],
     );
   }
