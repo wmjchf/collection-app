@@ -69,7 +69,17 @@ function planLabel(plan) {
 
 function basicProductIds() {
   const a = config.appleIap || {};
-  return new Set([a.productBasic].filter(Boolean).map(String));
+  return new Set(
+    [a.productBasicMonthly, a.productBasicYearly, a.productBasic]
+      .filter(Boolean)
+      .map(String),
+  );
+}
+
+function isLegacyBasicLifetime(productId) {
+  const a = config.appleIap || {};
+  const pid = String(productId || '').trim();
+  return Boolean(pid && a.productBasic && pid === String(a.productBasic));
 }
 
 function princeProductIds() {
@@ -141,6 +151,7 @@ module.exports = {
   hasEmperor,
   planLabel,
   basicProductIds,
+  isLegacyBasicLifetime,
   princeProductIds,
   emperorProductIds,
   allPaidProductIds,
