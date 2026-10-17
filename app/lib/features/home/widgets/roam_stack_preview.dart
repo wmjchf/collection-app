@@ -9,20 +9,22 @@ class RoamStackPreview extends StatelessWidget {
     super.key,
     required this.items,
     required this.onTap,
+    this.height = defaultHeight,
   });
 
   final List<RoamSnippet> items;
   final VoidCallback onTap;
+  final double height;
 
   /// 空态占位与有数据叠卡共用此高度，避免切换抖动
-  static const height = 196.0;
+  static const defaultHeight = 196.0;
   static const _peekStep = 10.0;
   static const _sideStep = 12.0;
 
   @override
   Widget build(BuildContext context) {
     final show = items.take(3).toList();
-    if (show.isEmpty) return const SizedBox(height: height);
+    if (show.isEmpty) return SizedBox(height: height);
 
     final peekCount = (show.length - 1).clamp(0, 2);
     final frontTop = peekCount * _peekStep;
