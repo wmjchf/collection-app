@@ -878,6 +878,8 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
         quote: text,
         title: (_item.title ?? '').trim(),
         link: _linkToCopy,
+        coverUrl: _item.coverImageUrl,
+        pageUrl: _item.sourcePageUrl,
         sharePositionOrigin: shareOrigin,
         screenSize: MediaQuery.sizeOf(context),
       );

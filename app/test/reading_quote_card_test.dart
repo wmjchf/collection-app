@@ -7,8 +7,6 @@ void main() {
   test('quote share png encodes', () async {
     final bytes = await renderReadingQuotePng(
       quote: '把以后再看变成随时能看。',
-      title: '收藏以致用',
-      link: 'https://example.com/article',
     );
     expect(bytes.length, greaterThan(100));
     expect(bytes[0], 0x89);
