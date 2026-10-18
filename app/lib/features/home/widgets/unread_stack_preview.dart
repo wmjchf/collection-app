@@ -24,6 +24,12 @@ class UnreadStackPreview extends StatefulWidget {
   static const cardHeight = coverHeight + metaHeight;
   static const height = cardHeight + peekStep * 2;
 
+  /// 按实际张数占高：一张与空态同高，多张只多出上方露边。前卡底边始终贴底。
+  static double heightForCount(int count) {
+    final peekCount = (count - 1).clamp(0, 2);
+    return cardHeight + peekCount * peekStep;
+  }
+
   static const _text = Color(0xFF1F242E);
   static const _meta = Color(0xFF9AA0A8);
 
@@ -168,32 +174,29 @@ class _UnreadStackPreviewState extends State<UnreadStackPreview>
   Widget build(BuildContext context) {
     final items = widget.items;
     if (items.isEmpty) {
-      return const SizedBox(height: UnreadStackPreview.height);
+      return const SizedBox(height: UnreadStackPreview.cardHeight);
     }
 
     final n = items.length;
-    final peekCount = (n - 1).clamp(0, 2);
     final p = _progress;
     final front = _at(0);
     final angle = (_dx / 320) * (math.pi / 28);
+    final peekCount = (n - 1).clamp(0, 2);
+    // 最上层贴着标题下方，间距与漫游一致；露边仍在前卡上方。
+    final frontTop = peekCount * UnreadStackPreview.peekStep;
 
-    // 后卡随进度顶上来：顶边、侧边、透明度、阴影
-    final nextTop =
-        UnreadStackPreview.peekStep * (1 - p);
-    final nextSide =
-        UnreadStackPreview.sideStep * (1 - p);
+    final nextTop = frontTop - UnreadStackPreview.peekStep * (1 - p);
+    final nextSide = UnreadStackPreview.sideStep * (1 - p);
     final nextDim = 0.28 * (1 - p);
     final nextElev = 8.0 * p;
 
-    final deepTop = UnreadStackPreview.peekStep +
-        UnreadStackPreview.peekStep * (1 - p);
+    final deepTop = UnreadStackPreview.peekStep * p;
     final deepSide = UnreadStackPreview.sideStep +
         UnreadStackPreview.sideStep * (1 - p);
     final deepDim = 0.28 + 0.27 * (1 - p);
 
     return SizedBox(
-      height: UnreadStackPreview.cardHeight +
-          peekCount * UnreadStackPreview.peekStep,
+      height: UnreadStackPreview.heightForCount(n),
       width: double.infinity,
       child: Stack(
         clipBehavior: Clip.none,
@@ -229,7 +232,7 @@ class _UnreadStackPreviewState extends State<UnreadStackPreview>
               ),
             ),
           Positioned(
-            top: 0,
+            top: frontTop,
             left: 0,
             right: 0,
             height: UnreadStackPreview.cardHeight,

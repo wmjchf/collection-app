@@ -771,13 +771,14 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                   )
                 : LayoutBuilder(
                     builder: (context, constraints) {
-                      // 未读固定；漫游吃掉剩余高度，两块刚好一屏
-                      const sectionGap = 16.0;
-                      const stackH = UnreadStackPreview.height;
+                      // 未读固定；间距收紧后的高度给漫游叠卡
+                      const sectionGap = 8.0;
+                      final stackH =
+                          UnreadStackPreview.heightForCount(unread.length);
                       const headerBlock = 30.0;
                       final padTop = 12.0;
                       final padBottom =
-                          24 + MediaQuery.paddingOf(context).bottom;
+                          12 + MediaQuery.paddingOf(context).bottom;
                       final roamH = (constraints.maxHeight -
                               padTop -
                               padBottom -
