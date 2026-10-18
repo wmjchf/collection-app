@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:super_collection/core/analytics/analytics.dart';
 import 'package:super_collection/core/network/api_client.dart';
 import 'package:super_collection/core/ui/app_bottom_sheet.dart';
@@ -10,6 +9,7 @@ import 'package:super_collection/features/items/ai_meta_models.dart';
 import 'package:super_collection/features/items/ai_scholar_copy.dart';
 import 'package:super_collection/features/items/item_models.dart';
 import 'package:super_collection/features/items/items_repository.dart';
+import 'package:super_collection/features/items/justified_text.dart';
 import 'package:super_collection/features/items/reading_quote_share.dart';
 import 'package:super_collection/features/items/reading_regenerate_confirm_dialog.dart';
 import 'package:super_collection/features/items/transcript_models.dart';
@@ -177,16 +177,6 @@ class _ReadingSummarySheetState extends State<_ReadingSummarySheet> {
     }
   }
 
-  Future<void> _copySummary() async {
-    final text = (_meta.text ?? '').trim();
-    final brief = (_meta.brief ?? '').trim();
-    if (text.isEmpty && brief.isEmpty) return;
-    final payload = brief.isEmpty ? text : '总结\n$brief\n\n解读\n$text';
-    await Clipboard.setData(ClipboardData(text: payload));
-    if (!mounted) return;
-    AppToast.show(context, '已复制');
-  }
-
   Future<void> _shareSummary(Rect? origin) async {
     final text = _meta.shareText;
     if (text.isEmpty) return;
@@ -329,44 +319,7 @@ class _ReadingSummarySheetState extends State<_ReadingSummarySheet> {
                       ),
                     ),
                   ),
-                  if (showRegen) ...[
-                    Builder(
-                      builder: (buttonContext) => GestureDetector(
-                        onTap: () {
-                          final box =
-                              buttonContext.findRenderObject() as RenderBox?;
-                          final origin = box != null &&
-                                  box.hasSize &&
-                                  !box.size.isEmpty
-                              ? box.localToGlobal(Offset.zero) & box.size
-                              : null;
-                          unawaited(_shareSummary(origin));
-                        },
-                        behavior: HitTestBehavior.opaque,
-                        child: const Padding(
-                          padding: EdgeInsets.all(4),
-                          child: Icon(
-                            Icons.ios_share_rounded,
-                            size: 20,
-                            color: _muted,
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    GestureDetector(
-                      onTap: () => unawaited(_copySummary()),
-                      behavior: HitTestBehavior.opaque,
-                      child: const Padding(
-                        padding: EdgeInsets.all(4),
-                        child: Icon(
-                          Icons.copy_rounded,
-                          size: 20,
-                          color: _muted,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
+                  if (showRegen)
                     GestureDetector(
                       onTap: () => unawaited(_generate(force: true)),
                       behavior: HitTestBehavior.opaque,
@@ -379,7 +332,6 @@ class _ReadingSummarySheetState extends State<_ReadingSummarySheet> {
                         ),
                       ),
                     ),
-                  ],
                 ],
               ),
               const SizedBox(height: 12),
@@ -394,7 +346,7 @@ class _ReadingSummarySheetState extends State<_ReadingSummarySheet> {
     );
   }
 
-  Widget _summaryBlock(String label, String body) {
+  Widget _summaryBlock(String label, String body, {bool shareAfter = false}) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -408,15 +360,57 @@ class _ReadingSummarySheetState extends State<_ReadingSummarySheet> {
           ),
         ),
         const SizedBox(height: 6),
-        Text(
-          body,
-          style: const TextStyle(
-            fontSize: 15,
-            color: _text,
-            height: 1.65,
+        _shareableText(body, shareAfter: shareAfter),
+      ],
+    );
+  }
+
+  Widget _shareableText(String body, {required bool shareAfter}) {
+    return JustifiedText(
+      text: body,
+      style: const TextStyle(
+        fontSize: 15,
+        color: _text,
+        height: 1.65,
+      ),
+      trailing: shareAfter ? _summaryShareButton() : null,
+    );
+  }
+
+  Widget _summaryShareButton() {
+    return Builder(
+      builder: (buttonContext) => GestureDetector(
+        onTap: () {
+          final box = buttonContext.findRenderObject() as RenderBox?;
+          final origin = box != null && box.hasSize && !box.size.isEmpty
+              ? box.localToGlobal(Offset.zero) & box.size
+              : null;
+          unawaited(_shareSummary(origin));
+        },
+        child: const Padding(
+          padding: EdgeInsets.only(left: 8),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.ios_share_rounded,
+                size: 14,
+                color: _blue,
+              ),
+              SizedBox(width: 2),
+              Text(
+                '分享',
+                style: TextStyle(
+                  fontSize: 13,
+                  height: 1.4,
+                  fontWeight: FontWeight.w600,
+                  color: _blue,
+                ),
+              ),
+            ],
           ),
         ),
-      ],
+      ),
     );
   }
 
@@ -510,18 +504,11 @@ class _ReadingSummarySheetState extends State<_ReadingSummarySheet> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               if (brief.isNotEmpty) ...[
-                _summaryBlock('总结', brief),
+                _summaryBlock('总结', brief, shareAfter: true),
                 const SizedBox(height: 16),
                 _summaryBlock('解读', text),
               ] else
-                Text(
-                  text,
-                  style: const TextStyle(
-                    fontSize: 15,
-                    color: _text,
-                    height: 1.65,
-                  ),
-                ),
+                _shareableText(text, shareAfter: true),
             ],
           ),
         ),

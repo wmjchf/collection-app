@@ -104,7 +104,8 @@ Future<Uint8List> renderReadingQuotePng({
     text: TextSpan(text: plain, style: _quoteStyle),
     textDirection: TextDirection.ltr,
   )..layout(maxWidth: _cardWidth - _quotePadX * 2);
-  final overflows = quotePainter.height > _quoteMaxHeight + 1;
+  final overflows = kind != ReadingShareKind.summary &&
+      quotePainter.height > _quoteMaxHeight + 1;
   final quoteHeight = overflows ? _quoteMaxHeight : quotePainter.height;
   final quoteWidth = _cardWidth - _quotePadX * 2;
   final openMark = TextPainter(

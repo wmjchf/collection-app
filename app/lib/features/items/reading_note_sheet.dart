@@ -4,6 +4,7 @@ import 'package:super_collection/core/ui/app_bottom_sheet.dart';
 import 'package:super_collection/core/ui/app_toast.dart';
 import 'package:super_collection/features/items/item_models.dart';
 import 'package:super_collection/features/items/items_repository.dart';
+import 'package:super_collection/features/items/justified_text.dart';
 import 'package:super_collection/features/items/reading_quote_share.dart';
 
 Future<CollectionItem?> showReadingNoteSheet(
@@ -135,6 +136,40 @@ class _ReadingNoteSheetState extends State<_ReadingNoteSheet> {
     }
   }
 
+  Widget _shareButton() {
+    return Builder(
+      builder: (buttonContext) => GestureDetector(
+        onTap: () {
+          final box = buttonContext.findRenderObject() as RenderBox?;
+          final origin = box != null && box.hasSize && !box.size.isEmpty
+              ? box.localToGlobal(Offset.zero) & box.size
+              : null;
+          _share(origin);
+        },
+        child: const Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.ios_share_rounded,
+              size: 14,
+              color: _blue,
+            ),
+            SizedBox(width: 2),
+            Text(
+              '分享',
+              style: TextStyle(
+                fontSize: 13,
+                height: 1.4,
+                fontWeight: FontWeight.w600,
+                color: _blue,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Material(
@@ -168,32 +203,6 @@ class _ReadingNoteSheetState extends State<_ReadingNoteSheet> {
                       ),
                     ),
                   ),
-                  if (_controller.text.trim().isNotEmpty) ...[
-                    Builder(
-                      builder: (buttonContext) => GestureDetector(
-                        onTap: () {
-                          final box =
-                              buttonContext.findRenderObject() as RenderBox?;
-                          final origin = box != null &&
-                                  box.hasSize &&
-                                  !box.size.isEmpty
-                              ? box.localToGlobal(Offset.zero) & box.size
-                              : null;
-                          _share(origin);
-                        },
-                        behavior: HitTestBehavior.opaque,
-                        child: const Padding(
-                          padding: EdgeInsets.all(4),
-                          child: Icon(
-                            Icons.ios_share_rounded,
-                            size: 20,
-                            color: _muted,
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                  ],
                   TextButton(
                     onPressed: _editing
                         ? (_saving ? null : _save)
@@ -226,55 +235,67 @@ class _ReadingNoteSheetState extends State<_ReadingNoteSheet> {
                 color: _fieldBg,
                 borderRadius: BorderRadius.circular(12),
               ),
-              child: Stack(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Positioned.fill(
-                    child: TextField(
-                      controller: _controller,
-                      focusNode: _focus,
-                      readOnly: !_editing,
-                      showCursor: _editing,
-                      enableInteractiveSelection: _editing,
-                      maxLines: null,
-                      expands: true,
-                      textAlignVertical: TextAlignVertical.top,
-                      maxLength: 2000,
-                      onChanged: (_) => setState(() {}),
-                      style: const TextStyle(
-                        fontSize: 15,
-                        color: _text,
-                        height: 1.5,
-                      ),
-                      cursorColor: _blue,
-                      decoration: InputDecoration(
-                        isCollapsed: true,
-                        border: InputBorder.none,
-                        hintText: _editing
-                            ? '写下读后的感想，方便以后找回…'
-                            : null,
-                        hintStyle: const TextStyle(
-                          color: _muted,
-                          fontSize: 14,
-                        ),
-                        contentPadding: EdgeInsets.zero,
-                        counterText: '',
-                      ),
-                    ),
+                  Expanded(
+                    child: _editing
+                        ? TextField(
+                            controller: _controller,
+                            focusNode: _focus,
+                            showCursor: true,
+                            maxLines: null,
+                            expands: true,
+                            textAlignVertical: TextAlignVertical.top,
+                            maxLength: 2000,
+                            onChanged: (_) => setState(() {}),
+                            style: const TextStyle(
+                              fontSize: 15,
+                              color: _text,
+                              height: 1.5,
+                            ),
+                            cursorColor: _blue,
+                            decoration: const InputDecoration(
+                              isCollapsed: true,
+                              border: InputBorder.none,
+                              hintText: '写下读后的感想，方便以后找回…',
+                              hintStyle: TextStyle(
+                                color: _muted,
+                                fontSize: 14,
+                              ),
+                              contentPadding: EdgeInsets.zero,
+                              counterText: '',
+                            ),
+                          )
+                        : SingleChildScrollView(
+                            child: JustifiedText(
+                              text: _controller.text.trim(),
+                              style: const TextStyle(
+                                fontSize: 15,
+                                color: _text,
+                                height: 1.5,
+                              ),
+                            ),
+                          ),
                   ),
                   if (_editing)
-                    Positioned(
-                      right: 0,
-                      bottom: 0,
-                      child: IgnorePointer(
-                        child: Text(
-                          '${_controller.text.characters.length}/2000',
-                          style: const TextStyle(
-                            fontSize: 11,
-                            color: _muted,
-                          ),
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: Text(
+                        '${_controller.text.characters.length}/2000',
+                        style: const TextStyle(
+                          fontSize: 11,
+                          color: _muted,
                         ),
                       ),
+                    )
+                  else if (_controller.text.trim().isNotEmpty) ...[
+                    const SizedBox(height: 8),
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: _shareButton(),
                     ),
+                  ],
                 ],
               ),
             ),
