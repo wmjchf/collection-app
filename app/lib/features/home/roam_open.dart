@@ -28,6 +28,10 @@ Future<bool?> openRoamSnippet(
             itemId: item.id,
             segmentKey: key,
             focusAnnotationId: snippet.annotationId,
+            shareTitle: (item.title ?? '').trim(),
+            shareLink: (item.canonicalUrl ?? item.url).trim(),
+            shareCoverUrl: item.coverImageUrl,
+            sharePageUrl: item.sourcePageUrl,
           ),
         ),
       );

@@ -13,6 +13,7 @@ Future<void> showAnnotationDetailSheet(
   required ItemAnnotation annotation,
   required VoidCallback onChanged,
   bool isPro = false,
+  Future<void> Function(String quote, Rect? shareOrigin)? onShare,
 }) {
   return showAppBottomSheet<void>(
     context: context,
@@ -23,6 +24,7 @@ Future<void> showAnnotationDetailSheet(
       initialNote: annotation.note,
       onChanged: onChanged,
       isPro: isPro,
+      onShare: onShare,
     ),
   );
 }
@@ -61,6 +63,7 @@ class _AnnotationNoteSheet extends StatefulWidget {
     this.endOffset,
     this.source,
     this.onChanged,
+    this.onShare,
     this.isCreate = false,
     this.isPro = false,
   });
@@ -73,6 +76,7 @@ class _AnnotationNoteSheet extends StatefulWidget {
   final int? endOffset;
   final String? source;
   final VoidCallback? onChanged;
+  final Future<void> Function(String quote, Rect? shareOrigin)? onShare;
   final bool isCreate;
   final bool isPro;
 
@@ -151,6 +155,18 @@ class _AnnotationNoteSheetState extends State<_AnnotationNoteSheet> {
     }
   }
 
+  Future<void> _share(BuildContext buttonContext) async {
+    final share = widget.onShare;
+    final quote = widget.selectedText.trim();
+    if (share == null || quote.isEmpty) return;
+    final box = buttonContext.findRenderObject() as RenderBox?;
+    final origin = box != null && box.hasSize && !box.size.isEmpty
+        ? box.localToGlobal(Offset.zero) & box.size
+        : null;
+    Navigator.pop(context);
+    await share(quote, origin);
+  }
+
   Future<void> _delete() async {
     if (widget.isCreate || widget.annotation == null) {
       Navigator.pop(context);
@@ -219,12 +235,48 @@ class _AnnotationNoteSheetState extends State<_AnnotationNoteSheet> {
                 color: _fieldBg,
                 borderRadius: BorderRadius.circular(12),
               ),
-              child: Text(
-                _quotePreview,
-                style: const TextStyle(
-                  fontSize: 13,
-                  color: _muted,
-                  height: 1.4,
+              child: Text.rich(
+                TextSpan(
+                  style: const TextStyle(
+                    fontSize: 13,
+                    color: _muted,
+                    height: 1.4,
+                  ),
+                  children: [
+                    TextSpan(text: _quotePreview),
+                    if (!widget.isCreate && widget.onShare != null)
+                      WidgetSpan(
+                        alignment: PlaceholderAlignment.middle,
+                        child: Builder(
+                          builder: (buttonContext) => GestureDetector(
+                            onTap: () => _share(buttonContext),
+                            child: const Padding(
+                              padding: EdgeInsets.only(left: 8),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    Icons.ios_share_rounded,
+                                    size: 14,
+                                    color: _blue,
+                                  ),
+                                  SizedBox(width: 2),
+                                  Text(
+                                    '分享',
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      height: 1.4,
+                                      fontWeight: FontWeight.w600,
+                                      color: _blue,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
                 ),
               ),
             ),

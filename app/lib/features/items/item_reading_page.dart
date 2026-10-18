@@ -889,6 +889,23 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
     }
   }
 
+  Future<void> _shareExistingQuote(String quote, Rect? shareOrigin) async {
+    try {
+      await shareReadingQuote(
+        quote: quote,
+        title: (_item.title ?? '').trim(),
+        link: _linkToCopy,
+        coverUrl: _item.coverImageUrl,
+        pageUrl: _item.sourcePageUrl,
+        sharePositionOrigin: shareOrigin,
+        screenSize: MediaQuery.sizeOf(context),
+      );
+    } catch (error, stack) {
+      debugPrint('quote share failed: $error\n$stack');
+      if (mounted) AppToast.show(context, '分享失败，请稍后重试');
+    }
+  }
+
   void _openAnnotation(ItemAnnotation ann) {
     final segmentKey = ann.transcriptSegmentKey;
     if (segmentKey != null) {
@@ -904,6 +921,7 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
               itemId: _item.id,
               segmentKey: segmentKey,
               focusAnnotationId: ann.id,
+              onShareQuote: _shareExistingQuote,
             ),
           ),
         );
@@ -916,6 +934,7 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
       annotation: ann,
       onChanged: _loadAnnotations,
       isPro: _isPro,
+      onShare: _shareExistingQuote,
     );
   }
 
@@ -1772,6 +1791,7 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
                       segmentKey: TranscriptTargets.segmentVideoUrl,
                       hidePendingLoading: _item.isAiAwaitingTranscript,
                       fontSize: _bodyFontSize,
+                      onShareQuote: _shareExistingQuote,
                     ),
                     const SizedBox(height: 18),
                   ] else if (_showReadingImages) ...[
@@ -1804,9 +1824,10 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
                       platform: _item.platform,
                       pageAudio: _pageAudio,
                       onRefreshInlineVideo: _platformNeedsVideoRefresh
-                          ? _refreshInlineVideo
-                          : null,
-                    )
+                      ? _refreshInlineVideo
+                      : null,
+                  onShareQuote: _shareExistingQuote,
+                )
                   else
                     _AnnotatedBodyStack(
                       text: body,
@@ -2030,6 +2051,7 @@ class _InlineArticleBody extends StatelessWidget {
     this.platform,
     this.pageAudio,
     this.onRefreshInlineVideo,
+    this.onShareQuote,
   });
 
   final List<ArticleBlock> blocks;
@@ -2048,6 +2070,7 @@ class _InlineArticleBody extends StatelessWidget {
   final String? platform;
   final ReadingMediaController? pageAudio;
   final Future<String?> Function(int index)? onRefreshInlineVideo;
+  final Future<void> Function(String quote, Rect? shareOrigin)? onShareQuote;
 
   static const _text = Color(0xFF1F242E);
   static const _highlight = Color(0xFFFFF2C7);
@@ -2289,6 +2312,7 @@ class _InlineArticleBody extends StatelessWidget {
                 itemId: itemId,
                 segmentKey: segmentKey,
                 fontSize: fontSize,
+                onShareQuote: onShareQuote,
               ),
             ],
           ),
