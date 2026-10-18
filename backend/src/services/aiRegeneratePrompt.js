@@ -11,7 +11,7 @@ function snapshotRegenerateFrom(meta, kind) {
     return {
       kind: 'summary',
       text: (text || '').slice(0, 600),
-      brief: (brief || '').slice(0, 200),
+      brief: (brief || '').slice(0, 600),
     };
   }
   if (kind === 'mindmap') {
@@ -39,7 +39,7 @@ function normalizeRegenerateFrom(raw) {
     return {
       kind: 'summary',
       text: text.slice(0, 600),
-      brief: brief.slice(0, 200),
+      brief: brief.slice(0, 600),
     };
   }
   if (kind === 'mindmap') {

@@ -34,7 +34,7 @@ const SUMMARY_SYSTEM_PROMPT = `你是内容解读助手。输入已是用户收�
 说清「懂了什么」就停；通常一两段连贯短文，或若干有层次的短句；**不以字数为目标**。
 
 ## 总结（brief）
-另写一段给分享用的短总结：两三句，合计不超过 80 字。只留最值得带走的意思，不要复述解读全文，不要分点清单。
+另写一段给分享用的总结：把这篇文章的核心说清楚就停。可以是一段连贯短文，篇幅服从「说清了没有」，不要为了短而漏掉关键判断，也不要复述解读全文或写成要点清单。
 
 ## 输出（严格）
 只输出一个 JSON 对象，不要 markdown、不要代码块、不要前后说明。
@@ -49,7 +49,7 @@ function normalizeSummaryText(raw) {
 function normalizeSummaryBrief(raw) {
   if (!raw || typeof raw !== 'object') return null;
   const brief = aiMeta.normalizeSummaryDisplayText(raw.brief);
-  return brief ? brief.slice(0, 200) : null;
+  return brief;
 }
 
 async function saveAiMeta(itemId, meta) {
@@ -227,7 +227,7 @@ async function requestSummary(userId, itemId, { force = false } = {}) {
   const previewMessages = buildAiTaskMessages(inputText, [
     SUMMARY_SYSTEM_PROMPT,
     regenBlock,
-      '请按上述要求解读内容，并另写 brief 短总结（两三句、不超过 80 字）。不要把 text 写成摘要提纲。输出 JSON（仅 JSON，无其它文字）。',
+      '请按上述要求解读内容，并另写 brief：把文章核心说清楚即可，不限字数，不要把 text 写成摘要提纲。输出 JSON（仅 JSON，无其它文字）。',
     ]);
   await usageService.assertAiQuota(userId, {
     estimatedTokens: usageService.estimateAiTokens({
@@ -292,7 +292,7 @@ async function runSummaryJob(itemId) {
     const messages = buildAiTaskMessages(inputText, [
       SUMMARY_SYSTEM_PROMPT,
       regenBlock,
-      '请按上述要求解读内容，并另写 brief 短总结（两三句、不超过 80 字）。不要把 text 写成摘要提纲。输出 JSON（仅 JSON，无其它文字）。',
+      '请按上述要求解读内容，并另写 brief：把文章核心说清楚即可，不限字数，不要把 text 写成摘要提纲。输出 JSON（仅 JSON，无其它文字）。',
     ]);
 
     const usageService = require('./usageService');

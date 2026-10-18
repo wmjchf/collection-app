@@ -123,7 +123,7 @@ function parseAiMeta(raw) {
     summary: {
       status: summary.status || 'none',
       text: summaryText,
-      brief: summaryBrief ? summaryBrief.slice(0, 200) : null,
+      brief: summaryBrief,
       contentHash:
         summary.contentHash != null ? String(summary.contentHash) : null,
       error: summary.error != null ? String(summary.error) : null,
