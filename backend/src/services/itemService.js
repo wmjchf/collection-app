@@ -1631,6 +1631,7 @@ async function searchItems(userId, rawQuery, { limit = 50, offset = 0 } = {}) {
       OR i.content LIKE :like
       OR i.note LIKE :like
       OR JSON_UNQUOTE(JSON_EXTRACT(i.ai_meta, '$.summary.text')) LIKE :like
+      OR JSON_UNQUOTE(JSON_EXTRACT(i.ai_meta, '$.summary.brief')) LIKE :like
       OR CAST(i.transcript_segments AS CHAR) LIKE :like
       OR i.url LIKE :like
       OR i.canonical_url LIKE :like

@@ -179,14 +179,16 @@ class _ReadingSummarySheetState extends State<_ReadingSummarySheet> {
 
   Future<void> _copySummary() async {
     final text = (_meta.text ?? '').trim();
-    if (text.isEmpty) return;
-    await Clipboard.setData(ClipboardData(text: text));
+    final brief = (_meta.brief ?? '').trim();
+    if (text.isEmpty && brief.isEmpty) return;
+    final payload = brief.isEmpty ? text : '总结\n$brief\n\n解读\n$text';
+    await Clipboard.setData(ClipboardData(text: payload));
     if (!mounted) return;
     AppToast.show(context, '已复制');
   }
 
   Future<void> _shareSummary(Rect? origin) async {
-    final text = (_meta.text ?? '').trim();
+    final text = _meta.shareText;
     if (text.isEmpty) return;
     final canonical = _item.canonicalUrl?.trim();
     final link = (canonical != null && canonical.isNotEmpty)
@@ -392,6 +394,32 @@ class _ReadingSummarySheetState extends State<_ReadingSummarySheet> {
     );
   }
 
+  Widget _summaryBlock(String label, String body) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: const TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+            letterSpacing: 0.6,
+            color: _muted,
+          ),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          body,
+          style: const TextStyle(
+            fontSize: 15,
+            color: _text,
+            height: 1.65,
+          ),
+        ),
+      ],
+    );
+  }
+
   Widget _buildBody() {
     if (_meta.isPending || _requesting) {
       final label = _meta.awaitTranscript
@@ -468,6 +496,8 @@ class _ReadingSummarySheetState extends State<_ReadingSummarySheet> {
     }
 
     if (_meta.hasText) {
+      final brief = (_meta.brief ?? '').trim();
+      final text = _meta.text!.trim();
       return Container(
         width: double.infinity,
         padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
@@ -476,13 +506,23 @@ class _ReadingSummarySheetState extends State<_ReadingSummarySheet> {
           borderRadius: BorderRadius.circular(12),
         ),
         child: SingleChildScrollView(
-          child: Text(
-            _meta.text!.trim(),
-            style: const TextStyle(
-              fontSize: 15,
-              color: _text,
-              height: 1.65,
-            ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (brief.isNotEmpty) ...[
+                _summaryBlock('总结', brief),
+                const SizedBox(height: 16),
+                _summaryBlock('解读', text),
+              ] else
+                Text(
+                  text,
+                  style: const TextStyle(
+                    fontSize: 15,
+                    color: _text,
+                    height: 1.65,
+                  ),
+                ),
+            ],
           ),
         ),
       );

@@ -43,7 +43,7 @@ enum ReadingShareKind {
 
   String get label => switch (this) {
         ReadingShareKind.quote => '摘句',
-        ReadingShareKind.summary => 'AI 解读',
+        ReadingShareKind.summary => 'AI 总结',
         ReadingShareKind.note => '感想',
       };
 }

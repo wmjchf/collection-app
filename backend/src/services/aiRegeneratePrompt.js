@@ -6,7 +6,13 @@ function snapshotRegenerateFrom(meta, kind) {
   if (!meta || !kind) return null;
   if (kind === 'summary') {
     const text = meta.summary?.text?.trim();
-    return text ? { kind: 'summary', text: text.slice(0, 600) } : null;
+    const brief = meta.summary?.brief?.trim();
+    if (!text && !brief) return null;
+    return {
+      kind: 'summary',
+      text: (text || '').slice(0, 600),
+      brief: (brief || '').slice(0, 200),
+    };
   }
   if (kind === 'mindmap') {
     const tree = meta.mindmap?.tree;
@@ -28,7 +34,13 @@ function normalizeRegenerateFrom(raw) {
   const kind = raw.kind;
   if (kind === 'summary') {
     const text = String(raw.text || '').trim();
-    return text ? { kind: 'summary', text: text.slice(0, 600) } : null;
+    const brief = String(raw.brief || '').trim();
+    if (!text && !brief) return null;
+    return {
+      kind: 'summary',
+      text: text.slice(0, 600),
+      brief: brief.slice(0, 200),
+    };
   }
   if (kind === 'mindmap') {
     const tree = raw.tree;
@@ -61,8 +73,9 @@ function formatRegenerateUserBlock(from) {
   if (!from) return '';
   if (from.kind === 'summary') {
     return (
-      `【重新生成】换理解角度或补漏，勿照抄上一版；仍须解读原文、忠实正文，不要写成摘要清单。\n` +
-      `上一版：${from.text}`
+      `【重新生成】换理解角度或补漏，勿照抄上一版；仍须解读原文、忠实正文，不要写成摘要清单。总结也重写，勿照抄。\n` +
+      `上一版解读：${from.text || '（无）'}\n` +
+      `上一版总结：${from.brief || '（无）'}`
     );
   }
   if (from.kind === 'mindmap') {

@@ -163,6 +163,7 @@ class AiSummaryMeta {
   const AiSummaryMeta({
     this.status = 'none',
     this.text,
+    this.brief,
     this.contentHash,
     this.error,
     this.generatedAt,
@@ -172,6 +173,8 @@ class AiSummaryMeta {
 
   final String status;
   final String? text;
+  /// 分享用短总结。旧数据可能为空。
+  final String? brief;
   final String? contentHash;
   final String? error;
   final DateTime? generatedAt;
@@ -182,6 +185,16 @@ class AiSummaryMeta {
   bool get isSuccess => status == 'success';
   bool get isFailed => status == 'failed';
   bool get hasText => text != null && text!.trim().isNotEmpty;
+  bool get hasBrief => brief != null && brief!.trim().isNotEmpty;
+
+  /// 分享正文：优先总结；没有时用解读的第一段。
+  String get shareText {
+    if (hasBrief) return brief!.trim();
+    final full = (text ?? '').trim();
+    if (full.isEmpty) return '';
+    final first = full.split(RegExp(r'\n\s*\n')).first.trim();
+    return first.isEmpty ? full : first;
+  }
 
   static String? _normalizeText(Object? value) {
     if (value is! String) return null;
@@ -194,6 +207,7 @@ class AiSummaryMeta {
     return AiSummaryMeta(
       status: json['status'] as String? ?? 'none',
       text: _normalizeText(json['text']),
+      brief: _normalizeText(json['brief']),
       contentHash: json['contentHash'] as String?,
       error: json['error'] as String?,
       generatedAt: AiTagsMeta._parseTime(json['generatedAt']),
