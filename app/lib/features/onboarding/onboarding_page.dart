@@ -37,92 +37,103 @@ class OnboardingPage extends StatelessWidget {
     return Scaffold(
       backgroundColor: Colors.white,
       body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(24, 40, 24, 28),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              const Text(
-                AppBrand.name,
-                style: TextStyle(
-                  fontSize: 28,
-                  fontWeight: FontWeight.w700,
-                  color: _text,
-                ),
-              ),
-              const SizedBox(height: 12),
-              const Text(
-                '把好内容收到一处，想看的时候翻得出来。',
-                style: TextStyle(
-                  fontSize: 15,
-                  color: _muted,
-                  height: 1.4,
-                ),
-              ),
-              const SizedBox(height: 28),
-              const Text(
-                '三种收藏方式（任选）',
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w500,
-                  color: _muted,
-                ),
-              ),
-              const SizedBox(height: 12),
-              const _WayCard(
-                title: '系统分享',
-                desc:
-                    '在微信、Safari、抖音等 App 点「分享」，选择「${AppBrand.name}」即可保存',
-              ),
-              const SizedBox(height: 10),
-              const _WayCard(
-                title: '复制链接',
-                desc: '在其他 App 复制可用链接后打开本 App，会自动读取剪贴板并保存',
-              ),
-              const SizedBox(height: 10),
-              const _WayCard(
-                title: '快捷指令',
-                desc: 'iOS 可加到主屏幕、控制中心或「轻点背面」，互不影响：复制链接后点一下即可保存',
-              ),
-              const Spacer(),
-              SizedBox(
-                height: 52,
-                child: FilledButton(
-                  onPressed: () => _start(context),
-                  style: FilledButton.styleFrom(
-                    backgroundColor: _blue,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                  ),
-                  child: const Text(
-                    '开始使用',
+        child: Column(
+          children: [
+            Expanded(
+              child: ListView(
+                padding: const EdgeInsets.fromLTRB(24, 40, 24, 16),
+                children: const [
+                  Text(
+                    AppBrand.name,
                     style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w500,
-                      color: Colors.white,
+                      fontSize: 28,
+                      fontWeight: FontWeight.w700,
+                      color: _text,
                     ),
                   ),
-                ),
-              ),
-              const SizedBox(height: 16),
-              GestureDetector(
-                onTap: () => _openShortcutsHelp(context),
-                behavior: HitTestBehavior.opaque,
-                child: const Padding(
-                  padding: EdgeInsets.symmetric(vertical: 4),
-                  child: Text(
-                    '查看 iOS 快捷指令说明',
-                    textAlign: TextAlign.center,
+                  SizedBox(height: 12),
+                  Text(
+                    '把好内容收到一处，想看的时候翻得出来。',
+                    style: TextStyle(
+                      fontSize: 15,
+                      color: _muted,
+                      height: 1.4,
+                    ),
+                  ),
+                  SizedBox(height: 28),
+                  Text(
+                    '三种收藏方式（任选）',
                     style: TextStyle(
                       fontSize: 13,
-                      color: _blue,
+                      fontWeight: FontWeight.w500,
+                      color: _muted,
                     ),
                   ),
-                ),
+                  SizedBox(height: 12),
+                  _WayCard(
+                    title: '系统分享',
+                    desc:
+                        '在微信、Safari、抖音等 App 点「分享」，选择「${AppBrand.name}」即可保存',
+                  ),
+                  SizedBox(height: 10),
+                  _WayCard(
+                    title: '复制链接',
+                    desc: '在其他 App 复制可用链接后打开本 App，会自动读取剪贴板并保存',
+                  ),
+                  SizedBox(height: 10),
+                  _WayCard(
+                    title: '快捷指令',
+                    desc:
+                        'iOS 可加到主屏幕、控制中心或「轻点背面」，互不影响：复制链接后点一下即可保存',
+                  ),
+                ],
               ),
-            ],
-          ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(24, 8, 24, 28),
+              child: Column(
+                children: [
+                  SizedBox(
+                    width: double.infinity,
+                    height: 52,
+                    child: FilledButton(
+                      onPressed: () => _start(context),
+                      style: FilledButton.styleFrom(
+                        backgroundColor: _blue,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                      ),
+                      child: const Text(
+                        '开始使用',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w500,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  GestureDetector(
+                    onTap: () => _openShortcutsHelp(context),
+                    behavior: HitTestBehavior.opaque,
+                    child: const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 4),
+                      child: Text(
+                        '查看 iOS 快捷指令说明',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: _blue,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
         ),
       ),
     );

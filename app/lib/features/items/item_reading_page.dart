@@ -33,6 +33,7 @@ import 'package:super_collection/features/items/reading_more_sheet.dart';
 import 'package:super_collection/features/items/reading_content_edit_page.dart';
 import 'package:super_collection/features/items/reading_mindmap_sheet.dart';
 import 'package:super_collection/features/items/reading_note_sheet.dart';
+import 'package:super_collection/features/items/reading_quote_share.dart';
 import 'package:super_collection/features/items/reading_reparse_confirm_dialog.dart';
 import 'package:super_collection/features/items/reading_summary_sheet.dart';
 import 'package:super_collection/features/settings/quota_gate.dart';
@@ -865,6 +866,46 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
     AppToast.show(context, '已复制');
   }
 
+  Future<void> _onShareQuote(
+    EditableTextState state,
+    String text, {
+    Rect? shareOrigin,
+  }) async {
+    _clearToolbar(state);
+    if (!mounted) return;
+    try {
+      await shareReadingQuote(
+        quote: text,
+        title: (_item.title ?? '').trim(),
+        link: _linkToCopy,
+        coverUrl: _item.coverImageUrl,
+        pageUrl: _item.sourcePageUrl,
+        sharePositionOrigin: shareOrigin,
+        screenSize: MediaQuery.sizeOf(context),
+      );
+    } catch (error, stack) {
+      debugPrint('quote share failed: $error\n$stack');
+      if (mounted) AppToast.show(context, '分享失败，请稍后重试');
+    }
+  }
+
+  Future<void> _shareExistingQuote(String quote, Rect? shareOrigin) async {
+    try {
+      await shareReadingQuote(
+        quote: quote,
+        title: (_item.title ?? '').trim(),
+        link: _linkToCopy,
+        coverUrl: _item.coverImageUrl,
+        pageUrl: _item.sourcePageUrl,
+        sharePositionOrigin: shareOrigin,
+        screenSize: MediaQuery.sizeOf(context),
+      );
+    } catch (error, stack) {
+      debugPrint('quote share failed: $error\n$stack');
+      if (mounted) AppToast.show(context, '分享失败，请稍后重试');
+    }
+  }
+
   void _openAnnotation(ItemAnnotation ann) {
     final segmentKey = ann.transcriptSegmentKey;
     if (segmentKey != null) {
@@ -880,6 +921,7 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
               itemId: _item.id,
               segmentKey: segmentKey,
               focusAnnotationId: ann.id,
+              onShareQuote: _shareExistingQuote,
             ),
           ),
         );
@@ -892,6 +934,7 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
       annotation: ann,
       onChanged: _loadAnnotations,
       isPro: _isPro,
+      onShare: _shareExistingQuote,
     );
   }
 
@@ -1577,6 +1620,14 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
           label: '复制',
           onTap: () => _onCopy(editableTextState, selected),
         ),
+        _ToolbarAction(
+          label: '分享',
+          onTapWithOrigin: (origin) => _onShareQuote(
+            editableTextState,
+            selected,
+            shareOrigin: origin,
+          ),
+        ),
       ],
     );
   }
@@ -1740,6 +1791,7 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
                       segmentKey: TranscriptTargets.segmentVideoUrl,
                       hidePendingLoading: _item.isAiAwaitingTranscript,
                       fontSize: _bodyFontSize,
+                      onShareQuote: _shareExistingQuote,
                     ),
                     const SizedBox(height: 18),
                   ] else if (_showReadingImages) ...[
@@ -1772,9 +1824,10 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
                       platform: _item.platform,
                       pageAudio: _pageAudio,
                       onRefreshInlineVideo: _platformNeedsVideoRefresh
-                          ? _refreshInlineVideo
-                          : null,
-                    )
+                      ? _refreshInlineVideo
+                      : null,
+                  onShareQuote: _shareExistingQuote,
+                )
                   else
                     _AnnotatedBodyStack(
                       text: body,
@@ -1998,6 +2051,7 @@ class _InlineArticleBody extends StatelessWidget {
     this.platform,
     this.pageAudio,
     this.onRefreshInlineVideo,
+    this.onShareQuote,
   });
 
   final List<ArticleBlock> blocks;
@@ -2016,6 +2070,7 @@ class _InlineArticleBody extends StatelessWidget {
   final String? platform;
   final ReadingMediaController? pageAudio;
   final Future<String?> Function(int index)? onRefreshInlineVideo;
+  final Future<void> Function(String quote, Rect? shareOrigin)? onShareQuote;
 
   static const _text = Color(0xFF1F242E);
   static const _highlight = Color(0xFFFFF2C7);
@@ -2257,6 +2312,7 @@ class _InlineArticleBody extends StatelessWidget {
                 itemId: itemId,
                 segmentKey: segmentKey,
                 fontSize: fontSize,
+                onShareQuote: onShareQuote,
               ),
             ],
           ),
@@ -2926,20 +2982,38 @@ extension on List<({Rect rect, ItemAnnotation ann, bool showNoteIcon})> {
   }
 }
 
-/// Figma：深色圆角工具条「高亮 / 加批注 / 复制」
+/// 深色圆角工具条「高亮 / 加批注 / 复制 / 分享」
 class _ToolbarAction extends StatelessWidget {
-  const _ToolbarAction({required this.label, required this.onTap});
+  const _ToolbarAction({
+    required this.label,
+    this.onTap,
+    this.onTapWithOrigin,
+  }) : assert(onTap != null || onTapWithOrigin != null);
 
   final String label;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
+  final void Function(Rect? origin)? onTapWithOrigin;
+
+  Rect? _origin(BuildContext context) {
+    final box = context.findRenderObject() as RenderBox?;
+    if (box == null || !box.hasSize || box.size.isEmpty) return null;
+    return box.localToGlobal(Offset.zero) & box.size;
+  }
 
   @override
   Widget build(BuildContext context) {
     return InkWell(
-      onTap: onTap,
+      onTap: () {
+        final report = onTapWithOrigin;
+        if (report != null) {
+          report(_origin(context));
+          return;
+        }
+        onTap?.call();
+      },
       borderRadius: BorderRadius.circular(6),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         child: Text(
           label,
           style: const TextStyle(

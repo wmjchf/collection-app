@@ -33,7 +33,7 @@ import 'package:super_collection/features/settings/quota_gate.dart';
 import 'package:super_collection/features/settings/trial_expiry_banner.dart';
 import 'package:super_collection/features/settings/usage_repository.dart';
 
-/// 一级页：首页 — 未读 / 漫游 / 最近阅读
+/// 一级页：首页 — 未读 / 漫游
 class HomePage extends StatefulWidget {
   const HomePage({
     super.key,
@@ -693,7 +693,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   @override
   Widget build(BuildContext context) {
     final unread = _data?.unread.items ?? const <CollectionItem>[];
-    final recentRead = _data?.recentRead.items ?? const <CollectionItem>[];
     final roam = _roamItems;
 
     return Scaffold(
@@ -772,18 +771,25 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                   )
                 : LayoutBuilder(
                     builder: (context, constraints) {
-                      // 未读/最近阅读/漫游空态与叠卡同高，避免有无数据切换抖动
-                      const sectionGap = 16.0;
-                      const stackH = UnreadStackPreview.height;
-                      const roamH = RoamStackPreview.height;
+                      // 未读固定；间距收紧后的高度给漫游叠卡
+                      const sectionGap = 8.0;
+                      final stackH =
+                          UnreadStackPreview.heightForCount(unread.length);
+                      const headerBlock = 30.0;
+                      final padTop = 12.0;
+                      final padBottom =
+                          12 + MediaQuery.paddingOf(context).bottom;
+                      final roamH = (constraints.maxHeight -
+                              padTop -
+                              padBottom -
+                              headerBlock -
+                              stackH -
+                              sectionGap -
+                              headerBlock)
+                          .clamp(RoamStackPreview.defaultHeight, 420.0);
                       return ListView(
                         physics: const AlwaysScrollableScrollPhysics(),
-                        padding: EdgeInsets.fromLTRB(
-                          16,
-                          12,
-                          16,
-                          24 + MediaQuery.paddingOf(context).bottom,
-                        ),
+                        padding: EdgeInsets.fromLTRB(16, padTop, 16, padBottom),
                         children: [
                           TrialExpiryBannerHost(
                             margin: const EdgeInsets.only(bottom: 12),
@@ -818,26 +824,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                             moreLabel: roamMoreLabel(isPro: _isPro),
                             onMore: _openRoamList,
                             onPlay: _openRoamPlayer,
-                          ),
-                          const SizedBox(height: sectionGap),
-                          _HomeItemStackSection(
-                            title: recentReadSectionTitle(isPro: _isPro),
-                            emptyText: recentReadEmptyText(isPro: _isPro),
-                            emptyIcon: Icons.history_rounded,
-                            emptyHeight: stackH,
-                            items: [
-                              for (final item in recentRead)
-                                previewForRecentRead(item),
-                            ],
-                            onMore: () => _openFilter(
-                              'recent_read',
-                              recentReadSectionTitle(isPro: _isPro),
-                            ),
-                            onOpenFront: (preview) {
-                              final item = recentRead
-                                  .firstWhere((e) => e.id == preview.id);
-                              _openItem(item, entry: 'recent_read');
-                            },
                           ),
                         ],
                       );
@@ -933,7 +919,11 @@ class _HomeRoamSection extends StatelessWidget {
                     ],
                   ),
                 )
-              : RoamStackPreview(items: items, onTap: onPlay),
+              : RoamStackPreview(
+                  items: items,
+                  height: emptyHeight,
+                  onTap: onPlay,
+                ),
         ),
       ],
     );

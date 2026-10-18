@@ -4,7 +4,8 @@ import 'package:flutter/foundation.dart';
 import 'package:super_collection/core/network/api_client.dart';
 import 'package:super_collection/features/auth/auth_repository.dart';
 
-const _kDefaultBasicLifetimeId = 'com.bufang.supercollection.basic';
+const _kDefaultBasicMonthlyId = 'com.bufang.supercollection.basic.monthly';
+const _kDefaultBasicYearlyId = 'com.bufang.supercollection.basic.yearly';
 const _kDefaultPrinceMonthlyId = 'com.bufang.supercollection.monthly';
 const _kDefaultPrinceYearlyId = 'com.bufang.supercollection.yearly';
 const _kDefaultEmperorMonthlyId = 'com.bufang.supercollection.emperor.monthly';
@@ -268,21 +269,21 @@ class TierProductIds {
 
 class BillingProductsConfig {
   const BillingProductsConfig({
-    required this.basicLifetime,
+    required this.basic,
     required this.prince,
     required this.emperor,
     required this.quotas,
   });
 
-  /// 普通会员一次买断商品 id
-  final String basicLifetime;
+  final TierProductIds basic;
   final TierProductIds prince;
   final TierProductIds emperor;
   final PlanQuotasTable quotas;
 
   /// 全部商品 id（StoreKit 查询用）
   Set<String> get allIds => {
-        basicLifetime,
+        basic.monthly,
+        basic.yearly,
         prince.monthly,
         prince.yearly,
         emperor.monthly,
@@ -332,7 +333,8 @@ class UsageRepository {
     try {
       final json = await _api.get('/api/billing/products', accessToken: token);
       final products = json['products'];
-      var basicLifetime = _kDefaultBasicLifetimeId;
+      var basicMonthly = _kDefaultBasicMonthlyId;
+      var basicYearly = _kDefaultBasicYearlyId;
       var princeMonthly = _kDefaultPrinceMonthlyId;
       var princeYearly = _kDefaultPrinceYearlyId;
       var emperorMonthly = _kDefaultEmperorMonthlyId;
@@ -341,8 +343,10 @@ class UsageRepository {
       if (products is Map) {
         final basic = products['basic'];
         if (basic is Map) {
-          final life = (basic['lifetime'] as String?)?.trim();
-          if (life != null && life.isNotEmpty) basicLifetime = life;
+          final m = (basic['monthly'] as String?)?.trim();
+          final y = (basic['yearly'] as String?)?.trim();
+          if (m != null && m.isNotEmpty) basicMonthly = m;
+          if (y != null && y.isNotEmpty) basicYearly = y;
         }
         final prince = products['prince'];
         if (prince is Map) {
@@ -373,7 +377,7 @@ class UsageRepository {
         );
       }
       return BillingProductsConfig(
-        basicLifetime: basicLifetime,
+        basic: TierProductIds(monthly: basicMonthly, yearly: basicYearly),
         prince: TierProductIds(monthly: princeMonthly, yearly: princeYearly),
         emperor: TierProductIds(
           monthly: emperorMonthly,
@@ -383,7 +387,10 @@ class UsageRepository {
       );
     } catch (_) {
       return const BillingProductsConfig(
-        basicLifetime: _kDefaultBasicLifetimeId,
+        basic: TierProductIds(
+          monthly: _kDefaultBasicMonthlyId,
+          yearly: _kDefaultBasicYearlyId,
+        ),
         prince: TierProductIds(
           monthly: _kDefaultPrinceMonthlyId,
           yearly: _kDefaultPrinceYearlyId,

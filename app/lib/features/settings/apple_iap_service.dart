@@ -102,8 +102,8 @@ int _sk2PeriodApproxDays(SK2SubscriptionPeriod period) {
 
 /// App Store 商品 id（须与 ASC / 后端 env 一致）
 class IapProductIds {
-  /// 普通会员：非消耗型一次买断
-  static const basicLifetime = 'com.bufang.supercollection.basic';
+  static const basicMonthly = 'com.bufang.supercollection.basic.monthly';
+  static const basicYearly = 'com.bufang.supercollection.basic.yearly';
   static const princeMonthly = 'com.bufang.supercollection.monthly';
   static const princeYearly = 'com.bufang.supercollection.yearly';
   static const emperorMonthly = 'com.bufang.supercollection.emperor.monthly';
@@ -115,7 +115,8 @@ class IapProductIds {
   static const yearly = princeYearly;
 
   static const all = <String>{
-    basicLifetime,
+    basicMonthly,
+    basicYearly,
     princeMonthly,
     princeYearly,
     emperorMonthly,

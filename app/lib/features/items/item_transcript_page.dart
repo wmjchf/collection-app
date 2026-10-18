@@ -10,6 +10,7 @@ import 'package:super_collection/core/ui/pro_copy.dart';
 import 'package:super_collection/features/items/item_models.dart';
 import 'package:super_collection/features/items/items_repository.dart';
 import 'package:super_collection/features/items/reading_annotation_sheet.dart';
+import 'package:super_collection/features/items/reading_quote_share.dart';
 import 'package:super_collection/features/items/reading_font_prefs.dart';
 import 'package:super_collection/features/items/transcript_display.dart';
 import 'package:super_collection/features/items/transcript_models.dart';
@@ -25,6 +26,11 @@ class ItemTranscriptPage extends StatefulWidget {
     this.itemId,
     this.segmentKey,
     this.focusAnnotationId,
+    this.onShareQuote,
+    this.shareTitle,
+    this.shareLink,
+    this.shareCoverUrl,
+    this.sharePageUrl,
   });
 
   final String text;
@@ -35,6 +41,12 @@ class ItemTranscriptPage extends StatefulWidget {
   final String? segmentKey;
   /// 打开后滚动到该高亮/批注（如漫游进入）
   final int? focusAnnotationId;
+  /// 已有高亮/批注的摘句分享。传入后优先于下方字段。
+  final Future<void> Function(String quote, Rect? shareOrigin)? onShareQuote;
+  final String? shareTitle;
+  final String? shareLink;
+  final String? shareCoverUrl;
+  final String? sharePageUrl;
 
   @override
   State<ItemTranscriptPage> createState() => _ItemTranscriptPageState();
@@ -372,6 +384,28 @@ class _ItemTranscriptPageState extends State<ItemTranscriptPage> {
     AppToast.show(context, '已复制');
   }
 
+  Future<void> _shareExistingQuote(String quote, Rect? shareOrigin) async {
+    final custom = widget.onShareQuote;
+    if (custom != null) {
+      await custom(quote, shareOrigin);
+      return;
+    }
+    try {
+      await shareReadingQuote(
+        quote: quote,
+        title: (widget.shareTitle ?? '').trim(),
+        link: widget.shareLink,
+        coverUrl: widget.shareCoverUrl,
+        pageUrl: widget.sharePageUrl,
+        sharePositionOrigin: shareOrigin,
+        screenSize: MediaQuery.sizeOf(context),
+      );
+    } catch (error, stack) {
+      debugPrint('quote share failed: $error\n$stack');
+      if (mounted) AppToast.show(context, '分享失败，请稍后重试');
+    }
+  }
+
   void _openAnnotation(ItemAnnotation ann) {
     if (widget.itemId == null || ann.id < 0) return;
     showAnnotationDetailSheet(
@@ -380,6 +414,7 @@ class _ItemTranscriptPageState extends State<ItemTranscriptPage> {
       annotation: ann,
       onChanged: _load,
       isPro: _isPro,
+      onShare: _shareExistingQuote,
     );
   }
 

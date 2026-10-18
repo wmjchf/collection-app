@@ -12,6 +12,7 @@ class TranscriptSegmentPanel extends StatelessWidget {
     this.segmentKey,
     this.hidePendingLoading = false,
     this.fontSize = ReadingFontPrefs.defaultSize,
+    this.onShareQuote,
   });
 
   final TranscriptSegment? segment;
@@ -21,6 +22,7 @@ class TranscriptSegmentPanel extends StatelessWidget {
   final bool hidePendingLoading;
   /// 与阅读页正文字号同步（预览与文稿全文）
   final double fontSize;
+  final Future<void> Function(String quote, Rect? shareOrigin)? onShareQuote;
 
   static const _text = Color(0xFF1F242E);
   static const _muted = Color(0xFF737A85);
@@ -37,6 +39,7 @@ class TranscriptSegmentPanel extends StatelessWidget {
           fontSize: fontSize,
           itemId: itemId,
           segmentKey: segmentKey,
+          onShareQuote: onShareQuote,
         ),
       ),
     );

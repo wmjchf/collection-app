@@ -106,7 +106,7 @@ router.post('/checkout', async (req, res) => {
 
 /**
  * POST /api/billing/dev/grant-basic — 开发环境授予普通会员（仅 SMS_DEV_MODE）
- * body: { days?: number } 默认永久（买断）；传正数可临时授予
+ * body: { days?: number } 默认 30；传 0 表示不限期
  */
 router.post('/dev/grant-basic', async (req, res, next) => {
   try {
@@ -114,12 +114,8 @@ router.post('/dev/grant-basic', async (req, res, next) => {
       return res.status(403).json({ message: '仅开发模式可用' });
     }
     const rawDays = req.body?.days;
-    const unlimited =
-      rawDays == null ||
-      rawDays === '' ||
-      rawDays === 0 ||
-      rawDays === '0';
-    const days = unlimited ? null : Number(rawDays);
+    const unlimited = rawDays === 0 || rawDays === '0';
+    const days = unlimited ? null : Number(rawDays != null ? rawDays : 30);
     if (!unlimited && (!Number.isFinite(days) || days <= 0)) {
       return res.status(400).json({ message: 'days 无效' });
     }

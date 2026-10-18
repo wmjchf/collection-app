@@ -234,12 +234,11 @@ async function verifyAndActivate({ userId, transactionId, productId, jws }) {
     throw Object.assign(new Error('未知的商品'), { status: 400 });
   }
 
-  // 普通会员为非消耗型买断：不开到期时间
-  const effectiveExpires =
-    plan === planService.PLAN_BASIC ? null : expiresAt;
+  // 旧版普通会员买断仍不设到期；月付/年付按订阅到期
+  const legacyLifetime = planService.isLegacyBasicLifetime(tx.productId);
+  const effectiveExpires = legacyLifetime ? null : expiresAt;
 
-  const trial =
-    plan === planService.PLAN_BASIC ? { isTrial: false } : trialFieldsFromTx(tx);
+  const trial = legacyLifetime ? { isTrial: false } : trialFieldsFromTx(tx);
   const sub = await subscriptionService.activateSubscription({
     userId,
     plan,
@@ -254,7 +253,7 @@ async function verifyAndActivate({ userId, transactionId, productId, jws }) {
       type: tx.type || null,
       purchaseDate: tx.purchaseDate || null,
       expiresDate: effectiveExpires ? tx.expiresDate || null : null,
-      lifetime: plan === planService.PLAN_BASIC,
+      lifetime: legacyLifetime,
       ...trial,
     },
   });
@@ -406,7 +405,8 @@ function publicProductConfig() {
     bundleId: a.bundleId,
     products: {
       basic: {
-        lifetime: a.productBasic,
+        monthly: a.productBasicMonthly,
+        yearly: a.productBasicYearly,
       },
       prince: {
         monthly: princeMonthly,
