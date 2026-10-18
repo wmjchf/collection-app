@@ -10,6 +10,7 @@ import 'package:super_collection/features/items/ai_meta_models.dart';
 import 'package:super_collection/features/items/ai_scholar_copy.dart';
 import 'package:super_collection/features/items/item_models.dart';
 import 'package:super_collection/features/items/items_repository.dart';
+import 'package:super_collection/features/items/reading_quote_share.dart';
 import 'package:super_collection/features/items/reading_regenerate_confirm_dialog.dart';
 import 'package:super_collection/features/items/transcript_models.dart';
 import 'package:super_collection/features/settings/quota_gate.dart';
@@ -184,6 +185,30 @@ class _ReadingSummarySheetState extends State<_ReadingSummarySheet> {
     AppToast.show(context, '已复制');
   }
 
+  Future<void> _shareSummary(Rect? origin) async {
+    final text = (_meta.text ?? '').trim();
+    if (text.isEmpty) return;
+    final canonical = _item.canonicalUrl?.trim();
+    final link = (canonical != null && canonical.isNotEmpty)
+        ? canonical
+        : _item.url.trim();
+    try {
+      await shareReadingQuote(
+        quote: text,
+        title: (_item.title ?? '').trim(),
+        link: link,
+        coverUrl: _item.shareCoverUrl,
+        pageUrl: _item.sourcePageUrl,
+        kind: ReadingShareKind.summary,
+        sharePositionOrigin: origin,
+        screenSize: MediaQuery.sizeOf(context),
+      );
+    } catch (error, stack) {
+      debugPrint('summary share failed: $error\n$stack');
+      if (mounted) AppToast.show(context, '分享失败，请稍后重试');
+    }
+  }
+
   Future<void> _poll() async {
     final gen = ++_pollGen;
     final awaitingTranscript = _meta.awaitTranscript;
@@ -303,6 +328,30 @@ class _ReadingSummarySheetState extends State<_ReadingSummarySheet> {
                     ),
                   ),
                   if (showRegen) ...[
+                    Builder(
+                      builder: (buttonContext) => GestureDetector(
+                        onTap: () {
+                          final box =
+                              buttonContext.findRenderObject() as RenderBox?;
+                          final origin = box != null &&
+                                  box.hasSize &&
+                                  !box.size.isEmpty
+                              ? box.localToGlobal(Offset.zero) & box.size
+                              : null;
+                          unawaited(_shareSummary(origin));
+                        },
+                        behavior: HitTestBehavior.opaque,
+                        child: const Padding(
+                          padding: EdgeInsets.all(4),
+                          child: Icon(
+                            Icons.ios_share_rounded,
+                            size: 20,
+                            color: _muted,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
                     GestureDetector(
                       onTap: () => unawaited(_copySummary()),
                       behavior: HitTestBehavior.opaque,

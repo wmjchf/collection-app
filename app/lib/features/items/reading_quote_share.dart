@@ -1,9 +1,9 @@
+import 'dart:async';
 import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:super_collection/core/network/media_http_headers.dart';
@@ -11,10 +11,17 @@ import 'package:super_collection/features/items/cover_image.dart';
 
 const _quoteStyle = TextStyle(
   color: Color(0xFF1F242E),
-  fontSize: 17,
+  fontSize: 16,
   height: 1.8,
   letterSpacing: 0.2,
   fontWeight: FontWeight.w400,
+);
+
+const _markStyle = TextStyle(
+  color: Color(0xFFB7C3B4),
+  fontSize: 22,
+  height: 1,
+  fontWeight: FontWeight.w500,
 );
 
 const _cardWidth = 360.0;
@@ -28,6 +35,27 @@ const _coverHeight = 180.0;
 const _qrSize = 64.0;
 const _qrGap = 32.0;
 
+/// 分享图的三种正文来源，卡片上用类型名区分。
+enum ReadingShareKind {
+  quote,
+  summary,
+  note;
+
+  String get label => switch (this) {
+        ReadingShareKind.quote => '摘句',
+        ReadingShareKind.summary => 'AI 解读',
+        ReadingShareKind.note => '感想',
+      };
+}
+
+const _kindStyle = TextStyle(
+  color: Color(0xFF8FA394),
+  fontSize: 12,
+  height: 1.2,
+  letterSpacing: 1.2,
+  fontWeight: FontWeight.w600,
+);
+
 /// 后台绘摘句图并唤起系统分享面板（与思维导图分享同一条路径）。
 Future<void> shareReadingQuote({
   required String quote,
@@ -35,6 +63,7 @@ Future<void> shareReadingQuote({
   String? link,
   String? coverUrl,
   String? pageUrl,
+  ReadingShareKind kind = ReadingShareKind.quote,
   Rect? sharePositionOrigin,
   Size? screenSize,
 }) async {
@@ -44,6 +73,7 @@ Future<void> shareReadingQuote({
     link: link?.trim() ?? '',
     coverUrl: coverUrl,
     pageUrl: pageUrl,
+    kind: kind,
   );
   final origin = _effectiveShareOrigin(sharePositionOrigin, screenSize);
   final file = XFile.fromData(
@@ -66,19 +96,30 @@ Future<Uint8List> renderReadingQuotePng({
   String link = '',
   String? coverUrl,
   String? pageUrl,
-  double pixelRatio = 3,
+  ReadingShareKind kind = ReadingShareKind.quote,
+  double pixelRatio = 2,
 }) async {
+  final plain = _plainQuote(quote);
   final quotePainter = TextPainter(
-    text: TextSpan(text: _closeQuote(quote), style: _quoteStyle),
+    text: TextSpan(text: plain, style: _quoteStyle),
     textDirection: TextDirection.ltr,
   )..layout(maxWidth: _cardWidth - _quotePadX * 2);
   final overflows = quotePainter.height > _quoteMaxHeight + 1;
   final quoteHeight = overflows ? _quoteMaxHeight : quotePainter.height;
   final quoteWidth = _cardWidth - _quotePadX * 2;
   final openMark = TextPainter(
-    text: const TextSpan(text: '「', style: _quoteStyle),
+    text: const TextSpan(text: '「', style: _markStyle),
     textDirection: TextDirection.ltr,
   )..layout();
+  final closeMark = TextPainter(
+    text: const TextSpan(text: '」', style: _markStyle),
+    textDirection: TextDirection.ltr,
+  )..layout();
+  final kindPainter = TextPainter(
+    text: TextSpan(text: kind.label, style: _kindStyle),
+    textDirection: TextDirection.ltr,
+  )..layout(maxWidth: _cardWidth - _quotePadX * 2);
+  const kindGap = 12.0;
   final cover = await _loadCover(coverUrl, pageUrl);
   final hasTitle = title.isNotEmpty;
   final hasQr = link.isNotEmpty;
@@ -109,7 +150,8 @@ Future<Uint8List> renderReadingQuotePng({
       : math.max(titlePainter?.height ?? 0, hasQr ? _qrSize : 0);
 
   final coverBlock = cover == null ? 0.0 : _coverHeight;
-  final quoteTop = coverBlock + _padTop;
+  final kindTop = coverBlock + _padTop;
+  final quoteTop = kindTop + kindPainter.height + kindGap;
   final contentW = _cardWidth;
   final contentH = quoteTop +
       quoteHeight +
@@ -134,6 +176,15 @@ Future<Uint8List> renderReadingQuotePng({
     cover.dispose();
   }
 
+  final kindGlyphTop = kindPainter
+      .getBoxesForSelection(const TextSelection(baseOffset: 0, extentOffset: 1))
+      .firstOrNull
+      ?.top;
+  kindPainter.paint(
+    canvas,
+    Offset(_quotePadX, kindTop - (kindGlyphTop ?? 0)),
+  );
+
   canvas.save();
   canvas.clipRect(Rect.fromLTWH(_quotePadX, quoteTop, quoteWidth, quoteHeight));
   quotePainter.paint(canvas, Offset(_quotePadX, quoteTop));
@@ -153,6 +204,26 @@ Future<Uint8List> renderReadingQuotePng({
       quoteTop + (quoteGlyphTop ?? 0) - (openGlyphTop ?? 0),
     ),
   );
+  if (plain.isNotEmpty) {
+    final closeGlyphTop = closeMark
+        .getBoxesForSelection(
+          const TextSelection(baseOffset: 0, extentOffset: 1),
+        )
+        .firstOrNull
+        ?.top;
+    final closeAt = _closeMarkAnchor(
+      quotePainter,
+      quoteHeight: quoteHeight,
+      overflows: overflows,
+    );
+    closeMark.paint(
+      canvas,
+      Offset(
+        _quotePadX + closeAt.dx + 2,
+        quoteTop + closeAt.dy - (closeGlyphTop ?? 0),
+      ),
+    );
+  }
   if (overflows) {
     _paintEdgeFade(
       canvas,
@@ -183,14 +254,13 @@ Future<Uint8List> renderReadingQuotePng({
       QrPainter(
         data: link,
         version: QrVersions.auto,
-        gapless: true,
         eyeStyle: const QrEyeStyle(
-          eyeShape: QrEyeShape.square,
-          color: Color(0xFF000000),
+          eyeShape: QrEyeShape.circle,
+          color: Color(0xFF1F242E),
         ),
         dataModuleStyle: const QrDataModuleStyle(
-          dataModuleShape: QrDataModuleShape.square,
-          color: Color(0xFF000000),
+          dataModuleShape: QrDataModuleShape.circle,
+          color: Color(0xFF1F242E),
         ),
       ).paint(canvas, const Size(_qrSize, _qrSize));
       canvas.restore();
@@ -199,6 +269,8 @@ Future<Uint8List> renderReadingQuotePng({
 
   quotePainter.dispose();
   openMark.dispose();
+  closeMark.dispose();
+  kindPainter.dispose();
   titlePainter?.dispose();
 
   final picture = recorder.endRecording();
@@ -263,26 +335,63 @@ Future<ui.Image?> _loadCover(String? url, String? pageUrl) async {
   final uri = Uri.tryParse(resolved);
   if (uri == null || !uri.hasScheme) return null;
   try {
-    final response = await http.get(
-      uri,
+    final provider = NetworkImage(
+      resolved,
       headers: mediaHttpHeadersFor(resolved, pageUrl: pageUrl),
     );
-    if (response.statusCode != 200 || response.bodyBytes.isEmpty) return null;
-    final codec = await ui.instantiateImageCodec(response.bodyBytes);
-    final frame = await codec.getNextFrame();
-    codec.dispose();
-    return frame.image;
+    final stream = provider.resolve(const ImageConfiguration());
+    final completer = Completer<ui.Image?>();
+    late final ImageStreamListener listener;
+    listener = ImageStreamListener(
+      (info, _) {
+        stream.removeListener(listener);
+        final copy = info.image.clone();
+        if (!completer.isCompleted) {
+          completer.complete(copy);
+        } else {
+          copy.dispose();
+        }
+      },
+      onError: (Object error, StackTrace? _) {
+        debugPrint('quote cover load failed: $error');
+        if (!completer.isCompleted) completer.complete(null);
+        stream.removeListener(listener);
+      },
+    );
+    stream.addListener(listener);
+    return completer.future;
   } catch (error) {
     debugPrint('quote cover load failed: $error');
     return null;
   }
 }
 
-String _closeQuote(String quote) {
+String _plainQuote(String quote) {
   var text = quote.trim();
   if (text.startsWith('「')) text = text.substring(1);
   if (text.endsWith('」')) text = text.substring(0, text.length - 1);
-  return '$text」';
+  return text;
+}
+
+/// 结尾引号跟在最后一字右侧；正文被裁切时跟在可见末字右侧。
+Offset _closeMarkAnchor(
+  TextPainter painter, {
+  required double quoteHeight,
+  required bool overflows,
+}) {
+  final length = painter.plainText.length;
+  if (length == 0) return Offset.zero;
+  var end = length;
+  if (overflows) {
+    final pos = painter.getPositionForOffset(Offset(painter.width, quoteHeight - 1));
+    end = pos.offset.clamp(1, length);
+  }
+  final boxes = painter.getBoxesForSelection(
+    TextSelection(baseOffset: end - 1, extentOffset: end),
+  );
+  final box = boxes.lastOrNull;
+  if (box == null) return Offset.zero;
+  return Offset(box.right, box.top);
 }
 
 void _paintEdgeFade(Canvas canvas, Rect quoteRect) {
