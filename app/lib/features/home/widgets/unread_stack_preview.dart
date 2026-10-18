@@ -24,7 +24,7 @@ class UnreadStackPreview extends StatefulWidget {
   static const cardHeight = coverHeight + metaHeight;
   static const height = cardHeight + peekStep * 2;
 
-  /// 按实际张数占高：一张与空态同高，多张只多出上方露边。前卡底边始终贴底。
+  /// 按实际张数占高：一张与空态同高，多张在前卡下方多出露边。
   static double heightForCount(int count) {
     final peekCount = (count - 1).clamp(0, 2);
     return cardHeight + peekCount * peekStep;
@@ -181,16 +181,14 @@ class _UnreadStackPreviewState extends State<UnreadStackPreview>
     final p = _progress;
     final front = _at(0);
     final angle = (_dx / 320) * (math.pi / 28);
-    final peekCount = (n - 1).clamp(0, 2);
-    // 最上层贴着标题下方，间距与漫游一致；露边仍在前卡上方。
-    final frontTop = peekCount * UnreadStackPreview.peekStep;
-
-    final nextTop = frontTop - UnreadStackPreview.peekStep * (1 - p);
+    // 前卡贴着标题下方；背后的露边叠在下方。
+    final nextTop = UnreadStackPreview.peekStep * (1 - p);
     final nextSide = UnreadStackPreview.sideStep * (1 - p);
     final nextDim = 0.28 * (1 - p);
     final nextElev = 8.0 * p;
 
-    final deepTop = UnreadStackPreview.peekStep * p;
+    final deepTop = UnreadStackPreview.peekStep +
+        UnreadStackPreview.peekStep * (1 - p);
     final deepSide = UnreadStackPreview.sideStep +
         UnreadStackPreview.sideStep * (1 - p);
     final deepDim = 0.28 + 0.27 * (1 - p);
@@ -232,7 +230,7 @@ class _UnreadStackPreviewState extends State<UnreadStackPreview>
               ),
             ),
           Positioned(
-            top: frontTop,
+            top: 0,
             left: 0,
             right: 0,
             height: UnreadStackPreview.cardHeight,
