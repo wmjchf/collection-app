@@ -10,6 +10,7 @@ import 'package:super_collection/features/items/ai_meta_models.dart';
 import 'package:super_collection/features/items/ai_scholar_copy.dart';
 import 'package:super_collection/features/items/item_models.dart';
 import 'package:super_collection/features/items/items_repository.dart';
+import 'package:super_collection/features/items/reading_quote_share.dart';
 import 'package:super_collection/features/items/reading_regenerate_confirm_dialog.dart';
 import 'package:super_collection/features/items/transcript_models.dart';
 import 'package:super_collection/features/settings/quota_gate.dart';
@@ -178,10 +179,36 @@ class _ReadingSummarySheetState extends State<_ReadingSummarySheet> {
 
   Future<void> _copySummary() async {
     final text = (_meta.text ?? '').trim();
-    if (text.isEmpty) return;
-    await Clipboard.setData(ClipboardData(text: text));
+    final brief = (_meta.brief ?? '').trim();
+    if (text.isEmpty && brief.isEmpty) return;
+    final payload = brief.isEmpty ? text : '总结\n$brief\n\n解读\n$text';
+    await Clipboard.setData(ClipboardData(text: payload));
     if (!mounted) return;
     AppToast.show(context, '已复制');
+  }
+
+  Future<void> _shareSummary(Rect? origin) async {
+    final text = _meta.shareText;
+    if (text.isEmpty) return;
+    final canonical = _item.canonicalUrl?.trim();
+    final link = (canonical != null && canonical.isNotEmpty)
+        ? canonical
+        : _item.url.trim();
+    try {
+      await shareReadingQuote(
+        quote: text,
+        title: (_item.title ?? '').trim(),
+        link: link,
+        coverUrl: _item.shareCoverUrl,
+        pageUrl: _item.sourcePageUrl,
+        kind: ReadingShareKind.summary,
+        sharePositionOrigin: origin,
+        screenSize: MediaQuery.sizeOf(context),
+      );
+    } catch (error, stack) {
+      debugPrint('summary share failed: $error\n$stack');
+      if (mounted) AppToast.show(context, '分享失败，请稍后重试');
+    }
   }
 
   Future<void> _poll() async {
@@ -303,6 +330,30 @@ class _ReadingSummarySheetState extends State<_ReadingSummarySheet> {
                     ),
                   ),
                   if (showRegen) ...[
+                    Builder(
+                      builder: (buttonContext) => GestureDetector(
+                        onTap: () {
+                          final box =
+                              buttonContext.findRenderObject() as RenderBox?;
+                          final origin = box != null &&
+                                  box.hasSize &&
+                                  !box.size.isEmpty
+                              ? box.localToGlobal(Offset.zero) & box.size
+                              : null;
+                          unawaited(_shareSummary(origin));
+                        },
+                        behavior: HitTestBehavior.opaque,
+                        child: const Padding(
+                          padding: EdgeInsets.all(4),
+                          child: Icon(
+                            Icons.ios_share_rounded,
+                            size: 20,
+                            color: _muted,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
                     GestureDetector(
                       onTap: () => unawaited(_copySummary()),
                       behavior: HitTestBehavior.opaque,
@@ -340,6 +391,32 @@ class _ReadingSummarySheetState extends State<_ReadingSummarySheet> {
           ),
         ),
       ),
+    );
+  }
+
+  Widget _summaryBlock(String label, String body) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: const TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+            letterSpacing: 0.6,
+            color: _muted,
+          ),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          body,
+          style: const TextStyle(
+            fontSize: 15,
+            color: _text,
+            height: 1.65,
+          ),
+        ),
+      ],
     );
   }
 
@@ -419,6 +496,8 @@ class _ReadingSummarySheetState extends State<_ReadingSummarySheet> {
     }
 
     if (_meta.hasText) {
+      final brief = (_meta.brief ?? '').trim();
+      final text = _meta.text!.trim();
       return Container(
         width: double.infinity,
         padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
@@ -427,13 +506,23 @@ class _ReadingSummarySheetState extends State<_ReadingSummarySheet> {
           borderRadius: BorderRadius.circular(12),
         ),
         child: SingleChildScrollView(
-          child: Text(
-            _meta.text!.trim(),
-            style: const TextStyle(
-              fontSize: 15,
-              color: _text,
-              height: 1.65,
-            ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (brief.isNotEmpty) ...[
+                _summaryBlock('总结', brief),
+                const SizedBox(height: 16),
+                _summaryBlock('解读', text),
+              ] else
+                Text(
+                  text,
+                  style: const TextStyle(
+                    fontSize: 15,
+                    color: _text,
+                    height: 1.65,
+                  ),
+                ),
+            ],
           ),
         ),
       );

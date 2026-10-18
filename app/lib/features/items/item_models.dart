@@ -260,6 +260,17 @@ class CollectionItem {
     return true;
   }
 
+  /// 分享图封面：优先条目封面，没有则用展示图第一张。
+  String? get shareCoverUrl {
+    final cover = coverImageUrl?.trim();
+    if (cover != null && cover.isNotEmpty) return cover;
+    for (final raw in displayImages) {
+      final url = raw.trim();
+      if (url.isNotEmpty) return url;
+    }
+    return null;
+  }
+
   /// 展示用图集：有 imageUrls 用它，否则退回单封面（按 path 去重，避免同图不同 query *2）
   List<String> get displayImages {
     final raw = <String>[];

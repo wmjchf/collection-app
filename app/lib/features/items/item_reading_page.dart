@@ -285,6 +285,30 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
     if (item.hasSummaryPending) {
       _pollSummary();
     }
+    _precacheShareCover(item);
+  }
+
+  void _precacheShareCover(CollectionItem item) {
+    final raw = item.shareCoverUrl?.trim() ?? '';
+    if (raw.isEmpty) return;
+    final resolved = resolveMediaUrl(raw);
+    final uri = Uri.tryParse(resolved);
+    if (uri == null || !uri.hasScheme) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      unawaited(
+        precacheImage(
+          NetworkImage(
+            resolved,
+            headers: mediaHttpHeadersFor(
+              resolved,
+              pageUrl: item.sourcePageUrl,
+            ),
+          ),
+          context,
+        ).catchError((Object _) {}),
+      );
+    });
   }
 
   void _scheduleMarkReadIfNeeded() {
@@ -878,7 +902,7 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
         quote: text,
         title: (_item.title ?? '').trim(),
         link: _linkToCopy,
-        coverUrl: _item.coverImageUrl,
+        coverUrl: _item.shareCoverUrl,
         pageUrl: _item.sourcePageUrl,
         sharePositionOrigin: shareOrigin,
         screenSize: MediaQuery.sizeOf(context),
@@ -895,7 +919,7 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
         quote: quote,
         title: (_item.title ?? '').trim(),
         link: _linkToCopy,
-        coverUrl: _item.coverImageUrl,
+        coverUrl: _item.shareCoverUrl,
         pageUrl: _item.sourcePageUrl,
         sharePositionOrigin: shareOrigin,
         screenSize: MediaQuery.sizeOf(context),
@@ -1077,6 +1101,10 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
       context,
       itemId: _item.id,
       initialNote: _item.note,
+      title: (_item.title ?? '').trim(),
+      link: _linkToCopy,
+      coverUrl: _item.shareCoverUrl,
+      pageUrl: _item.sourcePageUrl,
     );
     if (updated != null && mounted) setState(() => _item = updated);
   }

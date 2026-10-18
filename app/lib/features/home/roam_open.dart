@@ -30,7 +30,7 @@ Future<bool?> openRoamSnippet(
             focusAnnotationId: snippet.annotationId,
             shareTitle: (item.title ?? '').trim(),
             shareLink: (item.canonicalUrl ?? item.url).trim(),
-            shareCoverUrl: item.coverImageUrl,
+            shareCoverUrl: item.shareCoverUrl,
             sharePageUrl: item.sourcePageUrl,
           ),
         ),

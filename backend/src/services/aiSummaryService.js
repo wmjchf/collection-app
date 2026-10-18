@@ -33,14 +33,23 @@ const SUMMARY_SYSTEM_PROMPT = `你是内容解读助手。输入已是用户收�
 ## 篇幅
 说清「懂了什么」就停；通常一两段连贯短文，或若干有层次的短句；**不以字数为目标**。
 
+## 总结（brief）
+另写一段给分享用的总结：把这篇文章的核心说清楚就停。可以是一段连贯短文，篇幅服从「说清了没有」，不要为了短而漏掉关键判断，也不要复述解读全文或写成要点清单。
+
 ## 输出（严格）
 只输出一个 JSON 对象，不要 markdown、不要代码块、不要前后说明。
-格式：{"text":"..."}
-text 内分段或层次用换行分隔（JSON 字符串里写 \\n），勿在正文里输出字面量「\\n」两个字符。`;
+格式：{"text":"...","brief":"..."}
+text 为解读，brief 为总结。分段或层次用换行分隔（JSON 字符串里写 \\n），勿在正文里输出字面量「\\n」两个字符。`;
 
 function normalizeSummaryText(raw) {
   if (!raw || typeof raw !== 'object') return null;
   return aiMeta.normalizeSummaryDisplayText(raw.text || raw.summary);
+}
+
+function normalizeSummaryBrief(raw) {
+  if (!raw || typeof raw !== 'object') return null;
+  const brief = aiMeta.normalizeSummaryDisplayText(raw.brief);
+  return brief;
 }
 
 async function saveAiMeta(itemId, meta) {
@@ -71,6 +80,7 @@ async function failSummaryJob(itemId, message) {
     status: 'failed',
     awaitTranscript: false,
     text: null,
+    brief: null,
     error: String(message || '生成失败').slice(0, 500),
     generatedAt: new Date().toISOString(),
     regenerateFrom: null,
@@ -185,6 +195,7 @@ async function requestSummary(userId, itemId, { force = false } = {}) {
       status: 'pending',
       awaitTranscript: true,
       text: null,
+    brief: null,
       contentHash: null,
       error: null,
       generatedAt: null,
@@ -216,7 +227,7 @@ async function requestSummary(userId, itemId, { force = false } = {}) {
   const previewMessages = buildAiTaskMessages(inputText, [
     SUMMARY_SYSTEM_PROMPT,
     regenBlock,
-      '请按上述要求解读内容（帮读者读懂，不要写成摘要提纲），输出 JSON（仅 JSON，无其它文字）。',
+      '请按上述要求解读内容，并另写 brief：把文章核心说清楚即可，不限字数，不要把 text 写成摘要提纲。输出 JSON（仅 JSON，无其它文字）。',
     ]);
   await usageService.assertAiQuota(userId, {
     estimatedTokens: usageService.estimateAiTokens({
@@ -229,6 +240,7 @@ async function requestSummary(userId, itemId, { force = false } = {}) {
     status: 'pending',
     awaitTranscript: false,
     text: null,
+    brief: null,
     contentHash,
     error: null,
     generatedAt: null,
@@ -280,7 +292,7 @@ async function runSummaryJob(itemId) {
     const messages = buildAiTaskMessages(inputText, [
       SUMMARY_SYSTEM_PROMPT,
       regenBlock,
-      '请按上述要求解读内容（帮读者读懂，不要写成摘要提纲），输出 JSON（仅 JSON，无其它文字）。',
+      '请按上述要求解读内容，并另写 brief：把文章核心说清楚即可，不限字数，不要把 text 写成摘要提纲。输出 JSON（仅 JSON，无其它文字）。',
     ]);
 
     const usageService = require('./usageService');
@@ -296,6 +308,7 @@ async function runSummaryJob(itemId) {
     });
 
     const text = normalizeSummaryText(result);
+    const brief = normalizeSummaryBrief(result);
     if (!text) {
       throw new Error('模型未返回有效解读');
     }
@@ -307,6 +320,7 @@ async function runSummaryJob(itemId) {
       status: 'success',
       awaitTranscript: false,
       text,
+      brief,
       contentHash,
       error: null,
       generatedAt,
@@ -335,6 +349,7 @@ async function runSummaryJob(itemId) {
       status: 'failed',
       awaitTranscript: false,
       text: null,
+    brief: null,
       error: (err.message || '生成失败').slice(0, 500),
       generatedAt: new Date().toISOString(),
       regenerateFrom: null,

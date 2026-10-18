@@ -4,17 +4,26 @@ import 'package:super_collection/core/ui/app_bottom_sheet.dart';
 import 'package:super_collection/core/ui/app_toast.dart';
 import 'package:super_collection/features/items/item_models.dart';
 import 'package:super_collection/features/items/items_repository.dart';
+import 'package:super_collection/features/items/reading_quote_share.dart';
 
 Future<CollectionItem?> showReadingNoteSheet(
   BuildContext context, {
   required int itemId,
   String? initialNote,
+  String? title,
+  String? link,
+  String? coverUrl,
+  String? pageUrl,
 }) {
   return showAppBottomSheet<CollectionItem>(
     context: context,
     builder: (context) => _ReadingNoteSheet(
       itemId: itemId,
       initialNote: initialNote,
+      title: title,
+      link: link,
+      coverUrl: coverUrl,
+      pageUrl: pageUrl,
     ),
   );
 }
@@ -23,10 +32,18 @@ class _ReadingNoteSheet extends StatefulWidget {
   const _ReadingNoteSheet({
     required this.itemId,
     this.initialNote,
+    this.title,
+    this.link,
+    this.coverUrl,
+    this.pageUrl,
   });
 
   final int itemId;
   final String? initialNote;
+  final String? title;
+  final String? link;
+  final String? coverUrl;
+  final String? pageUrl;
 
   @override
   State<_ReadingNoteSheet> createState() => _ReadingNoteSheetState();
@@ -68,6 +85,26 @@ class _ReadingNoteSheetState extends State<_ReadingNoteSheet> {
     _focus.dispose();
     _controller.dispose();
     super.dispose();
+  }
+
+  Future<void> _share(Rect? origin) async {
+    final text = _controller.text.trim();
+    if (text.isEmpty) return;
+    try {
+      await shareReadingQuote(
+        quote: text,
+        title: (widget.title ?? '').trim(),
+        link: widget.link,
+        coverUrl: widget.coverUrl,
+        pageUrl: widget.pageUrl,
+        kind: ReadingShareKind.note,
+        sharePositionOrigin: origin,
+        screenSize: MediaQuery.sizeOf(context),
+      );
+    } catch (error, stack) {
+      debugPrint('note share failed: $error\n$stack');
+      if (mounted) AppToast.show(context, '分享失败，请稍后重试');
+    }
   }
 
   void _startEdit() {
@@ -131,6 +168,32 @@ class _ReadingNoteSheetState extends State<_ReadingNoteSheet> {
                       ),
                     ),
                   ),
+                  if (_controller.text.trim().isNotEmpty) ...[
+                    Builder(
+                      builder: (buttonContext) => GestureDetector(
+                        onTap: () {
+                          final box =
+                              buttonContext.findRenderObject() as RenderBox?;
+                          final origin = box != null &&
+                                  box.hasSize &&
+                                  !box.size.isEmpty
+                              ? box.localToGlobal(Offset.zero) & box.size
+                              : null;
+                          _share(origin);
+                        },
+                        behavior: HitTestBehavior.opaque,
+                        child: const Padding(
+                          padding: EdgeInsets.all(4),
+                          child: Icon(
+                            Icons.ios_share_rounded,
+                            size: 20,
+                            color: _muted,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                  ],
                   TextButton(
                     onPressed: _editing
                         ? (_saving ? null : _save)

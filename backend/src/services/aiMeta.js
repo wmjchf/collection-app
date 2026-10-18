@@ -24,6 +24,7 @@ const DEFAULT_MINDMAP = {
 const DEFAULT_SUMMARY = {
   status: 'none',
   text: null,
+  brief: null,
   contentHash: null,
   error: null,
   generatedAt: null,
@@ -90,6 +91,7 @@ function parseAiMeta(raw) {
   const tree = normalizeMindmapTree(mindmap.tree);
   const summary = obj.summary && typeof obj.summary === 'object' ? obj.summary : {};
   const summaryText = normalizeSummaryDisplayText(summary.text);
+  const summaryBrief = normalizeSummaryDisplayText(summary.brief);
 
   return {
     tags: {
@@ -121,6 +123,7 @@ function parseAiMeta(raw) {
     summary: {
       status: summary.status || 'none',
       text: summaryText,
+      brief: summaryBrief,
       contentHash:
         summary.contentHash != null ? String(summary.contentHash) : null,
       error: summary.error != null ? String(summary.error) : null,
@@ -161,6 +164,7 @@ function mapAiMetaForApi(meta) {
     summary: {
       status: m.summary.status,
       text: m.summary.text,
+      brief: m.summary.brief,
       contentHash: m.summary.contentHash,
       error: m.summary.error,
       generatedAt: m.summary.generatedAt,
