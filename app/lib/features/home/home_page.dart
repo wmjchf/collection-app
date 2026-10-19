@@ -798,7 +798,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                                   title: unreadSectionTitle(isPro: _isPro),
                                   emptyText: unreadEmptyText(isPro: _isPro),
                                   emptyIcon: Icons.mark_email_unread_outlined,
-                                  emptyHeight: _homeUnreadEmptyHeight,
+                                  emptyHeight: _homeUnreadBodyHeight,
                                   items: unread,
                                   onMore: () => _openFilter(
                                     'unread',
@@ -930,10 +930,12 @@ class _HomeRoamSection extends StatelessWidget {
   }
 }
 
-/// 与列表行同高：封面 64 + 上下内边距 24。有数据时按实际条数占高。
+/// 封面 64 + 上下内边距 24。空态与 1～3 条都按满三条占高。
 const _homeUnreadTileHeight = 88.0;
 const _homeUnreadTileGap = 8.0;
-const _homeUnreadEmptyHeight = _homeUnreadTileHeight;
+const _homeUnreadSlotCount = 3;
+const _homeUnreadBodyHeight = _homeUnreadTileHeight * _homeUnreadSlotCount +
+    _homeUnreadTileGap * (_homeUnreadSlotCount - 1);
 
 String _homeUnreadSubtitle(CollectionItem item) {
   final pageUrl = (item.canonicalUrl?.trim().isNotEmpty == true)
@@ -1008,44 +1010,68 @@ class _HomeItemStackSection extends StatelessWidget {
           ],
         ),
         const SizedBox(height: 8),
-        if (items.isEmpty)
-          SizedBox(
-            height: emptyHeight,
-            width: double.infinity,
-            child: Container(
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(16),
-              ),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(emptyIcon, size: 42, color: _iconMuted),
-                  const SizedBox(height: 10),
-                  Text(
-                    emptyText,
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(fontSize: 14, color: _muted),
-                  ),
-                ],
-              ),
-            ),
-          )
-        else
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              for (var i = 0; i < items.length; i++) ...[
-                if (i > 0) const SizedBox(height: _homeUnreadTileGap),
-                ItemListTile.fromItem(
-                  items[i],
-                  subtitle: _homeUnreadSubtitle(items[i]),
-                  onTap: () => onOpen(items[i]),
+        _UnreadFrame(
+          height: emptyHeight,
+          child: items.isEmpty
+              ? Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(emptyIcon, size: 42, color: _iconMuted),
+                    const SizedBox(height: 10),
+                    Text(
+                      emptyText,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(fontSize: 14, color: _muted),
+                    ),
+                  ],
+                )
+              : Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    for (var i = 0; i < items.length; i++) ...[
+                      if (i > 0) const SizedBox(height: _homeUnreadTileGap),
+                      ItemListTile.fromItem(
+                        items[i],
+                        subtitle: _homeUnreadSubtitle(items[i]),
+                        onTap: () => onOpen(items[i]),
+                      ),
+                    ],
+                    if (items.length < _homeUnreadSlotCount)
+                      const Expanded(
+                        child: Center(
+                          child: const Text(
+                            '未读就这些了',
+                            style: TextStyle(fontSize: 13, color: _muted),
+                          ),
+                        ),
+                      ),
+                  ],
                 ),
-              ],
-            ],
-          ),
+        ),
       ],
+    );
+  }
+}
+
+/// 未读三条的外框：白底、圆角、细边，把条目收成一块。
+class _UnreadFrame extends StatelessWidget {
+  const _UnreadFrame({required this.height, required this.child});
+
+  final double height;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: height,
+      width: double.infinity,
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFE6E8ED)),
+      ),
+      child: child,
     );
   }
 }

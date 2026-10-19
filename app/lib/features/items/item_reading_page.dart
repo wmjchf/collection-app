@@ -913,10 +913,15 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
     }
   }
 
-  Future<void> _shareExistingQuote(String quote, Rect? shareOrigin) async {
+  Future<void> _shareExistingQuote(
+    String quote,
+    Rect? shareOrigin, {
+    String? note,
+  }) async {
     try {
       await shareReadingQuote(
         quote: quote,
+        note: note,
         title: (_item.title ?? '').trim(),
         link: _linkToCopy,
         coverUrl: _item.shareCoverUrl,

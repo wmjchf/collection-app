@@ -8,6 +8,7 @@ import 'package:qr_flutter/qr_flutter.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:super_collection/core/network/media_http_headers.dart';
 import 'package:super_collection/features/items/cover_image.dart';
+import 'package:super_collection/features/items/justified_text.dart';
 import 'package:super_collection/features/settings/usage_repository.dart';
 
 const _quoteStyle = TextStyle(
@@ -49,14 +50,25 @@ const _watermarkStyle = TextStyle(
 enum ReadingShareKind {
   quote,
   summary,
-  note;
+  note,
+  annotation;
 
   String get label => switch (this) {
         ReadingShareKind.quote => '摘句',
         ReadingShareKind.summary => 'AI 总结',
         ReadingShareKind.note => '感想',
+        ReadingShareKind.annotation => '批注',
       };
 }
+
+const _annotationStyle = TextStyle(
+  color: Color(0xFF5C6370),
+  fontSize: 14,
+  height: 1.7,
+  fontWeight: FontWeight.w400,
+);
+
+const _annotationGap = 20.0;
 
 const _kindStyle = TextStyle(
   color: Color(0xFF8FA394),
@@ -73,17 +85,22 @@ Future<void> shareReadingQuote({
   String? link,
   String? coverUrl,
   String? pageUrl,
+  String? note,
   ReadingShareKind kind = ReadingShareKind.quote,
   Rect? sharePositionOrigin,
   Size? screenSize,
 }) async {
+  final annotation = note?.trim() ?? '';
   final bytes = await renderReadingQuotePng(
     quote: quote.trim(),
     title: title?.trim() ?? '',
     link: link?.trim() ?? '',
     coverUrl: coverUrl,
     pageUrl: pageUrl,
-    kind: kind,
+    kind: annotation.isNotEmpty && kind == ReadingShareKind.quote
+        ? ReadingShareKind.annotation
+        : kind,
+    note: annotation,
     watermark: await _shareWatermark(),
   );
   final origin = _effectiveShareOrigin(sharePositionOrigin, screenSize);
@@ -108,6 +125,7 @@ Future<Uint8List> renderReadingQuotePng({
   String? coverUrl,
   String? pageUrl,
   ReadingShareKind kind = ReadingShareKind.quote,
+  String note = '',
   bool watermark = false,
   double pixelRatio = 2,
 }) async {
@@ -173,12 +191,41 @@ Future<Uint8List> renderReadingQuotePng({
       ? 0.0
       : _watermarkGap + watermarkPainter.height;
 
+  final annotation = note.trim();
+  final annotationLines = annotation.isEmpty
+      ? const <JustifiedLine>[]
+      : layoutJustifiedLines(
+          annotation,
+          _annotationStyle,
+          _cardWidth - _quotePadX * 2,
+        );
+  final annotationPainters = <TextPainter>[
+    for (final line in annotationLines)
+      TextPainter(
+        text: TextSpan(
+          text: line.text.isEmpty ? ' ' : line.text,
+          style: line.spacing == 0
+              ? _annotationStyle
+              : _annotationStyle.copyWith(letterSpacing: line.spacing),
+        ),
+        textDirection: TextDirection.ltr,
+        maxLines: 1,
+      )..layout(),
+  ];
+  final annotationHeight = annotationPainters.fold<double>(
+    0,
+    (sum, painter) => sum + painter.height,
+  );
+  final annotationBlock =
+      annotationPainters.isEmpty ? 0.0 : _annotationGap + annotationHeight;
+
   final coverBlock = cover == null ? 0.0 : _coverHeight;
   final kindTop = coverBlock + _padTop;
   final quoteTop = kindTop + kindPainter.height + kindGap;
   final contentW = _cardWidth;
   final contentH = quoteTop +
       quoteHeight +
+      annotationBlock +
       (footerSlots == 0 ? 0.0 : _footerGap + footerHeight) +
       watermarkBlock +
       _padBottom;
@@ -256,9 +303,16 @@ Future<Uint8List> renderReadingQuotePng({
       Rect.fromLTWH(_quotePadX, quoteTop, quoteWidth, quoteHeight),
     );
   }
+  if (annotationPainters.isNotEmpty) {
+    var annotationTop = quoteTop + quoteHeight + _annotationGap;
+    for (final painter in annotationPainters) {
+      painter.paint(canvas, Offset(_quotePadX, annotationTop));
+      annotationTop += painter.height;
+    }
+  }
 
   if (footerSlots > 0) {
-    final footerTop = quoteTop + quoteHeight + _footerGap;
+    final footerTop = quoteTop + quoteHeight + annotationBlock + _footerGap;
     if (titlePainter != null) {
       final glyphTop = titlePainter
           .getBoxesForSelection(
@@ -309,6 +363,9 @@ Future<Uint8List> renderReadingQuotePng({
   kindPainter.dispose();
   titlePainter?.dispose();
   watermarkPainter?.dispose();
+  for (final painter in annotationPainters) {
+    painter.dispose();
+  }
 
   final picture = recorder.endRecording();
   final image = await picture.toImage(

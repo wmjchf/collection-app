@@ -12,6 +12,7 @@ import 'package:super_collection/features/home/roam_open.dart';
 import 'package:super_collection/features/home/roam_stats.dart';
 import 'package:super_collection/features/home/widgets/roam_quote_card.dart';
 import 'package:super_collection/features/items/items_repository.dart';
+import 'package:super_collection/features/items/reading_quote_share.dart';
 
 Future<void> showRoamPlayer(
   BuildContext context, {
@@ -138,6 +139,39 @@ class _RoamPlayerPageState extends State<RoamPlayerPage>
     AppToast.show(context, '已不再回顾');
   }
 
+  Future<void> _shareSnippet(RoamSnippet snippet, Rect? origin) async {
+    final thought = snippet.isThought;
+    final passage = (snippet.quote ?? '').trim();
+    final isAnnotation = snippet.isNote && passage.isNotEmpty;
+    final quote = thought
+        ? snippet.text.trim()
+        : (isAnnotation ? passage : snippet.text.trim());
+    if (quote.isEmpty) return;
+    try {
+      final item = await _items.getItem(snippet.itemId);
+      if (!mounted) return;
+      await shareReadingQuote(
+        quote: quote,
+        note: isAnnotation ? snippet.text.trim() : null,
+        title: (item.title ?? snippet.itemTitle ?? '').trim(),
+        link: (item.canonicalUrl ?? item.url).trim(),
+        coverUrl: item.shareCoverUrl,
+        pageUrl: item.sourcePageUrl,
+        kind: thought
+            ? ReadingShareKind.note
+            : (isAnnotation
+                ? ReadingShareKind.annotation
+                : ReadingShareKind.quote),
+        sharePositionOrigin: origin,
+        screenSize: MediaQuery.sizeOf(context),
+      );
+    } catch (error, stack) {
+      debugPrint('roam share failed: $error\n$stack');
+      if (!mounted) return;
+      AppToast.show(context, '分享失败，请稍后重试');
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final pad = MediaQuery.paddingOf(context);
@@ -171,6 +205,8 @@ class _RoamPlayerPageState extends State<RoamPlayerPage>
                 onDismissed: () => unawaited(_advance()),
                 onOpen: (s) => unawaited(_openSource(s)),
                 onMute: () => unawaited(_muteCurrent()),
+                onShare: (snippet, origin) =>
+                    unawaited(_shareSnippet(snippet, origin)),
                 onFinish: () => Navigator.of(context).maybePop(),
                 onContinue: _continue,
               ),
@@ -191,6 +227,7 @@ class _RoamSwipeDeck extends StatefulWidget {
     required this.onDismissed,
     required this.onOpen,
     required this.onMute,
+    required this.onShare,
     required this.onFinish,
     required this.onContinue,
   });
@@ -202,6 +239,7 @@ class _RoamSwipeDeck extends StatefulWidget {
   final VoidCallback onDismissed;
   final ValueChanged<RoamSnippet> onOpen;
   final VoidCallback onMute;
+  final void Function(RoamSnippet snippet, Rect? origin) onShare;
   final VoidCallback onFinish;
   final VoidCallback onContinue;
 
@@ -264,6 +302,7 @@ class _RoamSwipeDeckState extends State<_RoamSwipeDeck> {
         onMute: muteAction
             ? () => unawaited(_muteWithAnimation())
             : () {},
+        onShare: (origin) => widget.onShare(snips[absoluteIndex], origin),
       );
     }
     return _RoamDoneCard(
