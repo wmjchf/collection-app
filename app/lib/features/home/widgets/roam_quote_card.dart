@@ -236,7 +236,8 @@ class RoamQuoteCard extends StatelessWidget {
               builder: (context, constraints) {
                 final lineH = _bodySize * _bodyHeight;
                 final fit = (constraints.maxHeight / lineH).floor();
-                final lines = fit.clamp(1, quoteLines ?? maxLines);
+                // 叠卡高度由首页剩余空间决定，行数跟高度走，不再卡在两三行。
+                final lines = fit < 1 ? 1 : fit;
                 return Align(
                   alignment: Alignment.topLeft,
                   child: bodyText(lines: lines),

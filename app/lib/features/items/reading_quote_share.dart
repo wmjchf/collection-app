@@ -8,6 +8,7 @@ import 'package:qr_flutter/qr_flutter.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:super_collection/core/network/media_http_headers.dart';
 import 'package:super_collection/features/items/cover_image.dart';
+import 'package:super_collection/features/settings/usage_repository.dart';
 
 const _quoteStyle = TextStyle(
   color: Color(0xFF1F242E),
@@ -34,6 +35,15 @@ const _footerGap = 72.0;
 const _coverHeight = 180.0;
 const _qrSize = 64.0;
 const _qrGap = 32.0;
+const _watermarkGap = 10.0;
+const _watermarkText = 'iOS App Store 下载奏折';
+const _watermarkStyle = TextStyle(
+  color: Color(0xFFC5CDD4),
+  fontSize: 11,
+  height: 1.2,
+  letterSpacing: 0.4,
+  fontWeight: FontWeight.w500,
+);
 
 /// 分享图的三种正文来源，卡片上用类型名区分。
 enum ReadingShareKind {
@@ -74,6 +84,7 @@ Future<void> shareReadingQuote({
     coverUrl: coverUrl,
     pageUrl: pageUrl,
     kind: kind,
+    watermark: await _shareWatermark(),
   );
   final origin = _effectiveShareOrigin(sharePositionOrigin, screenSize);
   final file = XFile.fromData(
@@ -97,6 +108,7 @@ Future<Uint8List> renderReadingQuotePng({
   String? coverUrl,
   String? pageUrl,
   ReadingShareKind kind = ReadingShareKind.quote,
+  bool watermark = false,
   double pixelRatio = 2,
 }) async {
   final plain = _plainQuote(quote);
@@ -150,13 +162,26 @@ Future<Uint8List> renderReadingQuotePng({
       ? 0.0
       : math.max(titlePainter?.height ?? 0, hasQr ? _qrSize : 0);
 
+  TextPainter? watermarkPainter;
+  if (watermark) {
+    watermarkPainter = TextPainter(
+      text: const TextSpan(text: _watermarkText, style: _watermarkStyle),
+      textDirection: TextDirection.ltr,
+    )..layout();
+  }
+  final watermarkBlock = watermarkPainter == null
+      ? 0.0
+      : _watermarkGap + watermarkPainter.height;
+
   final coverBlock = cover == null ? 0.0 : _coverHeight;
   final kindTop = coverBlock + _padTop;
   final quoteTop = kindTop + kindPainter.height + kindGap;
   final contentW = _cardWidth;
   final contentH = quoteTop +
       quoteHeight +
-      (footerSlots == 0 ? _padBottom : _footerGap + footerHeight + _padBottom);
+      (footerSlots == 0 ? 0.0 : _footerGap + footerHeight) +
+      watermarkBlock +
+      _padBottom;
 
   final recorder = ui.PictureRecorder();
   final canvas = Canvas(recorder);
@@ -268,11 +293,22 @@ Future<Uint8List> renderReadingQuotePng({
     }
   }
 
+  if (watermarkPainter != null) {
+    watermarkPainter.paint(
+      canvas,
+      Offset(
+        contentW - _footerPadX - watermarkPainter.width,
+        contentH - _padBottom - watermarkPainter.height,
+      ),
+    );
+  }
+
   quotePainter.dispose();
   openMark.dispose();
   closeMark.dispose();
   kindPainter.dispose();
   titlePainter?.dispose();
+  watermarkPainter?.dispose();
 
   final picture = recorder.endRecording();
   final image = await picture.toImage(
@@ -364,6 +400,17 @@ Future<ui.Image?> _loadCover(String? url, String? pageUrl) async {
   } catch (error) {
     debugPrint('quote cover load failed: $error');
     return null;
+  }
+}
+
+/// 免费档带水印；普通会员、太子、帝王不带。查不到档位时按免费处理。
+Future<bool> _shareWatermark() async {
+  try {
+    final usage = UsageRefresh.snapshot ?? await UsageRefresh.ensure();
+    return !usage.isPaid;
+  } catch (error) {
+    debugPrint('share watermark plan lookup failed: $error');
+    return true;
   }
 }
 
