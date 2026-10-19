@@ -14,14 +14,13 @@ import 'package:super_collection/features/auth/auth_repository.dart';
 import 'package:super_collection/features/collection/system_filter_list_page.dart';
 import 'package:super_collection/features/home/add_link_sheet.dart';
 import 'package:super_collection/features/home/home_format.dart';
-import 'package:super_collection/features/home/home_mock_data.dart';
 import 'package:super_collection/features/home/home_repository.dart';
 import 'package:super_collection/features/home/roam_list_page.dart';
 import 'package:super_collection/features/home/roam_models.dart';
 import 'package:super_collection/features/home/roam_mute.dart';
 import 'package:super_collection/features/home/roam_player_page.dart';
 import 'package:super_collection/features/home/widgets/roam_stack_preview.dart';
-import 'package:super_collection/features/home/widgets/unread_stack_preview.dart';
+import 'package:super_collection/features/items/item_list_tile.dart';
 import 'package:super_collection/features/items/item_reading_page.dart';
 import 'package:super_collection/features/items/item_models.dart';
 import 'package:super_collection/features/items/items_repository.dart';
@@ -771,10 +770,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                   )
                 : LayoutBuilder(
                     builder: (context, constraints) {
-                      // 未读固定；间距收紧后的高度给漫游叠卡
+                      // 未读改为列表行；省下的高度仍给漫游叠卡
                       const sectionGap = 8.0;
-                      final stackH =
-                          UnreadStackPreview.heightForCount(unread.length);
+                      const unreadBodyH = _homeUnreadBodyHeight;
                       const headerBlock = 30.0;
                       final padTop = 12.0;
                       final padBottom =
@@ -783,7 +781,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                               padTop -
                               padBottom -
                               headerBlock -
-                              stackH -
+                              unreadBodyH -
                               sectionGap -
                               headerBlock)
                           .clamp(RoamStackPreview.defaultHeight, 420.0);
@@ -800,20 +798,14 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                             title: unreadSectionTitle(isPro: _isPro),
                             emptyText: unreadEmptyText(isPro: _isPro),
                             emptyIcon: Icons.mark_email_unread_outlined,
-                            emptyHeight: stackH,
-                            items: [
-                              for (final item in unread)
-                                previewForUnread(item),
-                            ],
+                            emptyHeight: _homeUnreadBodyHeight,
+                            items: unread,
                             onMore: () => _openFilter(
                               'unread',
                               unreadSectionTitle(isPro: _isPro),
                             ),
-                            onOpenFront: (preview) {
-                              final item = unread
-                                  .firstWhere((e) => e.id == preview.id);
-                              _openItem(item, entry: 'unread');
-                            },
+                            onOpen: (item) =>
+                                _openItem(item, entry: 'unread'),
                           ),
                           const SizedBox(height: sectionGap),
                           _HomeRoamSection(
@@ -930,7 +922,28 @@ class _HomeRoamSection extends StatelessWidget {
   }
 }
 
-/// 未读 / 最近阅读：封面叠卡，点整叠进首条
+/// 与列表行同高：封面 64 + 上下内边距 24。空态与 1～3 条都按满三条占位，高度不跳。
+const _homeUnreadTileHeight = 88.0;
+const _homeUnreadTileGap = 8.0;
+const _homeUnreadSlotCount = 3;
+const _homeUnreadBodyHeight = _homeUnreadTileHeight * _homeUnreadSlotCount +
+    _homeUnreadTileGap * (_homeUnreadSlotCount - 1);
+
+String _homeUnreadSubtitle(CollectionItem item) {
+  final pageUrl = (item.canonicalUrl?.trim().isNotEmpty == true)
+      ? item.canonicalUrl
+      : item.url;
+  final platform = platformLabel(item.platform, url: pageUrl);
+  final status = switch (item.status) {
+    'pending' => '解析中',
+    'failed' => '解析失败',
+    'success' => '已解析',
+    _ => item.status,
+  };
+  return '$platform · $status';
+}
+
+/// 首页未读：与列表相同的条目，点哪条进哪条。
 class _HomeItemStackSection extends StatelessWidget {
   const _HomeItemStackSection({
     required this.title,
@@ -939,7 +952,7 @@ class _HomeItemStackSection extends StatelessWidget {
     required this.emptyHeight,
     required this.items,
     required this.onMore,
-    required this.onOpenFront,
+    required this.onOpen,
     this.moreLabel = '查看更多 ›',
   });
 
@@ -947,9 +960,9 @@ class _HomeItemStackSection extends StatelessWidget {
   final String emptyText;
   final IconData emptyIcon;
   final double emptyHeight;
-  final List<HomeItemPreview> items;
+  final List<CollectionItem> items;
   final VoidCallback onMore;
-  final ValueChanged<HomeItemPreview> onOpenFront;
+  final ValueChanged<CollectionItem> onOpen;
   final String moreLabel;
 
   static const _muted = Color(0xFF737A85);
@@ -1013,7 +1026,23 @@ class _HomeItemStackSection extends StatelessWidget {
             ),
           )
         else
-          UnreadStackPreview(items: items, onTap: onOpenFront),
+          SizedBox(
+            height: emptyHeight,
+            width: double.infinity,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                for (var i = 0; i < items.length; i++) ...[
+                  if (i > 0) const SizedBox(height: _homeUnreadTileGap),
+                  ItemListTile.fromItem(
+                    items[i],
+                    subtitle: _homeUnreadSubtitle(items[i]),
+                    onTap: () => onOpen(items[i]),
+                  ),
+                ],
+              ],
+            ),
+          ),
       ],
     );
   }
