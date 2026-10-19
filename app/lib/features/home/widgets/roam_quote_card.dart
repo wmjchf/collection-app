@@ -8,6 +8,7 @@ class RoamQuoteCard extends StatelessWidget {
     required this.snippet,
     this.onTap,
     this.onMute,
+    this.onShare,
     this.maxLines = 4,
     this.showMeta = true,
     this.elevation = 0,
@@ -20,6 +21,9 @@ class RoamQuoteCard extends StatelessWidget {
   final VoidCallback? onTap;
   /// 弹层：元信息右侧「不再回顾」
   final VoidCallback? onMute;
+
+  /// 弹层：「不再回顾」上方单独一行的分享。传入按钮在屏幕上的位置。
+  final void Function(Rect? origin)? onShare;
   final int maxLines;
   final bool showMeta;
   final double elevation;
@@ -66,8 +70,34 @@ class RoamQuoteCard extends StatelessWidget {
     final timeStr = formatRelativeTime(snippet.createdAt);
     final titleStr = (snippet.itemTitle ?? '').trim();
 
-    Widget? noteBlock({int? lines}) {
+    Widget? noteBlock({int? lines, bool stacked = false}) {
       if (!hasQuote || snippet.text.isEmpty) return null;
+      final label = Container(
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+        decoration: BoxDecoration(
+          color: _brandSoft,
+          borderRadius: BorderRadius.circular(4),
+        ),
+        child: Text(
+          snippet.kindLabel,
+          style: const TextStyle(
+            fontSize: 11,
+            height: 1.2,
+            fontWeight: FontWeight.w600,
+            color: _quote,
+          ),
+        ),
+      );
+      final body = Text(
+        snippet.text,
+        maxLines: lines,
+        overflow: lines == null ? TextOverflow.visible : TextOverflow.ellipsis,
+        style: const TextStyle(
+          fontSize: 13,
+          height: 1.45,
+          color: _note,
+        ),
+      );
       return Padding(
         padding: const EdgeInsets.only(top: 8),
         child: Container(
@@ -77,45 +107,23 @@ class RoamQuoteCard extends StatelessWidget {
             color: _noteBg,
             borderRadius: BorderRadius.circular(8),
           ),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 6,
-                  vertical: 2,
+          child: stacked
+              ? Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    label,
+                    const SizedBox(height: 8),
+                    body,
+                  ],
+                )
+              : Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    label,
+                    const SizedBox(width: 8),
+                    Expanded(child: body),
+                  ],
                 ),
-                decoration: BoxDecoration(
-                  color: _brandSoft,
-                  borderRadius: BorderRadius.circular(4),
-                ),
-                child: Text(
-                  snippet.kindLabel,
-                  style: const TextStyle(
-                    fontSize: 11,
-                    height: 1.2,
-                    fontWeight: FontWeight.w600,
-                    color: _quote,
-                  ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  snippet.text,
-                  maxLines: lines,
-                  overflow: lines == null
-                      ? TextOverflow.visible
-                      : TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontSize: 13,
-                    height: 1.45,
-                    color: _note,
-                  ),
-                ),
-              ),
-            ],
-          ),
         ),
       );
     }
@@ -177,6 +185,44 @@ class RoamQuoteCard extends StatelessWidget {
           )
         : null;
 
+    final shareBlock = scrollBody && onShare != null
+        ? Align(
+            alignment: Alignment.centerRight,
+            child: Builder(
+                builder: (buttonContext) => GestureDetector(
+                  onTap: () {
+                    final box = buttonContext.findRenderObject() as RenderBox?;
+                    final origin = box != null && box.hasSize && !box.size.isEmpty
+                        ? box.localToGlobal(Offset.zero) & box.size
+                        : null;
+                    onShare!(origin);
+                  },
+                  behavior: HitTestBehavior.opaque,
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.ios_share_rounded,
+                        size: 14,
+                        color: _quote,
+                      ),
+                      SizedBox(width: 2),
+                      Text(
+                        '分享',
+                        style: TextStyle(
+                          fontSize: 13,
+                          height: 1.4,
+                          fontWeight: FontWeight.w600,
+                          color: _quote,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+          )
+        : null;
+
     Widget bodyText({int? lines}) {
       return Text(
         primary,
@@ -203,11 +249,21 @@ class RoamQuoteCard extends StatelessWidget {
 
     late final Widget body;
     if (scrollBody) {
-      final note = noteBlock(lines: null);
+      final note = noteBlock(lines: null, stacked: true);
       body = Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          quoteMark,
+          if (shareBlock != null)
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                quoteMark,
+                const Spacer(),
+                shareBlock,
+              ],
+            )
+          else
+            quoteMark,
           const SizedBox(height: 4),
           Expanded(
             child: SingleChildScrollView(

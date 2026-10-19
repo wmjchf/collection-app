@@ -384,15 +384,21 @@ class _ItemTranscriptPageState extends State<ItemTranscriptPage> {
     AppToast.show(context, '已复制');
   }
 
-  Future<void> _shareExistingQuote(String quote, Rect? shareOrigin) async {
+  Future<void> _shareExistingQuote(
+    String quote,
+    Rect? shareOrigin, {
+    String? note,
+  }) async {
     final custom = widget.onShareQuote;
-    if (custom != null) {
+    final annotation = note?.trim() ?? '';
+    if (custom != null && annotation.isEmpty) {
       await custom(quote, shareOrigin);
       return;
     }
     try {
       await shareReadingQuote(
         quote: quote,
+        note: note,
         title: (widget.shareTitle ?? '').trim(),
         link: widget.shareLink,
         coverUrl: widget.shareCoverUrl,

@@ -75,6 +75,32 @@ Widget _lineText(_JustifyLine line, TextStyle style) {
   );
 }
 
+class JustifiedLine {
+  const JustifiedLine(this.text, this.spacing);
+  final String text;
+  final double spacing;
+}
+
+/// 按给定宽度拆行并计算字距。段末与硬换行不加字距。
+List<JustifiedLine> layoutJustifiedLines(
+  String text,
+  TextStyle style,
+  double maxWidth,
+) {
+  final layout = _justifyLines(
+    text,
+    style,
+    maxWidth,
+    direction: TextDirection.ltr,
+    textScaler: TextScaler.noScaling,
+    locale: null,
+  );
+  return [
+    for (final line in layout.lines) JustifiedLine(line.text, line.spacing),
+    if (layout.tail.isNotEmpty) JustifiedLine(layout.tail, 0),
+  ];
+}
+
 class _JustifyLine {
   const _JustifyLine(this.text, this.spacing);
   final String text;

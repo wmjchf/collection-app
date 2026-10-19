@@ -13,7 +13,7 @@ Future<void> showAnnotationDetailSheet(
   required ItemAnnotation annotation,
   required VoidCallback onChanged,
   bool isPro = false,
-  Future<void> Function(String quote, Rect? shareOrigin)? onShare,
+  Future<void> Function(String quote, Rect? shareOrigin, {String? note})? onShare,
 }) {
   return showAppBottomSheet<void>(
     context: context,
@@ -76,7 +76,8 @@ class _AnnotationNoteSheet extends StatefulWidget {
   final int? endOffset;
   final String? source;
   final VoidCallback? onChanged;
-  final Future<void> Function(String quote, Rect? shareOrigin)? onShare;
+  final Future<void> Function(String quote, Rect? shareOrigin, {String? note})?
+      onShare;
   final bool isCreate;
   final bool isPro;
 
@@ -163,8 +164,9 @@ class _AnnotationNoteSheetState extends State<_AnnotationNoteSheet> {
     final origin = box != null && box.hasSize && !box.size.isEmpty
         ? box.localToGlobal(Offset.zero) & box.size
         : null;
+    final note = (widget.annotation?.note ?? widget.initialNote ?? '').trim();
     Navigator.pop(context);
-    await share(quote, origin);
+    await share(quote, origin, note: note.isEmpty ? null : note);
   }
 
   Future<void> _delete() async {
