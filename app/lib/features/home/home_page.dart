@@ -770,54 +770,58 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                   )
                 : LayoutBuilder(
                     builder: (context, constraints) {
-                      // 未读改为列表行；省下的高度仍给漫游叠卡
+                      // 未读按条数；漫游吃掉剩余高度，整页刚好一屏
                       const sectionGap = 8.0;
-                      const unreadBodyH = _homeUnreadBodyHeight;
-                      const headerBlock = 30.0;
-                      final padTop = 12.0;
+                      const padTop = 12.0;
                       final padBottom =
                           12 + MediaQuery.paddingOf(context).bottom;
-                      final roamH = (constraints.maxHeight -
-                              padTop -
-                              padBottom -
-                              headerBlock -
-                              unreadBodyH -
-                              sectionGap -
-                              headerBlock)
-                          .clamp(RoamStackPreview.defaultHeight, 420.0);
-                      return ListView(
+                      return SingleChildScrollView(
                         physics: const AlwaysScrollableScrollPhysics(),
-                        padding: EdgeInsets.fromLTRB(16, padTop, 16, padBottom),
-                        children: [
-                          TrialExpiryBannerHost(
-                            margin: const EdgeInsets.only(bottom: 12),
-                            refreshTick:
-                                widget.refreshTick + _trialRefreshTick,
-                          ),
-                          _HomeItemStackSection(
-                            title: unreadSectionTitle(isPro: _isPro),
-                            emptyText: unreadEmptyText(isPro: _isPro),
-                            emptyIcon: Icons.mark_email_unread_outlined,
-                            emptyHeight: _homeUnreadBodyHeight,
-                            items: unread,
-                            onMore: () => _openFilter(
-                              'unread',
-                              unreadSectionTitle(isPro: _isPro),
+                        child: SizedBox(
+                          height: constraints.maxHeight,
+                          child: Padding(
+                            padding: EdgeInsets.fromLTRB(
+                              16,
+                              padTop,
+                              16,
+                              padBottom,
                             ),
-                            onOpen: (item) =>
-                                _openItem(item, entry: 'unread'),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                TrialExpiryBannerHost(
+                                  margin: const EdgeInsets.only(bottom: 12),
+                                  refreshTick: widget.refreshTick +
+                                      _trialRefreshTick,
+                                ),
+                                _HomeItemStackSection(
+                                  title: unreadSectionTitle(isPro: _isPro),
+                                  emptyText: unreadEmptyText(isPro: _isPro),
+                                  emptyIcon: Icons.mark_email_unread_outlined,
+                                  emptyHeight: _homeUnreadEmptyHeight,
+                                  items: unread,
+                                  onMore: () => _openFilter(
+                                    'unread',
+                                    unreadSectionTitle(isPro: _isPro),
+                                  ),
+                                  onOpen: (item) =>
+                                      _openItem(item, entry: 'unread'),
+                                ),
+                                const SizedBox(height: sectionGap),
+                                Expanded(
+                                  child: _HomeRoamSection(
+                                    title: roamSectionTitle(isPro: _isPro),
+                                    emptyText: roamEmptyText(isPro: _isPro),
+                                    items: roam,
+                                    moreLabel: roamMoreLabel(isPro: _isPro),
+                                    onMore: _openRoamList,
+                                    onPlay: _openRoamPlayer,
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
-                          const SizedBox(height: sectionGap),
-                          _HomeRoamSection(
-                            title: roamSectionTitle(isPro: _isPro),
-                            emptyText: roamEmptyText(isPro: _isPro),
-                            emptyHeight: roamH,
-                            items: roam,
-                            moreLabel: roamMoreLabel(isPro: _isPro),
-                            onMore: _openRoamList,
-                            onPlay: _openRoamPlayer,
-                          ),
-                        ],
+                        ),
                       );
                     },
                   ),
@@ -830,7 +834,6 @@ class _HomeRoamSection extends StatelessWidget {
   const _HomeRoamSection({
     required this.title,
     required this.emptyText,
-    required this.emptyHeight,
     required this.items,
     required this.onMore,
     required this.onPlay,
@@ -839,7 +842,6 @@ class _HomeRoamSection extends StatelessWidget {
 
   final String title;
   final String emptyText;
-  final double emptyHeight;
   final List<RoamSnippet> items;
   final VoidCallback onMore;
   final VoidCallback onPlay;
@@ -882,11 +884,14 @@ class _HomeRoamSection extends StatelessWidget {
           ],
         ),
         const SizedBox(height: 8),
-        SizedBox(
-          height: emptyHeight,
-          width: double.infinity,
-          child: items.isEmpty
-              ? Container(
+        Expanded(
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final height = constraints.maxHeight;
+              if (items.isEmpty) {
+                return Container(
+                  height: height,
+                  width: double.infinity,
                   decoration: BoxDecoration(
                     color: Colors.white,
                     borderRadius: BorderRadius.circular(16),
@@ -910,24 +915,25 @@ class _HomeRoamSection extends StatelessWidget {
                       ),
                     ],
                   ),
-                )
-              : RoamStackPreview(
-                  items: items,
-                  height: emptyHeight,
-                  onTap: onPlay,
-                ),
+                );
+              }
+              return RoamStackPreview(
+                items: items,
+                height: height,
+                onTap: onPlay,
+              );
+            },
+          ),
         ),
       ],
     );
   }
 }
 
-/// 与列表行同高：封面 64 + 上下内边距 24。空态与 1～3 条都按满三条占位，高度不跳。
+/// 与列表行同高：封面 64 + 上下内边距 24。有数据时按实际条数占高。
 const _homeUnreadTileHeight = 88.0;
 const _homeUnreadTileGap = 8.0;
-const _homeUnreadSlotCount = 3;
-const _homeUnreadBodyHeight = _homeUnreadTileHeight * _homeUnreadSlotCount +
-    _homeUnreadTileGap * (_homeUnreadSlotCount - 1);
+const _homeUnreadEmptyHeight = _homeUnreadTileHeight;
 
 String _homeUnreadSubtitle(CollectionItem item) {
   final pageUrl = (item.canonicalUrl?.trim().isNotEmpty == true)
@@ -1026,22 +1032,18 @@ class _HomeItemStackSection extends StatelessWidget {
             ),
           )
         else
-          SizedBox(
-            height: emptyHeight,
-            width: double.infinity,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                for (var i = 0; i < items.length; i++) ...[
-                  if (i > 0) const SizedBox(height: _homeUnreadTileGap),
-                  ItemListTile.fromItem(
-                    items[i],
-                    subtitle: _homeUnreadSubtitle(items[i]),
-                    onTap: () => onOpen(items[i]),
-                  ),
-                ],
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              for (var i = 0; i < items.length; i++) ...[
+                if (i > 0) const SizedBox(height: _homeUnreadTileGap),
+                ItemListTile.fromItem(
+                  items[i],
+                  subtitle: _homeUnreadSubtitle(items[i]),
+                  onTap: () => onOpen(items[i]),
+                ),
               ],
-            ),
+            ],
           ),
       ],
     );
