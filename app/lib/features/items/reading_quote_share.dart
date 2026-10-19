@@ -36,7 +36,7 @@ const _coverHeight = 180.0;
 const _qrSize = 64.0;
 const _qrGap = 32.0;
 const _watermarkGap = 10.0;
-const _watermarkText = 'App Store 下载奏折';
+const _watermarkText = 'iOS App Store 下载奏折';
 const _watermarkStyle = TextStyle(
   color: Color(0xFFC5CDD4),
   fontSize: 11,
