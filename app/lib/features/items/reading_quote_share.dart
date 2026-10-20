@@ -140,7 +140,7 @@ Future<Uint8List> renderReadingQuotePng({
   ReadingShareKind kind = ReadingShareKind.quote,
   String note = '',
   bool watermark = false,
-  double pixelRatio = 2,
+  double pixelRatio = 3,
 }) async {
   final plain = _plainQuote(quote);
   final quotePainter = TextPainter(
