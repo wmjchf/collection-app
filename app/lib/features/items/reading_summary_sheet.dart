@@ -9,7 +9,6 @@ import 'package:super_collection/features/items/ai_meta_models.dart';
 import 'package:super_collection/features/items/ai_scholar_copy.dart';
 import 'package:super_collection/features/items/item_models.dart';
 import 'package:super_collection/features/items/items_repository.dart';
-import 'package:super_collection/features/items/justified_text.dart';
 import 'package:super_collection/features/items/reading_quote_share.dart';
 import 'package:super_collection/features/items/reading_regenerate_confirm_dialog.dart';
 import 'package:super_collection/features/items/transcript_models.dart';
@@ -347,34 +346,41 @@ class _ReadingSummarySheetState extends State<_ReadingSummarySheet> {
     );
   }
 
-  Widget _summaryBlock(String label, String body, {bool shareAfter = false}) {
+  Widget _summaryBlock(String label, String body, {bool share = false}) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          label,
-          style: const TextStyle(
-            fontSize: 12,
-            fontWeight: FontWeight.w600,
-            letterSpacing: 0.6,
-            color: _muted,
-          ),
+        Row(
+          children: [
+            Text(
+              label,
+              style: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                letterSpacing: 0.6,
+                color: _muted,
+              ),
+            ),
+            if (share) ...[
+              const SizedBox(width: 8),
+              _summaryShareButton(),
+            ],
+          ],
         ),
         const SizedBox(height: 6),
-        _shareableText(body, shareAfter: shareAfter),
+        _bodyText(body),
       ],
     );
   }
 
-  Widget _shareableText(String body, {required bool shareAfter}) {
-    return JustifiedText(
-      text: body,
+  Widget _bodyText(String body) {
+    return SelectableText(
+      body,
       style: const TextStyle(
         fontSize: 15,
         color: _text,
         height: 1.65,
       ),
-      trailing: shareAfter ? _summaryShareButton() : null,
     );
   }
 
@@ -388,28 +394,25 @@ class _ReadingSummarySheetState extends State<_ReadingSummarySheet> {
               : null;
           unawaited(_shareSummary(origin));
         },
-        child: const Padding(
-          padding: EdgeInsets.only(left: 8),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                Icons.ios_share_rounded,
-                size: 14,
+        child: const Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.ios_share_rounded,
+              size: 14,
+              color: _blue,
+            ),
+            SizedBox(width: 2),
+            Text(
+              '分享',
+              style: TextStyle(
+                fontSize: 13,
+                height: 1.4,
+                fontWeight: FontWeight.w600,
                 color: _blue,
               ),
-              SizedBox(width: 2),
-              Text(
-                '分享',
-                style: TextStyle(
-                  fontSize: 13,
-                  height: 1.4,
-                  fontWeight: FontWeight.w600,
-                  color: _blue,
-                ),
-              ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
@@ -505,11 +508,17 @@ class _ReadingSummarySheetState extends State<_ReadingSummarySheet> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               if (brief.isNotEmpty) ...[
-                _summaryBlock('总结', brief, shareAfter: true),
+                _summaryBlock('总结', brief, share: true),
                 const SizedBox(height: 16),
                 _summaryBlock('解读', text),
-              ] else
-                _shareableText(text, shareAfter: true),
+              ] else ...[
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: _summaryShareButton(),
+                ),
+                const SizedBox(height: 6),
+                _bodyText(text),
+              ],
             ],
           ),
         ),
