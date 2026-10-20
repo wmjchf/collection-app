@@ -397,6 +397,7 @@ class _ItemTranscriptPageState extends State<ItemTranscriptPage> {
     }
     try {
       await shareReadingQuote(
+        context: context,
         quote: quote,
         note: note,
         title: (widget.shareTitle ?? '').trim(),

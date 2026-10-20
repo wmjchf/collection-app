@@ -151,6 +151,7 @@ class _RoamPlayerPageState extends State<RoamPlayerPage>
       final item = await _items.getItem(snippet.itemId);
       if (!mounted) return;
       await shareReadingQuote(
+        context: context,
         quote: quote,
         note: isAnnotation ? snippet.text.trim() : null,
         title: (item.title ?? snippet.itemTitle ?? '').trim(),

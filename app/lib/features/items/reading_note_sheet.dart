@@ -93,6 +93,7 @@ class _ReadingNoteSheetState extends State<_ReadingNoteSheet> {
     if (text.isEmpty) return;
     try {
       await shareReadingQuote(
+        context: context,
         quote: text,
         title: (widget.title ?? '').trim(),
         link: widget.link,

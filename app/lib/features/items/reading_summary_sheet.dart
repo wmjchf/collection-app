@@ -186,6 +186,7 @@ class _ReadingSummarySheetState extends State<_ReadingSummarySheet> {
         : _item.url.trim();
     try {
       await shareReadingQuote(
+        context: context,
         quote: text,
         title: (_item.title ?? '').trim(),
         link: link,
