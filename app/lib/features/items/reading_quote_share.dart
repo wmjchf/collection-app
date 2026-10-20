@@ -78,8 +78,12 @@ const _kindStyle = TextStyle(
   fontWeight: FontWeight.w600,
 );
 
+bool _quoteShareInFlight = false;
+
 /// 后台绘摘句图并唤起系统分享面板（与思维导图分享同一条路径）。
+/// 出图完成前在屏幕中央转圈，系统面板弹出前关掉。
 Future<void> shareReadingQuote({
+  required BuildContext context,
   required String quote,
   String? title,
   String? link,
@@ -90,32 +94,41 @@ Future<void> shareReadingQuote({
   Rect? sharePositionOrigin,
   Size? screenSize,
 }) async {
-  final annotation = note?.trim() ?? '';
-  final bytes = await renderReadingQuotePng(
-    quote: quote.trim(),
-    title: title?.trim() ?? '',
-    link: link?.trim() ?? '',
-    coverUrl: coverUrl,
-    pageUrl: pageUrl,
-    kind: annotation.isNotEmpty && kind == ReadingShareKind.quote
-        ? ReadingShareKind.annotation
-        : kind,
-    note: annotation,
-    watermark: await _shareWatermark(),
-  );
-  final origin = _effectiveShareOrigin(sharePositionOrigin, screenSize);
-  final file = XFile.fromData(
-    bytes,
-    mimeType: 'image/png',
-    name: 'quote.png',
-  );
-  await _shareWithFallback(
-    ShareParams(
-      files: [file],
-      fileNameOverrides: const ['quote.png'],
-      sharePositionOrigin: origin,
-    ),
-  );
+  if (_quoteShareInFlight) return;
+  _quoteShareInFlight = true;
+  final loading = _QuoteShareLoading.show(context);
+  try {
+    final annotation = note?.trim() ?? '';
+    final bytes = await renderReadingQuotePng(
+      quote: quote.trim(),
+      title: title?.trim() ?? '',
+      link: link?.trim() ?? '',
+      coverUrl: coverUrl,
+      pageUrl: pageUrl,
+      kind: annotation.isNotEmpty && kind == ReadingShareKind.quote
+          ? ReadingShareKind.annotation
+          : kind,
+      note: annotation,
+      watermark: await _shareWatermark(),
+    );
+    loading.dismiss();
+    final origin = _effectiveShareOrigin(sharePositionOrigin, screenSize);
+    final file = XFile.fromData(
+      bytes,
+      mimeType: 'image/png',
+      name: 'quote.png',
+    );
+    await _shareWithFallback(
+      ShareParams(
+        files: [file],
+        fileNameOverrides: const ['quote.png'],
+        sharePositionOrigin: origin,
+      ),
+    );
+  } finally {
+    loading.dismiss();
+    _quoteShareInFlight = false;
+  }
 }
 
 Future<Uint8List> renderReadingQuotePng({
@@ -533,6 +546,49 @@ void _paintEdgeFade(Canvas canvas, Rect quoteRect) {
     ),
     bottom,
   );
+}
+
+class _QuoteShareLoading {
+  _QuoteShareLoading(this._entry);
+
+  final OverlayEntry? _entry;
+  var _dismissed = false;
+
+  static _QuoteShareLoading show(BuildContext context) {
+    if (!context.mounted) return _QuoteShareLoading(null);
+    final overlay = Overlay.maybeOf(context, rootOverlay: true);
+    if (overlay == null) return _QuoteShareLoading(null);
+    final entry = OverlayEntry(
+      builder: (context) => const AbsorbPointer(
+        child: Center(
+          child: Material(
+            color: Color(0xFF1F242E),
+            borderRadius: BorderRadius.all(Radius.circular(12)),
+            child: Padding(
+              padding: EdgeInsets.all(16),
+              child: SizedBox(
+                width: 22,
+                height: 22,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: Colors.white,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    overlay.insert(entry);
+    return _QuoteShareLoading(entry);
+  }
+
+  void dismiss() {
+    if (_dismissed) return;
+    _dismissed = true;
+    final entry = _entry;
+    if (entry != null && entry.mounted) entry.remove();
+  }
 }
 
 Future<void> _shareWithFallback(ShareParams params) async {
