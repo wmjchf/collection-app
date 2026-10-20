@@ -899,6 +899,7 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
     if (!mounted) return;
     try {
       await shareReadingQuote(
+        context: context,
         quote: text,
         title: (_item.title ?? '').trim(),
         link: _linkToCopy,
@@ -920,6 +921,7 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
   }) async {
     try {
       await shareReadingQuote(
+        context: context,
         quote: quote,
         note: note,
         title: (_item.title ?? '').trim(),
