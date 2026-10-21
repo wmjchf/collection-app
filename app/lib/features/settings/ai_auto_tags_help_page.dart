@@ -65,9 +65,8 @@ class AiAutoTagsHelpPage extends StatelessWidget {
             _GuideStepCard(
               urls: urls,
               figureIndex: 1,
-              title: 'AI 一键归类',
+              title: '管理归类',
               desc:
-                  '未归类区点「AI 标签归类」可自动整理；'
                   '类别旁的 ··· 菜单可改名、往类别里加标签，或删除整个归类。',
             ),
             const SizedBox(height: 12),
@@ -82,8 +81,9 @@ class AiAutoTagsHelpPage extends StatelessWidget {
             const SizedBox(height: 10),
             const _ProCard(
               child: Text(
-                '升级为 Pro 的用户，在粘贴链接解析完成后，AI 会自动打标签并显示在内容上；'
-                '点进去会显示在内容上方。',
+                '粘贴链接解析完成后，文章会自动打标签并显示在内容上；'
+                '视频在转写成功后自动打标；图集不自动打标。'
+                '点进去可在内容上方看到标签。',
                 style: TextStyle(
                   fontSize: 15,
                   color: Colors.white,

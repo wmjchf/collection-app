@@ -558,7 +558,7 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
                 const SizedBox(height: 10),
                 _TierPlanCard(
                   title: '太子Pro',
-                  tagline: '智能整理：含普通会员，解锁 AI 自动打标签、解读与标签归类',
+                  tagline: '智能整理：含普通会员，解锁 AI 解读',
                   owned: _isTierOwned(UsagePlan.prince),
                   priceWidget: _cardPriceWidget(
                     UsagePlan.prince,
@@ -668,9 +668,7 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
   List<_PlanFeature> _basicFeatures() {
     return const [
       _PlanFeature('订阅期内收藏不限条数', included: true),
-      _PlanFeature('AI 自动打标签', included: false),
       _PlanFeature('AI 解读', included: false),
-      _PlanFeature('AI 标签归类', included: false),
       _PlanFeature('AI 思维导图', included: false),
       _PlanFeature('视频 / 音频转写', included: false),
     ];
@@ -679,9 +677,7 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
   List<_PlanFeature> _princeFeatures(PlanQuotasTable quotas) {
     return [
       const _PlanFeature('含普通会员全部权益', included: true),
-      const _PlanFeature('AI 自动打标签', included: true),
       const _PlanFeature('AI 解读', included: true),
-      const _PlanFeature('AI 标签归类', included: true),
       const _PlanFeature('AI 思维导图', included: false),
       const _PlanFeature('视频 / 音频转写', included: false),
       _PlanFeature(

@@ -3,6 +3,7 @@ const aiMeta = require('./aiMeta');
 const aliyunDashScope = require('./aliyunDashScope');
 const tagService = require('./tagService');
 const transcriptSegments = require('./transcriptSegments');
+const itemMediaKind = require('./itemMediaKind');
 const {
   hasAiInput,
   buildInputText,
@@ -140,33 +141,35 @@ async function onTranscriptSettledForAiSuggest(itemId) {
   if (!row) return;
 
   let meta = aiMeta.parseAiMeta(row.ai_meta);
-  if (meta.tags.status !== 'pending' || !meta.tags.awaitTranscript) {
+  if (meta.tags.status === 'pending' && meta.tags.awaitTranscript) {
+    const segments = transcriptSegments.parseSegments(row.transcript_segments);
+    if (transcriptSegments.hasPendingSegment(segments)) return;
+
+    if (transcriptSegments.shouldAutoTranscribeBeforeMindmap(row)) {
+      const target = transcriptSegments.topBarTranscriptTarget(row);
+      const err =
+        target && target.status === 'failed'
+          ? target.error || '转写失败，无法生成标签建议'
+          : '转写未完成，无法生成标签建议';
+      await failAiSuggestJob(itemId, err);
+      return;
+    }
+
+    if (!hasAiInput(row)) {
+      await failAiSuggestJob(itemId, '转写结果为空，无法生成标签建议');
+      return;
+    }
+
+    meta = aiMeta.withTagsState(meta, { awaitTranscript: false });
+    await saveAiMeta(itemId, meta);
+
+    const { enqueueAiSuggest } = require('./aiSuggestQueue');
+    enqueueAiSuggest(itemId);
     return;
   }
 
-  const segments = transcriptSegments.parseSegments(row.transcript_segments);
-  if (transcriptSegments.hasPendingSegment(segments)) return;
-
-  if (transcriptSegments.shouldAutoTranscribeBeforeMindmap(row)) {
-    const target = transcriptSegments.topBarTranscriptTarget(row);
-    const err =
-      target && target.status === 'failed'
-        ? target.error || '转写失败，无法生成标签建议'
-        : '转写未完成，无法生成标签建议';
-    await failAiSuggestJob(itemId, err);
-    return;
-  }
-
-  if (!hasAiInput(row)) {
-    await failAiSuggestJob(itemId, '转写结果为空，无法生成标签建议');
-    return;
-  }
-
-  meta = aiMeta.withTagsState(meta, { awaitTranscript: false });
-  await saveAiMeta(itemId, meta);
-
-  const { enqueueAiSuggest } = require('./aiSuggestQueue');
-  enqueueAiSuggest(itemId);
+  // 视频：任意转写成功后自动打标（不依赖先前 awaitTranscript）
+  await maybeAutoTagAfterTranscript(itemId);
 }
 
 async function requestAiSuggest(userId, itemId, { force = false, autoApply = false } = {}) {
@@ -198,9 +201,13 @@ async function requestAiSuggest(userId, itemId, { force = false, autoApply = fal
   // 否则条目接口无 items、轮询却吐出旧 ephemeral，表现为先无反应再冒出旧标签。
   const ephemeral = peekEphemeralSuggestions(itemId);
 
+  const autoApplyFlag = autoApply === true;
   const usageService = require('./usageService');
-  await usageService.assertPlanFeatureForUser(userId, 'ai_tags');
-  await usageService.assertAiQuota(userId);
+  // 自动打标对全员开放（视频/图集在 maybeAutoTag 已跳过）；手动建议仍卡门控与额度
+  if (!autoApplyFlag) {
+    await usageService.assertPlanFeatureForUser(userId, 'ai_tags');
+    await usageService.assertAiQuota(userId);
+  }
 
   const regenerateFrom = force
     ? snapshotRegenerateFrom(
@@ -213,10 +220,13 @@ async function requestAiSuggest(userId, itemId, { force = false, autoApply = fal
         'tags',
       )
     : null;
-  const autoApplyFlag = autoApply === true;
   clearEphemeralSuggestions(itemId);
 
   if (transcriptSegments.shouldAutoTranscribeBeforeMindmap(row)) {
+    // 自动打标不拉转写（视频/音频应已在 maybeAutoTag 跳过）
+    if (autoApplyFlag) {
+      throw Object.assign(new Error('视频内容不自动打标'), { status: 400 });
+    }
     await usageService.assertTranscriptQuota(userId);
     const aliyunAsr = require('./aliyunAsr');
     if (!aliyunAsr.isConfigured()) {
@@ -270,12 +280,14 @@ async function requestAiSuggest(userId, itemId, { force = false, autoApply = fal
     regenBlock,
     '请根据正文建议标签：先判断内容需要什么标签，再决定复用已有还是新建。',
   ]);
-  await usageService.assertAiQuota(userId, {
-    estimatedTokens: usageService.estimateAiTokens({
-      messages: previewMessages,
-      feature: 'tags',
-    }),
-  });
+  if (!autoApplyFlag) {
+    await usageService.assertAiQuota(userId, {
+      estimatedTokens: usageService.estimateAiTokens({
+        messages: previewMessages,
+        feature: 'tags',
+      }),
+    });
+  }
 
   meta = aiMeta.withTagsState(meta, {
     status: 'pending',
@@ -372,12 +384,14 @@ async function runAiSuggestJob(itemId) {
     ]);
 
     const usageService = require('./usageService');
-    await usageService.assertAiQuota(row.user_id, {
-      estimatedTokens: usageService.estimateAiTokens({
-        messages,
-        feature: 'tags',
-      }),
-    });
+    if (!meta.tags.autoApply) {
+      await usageService.assertAiQuota(row.user_id, {
+        estimatedTokens: usageService.estimateAiTokens({
+          messages,
+          feature: 'tags',
+        }),
+      });
+    }
 
     const { json: result, usage: modelUsage } = await aliyunDashScope.chatJson({
       messages,
@@ -611,8 +625,8 @@ async function applyAiSuggest(userId, itemId, { names = [] } = {}) {
 }
 
 /**
- * 解析成功后：太子/帝王且尚无标签时，自动跑 AI 建议并写入标签。
- * 失败不影响解析结果（额度不足、音视频无转写权限等静默跳过）。
+ * 解析成功后：文章全员自动打标；图集跳过；视频等转写成功后再打。
+ * 失败不影响解析结果（内容不足等静默跳过）。
  */
 async function maybeAutoTagAfterParse(userId, itemId) {
   try {
@@ -623,11 +637,23 @@ async function maybeAutoTagAfterParse(userId, itemId) {
     const row = await getItemRow(itemId, userId);
     if (!row) return;
     if (guideItemService.isGuideItem(row)) return;
-
-    const subscriptionService = require('./subscriptionService');
-    const planService = require('./planService');
-    const { plan } = await subscriptionService.getPlanForUser(userId);
-    if (!planService.hasPrince(plan)) return;
+    if (itemMediaKind.isImageGallery(row)) {
+      console.log(`[maybeAutoTagAfterParse] skip gallery item=${itemId}`);
+      return;
+    }
+    if (itemMediaKind.hasTopVideo(row)) {
+      const target = transcriptSegments.topBarTranscriptTarget(row);
+      const ready =
+        target &&
+        target.status === 'success' &&
+        String(target.text || '').trim();
+      if (!ready) {
+        console.log(
+          `[maybeAutoTagAfterParse] defer video until transcript item=${itemId}`,
+        );
+        return;
+      }
+    }
 
     const currentTags = await itemService.listItemTags(userId, itemId);
     if (currentTags.some((t) => !t.isSystem)) return;
@@ -645,6 +671,51 @@ async function maybeAutoTagAfterParse(userId, itemId) {
   }
 }
 
+/**
+ * 转写成功后：顶栏视频条目自动打标（图集不打；已有用户标签则跳过）。
+ */
+async function maybeAutoTagAfterTranscript(itemId) {
+  try {
+    if (!aliyunDashScope.isConfigured()) return;
+
+    const [rows] = await pool.execute(
+      `SELECT * FROM items WHERE id = :itemId AND deleted_at IS NULL LIMIT 1`,
+      { itemId },
+    );
+    const row = rows[0];
+    if (!row) return;
+
+    const guideItemService = require('./guideItemService');
+    if (guideItemService.isGuideItem(row)) return;
+    if (itemMediaKind.isImageGallery(row)) return;
+    if (!itemMediaKind.hasTopVideo(row)) return;
+
+    const target = transcriptSegments.topBarTranscriptTarget(row);
+    if (
+      !target ||
+      target.status !== 'success' ||
+      !String(target.text || '').trim()
+    ) {
+      return;
+    }
+
+    const itemService = require('./itemService');
+    const currentTags = await itemService.listItemTags(row.user_id, itemId);
+    if (currentTags.some((t) => !t.isSystem)) return;
+
+    const meta = aiMeta.parseAiMeta(row.ai_meta);
+    if (meta.tags.status === 'pending') return;
+
+    await requestAiSuggest(row.user_id, itemId, { autoApply: true });
+    console.log(`[maybeAutoTagAfterTranscript] enqueued item=${itemId}`);
+  } catch (err) {
+    console.warn(
+      `[maybeAutoTagAfterTranscript] skip item=${itemId}`,
+      err.message || err,
+    );
+  }
+}
+
 module.exports = {
   requestAiSuggest,
   getAiSuggestStatus,
@@ -654,4 +725,5 @@ module.exports = {
   failAiSuggestJob,
   onTranscriptSettledForAiSuggest,
   maybeAutoTagAfterParse,
+  maybeAutoTagAfterTranscript,
 };

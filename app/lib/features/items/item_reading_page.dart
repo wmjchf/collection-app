@@ -1198,6 +1198,24 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
     }
   }
 
+  /// 转写刚成功时自动打标可能尚未入队，先等 pending 再跟状态，或等到标签出现。
+  Future<void> _pollAutoTagsAfterTranscript() async {
+    for (var i = 0; i < 30; i++) {
+      await Future<void>.delayed(const Duration(seconds: 2));
+      if (!mounted) return;
+      try {
+        final item = await _repo.getItem(_item.id);
+        if (!mounted) return;
+        setState(() => _item = item);
+        if (item.tags.isNotEmpty) return;
+        if (item.aiMeta.tags.isPending) {
+          await _pollAiSuggestInBackground();
+          return;
+        }
+      } catch (_) {}
+    }
+  }
+
   void _openTagList(Tag tag) {
     Navigator.of(context).push(
       MaterialPageRoute<void>(
@@ -1214,16 +1232,12 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
     );
   }
 
-  Future<void> _openTagsSheet({bool autoStartAiSuggest = false}) async {
+  Future<void> _openTagsSheet() async {
     await showReadingTagsSheet(
       context,
       itemId: _item.id,
       tagsMeta: _item.aiMeta.tags,
-      aiSuggestEnabled: _item.canTriggerAiSuggest,
-      transcriptPending: _item.hasAnyTranscriptPending &&
-          !_item.aiMeta.tags.awaitTranscript,
-      autoStartAiSuggest: autoStartAiSuggest,
-      needsAutoTranscript: _item.shouldAutoTranscribeBeforeMindmap,
+      aiSuggestEnabled: false,
       onTagsMetaChanged: _syncItemTagsMeta,
     );
     if (!mounted) return;
@@ -1467,10 +1481,12 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
         setState(() => _item = item);
         final anySuccess = st.segments.values.any((s) => s.isSuccess);
         if (anySuccess) {
-          if (_item.shouldPromptAiSuggestAfterTranscript) {
-            await _promptAiSuggestAfterTranscript();
-          } else {
-            AppToast.show(context, '文稿已生成');
+          AppToast.show(context, '文稿已生成');
+          // 视频：服务端转写成功后自动打标，轮询刷新
+          if (_item.hasVideo) {
+            unawaited(_pollAutoTagsAfterTranscript());
+          } else if (_item.aiMeta.tags.isPending) {
+            unawaited(_pollAiSuggestInBackground());
           }
         } else {
           String? errMsg;
@@ -1487,32 +1503,6 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
       } catch (_) {
         // ignore poll errors
       }
-    }
-  }
-
-  Future<void> _promptAiSuggestAfterTranscript() async {
-    if (!mounted || !_item.shouldPromptAiSuggestAfterTranscript) return;
-    final go = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('文稿已生成'),
-        content: const Text(
-          '是否根据正文与文稿生成 AI 标签建议？',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('稍后'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('生成'),
-          ),
-        ],
-      ),
-    );
-    if (go == true && mounted) {
-      await _openTagsSheet(autoStartAiSuggest: true);
     }
   }
 

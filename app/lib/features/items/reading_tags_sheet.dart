@@ -11,10 +11,7 @@ import 'package:super_collection/features/collection/tag_module_models.dart';
 import 'package:super_collection/features/collection/tag_modules_repository.dart';
 import 'package:super_collection/features/collection/tags_repository.dart';
 import 'package:super_collection/features/items/ai_meta_models.dart';
-import 'package:super_collection/features/items/ai_scholar_copy.dart';
 import 'package:super_collection/features/items/items_repository.dart';
-import 'package:super_collection/features/settings/quota_gate.dart';
-import 'package:super_collection/features/settings/usage_repository.dart';
 
 class _TagsSheetSession {
   final Set<int> selectedIds = {};
@@ -99,10 +96,8 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
   bool _loading = true;
   bool _saving = false;
   bool _creating = false;
-  bool _isPro = false;
   String? _error;
   late AiTagsMeta _tagsMeta;
-  Timer? _aiPollTimer;
 
   @override
   void initState() {
@@ -112,119 +107,10 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
       _aiSelected.addAll(_tagsMeta.items.map((e) => e.name));
     }
     _load();
-    unawaited(_loadPro());
-    if (_tagsMeta.isPending) {
-      _startAiPoll();
-    } else if (widget.autoStartAiSuggest && widget.aiSuggestEnabled) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) unawaited(_triggerAiSuggest());
-      });
-    }
-  }
-
-  Future<void> _loadPro() async {
-    try {
-      final usage = await UsageRepository().fetchUsage();
-      if (!mounted) return;
-      setState(() => _isPro = usage.isPro);
-    } catch (_) {}
-  }
-
-  void _syncTagsMeta(AiTagsMeta meta) {
-    setState(() {
-      _tagsMeta = meta;
-      if (meta.hasSuggestions) {
-        _aiSelected
-          ..clear()
-          ..addAll(meta.items.map((e) => e.name));
-        for (final item in meta.items) {
-          final id = item.existingTagId;
-          if (id != null) _selected.add(id);
-        }
-      }
-    });
-    widget.onTagsMetaChanged?.call(meta);
-  }
-
-  void _startAiPoll() {
-    _aiPollTimer?.cancel();
-    _aiPollTimer = Timer.periodic(const Duration(seconds: 2), (_) {
-      unawaited(_pollAiOnce());
-    });
-  }
-
-  Future<void> _pollAiOnce() async {
-    if (!mounted) return;
-    try {
-      final st = await _itemsRepo.getAiSuggestStatus(widget.itemId);
-      if (st.tags.isPending) {
-        if (_tagsMeta.status != st.tags.status ||
-            _tagsMeta.awaitTranscript != st.tags.awaitTranscript) {
-          _syncTagsMeta(st.tags);
-        }
-        return;
-      }
-      _aiPollTimer?.cancel();
-      _syncTagsMeta(st.tags);
-    } catch (_) {}
-  }
-
-  Future<void> _triggerAiSuggest({bool force = false}) async {
-    if (!_tagsMeta.isPending && !widget.aiSuggestEnabled) {
-      _toastDisabledAi();
-      return;
-    }
-    if (_tagsMeta.isPending) return;
-
-    final needs = <PlanFeatureRequirement>[
-      (has: (f) => f.aiTags, tier: UsagePlan.prince),
-    ];
-    if (widget.needsAutoTranscript) {
-      needs.add((has: (f) => f.transcript, tier: UsagePlan.emperor));
-    }
-    final allowed = await ensurePlanFeatures(
-      context,
-      hasResultOrPending: _tagsMeta.hasSuggestions || _tagsMeta.isFailed,
-      requirements: needs,
-    );
-    if (!allowed || !mounted) return;
-
-    if (force || (_tagsMeta.isSuccess && _tagsMeta.hasSuggestions)) {
-      force = true;
-    }
-
-    try {
-      Analytics.instance.aiTagsRequest(
-        itemId: widget.itemId,
-        force: force,
-      );
-      final updated = await _itemsRepo.requestAiSuggest(
-        widget.itemId,
-        force: force,
-      );
-      if (!mounted) return;
-      _syncTagsMeta(updated.aiMeta.tags);
-      _startAiPoll();
-    } on ApiException catch (e) {
-      if (!mounted) return;
-      await handleApiException(context, e);
-    }
-  }
-
-  void _toastDisabledAi() {
-    AppToast.show(
-      context,
-      widget.transcriptPending
-          ? '转写进行中，请稍候再生成标签建议'
-          : _tagsMeta.isPending
-              ? '标签建议生成中，请稍候'
-              : '内容不足，无法生成标签建议',
-    );
   }
 
   @override
   void dispose() {
-    _aiPollTimer?.cancel();
     _searchController.dispose();
     _searchFocus.dispose();
     super.dispose();
@@ -380,22 +266,6 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
     });
   }
 
-  void _toggleAiSuggestion(AiTagSuggestion item) {
-    _dismissSearchFocus();
-    setState(() {
-      if (_aiSelected.contains(item.name)) {
-        _aiSelected.remove(item.name);
-        final id = item.existingTagId;
-        if (id != null) _selected.remove(id);
-      } else {
-        _aiSelected.add(item.name);
-        final id = item.existingTagId;
-        if (id != null) _selected.add(id);
-      }
-      _syncSession();
-    });
-  }
-
   Future<void> _createFromQuery() async {
     final name = _queryKey;
     if (name.isEmpty || _creating) return;
@@ -494,12 +364,6 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
     final n = name.trim();
     if (n.isEmpty) return '';
     return n.startsWith('#') ? n : '#$n';
-  }
-
-  bool _isNewSuggestionName(String name) {
-    final key = name.trim().toLowerCase();
-    if (key.isEmpty) return false;
-    return !_allTags.any((t) => t.name.toLowerCase() == key);
   }
 
   Widget _pill({
@@ -691,119 +555,6 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
             ],
           ),
         ],
-        const SizedBox(height: 14),
-        _buildAiRecommendBlock(),
-      ],
-    );
-  }
-
-  Widget _buildAiRecommendBlock() {
-    final meta = _tagsMeta;
-    final enabled = widget.aiSuggestEnabled || meta.isPending;
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Material(
-              color: Colors.transparent,
-              child: InkWell(
-                onTap: !enabled
-                    ? _toastDisabledAi
-                    : meta.isPending
-                        ? null
-                        : () => unawaited(
-                              _triggerAiSuggest(
-                                force: meta.hasSuggestions || meta.isFailed,
-                              ),
-                            ),
-                borderRadius: BorderRadius.circular(999),
-                child: Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-                  decoration: BoxDecoration(
-                    color: _chipBg,
-                    borderRadius: BorderRadius.circular(999),
-                    border: Border.all(color: const Color(0xFFE8ECF0)),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        Icons.auto_awesome_outlined,
-                        size: 16,
-                        color: enabled ? _blue : _muted,
-                      ),
-                      const SizedBox(width: 4),
-                      Text(
-                        meta.isPending
-                            ? (meta.awaitTranscript ? '转写中…' : '生成中…')
-                            : meta.hasSuggestions || meta.isFailed
-                                ? '重新推荐'
-                                : 'AI 推荐',
-                        style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                          color: enabled ? _blue : _muted,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(width: 10),
-            const Expanded(
-              child: Text(
-                '点击生成 AI 推荐标签，生成后默认为选择，可点击相应标签取消选择',
-                style: TextStyle(
-                  fontSize: 12,
-                  color: _muted,
-                  height: 1.35,
-                ),
-              ),
-            ),
-          ],
-        ),
-        if (meta.isPending) ...[
-          const SizedBox(height: 10),
-          Text(
-            aiScholarGeneratingLabel('推荐', isPro: _isPro),
-            style: const TextStyle(fontSize: 13, color: _muted),
-          ),
-        ] else if (meta.isFailed) ...[
-          const SizedBox(height: 10),
-          Text(
-            (meta.error ?? '').trim().isEmpty
-                ? '推荐生成失败，可重试'
-                : '推荐失败：${meta.error}',
-            style: const TextStyle(fontSize: 13, color: _muted, height: 1.4),
-          ),
-        ] else if (meta.isEmpty) ...[
-          const SizedBox(height: 10),
-          const Text(
-            '暂无新的推荐',
-            style: TextStyle(fontSize: 13, color: _muted),
-          ),
-        ] else if (meta.hasSuggestions) ...[
-          const SizedBox(height: 10),
-          Wrap(
-            spacing: 6,
-            runSpacing: 8,
-            children: [
-              for (final item in meta.items)
-                _pill(
-                  label: item.name,
-                  selected: _aiSelected.contains(item.name),
-                  isNew: item.existingTagId == null &&
-                      _isNewSuggestionName(item.name),
-                  onTap: () => _toggleAiSuggestion(item),
-                ),
-            ],
-          ),
-        ],
       ],
     );
   }
@@ -897,7 +648,7 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
           ),
         if (_allTags.isEmpty)
           const Text(
-            '还没有标签，可搜索新建或使用 AI 推荐',
+            '还没有标签，可搜索新建',
             style: TextStyle(fontSize: 13, color: _muted, height: 1.4),
           )
         else if (!_allTags.any(_tagMatches) && !_canCreateFromQuery)
