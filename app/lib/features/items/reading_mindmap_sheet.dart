@@ -131,7 +131,7 @@ class _ReadingMindmapSheetState extends State<_ReadingMindmapSheet> {
       context,
       hasResultOrPending: false,
       requirements: [
-        (has: (f) => f.aiMindmap, tier: UsagePlan.emperor),
+        (has: (f) => f.aiMindmap, tier: UsagePlan.prince),
       ],
     );
     if (!allowed || !mounted) {

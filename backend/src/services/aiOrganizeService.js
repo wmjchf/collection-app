@@ -202,7 +202,7 @@ function normalizeProposal(raw, tagById, moduleById, membership) {
 /**
  * 同步生成归类建议（不落库）。只安置未归类标签。
  * @param {{ hint?: string, skipQuota?: boolean }} [opts]
- *   skipQuota：自动归类路径，不卡门控/额度（仍记用量）
+ *   skipQuota：自动归类路径，不卡门控/额度，且不记入用户用量
  */
 async function suggestOrganize(userId, { hint, skipQuota = false } = {}) {
   if (!skipQuota) {
@@ -264,15 +264,20 @@ async function suggestOrganize(userId, { hint, skipQuota = false } = {}) {
   }
 
   const generatedAt = new Date().toISOString();
-  const creditsUsed = usageService.creditsFromModelUsage(modelUsage);
-  await usageService.recordAiTokenUsage({
-    userId,
-    itemId: null,
-    feature: 'organize',
-    tokens: modelUsage?.totalTokens || 0,
-    generatedAt,
-    meta: modelUsage,
-  });
+  const creditsUsed = skipQuota
+    ? null
+    : usageService.creditsFromModelUsage(modelUsage);
+  // 自动归类不计用户额度
+  if (!skipQuota) {
+    await usageService.recordAiTokenUsage({
+      userId,
+      itemId: null,
+      feature: 'organize',
+      tokens: modelUsage?.totalTokens || 0,
+      generatedAt,
+      meta: modelUsage,
+    });
+  }
 
   return {
     proposal: {

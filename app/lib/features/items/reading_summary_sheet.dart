@@ -125,7 +125,7 @@ class _ReadingSummarySheetState extends State<_ReadingSummarySheet> {
       (has: (f) => f.aiSummary, tier: UsagePlan.prince),
     ];
     if (_item.shouldAutoTranscribeBeforeMindmap) {
-      needs.add((has: (f) => f.transcript, tier: UsagePlan.emperor));
+      needs.add((has: (f) => f.transcript, tier: UsagePlan.prince));
     }
     final allowed = await ensurePlanFeatures(
       context,

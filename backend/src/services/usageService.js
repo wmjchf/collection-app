@@ -85,7 +85,9 @@ function quotasForPlan(plan, { isTrial = false } = {}) {
   }
   if (p === planService.PLAN_PRINCE) {
     const full = {
-      transcriptMinutesPerMonth: 0,
+      transcriptMinutesPerMonth: Number(
+        u.princeTranscriptMinutesPerMonth ?? 200,
+      ),
       aiTokensPerMonth: Number(
         u.princeAiTokensPerMonth ?? u.proAiTokensPerMonth ?? 500000,
       ),
@@ -93,7 +95,10 @@ function quotasForPlan(plan, { isTrial = false } = {}) {
     };
     if (!isTrial) return full;
     return {
-      transcriptMinutesPerMonth: 0,
+      transcriptMinutesPerMonth: applyTrialQuota(
+        full.transcriptMinutesPerMonth,
+        u.trialPrinceTranscriptMinutesPerMonth,
+      ),
       aiTokensPerMonth: applyTrialQuota(
         full.aiTokensPerMonth,
         u.trialPrinceAiTokensPerMonth,
@@ -111,7 +116,7 @@ function quotasForPlan(plan, { isTrial = false } = {}) {
   return {
     transcriptMinutesPerMonth: Number(u.freeTranscriptMinutesPerMonth ?? 0),
     aiTokensPerMonth: Number(u.freeAiTokensPerMonth ?? 0),
-    itemLimit: Number(u.freeItemLimit ?? 300),
+    itemLimit: Number(u.freeItemLimit ?? 100),
   };
 }
 
@@ -667,8 +672,8 @@ async function getUsageSummary(userId) {
       aiTags: planService.hasPrince(normalizedPlan),
       aiSummary: planService.hasPrince(normalizedPlan),
       aiOrganize: planService.hasPrince(normalizedPlan),
-      aiMindmap: planService.hasEmperor(normalizedPlan),
-      transcript: planService.hasEmperor(normalizedPlan),
+      aiMindmap: planService.hasPrince(normalizedPlan),
+      transcript: planService.hasPrince(normalizedPlan),
       unlimitedItems: planService.hasBasic(normalizedPlan),
     },
   };

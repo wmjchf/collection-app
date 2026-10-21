@@ -558,7 +558,7 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
                 const SizedBox(height: 10),
                 _TierPlanCard(
                   title: '太子Pro',
-                  tagline: '智能整理：含普通会员，解锁 AI 解读',
+                  tagline: '智能整理：含普通会员，解锁解读、脑图与转写',
                   owned: _isTierOwned(UsagePlan.prince),
                   priceWidget: _cardPriceWidget(
                     UsagePlan.prince,
@@ -571,7 +571,7 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
                 const SizedBox(height: 10),
                 _TierPlanCard(
                   title: '帝王Pro',
-                  tagline: '深度加工：含太子Pro，另解锁脑图与转写',
+                  tagline: '更高额度：含太子Pro 全部能力，AI 与转写额度更大',
                   owned: _isTierOwned(UsagePlan.emperor),
                   priceWidget: _cardPriceWidget(
                     UsagePlan.emperor,
@@ -583,7 +583,7 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  '免费用户收藏上限 ${_quotas.free.itemLimit ?? 300} 条；AI / 转写额度按自然月重置',
+                  '免费用户收藏上限 ${_quotas.free.itemLimit ?? 100} 条；AI / 转写额度按自然月重置',
                   style: const TextStyle(
                     fontSize: 12,
                     color: _muted,
@@ -678,10 +678,15 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
     return [
       const _PlanFeature('含普通会员全部权益', included: true),
       const _PlanFeature('AI 解读', included: true),
-      const _PlanFeature('AI 思维导图', included: false),
-      const _PlanFeature('视频 / 音频转写', included: false),
+      const _PlanFeature('AI 思维导图', included: true),
+      const _PlanFeature('视频 / 音频转写', included: true),
       _PlanFeature(
         'AI 额度 ${formatAiCredits(quotas.prince.aiTokens)} 积分 / 月',
+        included: true,
+        isQuota: true,
+      ),
+      _PlanFeature(
+        '转写 ${quotas.prince.transcriptMinutes} 分钟 / 月',
         included: true,
         isQuota: true,
       ),
@@ -690,9 +695,7 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
 
   List<_PlanFeature> _emperorFeatures(PlanQuotasTable quotas) {
     return [
-      const _PlanFeature('含太子Pro全部权益', included: true),
-      const _PlanFeature('AI 思维导图', included: true),
-      const _PlanFeature('视频 / 音频转写', included: true),
+      const _PlanFeature('含太子Pro全部能力', included: true),
       _PlanFeature(
         'AI 额度 ${formatAiCredits(quotas.emperor.aiTokens)} 积分 / 月',
         included: true,
