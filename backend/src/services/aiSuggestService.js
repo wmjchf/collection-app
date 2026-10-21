@@ -508,6 +508,9 @@ async function runAiSuggestJob(itemId) {
         console.log(
           `[runAiSuggestJob] auto-applied item=${itemId} count=${items.length}`,
         );
+        // 新标签写入后，尝试把未归类标签自动归入模块
+        const aiOrganizeService = require('./aiOrganizeService');
+        await aiOrganizeService.autoOrganizeAfterTags(row.user_id);
       } catch (applyErr) {
         console.warn(
           `[runAiSuggestJob] auto-apply failed item=${itemId}`,

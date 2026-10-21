@@ -371,7 +371,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         stepLabel: '3 / 3',
         title: 'AI自动标签分类',
         imageAsset: 'assets/onboarding/ai_auto_tags.png',
-        message: '解析后文章自动打标签；视频转写成功后再打（图集除外）',
+        message: '解析后自动打标签并归类；视频转写成功后再处理（图集除外）',
         confirmLabel: '开始使用',
         showSkip: false,
         onConfirm: () => unawaited(_finishCoach()),
