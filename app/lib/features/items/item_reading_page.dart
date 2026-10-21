@@ -656,7 +656,7 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
       (has: (f) => f.aiSummary, tier: UsagePlan.prince),
     ];
     if (_item.shouldAutoTranscribeBeforeMindmap) {
-      needs.add((has: (f) => f.transcript, tier: UsagePlan.emperor));
+      needs.add((has: (f) => f.transcript, tier: UsagePlan.prince));
     }
     final ok = await ensurePlanFeatures(
       context,
@@ -1252,7 +1252,7 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
       hasResultOrPending:
           mindmap.hasTree || mindmap.isPending || mindmap.isFailed,
       requirements: [
-        (has: (f) => f.aiMindmap, tier: UsagePlan.emperor),
+        (has: (f) => f.aiMindmap, tier: UsagePlan.prince),
       ],
     );
     if (!ok || !mounted) return;
@@ -1360,7 +1360,7 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
       context,
       usageRepo: _usageRepo,
       requirements: [
-        (has: (f) => f.transcript, tier: UsagePlan.emperor),
+        (has: (f) => f.transcript, tier: UsagePlan.prince),
       ],
     );
     if (!allowed || !mounted) return;

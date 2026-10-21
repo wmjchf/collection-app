@@ -417,9 +417,12 @@ async function runAiSuggestJob(itemId) {
 
     const rawTags = Array.isArray(result?.tags) ? result.tags : [];
     const items = matchSuggestedTags(rawTags, userTags, currentTagNames);
+    const isAuto = meta.tags.autoApply === true;
     if (!items.length) {
       const generatedAt = new Date().toISOString();
-      const creditsUsed = usageService.creditsFromModelUsage(modelUsage);
+      const creditsUsed = isAuto
+        ? null
+        : usageService.creditsFromModelUsage(modelUsage);
       setEphemeralSuggestions(itemId, {
         status: 'empty',
         items: [],
@@ -439,29 +442,37 @@ async function runAiSuggestJob(itemId) {
       await saveAiMeta(itemId, meta);
       require('./analyticsService').trackAiJobOutcome(row, 'tags', {
         ok: true,
-        extra: { count: 0 },
+        extra: { count: 0, auto: isAuto },
       });
-      try {
-        const usageService = require('./usageService');
-        await usageService.recordAiTokenUsage({
-          userId: row.user_id,
-          itemId,
-          feature: 'tags',
-          tokens: modelUsage.totalTokens,
-          generatedAt,
-          meta: modelUsage,
-        });
-      } catch (usageErr) {
-        console.warn(`[runAiSuggestJob] usage record failed item=${itemId}`, usageErr.message);
+      // 自动打标不计用户额度（仍消耗我方模型费）
+      if (!isAuto) {
+        try {
+          const usageService = require('./usageService');
+          await usageService.recordAiTokenUsage({
+            userId: row.user_id,
+            itemId,
+            feature: 'tags',
+            tokens: modelUsage.totalTokens,
+            generatedAt,
+            meta: modelUsage,
+          });
+        } catch (usageErr) {
+          console.warn(
+            `[runAiSuggestJob] usage record failed item=${itemId}`,
+            usageErr.message,
+          );
+        }
       }
       console.log(
-        `[runAiSuggestJob] empty item=${itemId} billable=${usageService.billableAiTokensFromUsage(modelUsage)} total=${modelUsage.totalTokens} cached=${modelUsage.cachedTokens || 0} ms=${Date.now() - started}`,
+        `[runAiSuggestJob] empty item=${itemId} auto=${isAuto} billable=${usageService.billableAiTokensFromUsage(modelUsage)} total=${modelUsage.totalTokens} cached=${modelUsage.cachedTokens || 0} ms=${Date.now() - started}`,
       );
       return;
     }
 
     const generatedAt = new Date().toISOString();
-    const creditsUsed = usageService.creditsFromModelUsage(modelUsage);
+    const creditsUsed = isAuto
+      ? null
+      : usageService.creditsFromModelUsage(modelUsage);
     setEphemeralSuggestions(itemId, {
       status: 'success',
       items,
@@ -481,23 +492,28 @@ async function runAiSuggestJob(itemId) {
     await saveAiMeta(itemId, meta);
     require('./analyticsService').trackAiJobOutcome(row, 'tags', {
       ok: true,
-      extra: { count: items.length },
+      extra: { count: items.length, auto: isAuto },
     });
-    try {
-      const usageService = require('./usageService');
-      await usageService.recordAiTokenUsage({
-        userId: row.user_id,
-        itemId,
-        feature: 'tags',
-        tokens: modelUsage.totalTokens,
-        generatedAt,
-        meta: modelUsage,
-      });
-    } catch (usageErr) {
-      console.warn(`[runAiSuggestJob] usage record failed item=${itemId}`, usageErr.message);
+    if (!isAuto) {
+      try {
+        const usageService = require('./usageService');
+        await usageService.recordAiTokenUsage({
+          userId: row.user_id,
+          itemId,
+          feature: 'tags',
+          tokens: modelUsage.totalTokens,
+          generatedAt,
+          meta: modelUsage,
+        });
+      } catch (usageErr) {
+        console.warn(
+          `[runAiSuggestJob] usage record failed item=${itemId}`,
+          usageErr.message,
+        );
+      }
     }
     console.log(
-      `[runAiSuggestJob] ok item=${itemId} count=${items.length} billable=${usageService.billableAiTokensFromUsage(modelUsage)} total=${modelUsage.totalTokens} cached=${modelUsage.cachedTokens || 0} ms=${Date.now() - started}`,
+      `[runAiSuggestJob] ok item=${itemId} count=${items.length} auto=${isAuto} billable=${usageService.billableAiTokensFromUsage(modelUsage)} total=${modelUsage.totalTokens} cached=${modelUsage.cachedTokens || 0} ms=${Date.now() - started}`,
     );
 
     if (meta.tags.autoApply) {

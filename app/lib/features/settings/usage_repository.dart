@@ -578,9 +578,9 @@ class PlanQuotasTable {
   PlanQuota get pro => prince;
 
   static const defaults = PlanQuotasTable(
-    free: PlanQuota(transcriptMinutes: 0, aiTokens: 0, itemLimit: 300),
+    free: PlanQuota(transcriptMinutes: 0, aiTokens: 0, itemLimit: 100),
     basic: PlanQuota(transcriptMinutes: 0, aiTokens: 0),
-    prince: PlanQuota(transcriptMinutes: 0, aiTokens: 500000),
+    prince: PlanQuota(transcriptMinutes: 200, aiTokens: 500000),
     emperor: PlanQuota(transcriptMinutes: 400, aiTokens: 800000),
   );
 

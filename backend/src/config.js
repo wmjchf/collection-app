@@ -66,13 +66,15 @@ module.exports = {
    */
   usage: {
     enforcing: process.env.USAGE_ENFORCING !== 'false',
-    freeItemLimit: Number(process.env.FREE_ITEM_LIMIT) || 300,
+    freeItemLimit: Number(process.env.FREE_ITEM_LIMIT) || 100,
     /** 免费用户 AI/转写均为 0（不可用）；basic 仅无限收藏 */
     freeAiTokensPerMonth: Number(process.env.FREE_AI_TOKENS_PER_MONTH) || 0,
     freeTranscriptMinutesPerMonth:
       Number(process.env.FREE_TRANSCRIPT_MINUTES_PER_MONTH) || 0,
     princeAiTokensPerMonth:
       Number(process.env.PRINCE_AI_TOKENS_PER_MONTH) || 500000,
+    princeTranscriptMinutesPerMonth:
+      Number(process.env.PRINCE_TRANSCRIPT_MINUTES_PER_MONTH) || 200,
     emperorAiTokensPerMonth:
       Number(process.env.EMPEROR_AI_TOKENS_PER_MONTH) || 800000,
     emperorTranscriptMinutesPerMonth:
@@ -89,6 +91,11 @@ module.exports = {
       process.env.TRIAL_PRINCE_AI_TOKENS_PER_MONTH != null &&
       process.env.TRIAL_PRINCE_AI_TOKENS_PER_MONTH !== ''
         ? Number(process.env.TRIAL_PRINCE_AI_TOKENS_PER_MONTH)
+        : null,
+    trialPrinceTranscriptMinutesPerMonth:
+      process.env.TRIAL_PRINCE_TRANSCRIPT_MINUTES_PER_MONTH != null &&
+      process.env.TRIAL_PRINCE_TRANSCRIPT_MINUTES_PER_MONTH !== ''
+        ? Number(process.env.TRIAL_PRINCE_TRANSCRIPT_MINUTES_PER_MONTH)
         : null,
     trialEmperorAiTokensPerMonth:
       process.env.TRIAL_EMPEROR_AI_TOKENS_PER_MONTH != null &&
