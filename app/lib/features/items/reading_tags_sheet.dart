@@ -512,29 +512,21 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Row(
-          children: [
-            const Text(
-              '已选标签',
-              style: TextStyle(
-                fontSize: 15,
-                fontWeight: FontWeight.w700,
-                color: _text,
-              ),
-            ),
-            const Spacer(),
-            Text(
-              '$_selectedCount',
-              style: const TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-                color: _muted,
-              ),
-            ),
-          ],
+        const Text(
+          '已选标签',
+          style: TextStyle(
+            fontSize: 15,
+            fontWeight: FontWeight.w700,
+            color: _text,
+          ),
         ),
-        if (items.isNotEmpty) ...[
-          const SizedBox(height: 10),
+        const SizedBox(height: 10),
+        if (items.isEmpty)
+          const Text(
+            '从下方选择或搜索新建',
+            style: TextStyle(fontSize: 13, color: _muted, height: 1.4),
+          )
+        else
           Wrap(
             spacing: 6,
             runSpacing: 8,
@@ -554,7 +546,6 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
                 ),
             ],
           ),
-        ],
       ],
     );
   }
