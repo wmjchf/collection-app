@@ -23,6 +23,7 @@ class CollectionTagModulesSection extends StatelessWidget {
     this.onPlaceTag,
     this.headerKey,
     this.headerCollapse,
+    this.fillRemaining = false,
   });
 
   final List<TagModule> modules;
@@ -40,25 +41,26 @@ class CollectionTagModulesSection extends StatelessWidget {
   final Key? headerKey;
   /// 0 展开页内标题，1 收进顶栏；为 null 则始终展开。
   final ValueListenable<double>? headerCollapse;
+  /// 在一屏剩余高度内撑满，白底贴到可视区底部。
+  final bool fillRemaining;
 
   static const ink = Color(0xFF1F242E);
   static const muted = Color(0xFF8B929C);
-  static const hairline = Color(0xFFD5DAE2);
+  static const hairline = Color(0xFFE9EBEF);
   static const brand = Color(0xFF2F6FED);
   static const brandSoft = Color(0xFFE5EDFF);
   static const panel = Color(0xFFFFFFFF);
-  static const ungroupedFill = Color(0xFFF4F6F9);
-  static const ungroupedLine = Color(0xFFC5CAD3);
-  /// 未归类标签色（与主题蓝 / AI 入口区分）
+  /// 标签 chip 软底；匣本身用白底细边，避免整块发灰发脏。
+  static const chipFill = Color(0xFFF5F7FA);
+  static const caseLine = Color(0xFFE8EAF0);
+  /// 未归类装订条 / 标签（压低层级）
   static const ungroupedTag = Color(0xFF5C6675);
   static const ungroupedTagSoft = Color(0xFFECEEF2);
 
   @override
   Widget build(BuildContext context) {
-    final hasContent = modules.isNotEmpty || ungrouped.isNotEmpty;
-
     // 归类间距放进各自 DragTarget（topInset），避免空隙落空接不住。
-    const moduleGap = 26.0;
+    const moduleGap = 12.0;
     final blocks = <Widget>[
       _ModuleBlock(
         moduleId: null,
@@ -92,38 +94,37 @@ class CollectionTagModulesSection extends StatelessWidget {
       );
     }
 
+    // 整区一块白底；外层 minHeight 时用 Container 把底色撑满，内容置顶。
     return KeyedSubtree(
       key: headerKey,
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          color: panel,
-          borderRadius: BorderRadius.circular(16),
-        ),
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 14, 12, 18),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              _CollapsingSectionHeader(
-                collapse: headerCollapse,
-                onCreateModule: onCreateModule,
-              ),
-              if (!hasContent)
-                const Padding(
-                  padding: EdgeInsets.only(bottom: 12),
-                  child: Text(
-                    '还没有归类。可用未归类旁的 AI 标签归类，或点右侧 + 新建归类。',
-                    style: TextStyle(
-                      fontSize: 13,
-                      height: 1.45,
-                      color: muted,
-                    ),
-                  ),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final minH = fillRemaining && constraints.minHeight.isFinite
+              ? constraints.minHeight
+              : 0.0;
+          return Container(
+            width: double.infinity,
+            constraints: minH > 0 ? BoxConstraints(minHeight: minH) : null,
+            alignment: Alignment.topCenter,
+            decoration: BoxDecoration(
+              color: panel,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: hairline),
+            ),
+            padding: const EdgeInsets.fromLTRB(14, 14, 12, 14),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _CollapsingSectionHeader(
+                  collapse: headerCollapse,
+                  onCreateModule: onCreateModule,
                 ),
-              ...blocks,
-            ],
-          ),
-        ),
+                ...blocks,
+              ],
+            ),
+          );
+        },
       ),
     );
   }
@@ -144,7 +145,7 @@ class _CollapsingSectionHeader extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         _SectionHeader(onCreateModule: onCreateModule),
-        const SizedBox(height: 8),
+        const SizedBox(height: 12),
       ],
     );
     final listenable = collapse;
@@ -182,32 +183,37 @@ class _SectionHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.only(right: 4),
-      child: Row(
+      padding: const EdgeInsets.only(left: 2, right: 4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            '归类标签',
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w700,
-              letterSpacing: 0.2,
-              color: CollectionTagModulesSection.ink,
-            ),
-          ),
-          const SizedBox(width: 8),
-          const Expanded(
-            child: Text(
-              '长按标签可拖动归类',
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                fontSize: 12,
-                height: 1.2,
-                color: CollectionTagModulesSection.muted,
+          Row(
+            children: [
+              const Expanded(
+                child: Text(
+                  '归类标签',
+                  style: TextStyle(
+                    fontSize: 17,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: 0.6,
+                    height: 1.2,
+                    color: CollectionTagModulesSection.ink,
+                  ),
+                ),
               ),
+              CollectionCreateModuleButton(onPressed: onCreateModule),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            '分格摆放 · 长按拖动归类',
+            style: TextStyle(
+              fontSize: 12,
+              height: 1.35,
+              letterSpacing: 0.2,
+              color: CollectionTagModulesSection.muted.withValues(alpha: 0.9),
             ),
           ),
-          CollectionCreateModuleButton(onPressed: onCreateModule),
         ],
       ),
     );
@@ -408,13 +414,17 @@ class _ModuleBlock extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final bindingColor = ungrouped
+        ? CollectionTagModulesSection.muted
+        : CollectionTagModulesSection.brand;
     final titleStyle = TextStyle(
-      fontSize: 15,
-      fontWeight: FontWeight.w600,
+      fontSize: ungrouped ? 13 : 15,
+      fontWeight: ungrouped ? FontWeight.w500 : FontWeight.w600,
       letterSpacing: ungrouped ? 0.2 : 0.4,
+      height: 1.25,
       color: ungrouped || titleMuted
           ? CollectionTagModulesSection.muted
-          : CollectionTagModulesSection.ink.withValues(alpha: 0.78),
+          : CollectionTagModulesSection.ink.withValues(alpha: 0.92),
     );
     final titleText = Text(
       title,
@@ -430,26 +440,6 @@ class _ModuleBlock extends StatelessWidget {
           height: 28,
           child: Row(
             children: [
-              if (ungrouped) ...[
-                const Icon(
-                  Icons.inbox_outlined,
-                  size: 16,
-                  color: CollectionTagModulesSection.muted,
-                ),
-                const SizedBox(width: 6),
-              ] else
-                Opacity(
-                  opacity: titleMuted ? 0 : 1,
-                  child: Container(
-                    width: 6,
-                    height: 6,
-                    margin: const EdgeInsets.only(right: 8),
-                    decoration: const BoxDecoration(
-                      color: CollectionTagModulesSection.brand,
-                      shape: BoxShape.circle,
-                    ),
-                  ),
-                ),
               Expanded(
                 child: onOpenModule != null
                     ? GestureDetector(
@@ -466,9 +456,9 @@ class _ModuleBlock extends StatelessWidget {
                               Flexible(child: titleText),
                               Icon(
                                 Icons.chevron_right_rounded,
-                                size: 20,
+                                size: 18,
                                 color: CollectionTagModulesSection.ink
-                                    .withValues(alpha: 0.35),
+                                    .withValues(alpha: 0.28),
                               ),
                             ],
                           ),
@@ -479,8 +469,8 @@ class _ModuleBlock extends StatelessWidget {
               if (_hasActions)
                 Builder(
                   builder: (anchorContext) {
-                    final color = CollectionTagModulesSection.ink
-                        .withValues(alpha: 0.45);
+                    final color = CollectionTagModulesSection.muted
+                        .withValues(alpha: 0.7);
                     return Material(
                       color: Colors.transparent,
                       child: InkWell(
@@ -506,25 +496,14 @@ class _ModuleBlock extends StatelessWidget {
                     onTap: onAiOrganize,
                     borderRadius: BorderRadius.circular(8),
                     child: const Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            Icons.auto_awesome_outlined,
-                            size: 15,
-                            color: CollectionTagModulesSection.brand,
-                          ),
-                          SizedBox(width: 4),
-                          Text(
-                            'AI 标签归类',
-                            style: TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w600,
-                              color: CollectionTagModulesSection.brand,
-                            ),
-                          ),
-                        ],
+                      padding: EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                      child: Text(
+                        'AI 标签归类',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
+                          color: CollectionTagModulesSection.brand,
+                        ),
                       ),
                     ),
                   ),
@@ -532,72 +511,84 @@ class _ModuleBlock extends StatelessWidget {
             ],
           ),
         ),
-        SizedBox(height: ungrouped ? 12 : 6),
-        if (tags.isEmpty)
-          const SizedBox(
-            height: 40,
-            child: Align(
-              alignment: Alignment.centerLeft,
-              child: Text(
-                '暂无标签',
-                style: TextStyle(
-                  fontSize: 14,
-                  height: 1.35,
-                  color: CollectionTagModulesSection.muted,
+        const SizedBox(height: 11),
+        // 与一行 chip 同高，拖空标签时匣高不跳。
+        ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: 32),
+          child: tags.isEmpty
+              ? const Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    '暂无标签',
+                    style: TextStyle(
+                      fontSize: 13,
+                      height: 1.25,
+                      color: CollectionTagModulesSection.muted,
+                    ),
+                  ),
+                )
+              : Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: [
+                    for (final tag in tags)
+                      _TagChip(
+                        tag: tag,
+                        muted: ungrouped,
+                        onTap: () => onOpenTag(tag),
+                        draggable: onPlaceTag != null,
+                      ),
+                  ],
                 ),
-              ),
-            ),
-          )
-        else
-          Wrap(
-            spacing: 4,
-            runSpacing: ungrouped ? 6 : 2,
-            children: [
-              for (final tag in tags)
-                _TagChip(
-                  tag: tag,
-                  muted: ungrouped,
-                  onTap: () => onOpenTag(tag),
-                  draggable: onPlaceTag != null,
-                ),
-            ],
-          ),
+        ),
       ],
     );
 
-    Widget block;
-    if (!ungrouped) {
-      // 悬停高亮时要留内边距，否则标题蓝点贴着高亮左缘。
-      block = Padding(
-        padding: const EdgeInsets.fromLTRB(10, 8, 8, 10),
-        child: body,
-      );
-    } else {
-      block = CustomPaint(
-        painter: const _DashedRRectPainter(
-          color: CollectionTagModulesSection.ungroupedLine,
-          radius: 14,
+    // 匣四角圆角；装订条短一截、上下留白，不顶满。
+    final caseCard = DecoratedBox(
+      decoration: BoxDecoration(
+        color: CollectionTagModulesSection.panel,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: ungrouped
+              ? CollectionTagModulesSection.caseLine.withValues(alpha: 0.85)
+              : CollectionTagModulesSection.caseLine,
         ),
-        child: Container(
-          width: double.infinity,
-          padding: const EdgeInsets.fromLTRB(12, 12, 10, 14),
-          decoration: BoxDecoration(
-            color: CollectionTagModulesSection.ungroupedFill,
-            borderRadius: BorderRadius.circular(14),
-          ),
-          child: body,
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(12),
+        child: Stack(
+          children: [
+            Positioned(
+              left: 0,
+              top: 12,
+              bottom: 12,
+              width: 3,
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: bindingColor.withValues(
+                    alpha: ungrouped ? 0.35 : 0.88,
+                  ),
+                  borderRadius: BorderRadius.circular(1.5),
+                ),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(15, 11, 10, 11),
+              child: body,
+            ),
+          ],
         ),
-      );
-    }
+      ),
+    );
 
     if (onPlaceTag == null) {
       return topInset > 0
-          ? Padding(padding: EdgeInsets.only(top: topInset), child: block)
-          : block;
+          ? Padding(padding: EdgeInsets.only(top: topInset), child: caseCard)
+          : caseCard;
     }
 
-    // DragTarget 命中按「指尖」而不是浮层芯片；间距须在带 decoration 的容器内，
-    // 否则纯 Padding 空隙不参与 hitTest，松手仍会落空。
+    // 间距单独占位接拖放；高亮只包当前匣，不涂到上一格。
     return DragTarget<Tag>(
       onWillAcceptWithDetails: (details) => _canAccept(details.data),
       onAcceptWithDetails: (details) {
@@ -607,17 +598,40 @@ class _ModuleBlock extends StatelessWidget {
       },
       builder: (context, candidateData, rejectedData) {
         final hovering = candidateData.any((t) => t != null && _canAccept(t));
-        return AnimatedContainer(
-          duration: const Duration(milliseconds: 120),
-          curve: Curves.easeOutCubic,
-          padding: EdgeInsets.only(top: topInset),
-          decoration: BoxDecoration(
-            color: hovering
-                ? CollectionTagModulesSection.brandSoft.withValues(alpha: 0.55)
-                : Colors.transparent,
-            borderRadius: BorderRadius.circular(ungrouped ? 14 : 10),
-          ),
-          child: block,
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (topInset > 0)
+              SizedBox(
+                height: topInset,
+                width: double.infinity,
+                child: const ColoredBox(color: Color(0x00000000)),
+              ),
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 140),
+              curve: Curves.easeOutCubic,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(12),
+                boxShadow: hovering
+                    ? [
+                        BoxShadow(
+                          color: CollectionTagModulesSection.ink
+                              .withValues(alpha: 0.12),
+                          blurRadius: 18,
+                          offset: const Offset(0, 6),
+                        ),
+                        BoxShadow(
+                          color: CollectionTagModulesSection.brand
+                              .withValues(alpha: 0.14),
+                          blurRadius: 10,
+                          offset: const Offset(0, 2),
+                        ),
+                      ]
+                    : const [],
+              ),
+              child: caseCard,
+            ),
+          ],
         );
       },
     );
@@ -720,40 +734,48 @@ class _TagChipState extends State<_TagChip> {
     required bool feedback,
   }) {
     final text = _hashLabel(widget.tag.name);
-    final color = widget.muted
+    final accent = widget.muted
         ? CollectionTagModulesSection.ungroupedTag
         : CollectionTagModulesSection.brand;
     final soft = widget.muted
         ? CollectionTagModulesSection.ungroupedTagSoft
-        : CollectionTagModulesSection.brandSoft;
+        : CollectionTagModulesSection.chipFill;
+    final fill = feedback || pressed
+        ? (widget.muted
+            ? CollectionTagModulesSection.ungroupedTagSoft
+            : CollectionTagModulesSection.brandSoft)
+        : soft;
 
     return Material(
       color: Colors.transparent,
-      elevation: feedback ? 12 : 0,
-      shadowColor: Colors.black.withValues(alpha: feedback ? 0.28 : 0.18),
-      borderRadius: BorderRadius.circular(10),
+      elevation: feedback ? 10 : 0,
+      shadowColor: Colors.black.withValues(alpha: feedback ? 0.22 : 0.12),
+      borderRadius: BorderRadius.circular(8),
       child: Transform.scale(
-        scale: feedback ? 1.14 : 1,
+        scale: feedback ? 1.08 : 1,
         child: Container(
-          padding: EdgeInsets.symmetric(
-            horizontal: feedback ? 12 : 8,
-            vertical: feedback ? 8 : 6,
+          padding: EdgeInsets.fromLTRB(
+            feedback ? 10 : 8,
+            feedback ? 7 : 6,
+            feedback ? 11 : 9,
+            feedback ? 7 : 6,
           ),
           decoration: BoxDecoration(
-            color: feedback
-                ? soft
-                : (pressed ? soft : Colors.transparent),
-            borderRadius: BorderRadius.circular(10),
-            border: feedback
-                ? Border.all(
-                    color: color.withValues(alpha: 0.35),
-                    width: 1.2,
-                  )
-                : null,
+            color: fill,
+            borderRadius: BorderRadius.circular(8),
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
+              Container(
+                width: 2,
+                height: feedback ? 14 : 12,
+                decoration: BoxDecoration(
+                  color: accent.withValues(alpha: widget.muted ? 0.45 : 0.75),
+                  borderRadius: BorderRadius.circular(1),
+                ),
+              ),
+              const SizedBox(width: 5),
               ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 160),
                 child: Text(
@@ -761,22 +783,25 @@ class _TagChipState extends State<_TagChip> {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                    fontSize: feedback ? 16 : 15,
-                    fontWeight: FontWeight.w600,
+                    fontSize: feedback ? 14 : 13,
+                    fontWeight: FontWeight.w500,
                     height: 1.25,
-                    color: color,
+                    letterSpacing: 0.1,
+                    color: CollectionTagModulesSection.ink
+                        .withValues(alpha: 0.88),
                   ),
                 ),
               ),
               if (widget.tag.itemCount > 0) ...[
-                const SizedBox(width: 4),
+                const SizedBox(width: 5),
                 Text(
                   '${widget.tag.itemCount}',
                   style: TextStyle(
-                    fontSize: feedback ? 14 : 13,
-                    fontWeight: FontWeight.w600,
+                    fontSize: feedback ? 12 : 11,
+                    fontWeight: FontWeight.w400,
                     height: 1.25,
-                    color: color.withValues(alpha: 0.65),
+                    color: CollectionTagModulesSection.muted
+                        .withValues(alpha: 0.85),
                   ),
                 ),
               ],
@@ -835,41 +860,3 @@ class _TagChipState extends State<_TagChip> {
   }
 }
 
-class _DashedRRectPainter extends CustomPainter {
-  const _DashedRRectPainter({
-    required this.color,
-    required this.radius,
-  });
-
-  final Color color;
-  final double radius;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final rrect = RRect.fromRectAndRadius(
-      Offset.zero & size,
-      Radius.circular(radius),
-    );
-    final path = Path()..addRRect(rrect);
-    final paint = Paint()
-      ..color = color
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1;
-
-    for (final metric in path.computeMetrics()) {
-      var distance = 0.0;
-      const dash = 5.0;
-      const gap = 4.0;
-      while (distance < metric.length) {
-        final next = (distance + dash).clamp(0.0, metric.length);
-        canvas.drawPath(metric.extractPath(distance, next), paint);
-        distance = next + gap;
-      }
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant _DashedRRectPainter oldDelegate) {
-    return oldDelegate.color != color || oldDelegate.radius != radius;
-  }
-}

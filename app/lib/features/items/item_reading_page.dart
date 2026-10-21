@@ -1765,7 +1765,7 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
                 cacheExtent: mq.size.height * 2,
                 padding: const EdgeInsets.fromLTRB(22, 18, 22, 28),
                 children: [
-                  Text(
+                  SelectableText(
                     title,
                     style: const TextStyle(
                       fontSize: 20,

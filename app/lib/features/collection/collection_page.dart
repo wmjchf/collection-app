@@ -438,19 +438,13 @@ class _CollectionPageState extends State<CollectionPage> {
       appBar: _buildAppBar(),
       body: RefreshIndicator(
         onRefresh: _load,
-        child: ListView(
+        child: CustomScrollView(
           controller: _scrollController,
           physics: const AlwaysScrollableScrollPhysics(),
-          padding: EdgeInsets.fromLTRB(
-            16,
-            12,
-            16,
-            24 + MediaQuery.paddingOf(context).bottom,
-          ),
-          children: [
+          slivers: [
             if (_loading && _systemFilters.isEmpty)
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: 40),
+              const SliverFillRemaining(
+                hasScrollBody: false,
                 child: Center(
                   child: SizedBox(
                     width: 22,
@@ -460,41 +454,79 @@ class _CollectionPageState extends State<CollectionPage> {
                 ),
               )
             else if (_error != null && _systemFilters.isEmpty)
-              _ErrorCard(message: _error!, onRetry: _load)
-            else ...[
-              if (_systemFilters.isNotEmpty)
-                _EntityGroup(
-                  entries: [
-                    for (final f in _systemFilters)
-                      _EntityEntry(
-                        title: systemFilterDisplayName(
-                          f.code,
-                          f.name,
-                          isPro: _isPro,
-                        ),
-                        countLabel: f.countLabel,
-                        icon: _CollectionNavIcon.forSystemCode(f.code),
-                        onTap: () => _openSystemFilter(f),
-                      ),
-                  ],
+              SliverFillRemaining(
+                hasScrollBody: false,
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+                  child: _ErrorCard(message: _error!, onRetry: _load),
                 ),
-              if (_systemFilters.isNotEmpty) const SizedBox(height: 28),
-              CollectionTagModulesSection(
-                headerKey: _tagsHeaderKey,
-                modules: _modules,
-                ungrouped: _ungrouped,
-                headerCollapse: _tagsFocusT,
-                onOpenTag: _openTag,
-                onOpenModule: _openModule,
-                onAddTag: _addTagToModule,
-                onRenameModule: _renameModule,
-                onDeleteModule: _deleteModule,
-                onCreateModule: _createModule,
-                onAiOrganize: _aiOrganize,
-                onPlaceTag: _placeTag,
+              )
+            else ...[
+              SliverPadding(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                sliver: SliverToBoxAdapter(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      if (_systemFilters.isNotEmpty)
+                        _EntityGroup(
+                          entries: [
+                            for (final f in _systemFilters)
+                              _EntityEntry(
+                                title: systemFilterDisplayName(
+                                  f.code,
+                                  f.name,
+                                  isPro: _isPro,
+                                ),
+                                countLabel: f.countLabel,
+                                icon: _CollectionNavIcon.forSystemCode(f.code),
+                                onTap: () => _openSystemFilter(f),
+                              ),
+                          ],
+                        ),
+                      if (_systemFilters.isNotEmpty) const SizedBox(height: 28),
+                    ],
+                  ),
+                ),
+              ),
+              // 归类区最小高度 = 剩余视口，底边贴一屏底部。
+              SliverLayoutBuilder(
+                builder: (context, constraints) {
+                  final bottomPad =
+                      16.0 + MediaQuery.paddingOf(context).bottom;
+                  final minH = (constraints.remainingPaintExtent - bottomPad)
+                      .clamp(0.0, double.infinity);
+                  return SliverPadding(
+                    padding: EdgeInsets.fromLTRB(16, 0, 16, bottomPad),
+                    sliver: SliverToBoxAdapter(
+                      child: ConstrainedBox(
+                        constraints: BoxConstraints(minHeight: minH),
+                        child: CollectionTagModulesSection(
+                          headerKey: _tagsHeaderKey,
+                          modules: _modules,
+                          ungrouped: _ungrouped,
+                          headerCollapse: _tagsFocusT,
+                          fillRemaining: true,
+                          onOpenTag: _openTag,
+                          onOpenModule: _openModule,
+                          onAddTag: _addTagToModule,
+                          onRenameModule: _renameModule,
+                          onDeleteModule: _deleteModule,
+                          onCreateModule: _createModule,
+                          onAiOrganize: _aiOrganize,
+                          onPlaceTag: _placeTag,
+                        ),
+                      ),
+                    ),
+                  );
+                },
               ),
               // 便于上滑把归类标签顶到顶栏
-              SizedBox(height: MediaQuery.sizeOf(context).height * 0.45),
+              SliverToBoxAdapter(
+                child: SizedBox(
+                  height: MediaQuery.sizeOf(context).height * 0.35,
+                ),
+              ),
             ],
           ],
         ),
