@@ -3,7 +3,6 @@ import 'package:super_collection/core/network/api_client.dart';
 import 'package:super_collection/core/ui/app_confirm_dialog.dart';
 import 'package:super_collection/core/ui/app_toast.dart';
 import 'package:super_collection/core/ui/pro_copy.dart';
-import 'package:super_collection/features/collection/ai_organize_sheet.dart';
 import 'package:super_collection/features/collection/collection_tag_modules_section.dart';
 import 'package:super_collection/features/collection/create_module_sheet.dart';
 import 'package:super_collection/features/collection/create_tag_sheet.dart';
@@ -15,7 +14,6 @@ import 'package:super_collection/features/collection/tag_models.dart';
 import 'package:super_collection/features/collection/tag_module_models.dart';
 import 'package:super_collection/features/collection/tag_modules_repository.dart';
 import 'package:super_collection/features/collection/tags_repository.dart';
-import 'package:super_collection/features/settings/quota_gate.dart';
 import 'package:super_collection/features/settings/usage_repository.dart';
 import 'package:super_collection/features/shell/user_avatar_button.dart';
 
@@ -257,26 +255,6 @@ class _CollectionPageState extends State<CollectionPage> {
     }
   }
 
-  Future<void> _aiOrganize() async {
-    final tagCount = _ungrouped.length +
-        _modules.fold<int>(0, (n, m) => n + m.tags.length);
-    if (tagCount < 2) {
-      AppToast.show(context, '至少需要 2 个标签才能 AI 标签归类');
-      return;
-    }
-    final allowed = await ensurePlanFeatures(
-      context,
-      requirements: [
-        (has: (f) => f.aiOrganize, tier: UsagePlan.prince),
-      ],
-    );
-    if (!allowed || !mounted) return;
-    final ok = await showAiOrganizeSheet(context);
-    if (ok == true && mounted) {
-      await _load(quiet: true);
-    }
-  }
-
   void _openSystemFilter(SystemFilter filter) {
     final title = systemFilterDisplayName(
       filter.code,
@@ -513,7 +491,6 @@ class _CollectionPageState extends State<CollectionPage> {
                           onRenameModule: _renameModule,
                           onDeleteModule: _deleteModule,
                           onCreateModule: _createModule,
-                          onAiOrganize: _aiOrganize,
                           onPlaceTag: _placeTag,
                         ),
                       ),
