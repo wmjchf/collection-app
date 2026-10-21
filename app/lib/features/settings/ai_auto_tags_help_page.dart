@@ -81,8 +81,8 @@ class AiAutoTagsHelpPage extends StatelessWidget {
             const SizedBox(height: 10),
             const _ProCard(
               child: Text(
-                '粘贴链接解析完成后，文章会自动打标签并显示在内容上；'
-                '视频在转写成功后自动打标；图集不自动打标。'
+                '粘贴链接解析完成后，文章会自动打标签，并尽量归入已有或新建归类；'
+                '视频在转写成功后同样自动打标并归类；图集不自动打标。'
                 '点进去可在内容上方看到标签。',
                 style: TextStyle(
                   fontSize: 15,

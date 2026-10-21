@@ -197,10 +197,14 @@ function normalizeProposal(raw, tagById, moduleById, membership) {
 
 /**
  * 同步生成归类建议（不落库）。只安置未归类标签。
+ * @param {{ hint?: string, skipQuota?: boolean }} [opts]
+ *   skipQuota：自动归类路径，不卡门控/额度（仍记用量）
  */
-async function suggestOrganize(userId, { hint } = {}) {
-  await usageService.assertPlanFeatureForUser(userId, 'ai_organize');
-  await usageService.assertAiQuota(userId);
+async function suggestOrganize(userId, { hint, skipQuota = false } = {}) {
+  if (!skipQuota) {
+    await usageService.assertPlanFeatureForUser(userId, 'ai_organize');
+    await usageService.assertAiQuota(userId);
+  }
 
   const { modules, ungrouped } = await tagModuleService.listModules(userId);
   const tagById = collectUserTags(modules, ungrouped);
@@ -230,12 +234,14 @@ async function suggestOrganize(userId, { hint } = {}) {
     { role: 'user', content: userParts.join('\n\n') },
   ];
 
-  await usageService.assertAiQuota(userId, {
-    estimatedTokens: usageService.estimateAiTokens({
-      messages,
-      feature: 'organize',
-    }),
-  });
+  if (!skipQuota) {
+    await usageService.assertAiQuota(userId, {
+      estimatedTokens: usageService.estimateAiTokens({
+        messages,
+        feature: 'organize',
+      }),
+    });
+  }
 
   const { json: result, usage: modelUsage } = await aliyunDashScope.chatJson({
     messages,
@@ -370,9 +376,50 @@ async function applyOrganize(userId, body) {
   };
 }
 
+/**
+ * 自动打标后：对当前未归类标签生成方案并直接应用。
+ * 无可安置时跳过；失败静默（不影响打标结果）。
+ */
+async function autoOrganizeAfterTags(userId) {
+  try {
+    if (!aliyunDashScope.isConfigured()) return;
+
+    const { ungrouped } = await tagModuleService.listModules(userId);
+    const ug = (ungrouped || []).filter((t) => !t.isSystem);
+    if (ug.length < 1) return;
+
+    const { proposal } = await suggestOrganize(userId, { skipQuota: true });
+    const placements = (proposal.modules || []).filter(
+      (m) => Array.isArray(m.tagIds) && m.tagIds.length > 0,
+    );
+    if (!placements.length) {
+      console.log(`[autoOrganizeAfterTags] nothing to place user=${userId}`);
+      return;
+    }
+
+    await applyOrganize(userId, {
+      modules: (proposal.modules || []).map((m) => ({
+        name: m.name,
+        existingModuleId: m.existingModuleId,
+        tagIds: m.tagIds,
+      })),
+      ungroupedTagIds: proposal.ungroupedTagIds || [],
+    });
+    console.log(
+      `[autoOrganizeAfterTags] applied user=${userId} modules=${placements.length}`,
+    );
+  } catch (err) {
+    console.warn(
+      `[autoOrganizeAfterTags] skip user=${userId}`,
+      err.message || err,
+    );
+  }
+}
+
 module.exports = {
   suggestOrganize,
   applyOrganize,
+  autoOrganizeAfterTags,
   normalizeProposal,
   buildMembership,
 };
