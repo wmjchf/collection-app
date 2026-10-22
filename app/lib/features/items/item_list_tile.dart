@@ -89,8 +89,8 @@ class ItemListTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tagsLine = _tagsLine(tags);
-    final hasTags = tagsLine != null;
 
+    // 与封面同高 64：标题一行 → 标签行固定占位（无则空）→ 副文案，高度恒定。
     final body = Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -117,76 +117,53 @@ class ItemListTile extends StatelessWidget {
         ),
         const SizedBox(width: 12),
         Expanded(
-          child: hasTags
-              ? Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w500,
-                        height: 20 / 15,
-                        color: _text,
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      tagsLine,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w500,
-                        height: 16 / 12,
-                        color: _tag,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      subtitle,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w400,
-                        color: _muted,
-                      ),
-                    ),
-                  ],
-                )
-              : SizedBox(
-                  height: 64,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        title,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w500,
-                          height: 20 / 15,
-                          color: _text,
-                        ),
-                      ),
-                      Text(
-                        subtitle,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w400,
-                          color: _muted,
-                        ),
-                      ),
-                    ],
+          child: SizedBox(
+            height: 64,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w500,
+                    height: 20 / 15,
+                    color: _text,
                   ),
                 ),
+                SizedBox(
+                  height: 16,
+                  width: double.infinity,
+                  child: tagsLine == null
+                      ? null
+                      : Text(
+                          tagsLine,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w500,
+                            height: 16 / 12,
+                            color: _tag,
+                          ),
+                        ),
+                ),
+                Text(
+                  subtitle,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w400,
+                    color: _muted,
+                  ),
+                ),
+              ],
+            ),
+          ),
         ),
       ],
     );

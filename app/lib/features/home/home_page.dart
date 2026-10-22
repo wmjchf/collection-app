@@ -930,7 +930,7 @@ class _HomeRoamSection extends StatelessWidget {
   }
 }
 
-/// 封面 64 + 上下内边距 24。空态与 1～3 条都按满三条占高。
+/// 封面 64 + 上下内边距 24；条目内标题一行、标签行固定占位，高度恒定。
 const _homeUnreadTileHeight = 88.0;
 const _homeUnreadTileGap = 8.0;
 const _homeUnreadSlotCount = 3;
@@ -1054,22 +1054,28 @@ class _HomeItemStackSection extends StatelessWidget {
 }
 
 /// 未读三条的外框：白底、圆角、细边，把条目收成一块。
+/// [height] 为内容区高度；外边框另占上下各 1，避免 Column 被 border inset 挤爆。
 class _UnreadFrame extends StatelessWidget {
   const _UnreadFrame({required this.height, required this.child});
 
   final double height;
   final Widget child;
 
+  static const _borderWidth = 1.0;
+
   @override
   Widget build(BuildContext context) {
     return Container(
-      height: height,
+      height: height + _borderWidth * 2,
       width: double.infinity,
       clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFE6E8ED)),
+        border: Border.all(
+          color: const Color(0xFFE6E8ED),
+          width: _borderWidth,
+        ),
       ),
       child: child,
     );
