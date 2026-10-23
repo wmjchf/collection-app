@@ -31,7 +31,8 @@
 
 html {
   scroll-behavior: smooth;
-  overflow-x: hidden;
+  /* 只在 html 裁切横向；body 再设 overflow-x 会让双方都变成纵向滚动容器，出现双滚动条 */
+  overflow-x: clip;
   max-width: 100%;
 }
 
@@ -44,8 +45,8 @@ body {
   -webkit-font-smoothing: antialiased;
   position: relative;
   min-height: 100%;
-  overflow-x: hidden;
   max-width: 100%;
+  overflow: visible;
 }
 
 /* 全页主题蓝光场 */
@@ -233,8 +234,8 @@ img { max-width: 100%; height: auto; }
 /* —— Hero —— */
 .hero {
   position: relative;
-  overflow-x: clip;
-  overflow-y: visible;
+  /* 避免 overflow-x + visible-y 被算成可滚容器，与页面滚动抢手势 */
+  overflow: visible;
   text-align: center;
   padding: 148px var(--inset) 56px;
   background: transparent;
