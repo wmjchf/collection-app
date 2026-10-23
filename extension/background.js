@@ -1,28 +1,52 @@
 import { canSaveUrl, getSession, saveUrl } from './api.js';
 
-chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(() => {});
+chrome.sidePanel
+  .setPanelBehavior({ openPanelOnActionClick: true })
+  .catch(() => {});
+
+function ensureContextMenu() {
+  chrome.contextMenus.removeAll(() => {
+    // 忽略 removeAll 自身 lastError
+    void chrome.runtime.lastError;
+    chrome.contextMenus.create(
+      {
+        id: 'conflux-save',
+        title: '收藏到 奏折',
+        contexts: ['page', 'link', 'selection'],
+      },
+      () => {
+        // 重复 id 等常见告警不进「错误」红点
+        void chrome.runtime.lastError;
+      },
+    );
+  });
+}
 
 chrome.runtime.onInstalled.addListener(() => {
-  chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(() => {});
-  chrome.contextMenus.removeAll(() => {
-    chrome.contextMenus.create({
-      id: 'conflux-save',
-      title: '收藏到 奏折',
-      contexts: ['page', 'link', 'selection'],
-    });
-  });
+  chrome.sidePanel
+    .setPanelBehavior({ openPanelOnActionClick: true })
+    .catch(() => {});
+  ensureContextMenu();
 });
 
-chrome.contextMenus.onClicked.addListener(async (info, tab) => {
+chrome.runtime.onStartup.addListener(() => {
+  ensureContextMenu();
+});
+
+ensureContextMenu();
+
+chrome.contextMenus.onClicked.addListener((info, tab) => {
   if (info.menuItemId !== 'conflux-save') return;
   const url = info.linkUrl || tab?.url;
-  await collect(url, tab?.title);
+  void collect(url, tab?.title).catch(() => {});
 });
 
-chrome.commands.onCommand.addListener(async (command) => {
+chrome.commands.onCommand.addListener((command) => {
   if (command !== 'save-page') return;
-  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-  await collect(tab?.url, tab?.title);
+  void (async () => {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    await collect(tab?.url, tab?.title);
+  })().catch(() => {});
 });
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
@@ -58,16 +82,25 @@ async function collect(url, title) {
 }
 
 function notify(title, message) {
-  chrome.notifications.create({
-    type: 'basic',
-    iconUrl: 'icons/icon128.png',
-    title,
-    message: String(message || '').slice(0, 180),
-  });
+  chrome.notifications.create(
+    {
+      type: 'basic',
+      iconUrl: 'icons/icon128.png',
+      title,
+      message: String(message || '').slice(0, 180),
+    },
+    () => {
+      void chrome.runtime.lastError;
+    },
+  );
 }
 
 async function flashBadge(text) {
-  await chrome.action.setBadgeBackgroundColor({ color: '#2A4F32' });
-  await chrome.action.setBadgeText({ text });
-  setTimeout(() => chrome.action.setBadgeText({ text: '' }), 1600);
+  try {
+    await chrome.action.setBadgeBackgroundColor({ color: '#2A4F32' });
+    await chrome.action.setBadgeText({ text });
+    setTimeout(() => chrome.action.setBadgeText({ text: '' }), 1600);
+  } catch {
+    // ignore
+  }
 }

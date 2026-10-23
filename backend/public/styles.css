@@ -677,6 +677,41 @@ img { max-width: 100%; height: auto; }
   line-height: 1.55;
 }
 
+.chrome-install .chrome-dl {
+  display: inline-flex;
+  margin-top: 4px;
+}
+
+.chrome-install-lead {
+  margin-top: 16px !important;
+  text-align: left;
+}
+
+.chrome-steps {
+  margin: 14px 0 0;
+  padding-left: 1.35em;
+  text-align: left;
+  font-size: 14px;
+  line-height: 1.65;
+  color: var(--text);
+}
+
+.chrome-steps li + li {
+  margin-top: 10px;
+}
+
+.chrome-steps code {
+  font-size: 0.92em;
+  padding: 0.1em 0.35em;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.chrome-install-tip {
+  text-align: left !important;
+  margin-top: 16px !important;
+}
+
 .contact-note code {
   font-size: 12px;
   padding: 1px 6px;

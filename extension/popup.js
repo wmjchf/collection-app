@@ -4,12 +4,17 @@ import {
   createTag,
   deleteItem,
   deleteTag,
+  createTagModule,
+  deleteTagModule,
   fetchHome,
   fetchItem,
+  fetchRoam,
   fetchSystemFilters,
   getSession,
   listItems,
+  listModuleItems,
   listTagItems,
+  listTagModules,
   listTags,
   login,
   listItemTags,
@@ -17,6 +22,7 @@ import {
   reparseItem,
   saveUrl,
   searchItems,
+  searchTags,
   sendCode,
   setItemTags,
 } from './api.js';
@@ -30,7 +36,6 @@ const homeEl = $('home');
 const collectionEl = $('collection');
 const moreEl = $('more');
 const searchEl = $('search');
-const settingsEl = $('settings');
 const detailEl = $('detail');
 const tabbarEl = $('tabbar');
 const overlayEl = $('overlay');
@@ -50,9 +55,12 @@ const moreStatus = $('more-status');
 const moreAction = $('more-action');
 const moreSpacer = $('more-spacer');
 const searchInput = $('search-input');
+const searchClear = $('search-clear');
+const searchIdle = $('search-idle');
+const searchTagsEl = $('search-tags');
+const searchContentHead = $('search-content-head');
 const searchList = $('search-list');
 const searchStatus = $('search-status');
-const settingsBody = $('settings-body');
 const detailBody = $('detail-body');
 const detailMore = $('detail-more');
 const detailMenu = $('detail-menu');
@@ -63,6 +71,8 @@ const addHint = $('add-hint');
 const nameInput = $('name-input');
 const nameError = $('name-error');
 const nameSave = $('name-save');
+const roamPlayerEl = $('roam-player');
+const roamPlayerDeck = $('roam-player-deck');
 
 function platformIdFromHost(hostname) {
   let host = String(hostname || '')
@@ -112,6 +122,7 @@ const ICON = {
   unread: { bg: '#5B8FF9', svg: '<circle cx="12" cy="12" r="4.5" fill="none" stroke="currentColor" stroke-width="2.4"/><circle cx="12" cy="12" r="1.6"/>' },
   all: { bg: '#6E788C', svg: '<path d="M5 7h14v1.8H5V7zm0 4.1h14v1.8H5v-1.8zm0 4.1h14V17H5v-1.8z"/>' },
   today: { bg: '#FF9F43', svg: '<rect x="4.5" y="6" width="15" height="13.5" rx="2"/><path d="M8 4.5v3M16 4.5v3M4.5 10h15" fill="none" stroke="#fff" stroke-width="1.6"/>' },
+  untagged: { bg: '#8B929C', svg: '<path d="M12.8 4.8 19.2 11a2 2 0 0 1 0 2.8l-5.4 5.4a2 2 0 0 1-2.8 0L4.6 13V4.8z"/><path d="M5 19 19 5" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round"/>' },
   annotated: { bg: '#A270F5', svg: '<path d="M5 18.5 7.2 12 16 3.2l4.8 4.8L12 16.8z"/><path d="M14.2 5l4.8 4.8" fill="none" stroke="#fff" stroke-width="1.2"/>' },
   recent_read: { bg: '#40BAC4', svg: '<circle cx="12" cy="12" r="7.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 8v4.5l3 1.8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>' },
   archived: { bg: '#96A0AF', svg: '<path d="M4.5 7.5h15v3h-15z"/><path d="M6 10.5h12V19H6z"/>' },
@@ -127,7 +138,6 @@ const VIEWS = {
   collection: collectionEl,
   more: moreEl,
   search: searchEl,
-  settings: settingsEl,
   detail: detailEl,
 };
 
@@ -152,6 +162,28 @@ let more = emptyMore();
 let searchState = emptySearch();
 let collectionState = emptyCollection();
 let detailState = { item: null, error: null, loading: false };
+let homeRoamItems = [];
+let roamPlayer = {
+  snippets: [],
+  index: 0,
+  mutedSession: false,
+  suppressClick: false,
+};
+
+/** 对齐 App `_SwipeCard`：跟手位移 + 旋转 + 回弹 / 飞出 */
+let roamSwipe = {
+  active: false,
+  settling: false,
+  mode: null,
+  pointerId: null,
+  startX: 0,
+  startY: 0,
+  ox: 0,
+  oy: 0,
+  lastX: 0,
+  lastT: 0,
+  vx: 0,
+};
 
 function emptyMore() {
   return {
@@ -165,19 +197,38 @@ function emptyMore() {
 }
 
 function emptySearch() {
-  return { q: '', items: [], total: 0, loading: false };
+  return {
+    q: '',
+    items: [],
+    tagItems: [],
+    tags: [],
+    selectedTagIds: new Set(),
+    total: 0,
+    loading: false,
+    searched: false,
+  };
 }
 
 function emptyCollection() {
   return {
-    tags: [],
     filters: [],
-    others: [],
-    systemExpanded: true,
-    tagsExpanded: true,
+    modules: [],
+    ungrouped: [],
     loading: false,
     error: null,
   };
+}
+
+/** 与 App 收藏页一致：首页已有未读/漫游，这里不再展示 unread / recent_read */
+function collectionFilters(filters) {
+  return (filters || []).filter(
+    (f) => f.code !== 'unread' && f.code !== 'recent_read',
+  );
+}
+
+function filterDisplayName(filter) {
+  if (filter?.code === 'annotated') return '批注';
+  return filter?.name || '';
 }
 
 function toast(message) {
@@ -285,6 +336,22 @@ function itemTitle(item) {
   return t || item.url || '无标题';
 }
 
+function parseStatusLabel(status) {
+  if (status === 'pending') return '解析中';
+  if (status === 'failed') return '解析失败';
+  if (status === 'success') return '已解析';
+  return status || '';
+}
+
+function homeUnreadSubtitle(item) {
+  return [
+    platformLabel(item.platform, item.canonicalUrl || item.url),
+    parseStatusLabel(item.status),
+  ]
+    .filter(Boolean)
+    .join(' · ');
+}
+
 function subtitleFor(kind, item) {
   if (kind === 'annotated') {
     return `${item.annotationCount || 0} 处标注`;
@@ -292,9 +359,26 @@ function subtitleFor(kind, item) {
   if (kind === 'recent') {
     return formatRelativeTime(item.lastReadAt || item.updatedAt);
   }
+  if (kind === 'home-unread') {
+    return homeUnreadSubtitle(item);
+  }
+  if (kind === 'search') {
+    return [
+      platformLabel(item.platform, item.canonicalUrl || item.url),
+      formatDay(item.createdAt),
+    ]
+      .filter(Boolean)
+      .join(' · ');
+  }
   return [platformLabel(item.platform, item.canonicalUrl || item.url), formatDay(item.createdAt)]
     .filter(Boolean)
     .join(' · ');
+}
+
+function roamKindLabel(snippet) {
+  if (snippet?.kind === 'thought') return '感想';
+  if (snippet?.kind === 'note') return '批注';
+  return '高亮';
 }
 
 function isDouyin(item) {
@@ -408,6 +492,16 @@ function itemLink(item) {
   return (item.url || '').trim();
 }
 
+/** 桌面扩展：点条目直接打开原文 */
+function openItemLink(item) {
+  const link = itemLink(item);
+  if (!link) {
+    toast('暂无链接');
+    return;
+  }
+  chrome.tabs.create({ url: link });
+}
+
 async function activeTab() {
   const [t] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
   return t || null;
@@ -429,6 +523,21 @@ function coverEl(url) {
   return img;
 }
 
+/** 与 App ItemListTile 一致：最多 3 个 #标签，超出 +N */
+function tagsLine(tags) {
+  const list = Array.isArray(tags) ? tags : [];
+  const labels = [];
+  for (const tag of list) {
+    const n = String(tag?.name || '').trim();
+    if (!n) continue;
+    labels.push(n.startsWith('#') ? n : `#${n}`);
+  }
+  if (!labels.length) return '';
+  const max = 3;
+  if (labels.length <= max) return labels.join('  ');
+  return `${labels.slice(0, max).join('  ')}  +${labels.length - max}`;
+}
+
 function cardEl(item, kind) {
   const card = document.createElement('button');
   card.type = 'button';
@@ -439,12 +548,17 @@ function cardEl(item, kind) {
   const title = document.createElement('p');
   title.className = 'card-title';
   title.textContent = itemTitle(item);
+  const tags = document.createElement('p');
+  tags.className = 'card-tags';
+  const line = tagsLine(item.tags);
+  if (line) tags.textContent = line;
+  else tags.innerHTML = '&nbsp;';
   const sub = document.createElement('p');
   sub.className = 'card-sub';
   sub.textContent = subtitleFor(kind, item);
-  body.append(title, sub);
+  body.append(title, tags, sub);
   card.append(body);
-  card.addEventListener('click', () => openDetail(item));
+  card.addEventListener('click', () => openItemLink(item));
   return card;
 }
 
@@ -456,8 +570,7 @@ function emptyCard(text) {
   return el;
 }
 
-function sectionEl({ title, emptyText, items, kind, filter, moreTitleText, onMore }) {
-  const wrap = document.createElement('section');
+function sectionHead({ title, moreLabel, onMore }) {
   const head = document.createElement('div');
   head.className = 'section-head';
   const h2 = document.createElement('h2');
@@ -465,33 +578,213 @@ function sectionEl({ title, emptyText, items, kind, filter, moreTitleText, onMor
   const moreBtn = document.createElement('button');
   moreBtn.type = 'button';
   moreBtn.className = 'more';
-  moreBtn.textContent = onMore ? '换一批 ›' : '查看更多 ›';
-  moreBtn.addEventListener('click', () => {
-    if (onMore) {
-      onMore();
-      return;
-    }
-    openMore({
-      source: 'filter',
-      key: filter,
-      title: moreTitleText,
-      kind,
-    });
-  });
+  moreBtn.textContent = moreLabel;
+  moreBtn.addEventListener('click', onMore);
   head.append(h2, moreBtn);
-  wrap.append(head);
-  const cards = document.createElement('div');
-  cards.className = 'section-cards';
+  return head;
+}
+
+function unreadSectionEl(items) {
+  const wrap = document.createElement('section');
+  wrap.className = 'home-section';
+  wrap.append(
+    sectionHead({
+      title: '未读',
+      moreLabel: '查看更多 ›',
+      onMore: () =>
+        openMore({
+          source: 'filter',
+          key: 'unread',
+          title: '未读',
+          kind: 'unread',
+        }),
+    }),
+  );
+
+  const frame = document.createElement('div');
+  frame.className = 'unread-frame';
   if (!items.length) {
-    cards.append(emptyCard(emptyText));
+    frame.append(emptyCard('暂无未读'));
   } else {
-    for (const item of items) cards.append(cardEl(item, kind));
+    const cards = document.createElement('div');
+    cards.className = 'section-cards';
+    for (const item of items.slice(0, 3)) {
+      cards.append(cardEl(item, 'home-unread'));
+    }
+    if (items.length < 3) {
+      const tip = document.createElement('p');
+      tip.className = 'unread-tip';
+      tip.textContent = '未读就这些了';
+      cards.append(tip);
+    }
+    frame.append(cards);
   }
-  wrap.append(cards);
+  wrap.append(frame);
   return wrap;
 }
 
-function renderHome(data) {
+function roamMetaText(snippet, hasQuote) {
+  const parts = [];
+  if (!hasQuote) parts.push(roamKindLabel(snippet));
+  const time = formatRelativeTime(snippet.createdAt);
+  if (time) parts.push(time);
+  const title = (snippet.itemTitle || '').trim();
+  if (title) parts.push(title);
+  return parts.join(' · ');
+}
+
+function roamNoteBlock(snippet, { stacked = false, clamp = true } = {}) {
+  const note = document.createElement('div');
+  note.className = `roam-note${stacked ? ' is-stacked' : ''}`;
+  const badge = document.createElement('span');
+  badge.className = 'roam-badge';
+  badge.textContent = roamKindLabel(snippet);
+  const noteText = document.createElement('p');
+  if (!clamp) noteText.classList.add('is-full');
+  noteText.textContent = snippet.text;
+  note.append(badge, noteText);
+  return note;
+}
+
+function roamQuoteCard(
+  snippet,
+  { compact = false, scrollBody = false, onMute = null } = {},
+) {
+  const card = document.createElement('article');
+  card.className = `roam-quote${compact ? ' is-peek' : ''}${scrollBody ? ' is-scroll' : ''}`;
+
+  const hasQuote = Boolean(snippet.quote && String(snippet.quote).trim());
+  const primary = hasQuote ? snippet.quote : snippet.text || '';
+
+  const mark = document.createElement('span');
+  mark.className = 'roam-quote-mark';
+  mark.setAttribute('aria-hidden', 'true');
+  mark.textContent = '“';
+
+  const body = document.createElement('p');
+  body.className = 'roam-quote-text';
+  if (scrollBody) body.classList.add('is-full');
+  body.textContent = primary;
+
+  if (scrollBody) {
+    card.append(mark);
+    const scroll = document.createElement('div');
+    scroll.className = 'roam-quote-scroll';
+    scroll.append(body);
+    if (hasQuote && snippet.text) {
+      scroll.append(roamNoteBlock(snippet, { stacked: true, clamp: false }));
+    }
+    card.append(scroll);
+  } else {
+    card.append(mark, body);
+    if (hasQuote && snippet.text) {
+      card.append(roamNoteBlock(snippet, { stacked: false, clamp: true }));
+    }
+  }
+
+  if (!compact) {
+    const metaRow = document.createElement('div');
+    metaRow.className = 'roam-meta-row';
+    const meta = document.createElement('div');
+    meta.className = 'roam-meta';
+    meta.textContent = roamMetaText(snippet, hasQuote);
+    metaRow.append(meta);
+    if (typeof onMute === 'function') {
+      const muteBtn = document.createElement('button');
+      muteBtn.type = 'button';
+      muteBtn.className = 'roam-mute-btn';
+      muteBtn.textContent = '不再回顾';
+      muteBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        onMute();
+      });
+      metaRow.append(muteBtn);
+    }
+    card.append(metaRow);
+  }
+
+  return card;
+}
+
+async function getRoamMutedIds() {
+  const data = await chrome.storage.local.get(['roamMutedIds']);
+  const list = Array.isArray(data.roamMutedIds) ? data.roamMutedIds : [];
+  return new Set(list.map(String));
+}
+
+async function muteRoamId(id) {
+  const set = await getRoamMutedIds();
+  set.add(String(id));
+  await chrome.storage.local.set({ roamMutedIds: [...set] });
+}
+
+async function filterRoamVisible(items) {
+  const muted = await getRoamMutedIds();
+  return (items || []).filter((s) => s?.id && !muted.has(String(s.id)));
+}
+
+function fitRoamStackLines(stack) {
+  const text = stack.querySelector('.roam-layer-0 .roam-quote-text');
+  if (!text) return;
+  const lineH = parseFloat(getComputedStyle(text).lineHeight) || 24.8;
+  const h = text.clientHeight;
+  if (h < 8) return;
+  const lines = Math.max(1, Math.floor(h / lineH));
+  text.style.setProperty('--roam-lines', String(lines));
+  text.style.webkitLineClamp = String(lines);
+}
+
+function roamStackEl(items) {
+  const stack = document.createElement('button');
+  stack.type = 'button';
+  stack.className = 'roam-stack';
+  stack.title = '开始漫游';
+  const show = items.slice(0, 3);
+  const peekCount = Math.max(0, show.length - 1);
+  stack.style.setProperty('--peek', String(peekCount));
+
+  for (let i = show.length - 1; i >= 0; i -= 1) {
+    const layer = document.createElement('div');
+    layer.className = `roam-layer roam-layer-${i}`;
+    layer.append(roamQuoteCard(show[i], { compact: i > 0 }));
+    stack.append(layer);
+  }
+
+  // 与 App 一致：点叠卡进播放器，不是进全部列表
+  stack.addEventListener('click', () => openRoamPlayer(items));
+  const fit = () => fitRoamStackLines(stack);
+  requestAnimationFrame(() => {
+    fit();
+    requestAnimationFrame(fit);
+  });
+  if (typeof ResizeObserver !== 'undefined') {
+    new ResizeObserver(fit).observe(stack);
+  }
+  return stack;
+}
+
+function roamSectionEl(items) {
+  const wrap = document.createElement('section');
+  wrap.className = 'home-section home-roam';
+  wrap.append(
+    sectionHead({
+      title: '漫游',
+      moreLabel: '全部 ›',
+      onMore: () => openRoamList(),
+    }),
+  );
+
+  if (!items.length) {
+    const empty = emptyCard('读的时候划重点、写批注或感想，就会出现在这里');
+    empty.classList.add('roam-empty');
+    wrap.append(empty);
+  } else {
+    wrap.append(roamStackEl(items));
+  }
+  return wrap;
+}
+
+async function renderHome(data) {
   homeBody.replaceChildren();
   if (!data) {
     const msg = document.createElement('p');
@@ -500,31 +793,249 @@ function renderHome(data) {
     homeBody.append(msg);
     return;
   }
+  const roamItems = await filterRoamVisible(data.roam?.items || []);
+  homeRoamItems = roamItems;
   homeBody.append(
-    sectionEl({
-      title: '未读',
-      emptyText: '暂无未读',
-      items: data.unread?.items || [],
-      kind: 'unread',
-      filter: 'unread',
-      moreTitleText: '未读',
-    }),
-    sectionEl({
-      title: '最近阅读',
-      emptyText: '暂无最近阅读',
-      items: data.recentRead?.items || [],
-      kind: 'unread',
-      filter: 'recent_read',
-      moreTitleText: '最近阅读',
-    }),
+    unreadSectionEl(data.unread?.items || []),
+    roamSectionEl(roamItems),
   );
 }
 
+function openRoamList() {
+  return openMore({
+    source: 'roam',
+    key: 'roam',
+    title: '漫游',
+    kind: 'roam',
+  });
+}
+
+function resetRoamSwipeState() {
+  roamSwipe = {
+    active: false,
+    settling: false,
+    mode: null,
+    pointerId: null,
+    startX: 0,
+    startY: 0,
+    ox: 0,
+    oy: 0,
+    lastX: 0,
+    lastT: 0,
+    vx: 0,
+  };
+}
+
+function roamFrontEl() {
+  return roamPlayerDeck.querySelector('.roam-player-front');
+}
+
+function roamNextEl() {
+  return roamPlayerDeck.querySelector('.roam-player-next');
+}
+
+function applyRoamSwipeTransform(x, y) {
+  const front = roamFrontEl();
+  if (!front) return;
+  const angle = (x / 420) * 0.28;
+  front.style.transform = `translate(${x}px, ${y}px) rotate(${angle}rad)`;
+  const w = roamPlayerDeck.clientWidth || 320;
+  const p = Math.min(1, Math.abs(x) / (w * 0.42));
+  const next = roamNextEl();
+  if (next) {
+    next.style.transform = `scale(${0.94 + 0.06 * p})`;
+  }
+}
+
+function clearRoamSwipeTransform() {
+  const front = roamFrontEl();
+  if (front) front.style.transform = '';
+  const next = roamNextEl();
+  if (next) next.style.transform = '';
+}
+
+function animateRoamSwipeTo(toX, toY, ms) {
+  return new Promise((resolve) => {
+    roamSwipe.settling = true;
+    const fromX = roamSwipe.ox;
+    const fromY = roamSwipe.oy;
+    const t0 = performance.now();
+    const tick = (now) => {
+      const t = Math.min(1, (now - t0) / ms);
+      roamSwipe.ox = fromX + (toX - fromX) * t;
+      roamSwipe.oy = fromY + (toY - fromY) * t;
+      applyRoamSwipeTransform(roamSwipe.ox, roamSwipe.oy);
+      if (t < 1) {
+        requestAnimationFrame(tick);
+        return;
+      }
+      roamSwipe.settling = false;
+      resolve();
+    };
+    requestAnimationFrame(tick);
+  });
+}
+
+async function dismissRoamFront(dir) {
+  const w = roamPlayerDeck.clientWidth || 320;
+  roamPlayer.suppressClick = true;
+  await animateRoamSwipeTo(dir * (w + 80), roamSwipe.oy * 0.4, 220);
+  roamSwipe.ox = 0;
+  roamSwipe.oy = 0;
+  advanceRoamPlayer();
+}
+
+function closeRoamPlayer() {
+  const needRefresh = roamPlayer.mutedSession;
+  roamPlayerEl.hidden = true;
+  roamPlayer = {
+    snippets: [],
+    index: 0,
+    mutedSession: false,
+    suppressClick: false,
+  };
+  resetRoamSwipeState();
+  roamPlayerDeck.replaceChildren();
+  if (needRefresh) loadHome();
+}
+
+async function muteCurrentRoam() {
+  const snip = roamPlayer.snippets[roamPlayer.index];
+  if (!snip || roamSwipe.settling) return;
+  roamPlayer.suppressClick = true;
+  const w = roamPlayerDeck.clientWidth || 320;
+  // 对齐 App：右上飞出后再换卡
+  await animateRoamSwipeTo(w + 80, -48, 280);
+  await muteRoamId(snip.id);
+  roamPlayer.mutedSession = true;
+  roamPlayer.snippets = roamPlayer.snippets.filter((s) => s.id !== snip.id);
+  homeRoamItems = homeRoamItems.filter((s) => s.id !== snip.id);
+  toast('已不再回顾');
+  roamSwipe.ox = 0;
+  roamSwipe.oy = 0;
+  if (!roamPlayer.snippets.length) {
+    closeRoamPlayer();
+    return;
+  }
+  if (roamPlayer.index >= roamPlayer.snippets.length) {
+    roamPlayer.index = roamPlayer.snippets.length;
+  }
+  renderRoamPlayer();
+}
+
+function roamDoneCard(finished) {
+  const done = document.createElement('div');
+  done.className = 'roam-done-card';
+  done.innerHTML = `
+    <div class="roam-done-icon" aria-hidden="true">
+      <svg width="30" height="30" viewBox="0 0 24 24" fill="none">
+        <path d="M5 12.5 10 17.5 19 7.5" stroke="#E8A25A" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </div>
+    <h3>已完成 ${finished} 条摘录</h3>
+    <p>左右滑或点空白处可关闭</p>
+    <button type="button" class="roam-done-finish" id="roam-finish">完成漫游</button>
+    <button type="button" class="roam-done-continue" id="roam-continue">继续漫游</button>
+  `;
+  done.querySelector('#roam-finish').addEventListener('click', (e) => {
+    e.stopPropagation();
+    closeRoamPlayer();
+  });
+  done.querySelector('#roam-continue').addEventListener('click', (e) => {
+    e.stopPropagation();
+    roamPlayer.index = 0;
+    renderRoamPlayer();
+  });
+  return done;
+}
+
+function renderRoamPlayer() {
+  const { snippets, index } = roamPlayer;
+  const onDone = index >= snippets.length;
+  resetRoamSwipeState();
+  roamPlayerDeck.replaceChildren();
+
+  if (!snippets.length) {
+    closeRoamPlayer();
+    return;
+  }
+
+  // 背后空壳（层级感，对齐 App）
+  const back = document.createElement('div');
+  back.className = 'roam-player-back';
+  back.setAttribute('aria-hidden', 'true');
+  roamPlayerDeck.append(back);
+
+  if (!onDone && index + 1 < snippets.length) {
+    const next = roamQuoteCard(snippets[index + 1], { scrollBody: true });
+    next.className = `${next.className} roam-player-next`.trim();
+    next.setAttribute('aria-hidden', 'true');
+    roamPlayerDeck.append(next);
+  }
+
+  const front = document.createElement('div');
+  front.className = 'roam-player-front';
+
+  if (onDone) {
+    front.append(roamDoneCard(snippets.length));
+  } else {
+    const card = roamQuoteCard(snippets[index], {
+      scrollBody: true,
+      onMute: () => muteCurrentRoam(),
+    });
+    card.classList.add('roam-player-card');
+    card.addEventListener('click', () => {
+      if (roamPlayer.suppressClick) {
+        roamPlayer.suppressClick = false;
+        return;
+      }
+      openRoamSnippetLink(snippets[index]);
+    });
+    front.append(card);
+  }
+  roamPlayerDeck.append(front);
+}
+
+function advanceRoamPlayer() {
+  if (roamPlayer.index >= roamPlayer.snippets.length) return;
+  if (roamSwipe.settling) return;
+  roamPlayer.index += 1;
+  renderRoamPlayer();
+}
+
+async function openRoamPlayer(items, startIndex = 0) {
+  const visible = await filterRoamVisible(items);
+  if (!visible.length) {
+    toast('暂无漫游内容');
+    return;
+  }
+  const idx = Math.min(Math.max(Number(startIndex) || 0, 0), visible.length - 1);
+  roamPlayer = {
+    snippets: visible,
+    index: idx,
+    mutedSession: false,
+    suppressClick: false,
+  };
+  resetRoamSwipeState();
+  roamPlayerEl.hidden = false;
+  renderRoamPlayer();
+}
+
+async function openRoamSnippetLink(snippet) {
+  try {
+    const res = await fetchItem(snippet.itemId);
+    openItemLink(res.item || { id: snippet.itemId });
+  } catch (err) {
+    if (await handleAuthError(err)) return;
+    toast(err.message || '打开失败');
+  }
+}
+
 async function loadHome() {
-  renderHome(null);
+  await renderHome(null);
   try {
     const data = await fetchHome();
-    renderHome(data);
+    await renderHome(data);
   } catch (err) {
     if (await handleAuthError(err)) return;
     homeBody.replaceChildren();
@@ -595,7 +1106,34 @@ async function fetchMorePage(offset) {
   if (source === 'tag') {
     return listTagItems(key, { limit: PAGE, offset });
   }
+  if (source === 'module') {
+    return listModuleItems(key, { limit: PAGE, offset });
+  }
+  if (source === 'roam') {
+    return fetchRoam({ limit: PAGE, offset });
+  }
   return listItems({ filter: key, limit: PAGE, offset });
+}
+
+async function fillRoamList(container, snippets) {
+  container.replaceChildren();
+  const visible = await filterRoamVisible(snippets);
+  for (let i = 0; i < visible.length; i += 1) {
+    const snippet = visible[i];
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'roam-list-item';
+    btn.append(roamQuoteCard(snippet));
+    // 列表点开：与 App 进阅读对应 —— 扩展打开原文；也可从叠卡播放
+    btn.addEventListener('click', () => openRoamSnippetLink(snippet));
+    container.append(btn);
+  }
+  if (!visible.length) {
+    const empty = document.createElement('p');
+    empty.className = 'list-msg';
+    empty.textContent = '读的时候划重点、写批注或感想，就会出现在这里';
+    container.append(empty);
+  }
 }
 
 async function loadMorePage({ reset = false } = {}) {
@@ -609,7 +1147,8 @@ async function loadMorePage({ reset = false } = {}) {
     const next = Array.isArray(data.items) ? data.items : [];
     more.total = Number(data.total ?? next.length);
     more.items = reset ? next : more.items.concat(next);
-    fillList(moreList, more.items, more.kind);
+    if (more.source === 'roam') await fillRoamList(moreList, more.items);
+    else fillList(moreList, more.items, more.kind);
     const hasMore = more.items.length < more.total;
     moreStatus.hidden = !hasMore;
     moreStatus.textContent = hasMore ? '上滑加载更多' : '';
@@ -626,35 +1165,185 @@ async function loadMorePage({ reset = false } = {}) {
   }
 }
 
-async function runSearch({ reset = false } = {}) {
+function mergeSearchTags(...lists) {
+  const byId = new Map();
+  for (const list of lists) {
+    for (const tag of list || []) {
+      if (!tag?.id) continue;
+      const prev = byId.get(tag.id);
+      if (!prev || (tag.itemCount || 0) > (prev.itemCount || 0)) {
+        byId.set(tag.id, tag);
+      }
+    }
+  }
+  return [...byId.values()];
+}
+
+function searchVisibleItems() {
+  const seen = new Set();
+  const merged = [];
+  for (const item of [...(searchState.tagItems || []), ...(searchState.items || [])]) {
+    if (!item?.id || seen.has(item.id)) continue;
+    seen.add(item.id);
+    merged.push(item);
+  }
+  const selected = searchState.selectedTagIds;
+  if (!selected || selected.size === 0) return merged;
+  return merged.filter((item) => {
+    const ids = new Set((item.tags || []).map((t) => t.id));
+    for (const id of selected) {
+      if (!ids.has(id)) return false;
+    }
+    return true;
+  });
+}
+
+function renderSearch() {
   const q = searchInput.value.trim();
-  if (!q) {
-    searchState = emptySearch();
+  searchClear.hidden = !q;
+  const s = searchState;
+
+  if (!s.searched || !q) {
+    searchIdle.hidden = false;
+    searchTagsEl.hidden = true;
+    searchContentHead.hidden = true;
     searchList.replaceChildren();
     searchStatus.hidden = true;
     return;
   }
-  if (searchState.loading) return;
-  searchState.loading = true;
-  searchState.q = q;
-  if (reset) {
+
+  searchIdle.hidden = true;
+  const visible = searchVisibleItems();
+  const filtering = s.selectedTagIds.size > 0;
+  const tags = s.tags || [];
+
+  if (s.loading && !visible.length && !tags.length) {
+    searchTagsEl.hidden = true;
+    searchContentHead.hidden = true;
+    searchList.replaceChildren();
     searchStatus.hidden = false;
     searchStatus.textContent = '搜索中…';
+    return;
   }
+
+  if (tags.length) {
+    searchTagsEl.hidden = false;
+    searchTagsEl.replaceChildren();
+    const label = document.createElement('div');
+    label.className = 'search-tags-label';
+    label.textContent = '标签';
+    searchTagsEl.append(label);
+    const wrap = document.createElement('div');
+    wrap.className = 'search-tag-wrap';
+    const preview = tags.slice(0, 6);
+    for (const tag of preview) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      const on = s.selectedTagIds.has(tag.id);
+      btn.className = `search-tag-chip${on ? ' is-on' : ''}`;
+      const name = String(tag.name || '').trim();
+      const hash = name.startsWith('#') ? name : `#${name}`;
+      btn.innerHTML =
+        '<span class="search-tag-name"></span>';
+      btn.querySelector('.search-tag-name').textContent = hash;
+      if (tag.itemCount > 0) {
+        const c = document.createElement('span');
+        c.className = 'search-tag-count';
+        c.textContent = String(tag.itemCount);
+        btn.append(c);
+      }
+      btn.addEventListener('click', () => {
+        if (s.selectedTagIds.has(tag.id)) s.selectedTagIds.delete(tag.id);
+        else s.selectedTagIds.add(tag.id);
+        renderSearch();
+      });
+      wrap.append(btn);
+    }
+    searchTagsEl.append(wrap);
+  } else {
+    searchTagsEl.hidden = true;
+    searchTagsEl.replaceChildren();
+  }
+
+  if (!visible.length && !s.loading) {
+    searchContentHead.hidden = true;
+    searchList.replaceChildren();
+    searchStatus.hidden = false;
+    searchStatus.textContent = filtering
+      ? '没有相关标签的内容'
+      : tags.length
+        ? '没有相关内容'
+        : `没有「${s.q}」相关的标签或内容`;
+    return;
+  }
+
+  const textIds = new Set((s.items || []).map((i) => i.id));
+  const tagExtra = (s.tagItems || []).filter((i) => i?.id && !textIds.has(i.id))
+    .length;
+  const total = filtering ? visible.length : Number(s.total || 0) + tagExtra;
+  searchContentHead.hidden = false;
+  searchContentHead.textContent = filtering
+    ? `内容 · ${total}（按所选标签）`
+    : `内容 · ${total}`;
+
+  fillList(searchList, visible, 'search');
+  const hasMore = !filtering && s.items.length < s.total;
+  searchStatus.hidden = !hasMore && !(s.loading && visible.length);
+  if (s.loading && visible.length) searchStatus.textContent = '加载中…';
+  else if (hasMore) searchStatus.textContent = '上滑加载更多';
+  else searchStatus.hidden = true;
+}
+
+async function runSearch({ reset = false } = {}) {
+  const q = searchInput.value.trim();
+  if (!q) {
+    searchState = emptySearch();
+    renderSearch();
+    return;
+  }
+  if (searchState.loading && !reset) return;
+  if (!reset && searchState.items.length >= searchState.total) return;
+
+  searchState.loading = true;
+  searchState.q = q;
+  searchState.searched = true;
+  if (reset) {
+    searchState.selectedTagIds = new Set();
+    searchState.items = [];
+    searchState.tagItems = [];
+    searchState.tags = [];
+    searchState.total = 0;
+    renderSearch();
+  }
+
   try {
     const offset = reset ? 0 : searchState.items.length;
-    const data = await searchItems(q, { limit: PAGE, offset });
-    const next = Array.isArray(data.items) ? data.items : [];
-    searchState.total = Number(data.total ?? next.length);
-    searchState.items = reset ? next : searchState.items.concat(next);
-    fillList(searchList, searchState.items, 'unread');
-    if (!searchState.items.length) {
-      searchStatus.hidden = false;
-      searchStatus.textContent = '没有匹配的收藏';
+    if (reset) {
+      const [textRes, tagRes] = await Promise.all([
+        searchItems(q, { limit: PAGE, offset: 0 }),
+        searchTags(q, { limit: PAGE, offset: 0 }),
+      ]);
+      if (searchInput.value.trim() !== q) return;
+      const textItems = Array.isArray(textRes.items) ? textRes.items : [];
+      const tagItems = Array.isArray(tagRes.items) ? tagRes.items : [];
+      searchState.items = textItems;
+      searchState.tagItems = tagItems;
+      searchState.total = Number(textRes.total ?? textItems.length);
+      const itemTags = [];
+      for (const item of [...tagItems, ...textItems]) {
+        for (const t of item.tags || []) itemTags.push(t);
+      }
+      searchState.tags = mergeSearchTags(
+        textRes.tags,
+        tagRes.tags,
+        itemTags,
+      );
     } else {
-      const hasMore = searchState.items.length < searchState.total;
-      searchStatus.hidden = !hasMore;
-      searchStatus.textContent = hasMore ? '上滑加载更多' : '';
+      const textRes = await searchItems(q, { limit: PAGE, offset });
+      if (searchInput.value.trim() !== q) return;
+      const next = Array.isArray(textRes.items) ? textRes.items : [];
+      searchState.items = searchState.items.concat(next);
+      searchState.total = Number(textRes.total ?? searchState.total);
     }
   } catch (err) {
     if (await handleAuthError(err)) return;
@@ -662,6 +1351,7 @@ async function runSearch({ reset = false } = {}) {
     searchStatus.textContent = err.message || '搜索失败';
   } finally {
     searchState.loading = false;
+    renderSearch();
   }
 }
 
@@ -729,21 +1419,174 @@ function sectionLabel(title, { expandable, expanded, onToggle, onAdd } = {}) {
   return row;
 }
 
+function filterTile(filter) {
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'filter-tile';
+  const title = filterDisplayName(filter);
+  const count = filter.countLabel ?? filter.itemCount ?? 0;
+  const spec = iconForFilter(filter.code);
+  btn.innerHTML = `
+    <div class="filter-tile-top">
+      <span class="nav-icon" style="background:${spec.bg}"><svg viewBox="0 0 24 24" fill="currentColor">${spec.svg}</svg></span>
+      <span class="arrow">›</span>
+    </div>
+    <div class="filter-tile-title"></div>
+    <div class="filter-tile-count"></div>
+  `;
+  btn.querySelector('.filter-tile-title').textContent = title;
+  btn.querySelector('.filter-tile-count').textContent = count;
+  btn.addEventListener('click', () =>
+    openMore({
+      source: 'filter',
+      key: filter.code,
+      title,
+      kind: kindForFilter(filter.code),
+    }),
+  );
+  return btn;
+}
+
+function closeModuleMenus() {
+  for (const el of document.querySelectorAll('.module-menu')) {
+    el.hidden = true;
+  }
+}
+
+function tagChip(tag, { muted = false } = {}) {
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = `tag-chip${muted ? ' is-muted' : ''}`;
+  const name = String(tag.name || '').trim();
+  const label = name.startsWith('#') ? name : `#${name}`;
+  const count = Number(tag.itemCount || 0);
+  btn.innerHTML =
+    '<span class="tag-chip-bar" aria-hidden="true"></span><span class="tag-chip-name"></span>';
+  btn.querySelector('.tag-chip-name').textContent = label;
+  if (count > 0) {
+    const c = document.createElement('span');
+    c.className = 'tag-chip-count';
+    c.textContent = String(count);
+    btn.append(c);
+  }
+  btn.addEventListener('click', () =>
+    openMore({
+      source: 'tag',
+      key: tag.id,
+      title: tag.name,
+      kind: 'unread',
+    }),
+  );
+  if (!tag.isSystem) {
+    btn.title = '右键删除';
+    btn.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      confirmDeleteTag(tag);
+    });
+  }
+  return btn;
+}
+
+function moduleBlock({
+  title,
+  muted = false,
+  tags,
+  onOpenModule,
+  onAddTag,
+  onDeleteModule,
+}) {
+  const block = document.createElement('div');
+  block.className = `module-case${muted ? ' is-ungrouped' : ''}`;
+
+  const body = document.createElement('div');
+  body.className = 'module-case-body';
+
+  const head = document.createElement('div');
+  head.className = 'module-head';
+
+  if (onOpenModule) {
+    const titleBtn = document.createElement('button');
+    titleBtn.type = 'button';
+    titleBtn.className = 'module-title is-link';
+    titleBtn.innerHTML =
+      '<span class="module-title-text"></span><span class="module-chevron" aria-hidden="true">›</span>';
+    titleBtn.querySelector('.module-title-text').textContent = title;
+    titleBtn.addEventListener('click', onOpenModule);
+    head.append(titleBtn);
+  } else {
+    const titleEl = document.createElement('div');
+    titleEl.className = 'module-title';
+    titleEl.textContent = title;
+    head.append(titleEl);
+  }
+
+  if (onAddTag || onDeleteModule) {
+    const wrap = document.createElement('div');
+    wrap.className = 'module-more-wrap';
+    const moreBtn = document.createElement('button');
+    moreBtn.type = 'button';
+    moreBtn.className = 'module-more';
+    moreBtn.title = '更多';
+    moreBtn.setAttribute('aria-label', '更多');
+    moreBtn.textContent = '⋯';
+    const menu = document.createElement('div');
+    menu.className = 'module-menu';
+    menu.hidden = true;
+    if (onAddTag) {
+      const add = document.createElement('button');
+      add.type = 'button';
+      add.textContent = '添加标签';
+      add.addEventListener('click', () => {
+        menu.hidden = true;
+        onAddTag();
+      });
+      menu.append(add);
+    }
+    if (onDeleteModule) {
+      const del = document.createElement('button');
+      del.type = 'button';
+      del.className = 'is-danger';
+      del.textContent = '删除归类';
+      del.addEventListener('click', () => {
+        menu.hidden = true;
+        onDeleteModule();
+      });
+      menu.append(del);
+    }
+    moreBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const open = menu.hidden;
+      closeModuleMenus();
+      menu.hidden = !open;
+    });
+    wrap.append(moreBtn, menu);
+    head.append(wrap);
+  }
+
+  body.append(head);
+
+  const chips = document.createElement('div');
+  chips.className = 'tag-chip-wrap';
+  const list = Array.isArray(tags) ? tags : [];
+  if (!list.length) {
+    const empty = document.createElement('p');
+    empty.className = 'module-empty';
+    empty.textContent = '暂无标签';
+    chips.append(empty);
+  } else {
+    for (const tag of list) chips.append(tagChip(tag, { muted }));
+  }
+  body.append(chips);
+  block.append(body);
+  return block;
+}
+
 function renderCollection() {
   const s = collectionState;
   collectionBody.replaceChildren();
+  closeModuleMenus();
 
-  collectionBody.append(
-    sectionLabel('系统分类', {
-      expandable: true,
-      expanded: s.systemExpanded,
-      onToggle: () => {
-        collectionState.systemExpanded = !s.systemExpanded;
-        renderCollection();
-      },
-    }),
-  );
-  if (s.loading && !s.filters.length) {
+  if (s.loading && !s.filters.length && !s.modules.length && !s.ungrouped.length) {
     const msg = document.createElement('p');
     msg.className = 'list-msg';
     msg.textContent = '加载中…';
@@ -764,80 +1607,83 @@ function renderCollection() {
     return;
   }
 
-  if (s.systemExpanded) {
-    const unread = s.filters.filter((f) => f.code === 'unread');
-    const rest = s.filters.filter((f) => f.code !== 'unread');
-    if (unread.length) {
-      collectionBody.append(entityGroup(unread.map((f) => filterRow(f))));
-    }
-    if (rest.length) {
-      collectionBody.append(entityGroup(rest.map((f) => filterRow(f))));
-    }
+  const filters = collectionFilters(s.filters);
+  if (filters.length) {
+    const grid = document.createElement('div');
+    grid.className = 'filter-grid';
+    for (const f of filters) grid.append(filterTile(f));
+    collectionBody.append(grid);
   }
 
-  collectionBody.append(
-    sectionLabel('标签', {
-      expandable: true,
-      expanded: s.tagsExpanded,
-      onToggle: () => {
-        collectionState.tagsExpanded = !s.tagsExpanded;
-        renderCollection();
-      },
-      onAdd: () => openCreateTag(),
+  const panel = document.createElement('section');
+  panel.className = 'modules-panel';
+
+  const header = document.createElement('div');
+  header.className = 'modules-header';
+  const titles = document.createElement('div');
+  titles.className = 'modules-titles';
+  const h = document.createElement('h2');
+  h.textContent = '归类标签';
+  const sub = document.createElement('p');
+  sub.textContent = '分格摆放 · 右键可删标签';
+  titles.append(h, sub);
+  const createMod = document.createElement('button');
+  createMod.type = 'button';
+  createMod.className = 'modules-create';
+  createMod.title = '新建归类';
+  createMod.setAttribute('aria-label', '新建归类');
+  createMod.textContent = '＋';
+  createMod.addEventListener('click', openCreateModule);
+  header.append(titles, createMod);
+  panel.append(header);
+
+  const cases = document.createElement('div');
+  cases.className = 'module-cases';
+  cases.append(
+    moduleBlock({
+      title: '未归类',
+      muted: true,
+      tags: s.ungrouped,
     }),
   );
-  if (s.tagsExpanded) {
-    collectionBody.append(
-      entityGroup(s.tags.map((t) => tagRow(t))),
+  for (const mod of s.modules) {
+    cases.append(
+      moduleBlock({
+        title: mod.name,
+        tags: mod.tags || [],
+        onOpenModule: () =>
+          openMore({
+            source: 'module',
+            key: mod.id,
+            title: mod.name,
+            kind: 'unread',
+          }),
+        onAddTag: () => openCreateTag({ moduleId: mod.id }),
+        onDeleteModule: () => confirmDeleteModule(mod),
+      }),
     );
   }
-}
-
-function filterRow(filter) {
-  return navRow({
-    title: filter.name,
-    count: filter.countLabel ?? filter.itemCount ?? 0,
-    icon: iconForFilter(filter.code),
-    onClick: () =>
-      openMore({
-        source: 'filter',
-        key: filter.code,
-        title: filter.name,
-        kind: kindForFilter(filter.code),
-      }),
-  });
-}
-
-function tagRow(tag) {
-  return navRow({
-    title: tag.name,
-    count: tag.itemCount ?? 0,
-    icon: tag.isSystem ? ICON.tagSystem : ICON.tagUser,
-    onClick: () =>
-      openMore({
-        source: 'tag',
-        key: tag.id,
-        title: tag.name,
-        kind: 'unread',
-      }),
-    onDelete: tag.isSystem ? null : () => confirmDeleteTag(tag),
-  });
+  panel.append(cases);
+  collectionBody.append(panel);
 }
 
 async function loadCollection({ quiet = false } = {}) {
   const empty =
-    !collectionState.filters.length && !collectionState.tags.length;
+    !collectionState.filters.length &&
+    !collectionState.modules.length &&
+    !collectionState.ungrouped.length;
   if (!quiet || empty) {
     collectionState.loading = true;
     collectionState.error = null;
     renderCollection();
   }
   try {
-    const [tagsRes, filtersRes] = await Promise.all([
-      listTags(),
+    const [modulesRes, filtersRes] = await Promise.all([
+      listTagModules(),
       fetchSystemFilters(),
     ]);
-    collectionState.tags = tagsRes.tags || [];
+    collectionState.modules = modulesRes.modules || [];
+    collectionState.ungrouped = modulesRes.ungrouped || [];
     collectionState.filters = filtersRes.filters || [];
     collectionState.loading = false;
     collectionState.error = null;
@@ -939,7 +1785,7 @@ async function submitAddLink() {
     const existed = Boolean(result.existed);
     toast(result.message || (existed ? '该链接已收藏' : '已收藏'));
     const item = result.item;
-    if (item?.id) await openDetail(item);
+    if (item) openItemLink(item);
     loadHome();
   } catch (err) {
     overlayBusy = false;
@@ -1005,7 +1851,7 @@ async function submitNameSheet() {
   }
 }
 
-function openCreateTag({ afterCreate } = {}) {
+function openCreateTag({ afterCreate, moduleId } = {}) {
   openNameSheet({
     title: '新建标签',
     label: '名称',
@@ -1013,14 +1859,32 @@ function openCreateTag({ afterCreate } = {}) {
     onSubmit: async (name) => {
       if (!name) throw new Error('请输入标签名称');
       if (name.length > 64) throw new Error('名称最多 64 个字');
-      const res = await createTag(name);
+      const res = await createTag(name, {
+        moduleId: moduleId == null ? undefined : moduleId,
+      });
       if (!afterCreate) {
-        await loadCollection();
+        await loadCollection({ quiet: true });
         toast(`已创建标签「${res.tag?.name || name}」`);
       }
       return res.tag;
     },
     afterClose: afterCreate,
+  });
+}
+
+function openCreateModule() {
+  openNameSheet({
+    title: '新建归类',
+    label: '名称',
+    placeholder: '请输入归类名称',
+    onSubmit: async (name) => {
+      if (!name) throw new Error('请输入归类名称');
+      if (name.length > 64) throw new Error('名称最多 64 个字');
+      const res = await createTagModule(name);
+      await loadCollection({ quiet: true });
+      toast(`已创建归类「${res.module?.name || name}」`);
+      return res.module;
+    },
   });
 }
 
@@ -1034,7 +1898,7 @@ async function confirmDeleteTag(tag) {
   if (!ok) return;
   try {
     await deleteTag(tag.id);
-    await loadCollection();
+    await loadCollection({ quiet: true });
     toast(`已删除标签「${tag.name}」`);
   } catch (err) {
     if (await handleAuthError(err)) return;
@@ -1042,93 +1906,22 @@ async function confirmDeleteTag(tag) {
   }
 }
 
-function maskedPhone(phone) {
-  const digits = String(phone || '').replace(/\D/g, '');
-  if (digits.length >= 7) {
-    return `${digits.slice(0, 3)}****${digits.slice(-4)}`;
+async function confirmDeleteModule(mod) {
+  const ok = await confirmDialog({
+    title: '删除归类',
+    message: `确定删除归类「${mod.name}」？组内标签会回到未归类，不会删除标签。`,
+    confirmLabel: '删除',
+    danger: true,
+  });
+  if (!ok) return;
+  try {
+    await deleteTagModule(mod.id);
+    await loadCollection({ quiet: true });
+    toast(`已删除归类「${mod.name}」`);
+  } catch (err) {
+    if (await handleAuthError(err)) return;
+    toast(err.message || '删除失败');
   }
-  return phone || '—';
-}
-
-function setRow({ title, meta, danger, chevron, onClick }) {
-  const el = document.createElement(onClick ? 'button' : 'div');
-  if (onClick) el.type = 'button';
-  el.className = `set-row${danger ? ' is-danger' : ''}`;
-  const t = document.createElement('span');
-  t.className = 'title';
-  t.textContent = title;
-  el.append(t);
-  if (meta != null) {
-    const m = document.createElement('span');
-    m.className = 'meta';
-    m.textContent = meta;
-    el.append(m);
-  }
-  if (chevron) {
-    const a = document.createElement('span');
-    a.className = 'arrow';
-    a.textContent = '›';
-    el.append(a);
-  }
-  if (onClick) el.addEventListener('click', onClick);
-  return el;
-}
-
-async function openSettings() {
-  pushView('settings');
-  settingsBody.replaceChildren();
-  const session = await getSession();
-  const version = chrome.runtime.getManifest().version;
-
-  const accountLabel = document.createElement('div');
-  accountLabel.className = 'set-label';
-  accountLabel.textContent = '账号';
-  const account = document.createElement('div');
-  account.className = 'set-group';
-  account.append(
-    setRow({ title: '手机号', meta: maskedPhone(session?.phone) }),
-    setRow({
-      title: '退出登录',
-      danger: true,
-      onClick: logout,
-    }),
-  );
-
-  const aboutLabel = document.createElement('div');
-  aboutLabel.className = 'set-label';
-  aboutLabel.textContent = '关于';
-  const about = document.createElement('div');
-  about.className = 'set-group';
-  about.append(
-    setRow({
-      title: '用户协议',
-      chevron: true,
-      onClick: () =>
-        window.open(
-          'https://conflux.wobufang.com/terms',
-          '_blank',
-        ),
-    }),
-    setRow({
-      title: '隐私政策',
-      chevron: true,
-      onClick: () =>
-        window.open('https://conflux.wobufang.com/privacy', '_blank'),
-    }),
-    setRow({
-      title: '用户支持',
-      chevron: true,
-      onClick: () =>
-        window.open('https://conflux.wobufang.com/support', '_blank'),
-    }),
-    setRow({ title: '关于 奏折', meta: `v${version}` }),
-  );
-
-  const hint = document.createElement('p');
-  hint.className = 'list-msg';
-  hint.textContent = '阅读、标注和视频仍在手机 App 里完成。';
-
-  settingsBody.append(accountLabel, account, aboutLabel, about, hint);
 }
 
 async function logout() {
@@ -1143,6 +1936,7 @@ async function logout() {
   viewStack = [];
   collectionState = emptyCollection();
   more = emptyMore();
+  searchState = emptySearch();
   showView('login');
 }
 
@@ -1255,7 +2049,17 @@ function renderDetail() {
   url.rel = 'noopener';
   url.textContent = item.url || '';
 
-  detailBody.append(title, meta, chip, url);
+  detailBody.append(title, meta, chip);
+
+  const detailTags = tagsLine(item.tags);
+  if (detailTags) {
+    const tagsEl = document.createElement('p');
+    tagsEl.className = 'detail-tags';
+    tagsEl.textContent = detailTags;
+    detailBody.append(tagsEl);
+  }
+
+  detailBody.append(url);
 
   if (status === 'pending') {
     const card = document.createElement('div');
@@ -1341,7 +2145,7 @@ function renderPickList(rows) {
   for (const row of rows) list.append(row);
 }
 
-function renderPickList(rows) {
+async function openTagPicker() {
   hideDetailMenu();
   const item = detailState.item;
   if (!item) return;
@@ -1544,19 +2348,27 @@ loginBtn.addEventListener('click', async () => {
   }
 });
 
-saveBtn.addEventListener('click', () => openAddLink());
-$('search-btn').addEventListener('click', () => {
+function openSearch() {
   pushView('search');
   searchInput.value = '';
-  searchList.replaceChildren();
-  searchStatus.hidden = true;
+  searchState = emptySearch();
+  renderSearch();
+  searchInput.focus();
+}
+
+saveBtn.addEventListener('click', () => openAddLink());
+$('tab-search').addEventListener('click', openSearch);
+$('home-avatar').addEventListener('click', logout);
+$('collection-avatar').addEventListener('click', logout);
+$('search-cancel').addEventListener('click', popView);
+searchClear.addEventListener('click', () => {
+  searchInput.value = '';
+  searchState = emptySearch();
+  renderSearch();
   searchInput.focus();
 });
-$('settings-btn').addEventListener('click', openSettings);
-$('search-back').addEventListener('click', popView);
 $('more-back').addEventListener('click', popView);
 $('detail-back').addEventListener('click', popView);
-$('settings-back').addEventListener('click', popView);
 $('detail-more').addEventListener('click', (e) => {
   e.stopPropagation();
   toggleDetailMenu();
@@ -1565,11 +2377,26 @@ $('detail-copy').addEventListener('click', copyDetailLink);
 $('detail-tags').addEventListener('click', openTagPicker);
 $('detail-delete').addEventListener('click', deleteCurrentItem);
 $('detail-menu').addEventListener('click', (e) => e.stopPropagation());
-document.addEventListener('click', () => hideDetailMenu());
+document.addEventListener('click', () => {
+  hideDetailMenu();
+  closeModuleMenus();
+});
 
 searchInput.addEventListener('input', () => {
   clearTimeout(searchTimer);
-  searchTimer = setTimeout(() => runSearch({ reset: true }), 280);
+  const q = searchInput.value.trim();
+  if (!q) {
+    searchState = emptySearch();
+    renderSearch();
+    return;
+  }
+  searchTimer = setTimeout(() => runSearch({ reset: true }), 320);
+});
+searchInput.addEventListener('keydown', (e) => {
+  if (e.key !== 'Enter') return;
+  clearTimeout(searchTimer);
+  runSearch({ reset: true });
+  searchInput.blur();
 });
 
 for (const btn of tabbarEl.querySelectorAll('.tab-item')) {
@@ -1586,6 +2413,117 @@ $('pick-save').addEventListener('click', () => {
 });
 $('dialog-cancel').addEventListener('click', () => finishDialog(false));
 $('dialog-ok').addEventListener('click', () => finishDialog(true));
+
+$('roam-player-close').addEventListener('click', closeRoamPlayer);
+
+function onRoamPointerDown(e) {
+  if (roamSwipe.settling || roamSwipe.active) return;
+  if (e.button != null && e.button !== 0) return;
+  if (e.target.closest('button')) return;
+  if (roamPlayer.index >= roamPlayer.snippets.length) return;
+  // 避免点按/轻拖时浏览器把正文整段选中
+  const sel = window.getSelection?.();
+  if (sel?.rangeCount) sel.removeAllRanges();
+  roamSwipe.active = true;
+  roamSwipe.mode = null;
+  roamSwipe.pointerId = e.pointerId;
+  roamSwipe.startX = e.clientX;
+  roamSwipe.startY = e.clientY;
+  roamSwipe.lastX = e.clientX;
+  roamSwipe.lastT = performance.now();
+  roamSwipe.ox = 0;
+  roamSwipe.oy = 0;
+  roamSwipe.vx = 0;
+  try {
+    roamPlayerDeck.setPointerCapture(e.pointerId);
+  } catch {
+    // ignore
+  }
+}
+
+function onRoamPointerMove(e) {
+  if (!roamSwipe.active || roamSwipe.settling) return;
+  if (roamSwipe.pointerId != null && e.pointerId !== roamSwipe.pointerId) return;
+
+  const dx = e.clientX - roamSwipe.startX;
+  const dy = e.clientY - roamSwipe.startY;
+
+  if (!roamSwipe.mode) {
+    if (Math.hypot(dx, dy) < 8) return;
+    const inScroll = Boolean(e.target.closest?.('.roam-quote-scroll'));
+    if (inScroll && Math.abs(dy) > Math.abs(dx)) {
+      roamSwipe.mode = 'scroll';
+      roamSwipe.active = false;
+      return;
+    }
+    roamSwipe.mode = 'swipe';
+  }
+  if (roamSwipe.mode !== 'swipe') return;
+
+  e.preventDefault();
+  const now = performance.now();
+  const dt = Math.max(1, now - roamSwipe.lastT);
+  roamSwipe.vx = ((e.clientX - roamSwipe.lastX) / dt) * 1000;
+  roamSwipe.lastX = e.clientX;
+  roamSwipe.lastT = now;
+  roamSwipe.ox = dx;
+  roamSwipe.oy = dy;
+  applyRoamSwipeTransform(dx, dy);
+}
+
+async function onRoamPointerUp(e) {
+  if (roamSwipe.pointerId != null && e.pointerId !== roamSwipe.pointerId) return;
+  const wasSwipe = roamSwipe.mode === 'swipe';
+  const ox = roamSwipe.ox;
+  const oy = roamSwipe.oy;
+  const vx = roamSwipe.vx;
+  roamSwipe.active = false;
+  roamSwipe.mode = null;
+  roamSwipe.pointerId = null;
+
+  if (!wasSwipe || roamSwipe.settling) return;
+
+  const w = roamPlayerDeck.clientWidth || 320;
+  // 对齐 App：位移 > 22% 宽 或 横向速度 > 900
+  const pass = Math.abs(ox) > w * 0.22 || Math.abs(vx) > 900;
+  if (!pass) {
+    if (Math.hypot(ox, oy) > 8) roamPlayer.suppressClick = true;
+    await animateRoamSwipeTo(0, 0, 200);
+    clearRoamSwipeTransform();
+    roamSwipe.ox = 0;
+    roamSwipe.oy = 0;
+    return;
+  }
+  const dir = (ox === 0 ? vx : ox) >= 0 ? 1 : -1;
+  await dismissRoamFront(dir);
+}
+
+roamPlayerDeck.addEventListener('pointerdown', onRoamPointerDown);
+roamPlayerDeck.addEventListener('pointermove', onRoamPointerMove, { passive: false });
+roamPlayerDeck.addEventListener('pointerup', onRoamPointerUp);
+roamPlayerDeck.addEventListener('pointercancel', onRoamPointerUp);
+roamPlayerDeck.addEventListener(
+  'wheel',
+  (e) => {
+    if (roamSwipe.settling || roamSwipe.active) return;
+    if (roamPlayer.index >= roamPlayer.snippets.length) return;
+    if (Math.abs(e.deltaX) < 24 && e.deltaY <= 24) return;
+    const scroll = roamPlayerDeck.querySelector('.roam-quote-scroll');
+    if (
+      Math.abs(e.deltaY) >= Math.abs(e.deltaX) &&
+      scroll &&
+      scroll.scrollHeight > scroll.clientHeight + 2
+    ) {
+      const atBottom =
+        scroll.scrollTop + scroll.clientHeight >= scroll.scrollHeight - 4;
+      if (!atBottom) return;
+    }
+    e.preventDefault();
+    const dir = e.deltaX !== 0 ? (e.deltaX > 0 ? 1 : -1) : 1;
+    dismissRoamFront(dir);
+  },
+  { passive: false },
+);
 
 for (const btn of document.querySelectorAll('[data-close-overlay]')) {
   btn.addEventListener('click', () => closeOverlay());
