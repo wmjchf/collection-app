@@ -40,6 +40,8 @@ const MIGRATION_FILES = [
   '030_user_onboarding_survey.sql',
   '031_user_feedback.sql',
   '032_annotation_source.sql',
+  '033_feedback_public.sql',
+  '034_feedback_images.sql',
 ];
 
 async function getConnection() {

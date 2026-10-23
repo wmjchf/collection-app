@@ -3,30 +3,30 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <meta name="color-scheme" content="light" />
-  <title>奏折 - 把好内容收到一处，想看的时候翻得出来</title>
-  <meta name="description" content="奏折 帮你把抖音、微信、小红书、B 站等刷到的好内容一键收藏。自动整理标题、封面与正文；支持 AI 标签、思维导图与音视频转写，稍后看、容易读、好找回。" />
-  <meta name="keywords" content="奏折,稍后读,稍后看,内容收藏,一键收藏,抖音收藏,微信收藏,小红书收藏,B站收藏,阅读标注,收藏夹,标签,跨平台收藏" />
-  <meta name="author" content="奏折" />
+  <meta name="color-scheme" content="dark" />
+  <title>奏折 — 把好内容收到一处</title>
+  <meta name="description" content="把抖音、微信、小红书、B 站等好内容一键收藏。自动解析、自动打标签并归类；AI 解读、思维导图与转写，稍后看、容易读、好找回。" />
+  <meta name="keywords" content="奏折,稍后读,内容收藏,抖音收藏,微信收藏,小红书,B站,AI标签,思维导图,转写" />
   <meta name="robots" content="index,follow,max-image-preview:large" />
-  <meta name="theme-color" content="#2F6FED" />
-  <meta name="application-name" content="奏折" />
-  <meta name="apple-mobile-web-app-title" content="奏折" />
+  <meta name="theme-color" content="#070B14" />
   <link rel="canonical" href="https://conflux.wobufang.com/" />
 
   <meta property="og:type" content="website" />
   <meta property="og:locale" content="zh_CN" />
   <meta property="og:site_name" content="奏折" />
   <meta property="og:url" content="https://conflux.wobufang.com/" />
-  <meta property="og:title" content="奏折 - 把好内容收到一处，想看的时候翻得出来" />
-  <meta property="og:description" content="把抖音、微信、小红书、B 站等好内容一键收藏。自动整理标题、封面与正文；AI 标签、思维导图与转写，稍后看、容易读、好找回。" />
+  <meta property="og:title" content="奏折 — 把好内容收到一处" />
+  <meta property="og:description" content="收藏散落各处的好内容。解析后自动打标签，慢慢看，随时找回。" />
   <meta property="og:image" content="https://conflux.wobufang.com/assets/icon.png" />
-  <meta property="og:image:alt" content="奏折 App 图标" />
 
-  <meta name="twitter:card" content="summary" />
-  <meta name="twitter:title" content="奏折 - 把好内容收到一处，想看的时候翻得出来" />
-  <meta name="twitter:description" content="把抖音、微信、小红书、B 站等好内容一键收藏。自动整理标题、封面与正文；AI 标签、思维导图与转写，稍后看、容易读、好找回。" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="奏折 — 把好内容收到一处" />
+  <meta name="twitter:description" content="收藏散落各处的好内容。解析后自动打标签，慢慢看，随时找回。" />
   <meta name="twitter:image" content="https://conflux.wobufang.com/assets/icon.png" />
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@500;600;700&display=swap" rel="stylesheet" />
 
   <link rel="icon" href="/assets/apple-touch-icon.png" type="image/png" />
   <link rel="apple-touch-icon" href="/assets/apple-touch-icon.png" />
@@ -46,127 +46,329 @@
         "@type": "SoftwareApplication",
         "name": "奏折",
         "applicationCategory": "ProductivityApplication",
-        "operatingSystem": "iOS, Android",
+        "operatingSystem": "iOS",
         "url": "https://conflux.wobufang.com/",
-        "description": "把抖音、微信、小红书、B 站等刷到的好内容一键收藏，自动整理标题、封面与正文；支持 AI 标签、思维导图与音视频转写。",
-        "offers": {
-          "@type": "Offer",
-          "price": "0",
-          "priceCurrency": "CNY"
-        }
+        "description": "把多平台好内容一键收藏，自动解析与打标签；支持 AI 解读、思维导图与转写。",
+        "offers": { "@type": "Offer", "price": "0", "priceCurrency": "CNY" }
       }
     ]
   }
   </script>
 </head>
 <body>
+  <a class="skip" href="#main">跳到主要内容</a>
+
   <header class="nav">
-    <div class="nav-inner">
+    <div class="nav-shell">
       <a class="nav-brand" href="#top">
-        <img class="app-icon" src="assets/icon.png" width="28" height="28" alt="" />
+        <img class="nav-brand-icon" src="/assets/icon.png" width="28" height="28" alt="" />
         奏折
       </a>
-      <nav>
-        <a href="#capture">功能</a>
-        <a href="/guide">指引</a>
-        <a href="#top">下载</a>
+      <nav aria-label="页面导航">
+        <a class="is-active" href="#journey">体验</a>
+        <a href="#faq">常见问题</a>
+        <a href="#values">掌握</a>
+        <a href="/feedback">反馈</a>
       </nav>
+      <a class="btn btn-nav" href="#download">下载奏折 <span class="nav-arrow" aria-hidden="true">↗</span></a>
     </div>
   </header>
 
-  <main id="top">
-    <section class="hero">
-      <img class="app-icon hero-icon" src="/assets/icon.png" width="128" height="128" alt="奏折 App 图标" />
-      <h1>奏折</h1>
-      <p>把好内容收到一处，想看的时候翻得出来。</p>
-      <div class="cta">
-        <a class="btn btn-primary" href="#">获取 App</a>
-        <a class="btn btn-ghost" href="#">Chrome 扩展</a>
-      </div>
-    </section>
-
-    <section class="block" id="capture">
-      <div class="inner">
-        <div class="copy">
-          <h2>一键收</h2>
-          <p>抖音、微信、小红书、B站<br />好内容一键汇总收藏</p>
+  <main id="main">
+    <!-- Hero：品牌气质面，参考 Kepori 首屏结构 -->
+    <section class="hero" id="top">
+      <div class="hero-glow" aria-hidden="true"></div>
+      <div class="hero-grain" aria-hidden="true"></div>
+      <div class="hero-copy">
+        <h1 class="hero-brand">奏折</h1>
+        <p class="hero-lead">喜欢的内容收藏到一处，<br />像看奏折一样阅读、整理、思考。</p>
+        <div class="cta" id="download">
+          <a class="btn btn-primary" href="https://apps.apple.com/search?term=%E5%A5%8F%E6%8A%98">App Store 下载</a>
+          <a class="btn btn-ghost" href="#chrome">Chrome 插件</a>
         </div>
-        <figure class="phone">
+        <p class="hero-meta">iPhone App · Chrome 扩展</p>
+      </div>
+
+      <div class="hero-devices" aria-label="奏折实际界面">
+        <figure class="phone phone-hero phone-left">
           <span class="phone-btn silent" aria-hidden="true"></span>
           <span class="phone-btn vol-up" aria-hidden="true"></span>
           <span class="phone-btn vol-down" aria-hidden="true"></span>
           <span class="phone-btn power" aria-hidden="true"></span>
           <div class="phone-screen">
-            <img src="assets/capture.png" width="472" height="1024" alt="三种收藏方式：系统分享、复制链接、快捷指令" />
+            <img src="/assets/library.png" width="470" height="1024" alt="收藏：归类标签" loading="lazy" />
           </div>
         </figure>
-      </div>
-    </section>
-
-    <section class="block wash">
-      <div class="inner flip">
-        <div class="copy">
-          <h2>稍后看</h2>
-          <p>刷到不想当下看的<br />先收着，有空再看</p>
-        </div>
-        <figure class="phone">
+        <figure class="phone phone-hero phone-center">
           <span class="phone-btn silent" aria-hidden="true"></span>
           <span class="phone-btn vol-up" aria-hidden="true"></span>
           <span class="phone-btn vol-down" aria-hidden="true"></span>
           <span class="phone-btn power" aria-hidden="true"></span>
           <div class="phone-screen">
-            <img src="assets/home.png" width="470" height="1024" alt="首页：未读、标注与最近阅读" />
+            <img src="/assets/home.png" width="470" height="1024" alt="阅读：未读与漫游" />
           </div>
         </figure>
-      </div>
-    </section>
-
-    <section class="block">
-      <div class="inner">
-        <div class="copy">
-          <h2>容易读</h2>
-          <p>正文与插图按原文排开<br />标注高亮，随时重温</p>
-        </div>
-        <figure class="phone">
+        <figure class="phone phone-hero phone-right">
           <span class="phone-btn silent" aria-hidden="true"></span>
           <span class="phone-btn vol-up" aria-hidden="true"></span>
           <span class="phone-btn vol-down" aria-hidden="true"></span>
           <span class="phone-btn power" aria-hidden="true"></span>
           <div class="phone-screen">
-            <img src="assets/reading.png" width="470" height="1024" alt="阅读页：标题、封面与正文" />
+            <img src="/assets/find.png" width="470" height="1024" alt="搜索与标签找回" loading="lazy" />
           </div>
         </figure>
       </div>
     </section>
 
-    <section class="block wash">
-      <div class="inner flip">
-        <div class="copy">
-          <h2>好找回</h2>
-          <p>搜关键词，按标签筛<br />分类入口，好找回来</p>
+    <!-- 旅程：收藏 → 阅读 → 找回 -->
+    <section class="section" id="journey">
+      <div class="section-head">
+        <p class="eyebrow">从心动，到收藏</p>
+        <h2>喜欢的，都在这里。</h2>
+        <p class="section-desc">从随手保存，到静心阅读，再到找回需要的内容。</p>
+        <div class="journey-tabs" role="tablist" aria-label="使用旅程">
+          <button type="button" class="journey-tab is-active" role="tab" aria-selected="true" data-panel="collect">收藏</button>
+          <button type="button" class="journey-tab" role="tab" aria-selected="false" data-panel="read">阅读</button>
+          <button type="button" class="journey-tab" role="tab" aria-selected="false" data-panel="find">找回</button>
         </div>
-        <figure class="phone">
-          <span class="phone-btn silent" aria-hidden="true"></span>
-          <span class="phone-btn vol-up" aria-hidden="true"></span>
-          <span class="phone-btn vol-down" aria-hidden="true"></span>
-          <span class="phone-btn power" aria-hidden="true"></span>
-          <div class="phone-screen">
-            <img src="assets/library.png" width="470" height="1024" alt="我的收藏：搜索标签与分类入口" />
+      </div>
+
+      <div class="journey-panels">
+        <article class="journey-panel is-active" id="panel-collect" data-panel="collect">
+          <div class="inner">
+            <div class="copy">
+              <p class="step-num">01</p>
+              <h3>喜欢的内容，收在一起。</h3>
+              <p>系统分享、复制链接或快捷指令，把微信、抖音、小红书、B 站等公开链接收进收藏库。解析标题、封面与正文，少打断刷内容的节奏。</p>
+            </div>
+            <figure class="phone">
+              <span class="phone-btn silent" aria-hidden="true"></span>
+              <span class="phone-btn vol-up" aria-hidden="true"></span>
+              <span class="phone-btn vol-down" aria-hidden="true"></span>
+              <span class="phone-btn power" aria-hidden="true"></span>
+              <div class="phone-screen">
+                <img src="/assets/capture.png" width="472" height="1024" alt="三种收藏方式" loading="lazy" />
+              </div>
+            </figure>
           </div>
-        </figure>
+        </article>
+
+        <article class="journey-panel" id="panel-read" data-panel="read" hidden>
+          <div class="inner">
+            <div class="copy">
+              <p class="step-num">02</p>
+              <h3>像读奏折一样，慢慢看。</h3>
+              <p>纸白阅读页排开正文与插图；可高亮、批注与感想。需要时再开 AI 解读、思维导图或转写文稿。</p>
+            </div>
+            <figure class="phone">
+              <span class="phone-btn silent" aria-hidden="true"></span>
+              <span class="phone-btn vol-up" aria-hidden="true"></span>
+              <span class="phone-btn vol-down" aria-hidden="true"></span>
+              <span class="phone-btn power" aria-hidden="true"></span>
+              <div class="phone-screen">
+                <img src="/assets/reading.png" width="470" height="1024" alt="阅读页正文" loading="lazy" />
+              </div>
+            </figure>
+          </div>
+        </article>
+
+        <article class="journey-panel" id="panel-find" data-panel="find" hidden>
+          <div class="inner">
+            <div class="copy">
+              <p class="step-num">03</p>
+              <h3>想看的时候，翻得出来。</h3>
+              <p>解析后自动打标签并尽量归类；按标签浏览，或搜索标题、正文、感想与文稿。收藏夹不再是黑洞。</p>
+            </div>
+            <figure class="phone">
+              <span class="phone-btn silent" aria-hidden="true"></span>
+              <span class="phone-btn vol-up" aria-hidden="true"></span>
+              <span class="phone-btn vol-down" aria-hidden="true"></span>
+              <span class="phone-btn power" aria-hidden="true"></span>
+              <div class="phone-screen">
+                <img src="/assets/find.png" width="470" height="1024" alt="搜索与标签找回" loading="lazy" />
+              </div>
+            </figure>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <!-- 价值主张：对齐 Kepori 三列，内容换成奏折 -->
+    <section class="section values" id="values">
+      <div class="section-head">
+        <p class="eyebrow">安静地收好</p>
+        <h2>你的收藏，由你掌握。</h2>
+        <p class="section-desc">一个留给真正想留下的内容的地方。</p>
+      </div>
+      <div class="value-grid">
+        <article class="value-card">
+          <h3>一键就收</h3>
+          <p>分享菜单、剪贴板与快捷指令三条路，把公开链接收进来，少打断刷内容。</p>
+        </article>
+        <article class="value-card">
+          <h3>自动整理</h3>
+          <p>解析成功后自动打标签并尽量归类；视频转写成功后同样处理。自动整理不占付费 AI 额度。</p>
+        </article>
+        <article class="value-card">
+          <h3>随时找回</h3>
+          <p>标签、搜索与分类入口；AI 解读与转写文稿也可被搜到，旧内容不再沉底。</p>
+        </article>
+      </div>
+    </section>
+
+    <!-- Chrome 扩展 -->
+    <section class="section" id="chrome">
+      <div class="section-head">
+        <p class="eyebrow">桌面端</p>
+        <h2>Chrome 插件</h2>
+        <p class="section-desc">在浏览器里一键收藏、查找与整理；深读、批注仍以 iPhone App 为主。账号与 App 相同。</p>
+      </div>
+      <div class="contact-card" style="max-width: 560px">
+        <p>安装方式（开发者模式）</p>
+        <p class="contact-note" style="text-align: left; margin-top: 12px">
+          1. Chrome 打开 <code>chrome://extensions</code>，开启「开发者模式」<br />
+          2. 「加载已解压的扩展程序」，选择奏折扩展目录<br />
+          3. 点工具栏图标，用与 App 相同的手机号登录
+        </p>
+        <p class="contact-note" style="margin-top: 16px">Chrome 网上应用店上架后，此处将改为一键安装链接。</p>
+      </div>
+    </section>
+
+    <!-- FAQ -->
+    <section class="section faq" id="faq">
+      <div class="section-head">
+        <p class="eyebrow">在开始之前</p>
+        <h2>你可能想知道。</h2>
+        <p class="section-desc"><a href="/support">更多问题见用户支持</a></p>
+      </div>
+      <div class="faq-list">
+        <details class="faq-item" open>
+          <summary>奏折可以收藏什么？</summary>
+          <p>公开链接为主：微信、抖音、小红书、B 站、网页文章等。尽量自动解析标题、封面与正文；部分平台可能受登录或反爬限制。</p>
+        </details>
+        <details class="faq-item">
+          <summary>如何把内容收藏进来？</summary>
+          <p>系统分享选「奏折」、复制链接后打开 App，或安装 iOS 快捷指令后台保存。桌面可用 <a href="#chrome">Chrome 插件</a>。详见<a href="/guide">使用指引</a>。</p>
+        </details>
+        <details class="faq-item">
+          <summary>标签是自动打的吗？</summary>
+          <p>是。文章解析成功后自动打标签并尽量归类；视频在转写成功后同样处理（图集除外）。也可在阅读页手动增删标签。</p>
+        </details>
+        <details class="faq-item">
+          <summary>需要付费吗？</summary>
+          <p>基础收藏与解析免费（条数有上限）。无限收藏可订阅普通会员；AI 解读、思维导图与转写需太子Pro 或帝王Pro。价格以 App Store 为准。</p>
+        </details>
+        <details class="faq-item">
+          <summary>在哪里下载？</summary>
+          <p>iPhone 请在 App Store 搜索「奏折」。桌面收藏可用 <a href="#chrome">Chrome 插件</a>。</p>
+        </details>
+      </div>
+    </section>
+
+    <!-- 联系 -->
+    <section class="section contact" id="contact">
+      <div class="section-head">
+        <p class="eyebrow">有想法，聊聊吧</p>
+        <h2>联系我们</h2>
+        <p class="section-desc">使用问题与改进建议，欢迎来信。也可在 <a href="/feedback">公开反馈墙</a> 留言，或在 App 内提交意见反馈。</p>
+      </div>
+      <div class="contact-card">
+        <p>支持邮箱</p>
+        <a class="contact-mail" href="mailto:partner01@126.com">partner01@126.com</a>
+        <p class="contact-note">发信时请尽量注明设备、系统与 App 版本，以及复现步骤。公开讨论请走 <a href="/feedback">反馈墙</a>。</p>
       </div>
     </section>
   </main>
 
   <footer class="footer">
-    <span class="footer-brand">
-      <img class="app-icon" src="assets/icon.png" width="22" height="22" alt="" />
-      奏折
-    </span>
-    <a href="/privacy">隐私政策</a>
-    <a href="/terms">用户协议</a>
-    <a href="/guide">使用指引</a>
-    <a href="/support">用户支持</a>
+    <div class="footer-grid">
+      <div class="footer-brand-block">
+        <a class="footer-brand" href="#top">
+          <img class="app-icon" src="/assets/icon.png" width="22" height="22" alt="" />
+          奏折
+        </a>
+        <p>喜欢的内容收藏到一处，像看奏折一样阅读、整理、思考。</p>
+      </div>
+      <div>
+        <h4>产品</h4>
+        <a href="#journey">体验</a>
+        <a href="/guide">使用指引</a>
+        <a href="#faq">常见问题</a>
+      </div>
+      <div>
+        <h4>支持</h4>
+        <a href="/support">用户支持</a>
+        <a href="#contact">联系我们</a>
+      </div>
+      <div>
+        <h4>更多</h4>
+        <a href="/privacy">隐私政策</a>
+        <a href="/terms">用户协议</a>
+      </div>
+    </div>
+    <p class="footer-copy">© 2026 奏折 · HuangShi BuFang</p>
   </footer>
+
+  <script>
+    (function () {
+      var tabs = document.querySelectorAll('.journey-tab');
+      var panels = document.querySelectorAll('.journey-panel');
+      tabs.forEach(function (tab) {
+        tab.addEventListener('click', function () {
+          var id = tab.getAttribute('data-panel');
+          tabs.forEach(function (t) {
+            var on = t === tab;
+            t.classList.toggle('is-active', on);
+            t.setAttribute('aria-selected', on ? 'true' : 'false');
+          });
+          panels.forEach(function (p) {
+            var on = p.getAttribute('data-panel') === id;
+            p.classList.toggle('is-active', on);
+            p.hidden = !on;
+          });
+        });
+      });
+
+      // 滚动进入视口时模块淡入上移
+      var reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      var targets = document.querySelectorAll('.section, .footer');
+      targets.forEach(function (el) {
+        el.classList.add('reveal');
+        if (el.querySelector('.value-grid, .faq-list, .footer-grid')) {
+          var inner = el.querySelector('.value-grid, .faq-list, .footer-grid');
+          if (inner) inner.classList.add('reveal-stagger');
+        }
+      });
+      if (reduce) {
+        targets.forEach(function (el) {
+          el.classList.add('is-in');
+          var stagger = el.querySelector('.reveal-stagger');
+          if (stagger) stagger.classList.add('is-in');
+        });
+        return;
+      }
+      if (!('IntersectionObserver' in window)) {
+        targets.forEach(function (el) {
+          el.classList.add('is-in');
+          var stagger = el.querySelector('.reveal-stagger');
+          if (stagger) stagger.classList.add('is-in');
+        });
+        return;
+      }
+      var io = new IntersectionObserver(
+        function (entries) {
+          entries.forEach(function (entry) {
+            if (!entry.isIntersecting) return;
+            entry.target.classList.add('is-in');
+            var stagger = entry.target.querySelector('.reveal-stagger');
+            if (stagger) stagger.classList.add('is-in');
+            io.unobserve(entry.target);
+          });
+        },
+        { root: null, rootMargin: '0px 0px -8% 0px', threshold: 0.12 }
+      );
+      targets.forEach(function (el) { io.observe(el); });
+    })();
+  </script>
 </body>
 </html>

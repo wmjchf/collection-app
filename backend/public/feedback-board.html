@@ -1,0 +1,801 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="color-scheme" content="dark" />
+  <title>用户反馈 · 奏折</title>
+  <meta name="description" content="向奏折提交问题与建议，查看公开处理进展。" />
+  <meta name="theme-color" content="#070B14" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@500;600;700&display=swap" rel="stylesheet" />
+  <link rel="icon" href="/assets/apple-touch-icon.png" type="image/png" />
+  <link rel="stylesheet" href="/styles.css" />
+  <style>
+    .board-page { min-height: 100vh; }
+    .board-nav {
+      position: sticky;
+      top: 0;
+      z-index: 20;
+      padding: 14px var(--inset) 0;
+      pointer-events: none;
+    }
+    .board-nav .nav-shell {
+      pointer-events: auto;
+      max-width: 720px;
+    }
+    .board-nav-spacer { flex: 1; }
+    .board-nav .nav-link {
+      font-size: 13px;
+      font-weight: 500;
+      color: rgba(238, 242, 248, 0.62);
+      padding: 8px 14px;
+      border-radius: 999px;
+    }
+    .board-nav .nav-link:hover { color: #fff; }
+    .board-nav .nav-link.is-active {
+      color: #fff;
+      background: rgba(47, 111, 237, 0.28);
+    }
+    .board-wrap {
+      max-width: 720px;
+      margin: 0 auto;
+      padding: 36px var(--inset) 120px;
+    }
+    .board-wrap h1 {
+      margin: 0;
+      font-size: clamp(28px, 5vw, 36px);
+      font-weight: 700;
+      color: #fff;
+      letter-spacing: 0.02em;
+    }
+    .board-lead {
+      margin: 12px 0 0;
+      color: var(--muted-on-dark);
+      font-size: 16px;
+      line-height: 1.6;
+    }
+    .board-privacy {
+      margin: 12px 0 0;
+      font-size: 13px;
+      color: var(--muted);
+      line-height: 1.55;
+    }
+    .filter-block {
+      margin: 28px 0 0;
+    }
+    .filter-label {
+      margin: 0 0 8px;
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      color: var(--brand-soft);
+    }
+    .filters {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .chip {
+      appearance: none;
+      border: 1px solid var(--line);
+      background: rgba(0, 0, 0, 0.22);
+      color: var(--muted);
+      font: inherit;
+      font-size: 13px;
+      font-weight: 600;
+      padding: 8px 14px;
+      border-radius: 999px;
+      cursor: pointer;
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      transition: background 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+    }
+    .chip.is-on {
+      background: rgba(47, 111, 237, 0.28);
+      border-color: rgba(155, 184, 245, 0.35);
+      color: #fff;
+    }
+    .toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin: 18px 0;
+      align-items: center;
+    }
+    .toolbar input,
+    .field input,
+    .field select,
+    .field textarea {
+      font: inherit;
+      font-size: 14px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 10px 12px;
+      background: rgba(0, 0, 0, 0.28);
+      color: var(--text);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+    }
+    .toolbar input { flex: 1; min-width: 160px; width: 100%; }
+    .toolbar input::placeholder,
+    .field input::placeholder,
+    .field textarea::placeholder {
+      color: rgba(238, 242, 248, 0.35);
+    }
+    .field select {
+      appearance: none;
+      -webkit-appearance: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%239bb8f5' d='M1.4.6 6 5.2 10.6.6 12 2 6 8 0 2z'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 14px center;
+      padding-right: 36px;
+    }
+    .field select option { background: #0b1220; color: #eef2f8; }
+    .meta-line {
+      font-size: 13px;
+      color: var(--muted);
+      margin-bottom: 14px;
+    }
+    .list { display: flex; flex-direction: column; gap: 12px; }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      padding: 16px 18px;
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+    }
+    .card-top {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px 10px;
+      align-items: center;
+      margin-bottom: 10px;
+      font-size: 12px;
+      color: var(--muted);
+    }
+    .badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 999px;
+      background: rgba(47, 111, 237, 0.22);
+      color: var(--blue-soft);
+      font-weight: 650;
+      font-size: 12px;
+    }
+    .badge.bug { background: rgba(192, 57, 43, 0.22); color: #f0a8a0; }
+    .badge.parse { background: rgba(184, 110, 0, 0.22); color: #f0c88a; }
+    .badge.other { background: rgba(255, 255, 255, 0.08); color: var(--muted); }
+    .badge.status-pending { background: rgba(255, 255, 255, 0.08); color: var(--muted); }
+    .badge.status-in_progress { background: rgba(184, 110, 0, 0.22); color: #f0c88a; }
+    .badge.status-done { background: rgba(26, 127, 75, 0.22); color: #8fd4ae; }
+    .card .content {
+      margin: 0;
+      font-size: 15px;
+      line-height: 1.65;
+      color: var(--text);
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .card-images {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 12px;
+    }
+    .card-images a {
+      display: block;
+      width: 88px;
+      height: 88px;
+      border-radius: 12px;
+      overflow: hidden;
+      border: 1px solid var(--line);
+      background: rgba(0, 0, 0, 0.28);
+    }
+    .card-images img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+    .lightbox {
+      position: fixed;
+      inset: 0;
+      z-index: 40;
+      background: rgba(4, 7, 15, 0.88);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      cursor: zoom-out;
+    }
+    .lightbox.is-open { display: flex; }
+    .lightbox img {
+      max-width: min(960px, 100%);
+      max-height: 90vh;
+      border-radius: 12px;
+      box-shadow: 0 24px 64px rgba(0, 0, 0, 0.5);
+    }
+    .attach-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+    }
+    .attach-preview {
+      position: relative;
+      width: 72px;
+      height: 72px;
+      border-radius: 12px;
+      overflow: hidden;
+      border: 1px solid var(--line);
+    }
+    .attach-preview img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+    .attach-preview button {
+      position: absolute;
+      top: 4px;
+      right: 4px;
+      width: 22px;
+      height: 22px;
+      border: none;
+      border-radius: 999px;
+      background: rgba(0, 0, 0, 0.65);
+      color: #fff;
+      font-size: 14px;
+      line-height: 1;
+      cursor: pointer;
+      padding: 0;
+    }
+    .attach-add {
+      width: 72px;
+      height: 72px;
+      border-radius: 12px;
+      border: 1px dashed var(--line);
+      background: rgba(0, 0, 0, 0.22);
+      color: var(--muted);
+      font-size: 28px;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .attach-hint {
+      margin: 8px 0 0;
+      font-size: 12px;
+      color: var(--muted);
+    }
+    .empty, .loading {
+      text-align: center;
+      color: var(--muted);
+      padding: 48px 12px;
+      font-size: 14px;
+    }
+    .pager {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      margin-top: 20px;
+    }
+    .pager button {
+      font: inherit;
+      font-size: 13px;
+      font-weight: 600;
+      padding: 8px 14px;
+      border-radius: 10px;
+      border: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.04);
+      color: var(--text);
+      cursor: pointer;
+    }
+    .pager button:disabled { opacity: 0.4; cursor: default; }
+    .fab {
+      position: fixed;
+      right: 22px;
+      bottom: 22px;
+      z-index: 20;
+      appearance: none;
+      border: none;
+      background: linear-gradient(180deg, #3d7af0 0%, var(--blue) 100%);
+      color: #fff;
+      font: inherit;
+      font-size: 15px;
+      font-weight: 650;
+      padding: 14px 20px;
+      border-radius: 999px;
+      cursor: pointer;
+      box-shadow:
+        0 1px 0 rgba(255, 255, 255, 0.18) inset,
+        0 10px 28px rgba(47, 111, 237, 0.4);
+    }
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      z-index: 30;
+      background: rgba(4, 7, 15, 0.72);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 20px 16px;
+      overflow: auto;
+    }
+    .modal-backdrop.is-open { display: flex; }
+    .modal {
+      width: min(520px, 100%);
+      background: rgba(12, 18, 28, 0.94);
+      border: 1px solid var(--line);
+      border-radius: 20px 20px 16px 16px;
+      padding: 24px 22px 22px;
+      max-height: none;
+      overflow: visible;
+      backdrop-filter: blur(22px);
+      -webkit-backdrop-filter: blur(22px);
+      box-shadow: 0 24px 64px rgba(0, 0, 0, 0.45);
+      color: var(--text);
+    }
+    .modal h2 {
+      margin: 0 0 6px;
+      font-size: 20px;
+      color: #fff;
+    }
+    .modal .hint {
+      margin: 0 0 16px;
+      font-size: 13px;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+    .field { margin-bottom: 14px; }
+    .field label {
+      display: block;
+      font-size: 13px;
+      font-weight: 600;
+      margin-bottom: 6px;
+      color: rgba(238, 242, 248, 0.82);
+    }
+    .field input,
+    .field select,
+    .field textarea { width: 100%; }
+    .field textarea {
+      min-height: 140px;
+      max-height: 180px;
+      resize: vertical;
+    }
+    .modal-actions {
+      display: flex;
+      gap: 10px;
+      justify-content: flex-end;
+      margin-top: 8px;
+    }
+    .modal-actions button {
+      font: inherit;
+      font-size: 14px;
+      font-weight: 650;
+      padding: 10px 16px;
+      border-radius: 12px;
+      cursor: pointer;
+      border: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.04);
+      color: var(--text);
+    }
+    .modal-actions button.primary {
+      background: linear-gradient(180deg, #3d7af0 0%, var(--blue) 100%);
+      border-color: transparent;
+      color: #fff;
+      box-shadow: 0 8px 24px rgba(47, 111, 237, 0.35);
+    }
+    .modal-actions button:disabled { opacity: 0.55; cursor: default; }
+    .form-msg {
+      min-height: 20px;
+      font-size: 13px;
+      margin-bottom: 8px;
+    }
+    .form-msg.ok { color: #8fd4ae; }
+    .form-msg.err { color: #f0a8a0; }
+    .modal { border-radius: 20px; }
+  </style>
+</head>
+<body class="board-page">
+  <header class="board-nav">
+    <div class="nav-shell">
+      <a class="nav-brand" href="/">
+        <img class="nav-brand-icon" src="/assets/icon.png" width="28" height="28" alt="" />
+        奏折
+      </a>
+      <span class="board-nav-spacer"></span>
+      <a class="nav-link" href="/">官网</a>
+      <a class="nav-link is-active" href="/feedback">反馈</a>
+      <a class="btn btn-nav" href="/#download">下载奏折 <span class="nav-arrow" aria-hidden="true">↗</span></a>
+    </div>
+  </header>
+
+  <main class="board-wrap">
+    <h1>用户反馈</h1>
+    <p class="board-lead">你的想法，让奏折更好。</p>
+    <p class="board-privacy">提交后通常很快会出现在公开列表。联系邮箱仅用于必要时私下联系，不会公开展示。</p>
+
+    <div class="filter-block">
+      <p class="filter-label">类型</p>
+      <div class="filters" id="catFilters" role="tablist" aria-label="反馈类型"></div>
+    </div>
+    <div class="filter-block">
+      <p class="filter-label">进展</p>
+      <div class="filters" id="statusFilters" role="tablist" aria-label="处理进展"></div>
+    </div>
+    <div class="toolbar">
+      <input id="q" type="search" placeholder="搜索反馈" enterkeyhint="search" />
+    </div>
+    <div class="meta-line" id="meta">加载中…</div>
+    <div class="list" id="list"><div class="loading">正在加载反馈…</div></div>
+    <div class="pager">
+      <button type="button" id="prev" disabled>上一页</button>
+      <button type="button" id="next" disabled>下一页</button>
+    </div>
+  </main>
+
+  <button type="button" class="fab" id="openForm">提交反馈 ＋</button>
+  <div class="lightbox" id="lightbox" hidden>
+    <img id="lightboxImg" alt="" />
+  </div>
+
+  <div class="modal-backdrop" id="backdrop" role="dialog" aria-modal="true" aria-labelledby="formTitle" hidden>
+    <form class="modal" id="form">
+      <h2 id="formTitle">提交反馈</h2>
+      <p class="hint">问题和建议都可以。请尽量说清场景；联系邮箱选填，不会公开。</p>
+      <div class="field">
+        <label for="nickname">昵称</label>
+        <input id="nickname" name="nickname" maxlength="32" required placeholder="怎么称呼你" />
+      </div>
+      <div class="field">
+        <label for="category">类型</label>
+        <select id="category" name="category" required>
+          <option value="bug">问题反馈</option>
+          <option value="feature">功能建议</option>
+          <option value="parse">解析异常</option>
+          <option value="other">其他</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="content">内容</label>
+        <textarea id="content" name="content" maxlength="2000" required placeholder="至少 5 个字"></textarea>
+      </div>
+      <div class="field">
+        <label for="contact">联系邮箱（选填，不公开）</label>
+        <input id="contact" name="contact" type="email" maxlength="128" placeholder="name@example.com" />
+      </div>
+      <div class="field">
+        <label>图片（选填，最多 3 张）</label>
+        <div class="attach-row" id="attachRow">
+          <button type="button" class="attach-add" id="attachAdd" aria-label="添加图片">＋</button>
+        </div>
+        <input id="attachFile" type="file" accept="image/png,image/jpeg,image/webp" hidden />
+        <p class="attach-hint">支持 PNG / JPG / WebP，单张不超过 2.5MB；附件会随反馈公开。</p>
+      </div>
+      <div class="form-msg" id="formMsg"></div>
+      <div class="modal-actions">
+        <button type="button" id="cancelForm">取消</button>
+        <button type="submit" class="primary" id="submitBtn">提交</button>
+      </div>
+    </form>
+  </div>
+
+  <script>
+    (function () {
+      var PAGE = 20;
+      var offset = 0;
+      var total = 0;
+      var category = '';
+      var status = '';
+      var pendingImages = []; // { key, imageUrl }
+      var uploading = false;
+      var cats = [
+        { id: '', label: '全部' },
+        { id: 'bug', label: '问题反馈' },
+        { id: 'feature', label: '功能建议' },
+        { id: 'parse', label: '解析异常' },
+        { id: 'other', label: '其他' },
+      ];
+      var statuses = [
+        { id: '', label: '全部' },
+        { id: 'pending', label: '待处理' },
+        { id: 'in_progress', label: '处理中' },
+        { id: 'done', label: '已完成' },
+      ];
+
+      var $ = function (id) { return document.getElementById(id); };
+
+      function escapeHtml(s) {
+        return String(s ?? '')
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;');
+      }
+
+      function fmtTime(v) {
+        if (!v) return '';
+        try {
+          var d = new Date(v);
+          return d.toLocaleDateString('zh-CN', { month: 'numeric', day: 'numeric' }) +
+            ' ' + d.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+        } catch (e) {
+          return String(v);
+        }
+      }
+
+      function badgeClass(cat) {
+        if (cat === 'bug' || cat === 'parse' || cat === 'other') return cat;
+        return '';
+      }
+
+      function renderChipGroup(rootId, items, current, attr, onPick) {
+        var root = $(rootId);
+        root.innerHTML = items.map(function (c) {
+          return '<button type="button" class="chip' + (c.id === current ? ' is-on' : '') +
+            '" data-val="' + c.id + '">' + escapeHtml(c.label) + '</button>';
+        }).join('');
+        root.querySelectorAll('.chip').forEach(function (btn) {
+          btn.addEventListener('click', function () {
+            onPick(btn.getAttribute('data-val') || '');
+          });
+        });
+      }
+
+      function renderCats() {
+        renderChipGroup('catFilters', cats, category, 'cat', function (v) {
+          category = v;
+          offset = 0;
+          renderCats();
+          load();
+        });
+      }
+
+      function renderStatuses() {
+        renderChipGroup('statusFilters', statuses, status, 'status', function (v) {
+          status = v;
+          offset = 0;
+          renderStatuses();
+          load();
+        });
+      }
+
+      function render(items) {
+        var root = $('list');
+        if (!items.length) {
+          root.innerHTML = '<div class="empty">还没有反馈，来做第一条吧</div>';
+          return;
+        }
+        root.innerHTML = items.map(function (it) {
+          var imgs = Array.isArray(it.images) ? it.images : [];
+          var imgHtml = imgs.length
+            ? '<div class="card-images">' + imgs.map(function (url) {
+                return '<a href="' + escapeHtml(url) + '" data-full="' + escapeHtml(url) + '">' +
+                  '<img src="' + escapeHtml(url) + '" alt="" loading="lazy" /></a>';
+              }).join('') + '</div>'
+            : '';
+          return (
+            '<article class="card">' +
+              '<div class="card-top">' +
+                '<span class="badge ' + badgeClass(it.category) + '">' + escapeHtml(it.categoryLabel || it.category) + '</span>' +
+                '<span class="badge status-' + escapeHtml(it.status || 'pending') + '">' + escapeHtml(it.statusLabel || '') + '</span>' +
+                '<span>' + escapeHtml(it.nickname || '匿名') + '</span>' +
+                '<span>' + escapeHtml(fmtTime(it.createdAt)) + '</span>' +
+              '</div>' +
+              '<p class="content">' + escapeHtml(it.content) + '</p>' +
+              imgHtml +
+            '</article>'
+          );
+        }).join('');
+        root.querySelectorAll('.card-images a').forEach(function (a) {
+          a.addEventListener('click', function (e) {
+            e.preventDefault();
+            openLightbox(a.getAttribute('data-full'));
+          });
+        });
+      }
+
+      function openLightbox(url) {
+        if (!url) return;
+        $('lightboxImg').src = url;
+        $('lightbox').hidden = false;
+        $('lightbox').classList.add('is-open');
+      }
+
+      function closeLightbox() {
+        $('lightbox').classList.remove('is-open');
+        $('lightbox').hidden = true;
+        $('lightboxImg').src = '';
+      }
+
+      function renderAttach() {
+        var row = $('attachRow');
+        var html = pendingImages.map(function (img, i) {
+          return '<div class="attach-preview">' +
+            '<img src="' + escapeHtml(img.imageUrl) + '" alt="" />' +
+            '<button type="button" data-i="' + i + '" aria-label="移除">×</button>' +
+            '</div>';
+        }).join('');
+        if (pendingImages.length < 3) {
+          html += '<button type="button" class="attach-add" id="attachAdd" aria-label="添加图片">＋</button>';
+        }
+        row.innerHTML = html;
+        var add = $('attachAdd');
+        if (add) add.addEventListener('click', function () { $('attachFile').click(); });
+        row.querySelectorAll('.attach-preview button').forEach(function (btn) {
+          btn.addEventListener('click', function () {
+            var i = Number(btn.getAttribute('data-i'));
+            pendingImages.splice(i, 1);
+            renderAttach();
+          });
+        });
+      }
+
+      function readFileAsDataUrl(file) {
+        return new Promise(function (resolve, reject) {
+          var reader = new FileReader();
+          reader.onload = function () { resolve(reader.result); };
+          reader.onerror = function () { reject(new Error('读取图片失败')); };
+          reader.readAsDataURL(file);
+        });
+      }
+
+      function load() {
+        $('meta').textContent = '加载中…';
+        var qs = new URLSearchParams({
+          limit: String(PAGE),
+          offset: String(offset),
+        });
+        if (category) qs.set('category', category);
+        if (status) qs.set('status', status);
+        var q = $('q').value.trim();
+        if (q) qs.set('q', q);
+
+        return fetch('/api/feedback/public?' + qs.toString(), { cache: 'no-store' })
+          .then(function (res) { return res.json().then(function (json) { return { res: res, json: json }; }); })
+          .then(function (r) {
+            if (!r.res.ok) throw new Error(r.json.message || '加载失败');
+            total = Number(r.json.total || 0);
+            render(r.json.items || []);
+            var from = total === 0 ? 0 : offset + 1;
+            var to = Math.min(offset + PAGE, total);
+            $('meta').textContent = '共 ' + total + ' 条 · 当前 ' + from + '–' + to;
+            $('prev').disabled = offset <= 0;
+            $('next').disabled = offset + PAGE >= total;
+          })
+          .catch(function (e) {
+            $('list').innerHTML = '<div class="empty">' + escapeHtml(e.message || '加载失败') + '</div>';
+            $('meta').textContent = '';
+          });
+      }
+
+      function openModal() {
+        var bd = $('backdrop');
+        bd.hidden = false;
+        bd.classList.add('is-open');
+        $('formMsg').textContent = '';
+        $('formMsg').className = 'form-msg';
+        $('nickname').focus();
+      }
+
+      function closeModal() {
+        var bd = $('backdrop');
+        bd.classList.remove('is-open');
+        bd.hidden = true;
+      }
+
+      $('openForm').addEventListener('click', openModal);
+      $('cancelForm').addEventListener('click', closeModal);
+      $('backdrop').addEventListener('click', function (e) {
+        if (e.target === $('backdrop')) closeModal();
+      });
+      $('lightbox').addEventListener('click', closeLightbox);
+      renderAttach();
+      $('attachFile').addEventListener('change', function () {
+        var file = $('attachFile').files && $('attachFile').files[0];
+        $('attachFile').value = '';
+        if (!file || pendingImages.length >= 3 || uploading) return;
+        var msg = $('formMsg');
+        uploading = true;
+        msg.textContent = '上传图片中…';
+        msg.className = 'form-msg';
+        readFileAsDataUrl(file)
+          .then(function (dataUrl) {
+            return fetch('/api/feedback/public/image', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ dataUrl: dataUrl }),
+            }).then(function (res) {
+              return res.json().then(function (json) { return { res: res, json: json }; });
+            });
+          })
+          .then(function (r) {
+            if (!r.res.ok) throw new Error(r.json.message || '上传失败');
+            pendingImages.push({ key: r.json.key, imageUrl: r.json.imageUrl });
+            renderAttach();
+            msg.textContent = '';
+          })
+          .catch(function (err) {
+            msg.textContent = err.message || '上传失败';
+            msg.className = 'form-msg err';
+          })
+          .finally(function () { uploading = false; });
+      });
+
+      $('form').addEventListener('submit', function (e) {
+        e.preventDefault();
+        if (uploading) return;
+        var btn = $('submitBtn');
+        var msg = $('formMsg');
+        btn.disabled = true;
+        msg.textContent = '提交中…';
+        msg.className = 'form-msg';
+        var body = {
+          nickname: $('nickname').value.trim(),
+          category: $('category').value,
+          content: $('content').value.trim(),
+          contact: $('contact').value.trim() || undefined,
+          images: pendingImages.map(function (x) { return x.key; }),
+        };
+        fetch('/api/feedback/public', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        })
+          .then(function (res) { return res.json().then(function (json) { return { res: res, json: json }; }); })
+          .then(function (r) {
+            if (!r.res.ok) throw new Error(r.json.message || '提交失败');
+            msg.textContent = r.json.message || '已提交';
+            msg.className = 'form-msg ok';
+            $('content').value = '';
+            pendingImages = [];
+            renderAttach();
+            setTimeout(function () {
+              closeModal();
+              offset = 0;
+              load();
+            }, 600);
+          })
+          .catch(function (err) {
+            msg.textContent = err.message || '提交失败';
+            msg.className = 'form-msg err';
+          })
+          .finally(function () { btn.disabled = false; });
+      });
+
+      var qTimer = null;
+      $('q').addEventListener('input', function () {
+        clearTimeout(qTimer);
+        qTimer = setTimeout(function () {
+          offset = 0;
+          load();
+        }, 280);
+      });
+      $('prev').addEventListener('click', function () {
+        offset = Math.max(0, offset - PAGE);
+        load();
+      });
+      $('next').addEventListener('click', function () {
+        offset += PAGE;
+        load();
+      });
+
+      try {
+        var savedNick = localStorage.getItem('zouzhe_feedback_nick');
+        if (savedNick) $('nickname').value = savedNick;
+      } catch (e) {}
+      $('nickname').addEventListener('change', function () {
+        try { localStorage.setItem('zouzhe_feedback_nick', $('nickname').value.trim()); } catch (e) {}
+      });
+
+      renderCats();
+      renderStatuses();
+      load();
+    })();
+  </script>
+</body>
+</html>

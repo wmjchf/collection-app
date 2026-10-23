@@ -80,20 +80,25 @@
 | survey_interests | JSON NULL | 所选兴趣类 id 列表 |
 | created_at / updated_at | DATETIME(3) | |
 
-### `user_feedback`（迁移 `031`）
+### `user_feedback`（迁移 `031` + `033`）
 
 | 字段 | 类型 | 说明 |
 | --- | --- | --- |
 | id | BIGINT UNSIGNED PK AI | |
-| user_id | BIGINT UNSIGNED NOT NULL | FK → users |
+| user_id | BIGINT UNSIGNED NULL | FK → users；游客网页提交为空 |
+| nickname | VARCHAR(32) NULL | 公开显示名 |
 | category | VARCHAR(32) | feature / bug / parse / other |
 | content | VARCHAR(2000) | 正文 |
-| contact | VARCHAR(128) NULL | 选填联系方式 |
-| app_version | VARCHAR(32) NULL | 客户端版本 |
+| contact | VARCHAR(128) NULL | 选填联系方式（不进公开接口） |
+| app_version | VARCHAR(32) NULL | App 版本；游客提交存 `web:{ip}` 限流标记 |
+| status | VARCHAR(32) NOT NULL | pending / in_progress / done，默认 pending |
+| images | JSON NULL | OSS 键数组，最多 3 张（迁移 `034`） |
 | created_at | DATETIME(3) | |
 
-`POST /api/feedback`（需登录）：body `{ category, content, contact?, appVersion? }`；每用户每日最多 10 条。  
-后台：`GET /api/feedback/admin`（`X-Analytics-Token`）· 页面 `/internal/feedback`。
+- `POST /api/feedback`（需登录）：body `{ category, content, contact?, appVersion?, nickname? }`；每用户每日最多 10 条。  
+- `GET/POST /api/feedback/public`：公开列表 / 游客提交（无 PII；可带 `images` 键；按昵称·联系方式·IP 日限 5）。  
+- `POST /api/feedback/public/image`：上传附图 dataUrl → `{ key, imageUrl }`（PNG/JPG/WebP，≤2.5MB）。  
+- 后台：`GET/PATCH /api/feedback/admin`（`X-Analytics-Token`）· 页面 `/internal/feedback`；公开墙 `/feedback`。
 
 ---
 
