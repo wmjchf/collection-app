@@ -18,7 +18,7 @@
       position: sticky;
       top: 0;
       z-index: 20;
-      padding: 14px var(--inset) 0;
+      padding: calc(14px + env(safe-area-inset-top, 0px)) var(--inset) 0;
       pointer-events: none;
     }
     .board-nav .nav-shell {
@@ -297,8 +297,8 @@
     .pager button:disabled { opacity: 0.4; cursor: default; }
     .fab {
       position: fixed;
-      right: 22px;
-      bottom: 22px;
+      right: max(16px, env(safe-area-inset-right, 0px));
+      bottom: max(16px, calc(16px + env(safe-area-inset-bottom, 0px)));
       z-index: 20;
       appearance: none;
       border: none;
@@ -398,6 +398,36 @@
     .form-msg.ok { color: #8fd4ae; }
     .form-msg.err { color: #f0a8a0; }
     .modal { border-radius: 20px; }
+
+    @media (max-width: 800px) {
+      .board-wrap {
+        padding: 28px var(--inset) calc(100px + env(safe-area-inset-bottom, 0px));
+      }
+      .board-nav .nav-link { display: none; }
+      .board-nav .nav-shell {
+        padding: 8px 8px 8px 14px;
+        gap: 8px;
+      }
+      .fab {
+        left: max(16px, env(safe-area-inset-left, 0px));
+        right: max(16px, env(safe-area-inset-right, 0px));
+        width: auto;
+        display: block;
+        text-align: center;
+      }
+      .modal-backdrop {
+        align-items: flex-end;
+        padding: 0;
+      }
+      .modal {
+        width: 100%;
+        max-width: none;
+        border-radius: 20px 20px 0 0;
+        padding-bottom: calc(20px + env(safe-area-inset-bottom, 0px));
+      }
+      .filter-label { margin-top: 4px; }
+      .chip { padding: 8px 12px; font-size: 12px; }
+    }
   </style>
 </head>
 <body class="board-page">
