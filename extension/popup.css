@@ -1032,11 +1032,23 @@ button {
   padding-top: 10px;
 }
 
+#collection {
+  display: flex;
+  flex-direction: column;
+  min-height: calc(100vh - var(--tabbar-h));
+}
+
 .collection-body {
+  flex: 1;
+  min-height: 0;
   padding: 12px 16px 24px;
   display: flex;
   flex-direction: column;
   gap: 12px;
+}
+
+.collection-body > .modules-panel:last-child {
+  flex: 1;
 }
 
 /* 系统分类瓷砖（外层与归类共用 .modules-panel / .modules-header） */

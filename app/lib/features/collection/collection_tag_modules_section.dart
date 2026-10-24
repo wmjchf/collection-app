@@ -99,9 +99,12 @@ class CollectionTagModulesSection extends StatelessWidget {
       key: headerKey,
       child: LayoutBuilder(
         builder: (context, constraints) {
-          final minH = fillRemaining && constraints.minHeight.isFinite
-              ? constraints.minHeight
-              : 0.0;
+          // Expanded / 外层 minHeight：优先用可用高度撑满。
+          final minH = !fillRemaining
+              ? 0.0
+              : constraints.hasBoundedHeight
+                  ? constraints.maxHeight
+                  : (constraints.minHeight.isFinite ? constraints.minHeight : 0.0);
           return Container(
             width: double.infinity,
             constraints: minH > 0 ? BoxConstraints(minHeight: minH) : null,
@@ -436,14 +439,15 @@ class _ModuleBlock extends StatelessWidget {
           )
         : null;
 
+    final emptyHint = ungrouped ? '没有归类的标签会出现在这里' : '暂无标签';
     final tagsWrap = ConstrainedBox(
       constraints: const BoxConstraints(minHeight: 32),
       child: tags.isEmpty
-          ? const Align(
+          ? Align(
               alignment: Alignment.centerLeft,
               child: Text(
-                '暂无标签',
-                style: TextStyle(
+                emptyHint,
+                style: const TextStyle(
                   fontSize: 13,
                   height: 1.25,
                   color: CollectionTagModulesSection.muted,
