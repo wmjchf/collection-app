@@ -56,6 +56,7 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
   bool _yearlyBilling = false;
 
   bool get _isIos => !kIsWeb && Platform.isIOS;
+  bool get _isAndroid => !kIsWeb && Platform.isAndroid;
   bool get _busy => _phase != null;
 
   /// 该档位及更低档是否已包含在当前会员里（不可再买）
@@ -522,7 +523,10 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
               padding: const EdgeInsets.fromLTRB(16, 14, 16, 20),
               children: [
                 const _MembershipIntro(),
-                if (_nextUpgradeableTier == null) ...[
+                if (_isAndroid) ...[
+                  const SizedBox(height: 12),
+                  const _AndroidComingSoonHint(),
+                ] else if (_nextUpgradeableTier == null) ...[
                   const SizedBox(height: 12),
                   const _AlreadyTopPlanHint(),
                 ],
@@ -590,7 +594,38 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
                     height: 1.45,
                   ),
                 ),
-                if (!_isIos)
+                if (_isIos) ...[
+                  if (_productsLoading)
+                    const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 28),
+                      child: Center(
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
+                    )
+                  else if (_error != null) ...[
+                    Text(
+                      _error!,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        fontSize: 14,
+                        color: _muted,
+                        height: 1.4,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    TextButton(
+                      onPressed: _busy ? null : _load,
+                      child: const Text('重试'),
+                    ),
+                  ] else if (!_selectedOwned && !_selectedTierProductsReady) ...[
+                    const SizedBox(height: 16),
+                    _TierProductsSyncHint(
+                      tierLabel: _tierDisplayName(_selectedTier),
+                      missingIds: _missingIdsForSelectedTier(),
+                      onRetry: _busy ? null : _load,
+                    ),
+                  ],
+                ] else if (!_isAndroid)
                   const Padding(
                     padding: EdgeInsets.symmetric(vertical: 12),
                     child: Text(
@@ -598,43 +633,15 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
                       textAlign: TextAlign.center,
                       style: TextStyle(fontSize: 14, color: _muted, height: 1.4),
                     ),
-                  )
-                else if (_productsLoading)
-                  const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 28),
-                    child: Center(
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    ),
-                  )
-                else if (_error != null) ...[
-                  Text(
-                    _error!,
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(
-                      fontSize: 14,
-                      color: _muted,
-                      height: 1.4,
-                    ),
                   ),
-                  const SizedBox(height: 12),
-                  TextButton(
-                    onPressed: _busy ? null : _load,
-                    child: const Text('重试'),
-                  ),
-                ] else if (!_selectedOwned && !_selectedTierProductsReady) ...[
-                  const SizedBox(height: 16),
-                  _TierProductsSyncHint(
-                    tierLabel: _tierDisplayName(_selectedTier),
-                    missingIds: _missingIdsForSelectedTier(),
-                    onRetry: _busy ? null : _load,
-                  ),
-                ],
               ],
             ),
           ),
           _BottomActionBar(
             showPurchaseActions:
                 _isIos && !_productsLoading && _error == null,
+            showLegalFooter: _isIos,
+            androidComingSoon: _isAndroid,
             subscribeLabel: _subscribeLabel(),
             restoreLabel: _busy && _restoreFlow ? _phaseLabel : '恢复购买',
             busy: _busy,
@@ -896,6 +903,47 @@ class _AlreadyTopPlanHint extends StatelessWidget {
           height: 1.45,
           fontWeight: FontWeight.w500,
         ),
+      ),
+    );
+  }
+}
+
+/// Android 暂未开通应用内订阅
+class _AndroidComingSoonHint extends StatelessWidget {
+  const _AndroidComingSoonHint();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF3F5F8),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFE0E4EA)),
+      ),
+      child: const Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Android 订阅即将开放',
+            style: TextStyle(
+              fontSize: 15,
+              fontWeight: FontWeight.w700,
+              color: Color(0xFF1F242E),
+              height: 1.35,
+            ),
+          ),
+          SizedBox(height: 6),
+          Text(
+            '会员方案可先在此了解；购买与续费将在后续版本开通，敬请期待。',
+            style: TextStyle(
+              fontSize: 13,
+              color: Color(0xFF737A85),
+              height: 1.45,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -1339,12 +1387,16 @@ class _BottomActionBar extends StatelessWidget {
     required this.onRestore,
     required this.onUserAgreement,
     required this.onPrivacy,
+    this.showLegalFooter = true,
+    this.androidComingSoon = false,
     this.trialOffer,
     this.selectedPrice,
     this.lifetimePurchase = false,
   });
 
   final bool showPurchaseActions;
+  final bool showLegalFooter;
+  final bool androidComingSoon;
   final String subscribeLabel;
   final String restoreLabel;
   final bool busy;
@@ -1360,6 +1412,9 @@ class _BottomActionBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (!showPurchaseActions && !showLegalFooter && !androidComingSoon) {
+      return const SizedBox.shrink();
+    }
     return Material(
       color: Colors.white,
       child: DecoratedBox(
@@ -1395,13 +1450,24 @@ class _BottomActionBar extends StatelessWidget {
                   ),
                   const SizedBox(height: 4),
                 ],
-                _SubscriptionLegalFooter(
-                  onUserAgreement: onUserAgreement,
-                  onPrivacy: onPrivacy,
-                  trialOffer: trialOffer,
-                  selectedPrice: selectedPrice,
-                  lifetimePurchase: lifetimePurchase,
-                ),
+                if (androidComingSoon)
+                  const Text(
+                    '订阅购买将在后续版本开放',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: Color(0xFF737A85),
+                      height: 1.45,
+                    ),
+                  )
+                else if (showLegalFooter)
+                  _SubscriptionLegalFooter(
+                    onUserAgreement: onUserAgreement,
+                    onPrivacy: onPrivacy,
+                    trialOffer: trialOffer,
+                    selectedPrice: selectedPrice,
+                    lifetimePurchase: lifetimePurchase,
+                  ),
               ],
             ),
           ),
