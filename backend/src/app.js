@@ -79,6 +79,13 @@ function sendAppUpdateEditor(_req, res) {
 }
 app.get('/internal/app-update', sendAppUpdateEditor);
 
+/** 公开反馈墙 */
+function sendFeedbackBoard(_req, res) {
+  res.sendFile(path.join(publicDir, 'feedback-board.html'));
+}
+app.get('/feedback', sendFeedbackBoard);
+app.get('/feedback.html', sendFeedbackBoard);
+
 /** 意见反馈后台（需 ANALYTICS_DASHBOARD_TOKEN；不链到官网） */
 function sendFeedbackAdmin(_req, res) {
   res.setHeader('X-Robots-Tag', 'noindex, nofollow');

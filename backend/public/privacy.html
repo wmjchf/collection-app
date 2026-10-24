@@ -30,7 +30,14 @@
     .wrap {
       max-width: 720px;
       margin: 0 auto;
-      padding: 28px 20px 64px;
+      padding: calc(28px + env(safe-area-inset-top, 0px))
+        max(20px, env(safe-area-inset-right, 0px))
+        calc(64px + env(safe-area-inset-bottom, 0px))
+        max(20px, env(safe-area-inset-left, 0px));
+    }
+    @media (max-width: 480px) {
+      h1 { font-size: 22px; }
+      article { padding: 18px 16px; border-radius: 12px; }
     }
     header {
       margin-bottom: 28px;

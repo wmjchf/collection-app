@@ -146,6 +146,14 @@ export async function fetchHome() {
   );
 }
 
+export async function fetchRoam({ limit = 20, offset = 0 } = {}) {
+  const qs = new URLSearchParams({
+    limit: String(limit),
+    offset: String(offset),
+  });
+  return authRequest('GET', `/api/home/roam?${qs}`);
+}
+
 export async function searchItems(q, { limit = 30, offset = 0 } = {}) {
   const qs = new URLSearchParams({
     q,
@@ -153,6 +161,15 @@ export async function searchItems(q, { limit = 30, offset = 0 } = {}) {
     offset: String(offset),
   });
   return authRequest('GET', `/api/items/search?${qs}`);
+}
+
+export async function searchTags(q, { limit = 30, offset = 0 } = {}) {
+  const qs = new URLSearchParams({
+    q,
+    limit: String(limit),
+    offset: String(offset),
+  });
+  return authRequest('GET', `/api/tags/search?${qs}`);
 }
 
 export async function fetchSystemFilters() {
@@ -166,8 +183,10 @@ export function listTags() {
   return authRequest('GET', '/api/tags');
 }
 
-export function createTag(name) {
-  return authRequest('POST', '/api/tags', { body: { name } });
+export function createTag(name, { moduleId } = {}) {
+  const body = { name };
+  if (moduleId != null) body.moduleId = moduleId;
+  return authRequest('POST', '/api/tags', { body });
 }
 
 export function deleteTag(id) {
@@ -180,6 +199,30 @@ export function listTagItems(id, { limit = 30, offset = 0 } = {}) {
     offset: String(offset),
   });
   return authRequest('GET', `/api/tags/${id}/items?${qs}`);
+}
+
+export function listTagModules() {
+  return authRequest('GET', '/api/tag-modules');
+}
+
+export function createTagModule(name) {
+  return authRequest('POST', '/api/tag-modules', { body: { name } });
+}
+
+export function renameTagModule(id, name) {
+  return authRequest('PATCH', `/api/tag-modules/${id}`, { body: { name } });
+}
+
+export function deleteTagModule(id) {
+  return authRequest('DELETE', `/api/tag-modules/${id}`);
+}
+
+export function listModuleItems(id, { limit = 30, offset = 0 } = {}) {
+  const qs = new URLSearchParams({
+    limit: String(limit),
+    offset: String(offset),
+  });
+  return authRequest('GET', `/api/tag-modules/${id}/items?${qs}`);
 }
 
 export function fetchItem(id) {

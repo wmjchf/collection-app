@@ -417,130 +417,139 @@ class _ModuleBlock extends StatelessWidget {
     final bindingColor = ungrouped
         ? CollectionTagModulesSection.muted
         : CollectionTagModulesSection.brand;
-    final titleStyle = TextStyle(
-      fontSize: ungrouped ? 13 : 15,
-      fontWeight: ungrouped ? FontWeight.w500 : FontWeight.w600,
-      letterSpacing: ungrouped ? 0.2 : 0.4,
-      height: 1.25,
-      color: ungrouped || titleMuted
-          ? CollectionTagModulesSection.muted
-          : CollectionTagModulesSection.ink.withValues(alpha: 0.92),
-    );
-    final titleText = Text(
-      title,
-      maxLines: 1,
-      overflow: TextOverflow.ellipsis,
-      style: titleStyle,
+    // 未归类：不显示「未归类」标题，只留标签区（仍可拖回此处）。
+    final showTitleRow = !ungrouped;
+    final titleText = showTitleRow
+        ? Text(
+            title,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: 15,
+              fontWeight: FontWeight.w600,
+              letterSpacing: 0.4,
+              height: 1.25,
+              color: titleMuted
+                  ? CollectionTagModulesSection.muted
+                  : CollectionTagModulesSection.ink.withValues(alpha: 0.92),
+            ),
+          )
+        : null;
+
+    final tagsWrap = ConstrainedBox(
+      constraints: const BoxConstraints(minHeight: 32),
+      child: tags.isEmpty
+          ? const Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                '暂无标签',
+                style: TextStyle(
+                  fontSize: 13,
+                  height: 1.25,
+                  color: CollectionTagModulesSection.muted,
+                ),
+              ),
+            )
+          : Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: [
+                for (final tag in tags)
+                  _TagChip(
+                    tag: tag,
+                    muted: ungrouped,
+                    onTap: () => onOpenTag(tag),
+                    draggable: onPlaceTag != null,
+                  ),
+              ],
+            ),
     );
 
     final body = Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        SizedBox(
-          height: 28,
-          child: Row(
-            children: [
-              Expanded(
-                child: onOpenModule != null
-                    ? GestureDetector(
-                        behavior: HitTestBehavior.opaque,
-                        onTap: () {
-                          HapticFeedback.selectionClick();
-                          onOpenModule!();
-                        },
-                        child: Align(
-                          alignment: Alignment.centerLeft,
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Flexible(child: titleText),
-                              Icon(
-                                Icons.chevron_right_rounded,
-                                size: 18,
-                                color: CollectionTagModulesSection.ink
-                                    .withValues(alpha: 0.28),
-                              ),
-                            ],
+        if (showTitleRow) ...[
+          SizedBox(
+            height: 28,
+            child: Row(
+              children: [
+                Expanded(
+                  child: onOpenModule != null
+                      ? GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onTap: () {
+                            HapticFeedback.selectionClick();
+                            onOpenModule!();
+                          },
+                          child: Align(
+                            alignment: Alignment.centerLeft,
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Flexible(child: titleText!),
+                                Icon(
+                                  Icons.chevron_right_rounded,
+                                  size: 18,
+                                  color: CollectionTagModulesSection.ink
+                                      .withValues(alpha: 0.28),
+                                ),
+                              ],
+                            ),
                           ),
-                        ),
-                      )
-                    : titleText,
-              ),
-              if (_hasActions)
-                Builder(
-                  builder: (anchorContext) {
-                    final color = CollectionTagModulesSection.muted
-                        .withValues(alpha: 0.7);
-                    return Material(
-                      color: Colors.transparent,
-                      child: InkWell(
-                        onTap: () => _showActions(anchorContext),
-                        borderRadius: BorderRadius.circular(8),
-                        child: SizedBox(
-                          width: 28,
-                          height: 28,
-                          child: Icon(
-                            Icons.more_horiz,
-                            size: 18,
-                            color: color,
-                          ),
-                        ),
-                      ),
-                    );
-                  },
+                        )
+                      : titleText!,
                 ),
-              if (onAiOrganize != null)
-                Material(
-                  color: Colors.transparent,
-                  child: InkWell(
-                    onTap: onAiOrganize,
-                    borderRadius: BorderRadius.circular(8),
-                    child: const Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-                      child: Text(
-                        'AI 标签归类',
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w500,
-                          color: CollectionTagModulesSection.brand,
+                if (_hasActions)
+                  Builder(
+                    builder: (anchorContext) {
+                      final color = CollectionTagModulesSection.muted
+                          .withValues(alpha: 0.7);
+                      return Material(
+                        color: Colors.transparent,
+                        child: InkWell(
+                          onTap: () => _showActions(anchorContext),
+                          borderRadius: BorderRadius.circular(8),
+                          child: SizedBox(
+                            width: 28,
+                            height: 28,
+                            child: Icon(
+                              Icons.more_horiz,
+                              size: 18,
+                              color: color,
+                            ),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                if (onAiOrganize != null)
+                  Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      onTap: onAiOrganize,
+                      borderRadius: BorderRadius.circular(8),
+                      child: const Padding(
+                        padding: EdgeInsets.symmetric(
+                          horizontal: 6,
+                          vertical: 4,
+                        ),
+                        child: Text(
+                          'AI 标签归类',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w500,
+                            color: CollectionTagModulesSection.brand,
+                          ),
                         ),
                       ),
                     ),
                   ),
-                ),
-            ],
+              ],
+            ),
           ),
-        ),
-        const SizedBox(height: 11),
-        // 与一行 chip 同高，拖空标签时匣高不跳。
-        ConstrainedBox(
-          constraints: const BoxConstraints(minHeight: 32),
-          child: tags.isEmpty
-              ? const Align(
-                  alignment: Alignment.centerLeft,
-                  child: Text(
-                    '暂无标签',
-                    style: TextStyle(
-                      fontSize: 13,
-                      height: 1.25,
-                      color: CollectionTagModulesSection.muted,
-                    ),
-                  ),
-                )
-              : Wrap(
-                  spacing: 6,
-                  runSpacing: 6,
-                  children: [
-                    for (final tag in tags)
-                      _TagChip(
-                        tag: tag,
-                        muted: ungrouped,
-                        onTap: () => onOpenTag(tag),
-                        draggable: onPlaceTag != null,
-                      ),
-                  ],
-                ),
-        ),
+          const SizedBox(height: 11),
+        ],
+        tagsWrap,
       ],
     );
 
