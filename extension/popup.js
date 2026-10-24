@@ -1587,7 +1587,9 @@ function moduleBlock({
   if (!list.length) {
     const empty = document.createElement('p');
     empty.className = 'module-empty';
-    empty.textContent = '暂无标签';
+    empty.textContent = hideTitle
+      ? '没有归类的标签会出现在这里'
+      : '暂无标签';
     chips.append(empty);
   } else {
     for (const tag of list) chips.append(tagChip(tag, { muted }));

@@ -467,29 +467,36 @@ class _CollectionPageState extends State<CollectionPage> {
                   ),
                 ),
               ),
-              // 归类区按内容高度，避免少标签时整屏留白；上滑仍可把标题收进顶栏。
-              SliverPadding(
-                padding: EdgeInsets.fromLTRB(
-                  16,
-                  0,
-                  16,
-                  16 + MediaQuery.paddingOf(context).bottom,
-                ),
-                sliver: SliverToBoxAdapter(
-                  child: CollectionTagModulesSection(
-                    headerKey: _tagsHeaderKey,
-                    modules: _modules,
-                    ungrouped: _ungrouped,
-                    headerCollapse: _tagsFocusT,
-                    onOpenTag: _openTag,
-                    onOpenModule: _openModule,
-                    onAddTag: _addTagToModule,
-                    onRenameModule: _renameModule,
-                    onDeleteModule: _deleteModule,
-                    onCreateModule: _createModule,
-                    onPlaceTag: _placeTag,
-                  ),
-                ),
+              // remainingPaintExtent 已扣除上方系统分类；归类区只撑满余下可视高度。
+              SliverLayoutBuilder(
+                builder: (context, constraints) {
+                  final bottomPad =
+                      16.0 + MediaQuery.paddingOf(context).bottom;
+                  final minH = (constraints.remainingPaintExtent - bottomPad)
+                      .clamp(0.0, double.infinity);
+                  return SliverPadding(
+                    padding: EdgeInsets.fromLTRB(16, 0, 16, bottomPad),
+                    sliver: SliverToBoxAdapter(
+                      child: ConstrainedBox(
+                        constraints: BoxConstraints(minHeight: minH),
+                        child: CollectionTagModulesSection(
+                          headerKey: _tagsHeaderKey,
+                          modules: _modules,
+                          ungrouped: _ungrouped,
+                          headerCollapse: _tagsFocusT,
+                          fillRemaining: true,
+                          onOpenTag: _openTag,
+                          onOpenModule: _openModule,
+                          onAddTag: _addTagToModule,
+                          onRenameModule: _renameModule,
+                          onDeleteModule: _deleteModule,
+                          onCreateModule: _createModule,
+                          onPlaceTag: _placeTag,
+                        ),
+                      ),
+                    ),
+                  );
+                },
               ),
             ],
           ],
