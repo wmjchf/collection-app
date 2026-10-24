@@ -1036,54 +1036,63 @@ button {
   padding: 12px 16px 24px;
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 12px;
 }
 
-/* 系统分类：与 App 双列瓷砖一致 */
+/* 系统分类瓷砖（外层与归类共用 .modules-panel / .modules-header） */
 .filter-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 10px;
-  padding: 12px;
-  background: var(--white);
-  border-radius: 16px;
+  gap: 8px;
 }
 
 .filter-tile {
   display: flex;
-  flex-direction: column;
-  gap: 10px;
-  padding: 12px 10px 12px 12px;
-  border-radius: 14px;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 6px 10px 10px;
+  border-radius: 12px;
   background: #f4f6f9;
   text-align: left;
   color: inherit;
   cursor: pointer;
+  border: none;
+  width: 100%;
 }
 
 .filter-tile:hover { background: #eef1f6; }
 
-.filter-tile-top {
-  display: flex;
-  align-items: center;
-}
-
-.filter-tile-top .arrow {
+.filter-tile .arrow {
   margin-left: auto;
-  font-size: 18px;
+  flex: 0 0 auto;
+  font-size: 16px;
   color: rgba(31, 36, 46, 0.28);
   line-height: 1;
 }
 
+.filter-tile-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
 .filter-tile-title {
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 600;
   color: var(--text);
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .filter-tile-count {
-  font-size: 13px;
+  font-size: 12px;
   color: #8b929c;
+  line-height: 1.2;
 }
 
 .nav-icon {
@@ -1111,6 +1120,7 @@ button {
   display: flex;
   flex-direction: column;
   gap: 12px;
+  overflow: visible;
 }
 
 .modules-header {
@@ -1151,6 +1161,14 @@ button {
   font-size: 26px;
   font-weight: 400;
   line-height: 1;
+  flex: 0 0 36px;
+}
+
+.modules-create.is-spacer {
+  visibility: hidden;
+  pointer-events: none;
+  border: none;
+  background: transparent;
 }
 
 .modules-create:hover { background: #f5f7fa; }
@@ -1159,15 +1177,21 @@ button {
   display: flex;
   flex-direction: column;
   gap: 12px;
+  overflow: visible;
 }
 
-/* 匣：白底细边 + 左侧装订条 */
+/* 匣：白底细边 + 左侧装订条（勿 overflow:hidden，否则 ⋯ 菜单会被裁切） */
 .module-case {
   position: relative;
   background: #fff;
   border: 1px solid #e8eaf0;
   border-radius: 12px;
-  overflow: hidden;
+  overflow: visible;
+  z-index: 0;
+}
+
+.module-case:has(.module-menu:not([hidden])) {
+  z-index: 6;
 }
 
 .module-case.is-ungrouped {
@@ -1263,7 +1287,7 @@ button {
   position: absolute;
   right: 0;
   top: calc(100% + 4px);
-  z-index: 8;
+  z-index: 12;
   min-width: 160px;
   padding: 6px;
   border-radius: 12px;

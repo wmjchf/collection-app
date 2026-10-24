@@ -462,46 +462,33 @@ class _CollectionPageState extends State<CollectionPage> {
                               ),
                           ],
                         ),
-                      if (_systemFilters.isNotEmpty) const SizedBox(height: 28),
+                      if (_systemFilters.isNotEmpty) const SizedBox(height: 12),
                     ],
                   ),
                 ),
               ),
-              // 归类区最小高度 = 剩余视口，底边贴一屏底部。
-              SliverLayoutBuilder(
-                builder: (context, constraints) {
-                  final bottomPad =
-                      16.0 + MediaQuery.paddingOf(context).bottom;
-                  final minH = (constraints.remainingPaintExtent - bottomPad)
-                      .clamp(0.0, double.infinity);
-                  return SliverPadding(
-                    padding: EdgeInsets.fromLTRB(16, 0, 16, bottomPad),
-                    sliver: SliverToBoxAdapter(
-                      child: ConstrainedBox(
-                        constraints: BoxConstraints(minHeight: minH),
-                        child: CollectionTagModulesSection(
-                          headerKey: _tagsHeaderKey,
-                          modules: _modules,
-                          ungrouped: _ungrouped,
-                          headerCollapse: _tagsFocusT,
-                          fillRemaining: true,
-                          onOpenTag: _openTag,
-                          onOpenModule: _openModule,
-                          onAddTag: _addTagToModule,
-                          onRenameModule: _renameModule,
-                          onDeleteModule: _deleteModule,
-                          onCreateModule: _createModule,
-                          onPlaceTag: _placeTag,
-                        ),
-                      ),
-                    ),
-                  );
-                },
-              ),
-              // 便于上滑把归类标签顶到顶栏
-              SliverToBoxAdapter(
-                child: SizedBox(
-                  height: MediaQuery.sizeOf(context).height * 0.35,
+              // 归类区按内容高度，避免少标签时整屏留白；上滑仍可把标题收进顶栏。
+              SliverPadding(
+                padding: EdgeInsets.fromLTRB(
+                  16,
+                  0,
+                  16,
+                  16 + MediaQuery.paddingOf(context).bottom,
+                ),
+                sliver: SliverToBoxAdapter(
+                  child: CollectionTagModulesSection(
+                    headerKey: _tagsHeaderKey,
+                    modules: _modules,
+                    ungrouped: _ungrouped,
+                    headerCollapse: _tagsFocusT,
+                    onOpenTag: _openTag,
+                    onOpenModule: _openModule,
+                    onAddTag: _addTagToModule,
+                    onRenameModule: _renameModule,
+                    onDeleteModule: _deleteModule,
+                    onCreateModule: _createModule,
+                    onPlaceTag: _placeTag,
+                  ),
                 ),
               ),
             ],
@@ -616,30 +603,71 @@ class _EntityGroup extends StatelessWidget {
         color: Colors.white,
         borderRadius: BorderRadius.circular(_panelRadius),
       ),
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          const gap = 10.0;
-          final tileW = (constraints.maxWidth - gap) / 2;
-          return Wrap(
-            spacing: gap,
-            runSpacing: gap,
-            children: [
-              for (final e in entries)
-                SizedBox(
-                  width: tileW,
-                  child: _FilterTile(
-                    title: e.title,
-                    countLabel: e.countLabel,
-                    icon: e.icon,
-                    onTap: e.onTap,
-                    fill: _tileFill,
-                    ink: _ink,
-                    muted: _muted,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // 与「归类标签」标题区同构：行高 36 + 标题下 4 + 描述
+          Padding(
+            padding: const EdgeInsets.only(left: 2, right: 4),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const SizedBox(
+                  height: 36,
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      '系统分类',
+                      style: TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.w600,
+                        letterSpacing: 0.6,
+                        height: 1.2,
+                        color: _ink,
+                      ),
+                    ),
                   ),
                 ),
-            ],
-          );
-        },
+                const SizedBox(height: 4),
+                Text(
+                  '按状态快速筛选收藏',
+                  style: TextStyle(
+                    fontSize: 12,
+                    height: 1.35,
+                    letterSpacing: 0.2,
+                    color: _muted.withValues(alpha: 0.9),
+                  ),
+                ),
+                const SizedBox(height: 12),
+              ],
+            ),
+          ),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              const gap = 8.0;
+              final tileW = (constraints.maxWidth - gap) / 2;
+              return Wrap(
+                spacing: gap,
+                runSpacing: gap,
+                children: [
+                  for (final e in entries)
+                    SizedBox(
+                      width: tileW,
+                      child: _FilterTile(
+                        title: e.title,
+                        countLabel: e.countLabel,
+                        icon: e.icon,
+                        onTap: e.onTap,
+                        fill: _tileFill,
+                        ink: _ink,
+                        muted: _muted,
+                      ),
+                    ),
+                ],
+              );
+            },
+          ),
+        ],
       ),
     );
   }
@@ -668,59 +696,65 @@ class _FilterTile extends StatelessWidget {
   Widget build(BuildContext context) {
     return Material(
       color: fill,
-      borderRadius: BorderRadius.circular(14),
+      borderRadius: BorderRadius.circular(12),
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(12),
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(12, 12, 10, 12),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+          padding: const EdgeInsets.fromLTRB(10, 10, 6, 10),
+          child: Row(
             children: [
-              Row(
-                children: [
-                  Container(
-                    width: 28,
-                    height: 28,
-                    decoration: BoxDecoration(
-                      color: icon.background.withValues(alpha: 0.16),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    alignment: Alignment.center,
-                    child: Icon(
-                      icon.icon,
-                      size: 16,
-                      color: icon.background,
-                    ),
-                  ),
-                  const Spacer(),
-                  Icon(
-                    Icons.chevron_right_rounded,
-                    size: 22,
-                    color: ink.withValues(alpha: 0.28),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 10),
-              Text(
-                title,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w600,
-                  letterSpacing: 0.2,
-                  color: ink.withValues(alpha: 0.86),
+              Container(
+                width: 28,
+                height: 28,
+                decoration: BoxDecoration(
+                  color: icon.background.withValues(alpha: 0.16),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                alignment: Alignment.center,
+                child: Icon(
+                  icon.icon,
+                  size: 15,
+                  color: icon.background,
                 ),
               ),
-              const SizedBox(height: 2),
-              Text(
-                countLabel,
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w400,
-                  color: muted,
+              const SizedBox(width: 8),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        letterSpacing: 0.15,
+                        height: 1.2,
+                        color: ink.withValues(alpha: 0.9),
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      countLabel,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w400,
+                        height: 1.2,
+                        color: muted,
+                      ),
+                    ),
+                  ],
                 ),
+              ),
+              Icon(
+                Icons.chevron_right_rounded,
+                size: 18,
+                color: ink.withValues(alpha: 0.28),
               ),
             ],
           ),

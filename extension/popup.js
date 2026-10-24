@@ -6,6 +6,7 @@ import {
   deleteTag,
   createTagModule,
   deleteTagModule,
+  renameTagModule,
   fetchHome,
   fetchItem,
   fetchRoam,
@@ -1427,12 +1428,12 @@ function filterTile(filter) {
   const count = filter.countLabel ?? filter.itemCount ?? 0;
   const spec = iconForFilter(filter.code);
   btn.innerHTML = `
-    <div class="filter-tile-top">
-      <span class="nav-icon" style="background:${spec.bg}"><svg viewBox="0 0 24 24" fill="currentColor">${spec.svg}</svg></span>
-      <span class="arrow">›</span>
-    </div>
-    <div class="filter-tile-title"></div>
-    <div class="filter-tile-count"></div>
+    <span class="nav-icon" style="background:${spec.bg}"><svg viewBox="0 0 24 24" fill="currentColor">${spec.svg}</svg></span>
+    <span class="filter-tile-text">
+      <span class="filter-tile-title"></span>
+      <span class="filter-tile-count"></span>
+    </span>
+    <span class="arrow" aria-hidden="true">›</span>
   `;
   btn.querySelector('.filter-tile-title').textContent = title;
   btn.querySelector('.filter-tile-count').textContent = count;
@@ -1490,8 +1491,10 @@ function tagChip(tag, { muted = false } = {}) {
 function moduleBlock({
   title,
   muted = false,
+  hideTitle = false,
   tags,
   onOpenModule,
+  onRenameModule,
   onAddTag,
   onDeleteModule,
 }) {
@@ -1501,69 +1504,82 @@ function moduleBlock({
   const body = document.createElement('div');
   body.className = 'module-case-body';
 
-  const head = document.createElement('div');
-  head.className = 'module-head';
+  // 未归类：不显示标题，只留标签（仍可拖回此处）
+  if (!hideTitle) {
+    const head = document.createElement('div');
+    head.className = 'module-head';
 
-  if (onOpenModule) {
-    const titleBtn = document.createElement('button');
-    titleBtn.type = 'button';
-    titleBtn.className = 'module-title is-link';
-    titleBtn.innerHTML =
-      '<span class="module-title-text"></span><span class="module-chevron" aria-hidden="true">›</span>';
-    titleBtn.querySelector('.module-title-text').textContent = title;
-    titleBtn.addEventListener('click', onOpenModule);
-    head.append(titleBtn);
-  } else {
-    const titleEl = document.createElement('div');
-    titleEl.className = 'module-title';
-    titleEl.textContent = title;
-    head.append(titleEl);
-  }
-
-  if (onAddTag || onDeleteModule) {
-    const wrap = document.createElement('div');
-    wrap.className = 'module-more-wrap';
-    const moreBtn = document.createElement('button');
-    moreBtn.type = 'button';
-    moreBtn.className = 'module-more';
-    moreBtn.title = '更多';
-    moreBtn.setAttribute('aria-label', '更多');
-    moreBtn.textContent = '⋯';
-    const menu = document.createElement('div');
-    menu.className = 'module-menu';
-    menu.hidden = true;
-    if (onAddTag) {
-      const add = document.createElement('button');
-      add.type = 'button';
-      add.textContent = '添加标签';
-      add.addEventListener('click', () => {
-        menu.hidden = true;
-        onAddTag();
-      });
-      menu.append(add);
+    if (onOpenModule) {
+      const titleBtn = document.createElement('button');
+      titleBtn.type = 'button';
+      titleBtn.className = 'module-title is-link';
+      titleBtn.innerHTML =
+        '<span class="module-title-text"></span><span class="module-chevron" aria-hidden="true">›</span>';
+      titleBtn.querySelector('.module-title-text').textContent = title;
+      titleBtn.addEventListener('click', onOpenModule);
+      head.append(titleBtn);
+    } else {
+      const titleEl = document.createElement('div');
+      titleEl.className = 'module-title';
+      titleEl.textContent = title;
+      head.append(titleEl);
     }
-    if (onDeleteModule) {
-      const del = document.createElement('button');
-      del.type = 'button';
-      del.className = 'is-danger';
-      del.textContent = '删除归类';
-      del.addEventListener('click', () => {
-        menu.hidden = true;
-        onDeleteModule();
-      });
-      menu.append(del);
-    }
-    moreBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      const open = menu.hidden;
-      closeModuleMenus();
-      menu.hidden = !open;
-    });
-    wrap.append(moreBtn, menu);
-    head.append(wrap);
-  }
 
-  body.append(head);
+    if (onRenameModule || onAddTag || onDeleteModule) {
+      const wrap = document.createElement('div');
+      wrap.className = 'module-more-wrap';
+      const moreBtn = document.createElement('button');
+      moreBtn.type = 'button';
+      moreBtn.className = 'module-more';
+      moreBtn.title = '更多';
+      moreBtn.setAttribute('aria-label', '更多');
+      moreBtn.textContent = '⋯';
+      const menu = document.createElement('div');
+      menu.className = 'module-menu';
+      menu.hidden = true;
+      if (onRenameModule) {
+        const rename = document.createElement('button');
+        rename.type = 'button';
+        rename.textContent = '修改名称';
+        rename.addEventListener('click', () => {
+          menu.hidden = true;
+          onRenameModule();
+        });
+        menu.append(rename);
+      }
+      if (onAddTag) {
+        const add = document.createElement('button');
+        add.type = 'button';
+        add.textContent = '添加标签';
+        add.addEventListener('click', () => {
+          menu.hidden = true;
+          onAddTag();
+        });
+        menu.append(add);
+      }
+      if (onDeleteModule) {
+        const del = document.createElement('button');
+        del.type = 'button';
+        del.className = 'is-danger';
+        del.textContent = '删除归类';
+        del.addEventListener('click', () => {
+          menu.hidden = true;
+          onDeleteModule();
+        });
+        menu.append(del);
+      }
+      moreBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const open = menu.hidden;
+        closeModuleMenus();
+        menu.hidden = !open;
+      });
+      wrap.append(moreBtn, menu);
+      head.append(wrap);
+    }
+
+    body.append(head);
+  }
 
   const chips = document.createElement('div');
   chips.className = 'tag-chip-wrap';
@@ -1609,10 +1625,27 @@ function renderCollection() {
 
   const filters = collectionFilters(s.filters);
   if (filters.length) {
+    const panel = document.createElement('section');
+    panel.className = 'modules-panel';
+    const header = document.createElement('div');
+    header.className = 'modules-header';
+    const titles = document.createElement('div');
+    titles.className = 'modules-titles';
+    const h = document.createElement('h2');
+    h.textContent = '系统分类';
+    const sub = document.createElement('p');
+    sub.textContent = '按状态快速筛选收藏';
+    titles.append(h, sub);
+    // 占位与归类标题行右侧 ＋ 同宽，两块标题基线对齐
+    const spacer = document.createElement('span');
+    spacer.className = 'modules-create is-spacer';
+    spacer.setAttribute('aria-hidden', 'true');
+    header.append(titles, spacer);
     const grid = document.createElement('div');
     grid.className = 'filter-grid';
     for (const f of filters) grid.append(filterTile(f));
-    collectionBody.append(grid);
+    panel.append(header, grid);
+    collectionBody.append(panel);
   }
 
   const panel = document.createElement('section');
@@ -1643,6 +1676,7 @@ function renderCollection() {
     moduleBlock({
       title: '未归类',
       muted: true,
+      hideTitle: true,
       tags: s.ungrouped,
     }),
   );
@@ -1658,6 +1692,7 @@ function renderCollection() {
             title: mod.name,
             kind: 'unread',
           }),
+        onRenameModule: () => openRenameModule(mod),
         onAddTag: () => openCreateTag({ moduleId: mod.id }),
         onDeleteModule: () => confirmDeleteModule(mod),
       }),
@@ -1807,13 +1842,14 @@ function openNameSheet({
   label,
   placeholder,
   submitLabel,
+  initialValue = '',
   onSubmit,
   afterClose = null,
 }) {
   $('name-title').textContent = title;
   $('name-label').textContent = label;
   nameInput.placeholder = placeholder;
-  nameInput.value = '';
+  nameInput.value = initialValue || '';
   nameError.hidden = true;
   nameSave.textContent = submitLabel || '创建';
   nameSave.disabled = false;
@@ -1821,6 +1857,7 @@ function openNameSheet({
   nameAfterClose = afterClose;
   openOverlay('name');
   nameInput.focus();
+  nameInput.select();
 }
 
 async function submitNameSheet() {
@@ -1883,6 +1920,24 @@ function openCreateModule() {
       const res = await createTagModule(name);
       await loadCollection({ quiet: true });
       toast(`已创建归类「${res.module?.name || name}」`);
+      return res.module;
+    },
+  });
+}
+
+function openRenameModule(mod) {
+  openNameSheet({
+    title: '修改名称',
+    label: '名称',
+    placeholder: '请输入归类名称',
+    submitLabel: '保存',
+    initialValue: mod.name || '',
+    onSubmit: async (name) => {
+      if (!name) throw new Error('请输入归类名称');
+      if (name.length > 64) throw new Error('名称最多 64 个字');
+      const res = await renameTagModule(mod.id, name);
+      await loadCollection({ quiet: true });
+      toast(`已修改为「${res.module?.name || name}」`);
       return res.module;
     },
   });
