@@ -18,6 +18,34 @@ app.use(cors());
 // 客户端上报微信等整页 HTML 可能达数 MB
 app.use(express.json({ limit: '8mb' }));
 
+/**
+ * Android APK：从 OSS 拉流下发（默认 OSS 域名禁止直接分发 APK；
+ * 对象由 `pnpm apk:upload` 上传到 downloads/zouzhe-release.apk）
+ */
+app.get(['/downloads/android', '/downloads/android.apk', '/downloads/zouzhe-release.apk'], async (_req, res, next) => {
+  try {
+    const androidApkOss = require('./services/androidApkOss');
+    if (!androidApkOss.isConfigured()) {
+      return res.status(503).type('text').send('Android 下载暂不可用');
+    }
+    const { stream, contentLength } = await androidApkOss.getDownloadStream();
+    res.setHeader('Content-Type', 'application/vnd.android.package-archive');
+    res.setHeader(
+      'Content-Disposition',
+      'attachment; filename="zouzhe-release.apk"',
+    );
+    res.setHeader('Cache-Control', 'public, max-age=300');
+    if (contentLength) res.setHeader('Content-Length', contentLength);
+    stream.on('error', (err) => {
+      if (!res.headersSent) next(err);
+      else res.destroy(err);
+    });
+    stream.pipe(res);
+  } catch (err) {
+    return next(err);
+  }
+});
+
 app.use(express.static(publicDir));
 
 app.get('/', (_req, res) => {

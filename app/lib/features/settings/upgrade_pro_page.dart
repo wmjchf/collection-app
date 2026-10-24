@@ -637,32 +637,31 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
               ],
             ),
           ),
-          _BottomActionBar(
-            showPurchaseActions:
-                _isIos && !_productsLoading && _error == null,
-            showLegalFooter: _isIos,
-            androidComingSoon: _isAndroid,
-            subscribeLabel: _subscribeLabel(),
-            restoreLabel: _busy && _restoreFlow ? _phaseLabel : '恢复购买',
-            busy: _busy,
-            restoreFlow: _restoreFlow,
-            subscribeEnabled: !_selectedOwned &&
-                _selected != null &&
-                _selectedTierProductsReady,
-            trialOffer: _selectedOwned ? null : _selectedTrial,
-            selectedPrice: _selectedOwned ? null : _selected?.price,
-            lifetimePurchase: false,
-            onSubscribe: _buy,
-            onRestore: _restore,
-            onUserAgreement: () => _openLegal(
-              title: '用户协议',
-              body: LegalDocs.userAgreement,
+          if (_isIos)
+            _BottomActionBar(
+              showPurchaseActions: !_productsLoading && _error == null,
+              showLegalFooter: true,
+              subscribeLabel: _subscribeLabel(),
+              restoreLabel: _busy && _restoreFlow ? _phaseLabel : '恢复购买',
+              busy: _busy,
+              restoreFlow: _restoreFlow,
+              subscribeEnabled: !_selectedOwned &&
+                  _selected != null &&
+                  _selectedTierProductsReady,
+              trialOffer: _selectedOwned ? null : _selectedTrial,
+              selectedPrice: _selectedOwned ? null : _selected?.price,
+              lifetimePurchase: false,
+              onSubscribe: _buy,
+              onRestore: _restore,
+              onUserAgreement: () => _openLegal(
+                title: '用户协议',
+                body: LegalDocs.userAgreement,
+              ),
+              onPrivacy: () => _openLegal(
+                title: '隐私政策',
+                body: LegalDocs.privacyPolicy,
+              ),
             ),
-            onPrivacy: () => _openLegal(
-              title: '隐私政策',
-              body: LegalDocs.privacyPolicy,
-            ),
-          ),
         ],
       ),
     );
@@ -1388,7 +1387,6 @@ class _BottomActionBar extends StatelessWidget {
     required this.onUserAgreement,
     required this.onPrivacy,
     this.showLegalFooter = true,
-    this.androidComingSoon = false,
     this.trialOffer,
     this.selectedPrice,
     this.lifetimePurchase = false,
@@ -1396,7 +1394,6 @@ class _BottomActionBar extends StatelessWidget {
 
   final bool showPurchaseActions;
   final bool showLegalFooter;
-  final bool androidComingSoon;
   final String subscribeLabel;
   final String restoreLabel;
   final bool busy;
@@ -1412,7 +1409,7 @@ class _BottomActionBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (!showPurchaseActions && !showLegalFooter && !androidComingSoon) {
+    if (!showPurchaseActions && !showLegalFooter) {
       return const SizedBox.shrink();
     }
     return Material(
@@ -1450,17 +1447,7 @@ class _BottomActionBar extends StatelessWidget {
                   ),
                   const SizedBox(height: 4),
                 ],
-                if (androidComingSoon)
-                  const Text(
-                    '订阅购买将在后续版本开放',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      fontSize: 13,
-                      color: Color(0xFF737A85),
-                      height: 1.45,
-                    ),
-                  )
-                else if (showLegalFooter)
+                if (showLegalFooter)
                   _SubscriptionLegalFooter(
                     onUserAgreement: onUserAgreement,
                     onPrivacy: onPrivacy,

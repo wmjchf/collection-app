@@ -17,7 +17,8 @@
     "db:seed-guide": "node scripts/seed-guide.js",
     "fix:bilibili-canonical": "node scripts/fix-bilibili-canonical.js",
     "fix:xiaohongshu-canonical": "node scripts/fix-xiaohongshu-canonical.js",
-    "help:upload-images": "node scripts/upload-help-images.js"
+    "help:upload-images": "node scripts/upload-help-images.js",
+    "apk:upload": "node scripts/upload-android-apk.js"
   },
   "keywords": [],
   "author": "",
