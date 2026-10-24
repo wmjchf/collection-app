@@ -10,3 +10,5 @@ logs/
 secrets/
 public/help/*
 !public/help/.gitkeep
+# Android APK 体积大，部署时复制到服务器（pnpm apk:upload）
+public/downloads/*.apk
