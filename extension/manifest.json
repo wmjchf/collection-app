@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "奏折",
   "description": "喜欢的内容收藏到一处，像看奏折一样阅读、整理、思考。浏览器里收藏、查找和整理；深读与标注请在手机 App 完成。",
-  "version": "1.5.2",
+  "version": "1.5.8",
   "action": {
     "default_title": "打开 奏折",
     "default_icon": {
