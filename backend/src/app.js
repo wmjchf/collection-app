@@ -18,9 +18,9 @@ app.use(cors());
 // 客户端上报微信等整页 HTML 可能达数 MB
 app.use(express.json({ limit: '8mb' }));
 
-/** Android APK 短链 → 静态文件 public/downloads/zouzhe-release.apk */
+/** Android 短链 → 蒲公英分发页 */
 app.get(['/downloads/android', '/downloads/android.apk'], (_req, res) => {
-  res.redirect(302, '/downloads/zouzhe-release.apk');
+  res.redirect(302, 'https://www.pgyer.com/app/build/5e167f65e69616bb4f1283551a35c1d8');
 });
 
 app.use(express.static(publicDir));
