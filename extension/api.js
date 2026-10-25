@@ -127,6 +127,7 @@ export async function saveUrl(url) {
 
 export async function listItems({
   filter = 'all',
+  mediaKind = null,
   limit = 30,
   offset = 0,
 } = {}) {
@@ -136,6 +137,7 @@ export async function listItems({
     offset: String(offset),
     tzOffsetMinutes: String(tzOffsetMinutes()),
   });
+  if (mediaKind) qs.set('mediaKind', mediaKind);
   return authRequest('GET', `/api/items?${qs}`);
 }
 

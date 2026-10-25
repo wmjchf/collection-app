@@ -99,6 +99,7 @@ CREATE TABLE `items` (
   `cover_image_url` VARCHAR(2048) DEFAULT NULL,
   `image_urls` JSON DEFAULT NULL COMMENT '附加图片 URL 列表',
   `video_url` VARCHAR(2048) DEFAULT NULL COMMENT '视频直链（可选）',
+  `media_kind` ENUM('article', 'gallery', 'video') NOT NULL DEFAULT 'article' COMMENT '内容形态：文章/图集/视频',
   `transcript_segments` JSON DEFAULT NULL COMMENT '分段转写 {segmentKey:{status,text,...}}',
   `ai_meta` JSON DEFAULT NULL COMMENT 'AI 建议/导图状态 {tags,mindmap,model}',
   `platform` VARCHAR(32) NOT NULL DEFAULT 'web',
@@ -121,6 +122,7 @@ CREATE TABLE `items` (
   KEY `idx_items_user_unread` (`user_id`, `is_unread`),
   KEY `idx_items_user_archived` (`user_id`, `is_archived`),
   KEY `idx_items_user_created` (`user_id`, `created_at`),
+  KEY `idx_items_user_media_kind` (`user_id`, `media_kind`, `created_at`),
   KEY `idx_items_user_deleted` (`user_id`, `deleted_at`),
   KEY `idx_items_user_last_read` (`user_id`, `last_read_at`),
   KEY `idx_items_user_canonical` (`user_id`, `canonical_url`(255)),
@@ -162,6 +164,9 @@ INSERT INTO `categories` (`user_id`, `section`, `code`, `name`, `is_system`, `so
   (0, 'system', 'untagged',  '无标签', 1, 55),
   (0, 'system', 'annotated', '批注', 1, 60),
   (0, 'system', 'recent_read', '最近阅读', 1, 70),
+  (0, 'system', 'article',   '文章', 1, 90),
+  (0, 'system', 'gallery',   '图集', 1, 91),
+  (0, 'system', 'video',     '视频', 1, 92),
   (0, 'folder', 'uncategorized', '未分类', 1, 10),
   (0, 'other',  'archived', '已归档', 1, 10);
 

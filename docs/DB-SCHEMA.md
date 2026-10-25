@@ -162,6 +162,7 @@
 | --- | --- | --- |
 | system | unread / all / today / untagged / annotated / recent_read | 未读/所有/今天/无标签/批注/最近阅读 |
 | system | recent_read | 最近阅读（已读、近 7 天内有 `last_read_at`；排除未读，避免与未读区重复） |
+| system | article / gallery / video | 文章/图集/视频（收藏页「内容类型」；按 `items.media_kind`） |
 | folder | uncategorized | 未分类 |
 | other | archived | 已归档（不在 App 导航展示；`filter=archived` API 仍可用） |
 | system | trash | 回收站（原 other，见 `009_trash_system_section.sql`） |
@@ -176,6 +177,7 @@
 | folder_id | BIGINT UNSIGNED NOT NULL | 默认系统未分类 |
 | is_starred / is_unread / is_archived / deleted_at | … | 同前 |
 | **last_read_at** | DATETIME(3) NULL | **最近一次打开本地阅读页的时间**；NULL=从未阅读 |
+| **media_kind** | ENUM('article','gallery','video') | 内容形态；解析/改正文时写入；索引 `(user_id, media_kind, created_at)` |
 | … | … | url、解析字段、备注等 |
 
 去重：同一用户下按 `canonical_url`（或 url）判重，索引建议 `(user_id, canonical_url(255))`。  

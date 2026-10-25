@@ -42,6 +42,7 @@ const MIGRATION_FILES = [
   '032_annotation_source.sql',
   '033_feedback_public.sql',
   '034_feedback_images.sql',
+  '035_item_media_kind.sql',
 ];
 
 async function getConnection() {
@@ -262,6 +263,67 @@ async function apply032(conn, dbName) {
   );
 }
 
+async function apply035(conn, dbName) {
+  if (!(await columnExists(conn, dbName, 'items', 'media_kind'))) {
+    await conn.query(
+      "ALTER TABLE `items` ADD COLUMN `media_kind` ENUM('article', 'gallery', 'video') NOT NULL DEFAULT 'article' COMMENT '内容形态：文章/图集/视频' AFTER `video_url`",
+    );
+    console.log('[db:migrate] 035: 已添加 media_kind');
+  } else {
+    console.log('[db:migrate] 035: media_kind 已存在，跳过加列');
+  }
+
+  if (!(await indexExists(conn, dbName, 'items', 'idx_items_user_media_kind'))) {
+    await conn.query(
+      'ALTER TABLE `items` ADD KEY `idx_items_user_media_kind` (`user_id`, `media_kind`, `created_at`)',
+    );
+    console.log('[db:migrate] 035: 已添加 idx_items_user_media_kind');
+  }
+
+  for (const [code, name, sortOrder] of [
+    ['article', '文章', 90],
+    ['gallery', '图集', 91],
+    ['video', '视频', 92],
+  ]) {
+    await conn.query(
+      'INSERT INTO `categories` (`user_id`, `section`, `code`, `name`, `is_system`, `sort_order`)'
+        + ' SELECT 0, \'system\', ?, ?, 1, ?'
+        + ' WHERE NOT EXISTS ('
+        + ' SELECT 1 FROM `categories` WHERE `user_id` = 0 AND `section` = \'system\' AND `code` = ?'
+        + ' )',
+      [code, name, sortOrder, code],
+    );
+  }
+
+  const { resolveMediaKind } = require('../src/services/itemMediaKind');
+  const batchSize = 200;
+  let lastId = 0;
+  let updated = 0;
+  for (;;) {
+    const [rows] = await conn.query(
+      `SELECT id, video_url, image_urls, content, platform, canonical_url, url, media_kind
+       FROM items
+       WHERE id > ?
+       ORDER BY id ASC
+       LIMIT ${batchSize}`,
+      [lastId],
+    );
+    if (!rows.length) break;
+    for (const row of rows) {
+      lastId = row.id;
+      const kind = resolveMediaKind(row);
+      if (kind === row.media_kind) continue;
+      await conn.query('UPDATE items SET media_kind = ? WHERE id = ?', [
+        kind,
+        row.id,
+      ]);
+      updated += 1;
+    }
+    if (rows.length < batchSize) break;
+  }
+  console.log(`[db:migrate] 035: media_kind backfill updated=${updated}`);
+}
+
 async function applyMigration(conn, dbName, file) {
   if (file === '002_last_read_at.sql') {
     await apply002(conn, dbName);
@@ -301,6 +363,10 @@ async function applyMigration(conn, dbName, file) {
   }
   if (file === '032_annotation_source.sql') {
     await apply032(conn, dbName);
+    return;
+  }
+  if (file === '035_item_media_kind.sql') {
+    await apply035(conn, dbName);
     return;
   }
   await runSqlFile(conn, file);

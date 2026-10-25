@@ -881,6 +881,19 @@ button {
   font-size: 14px;
 }
 
+.list-msg.list-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  margin-top: 48px;
+}
+
+.list-empty-icon {
+  display: flex;
+  line-height: 0;
+}
+
 /* 搜索页：与 App SearchPage 对齐 */
 .search-bar {
   position: sticky;
@@ -1828,6 +1841,31 @@ button {
 .chip.is-on {
   background: #e5edff;
   color: var(--blue);
+}
+
+/* 状态列表（未读/所有/今天/无标签/批注）：文章 / 图集 / 视频 */
+.more-media-kinds {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 10px 16px 0;
+}
+
+.more-media-chip {
+  padding: 7px 12px;
+  border-radius: 20px;
+  border: 0;
+  background: #f0f2f5;
+  font-size: 13px;
+  font-weight: 500;
+  color: #1f242ec7;
+  cursor: pointer;
+}
+
+.more-media-chip.is-on {
+  background: #e5edff;
+  color: #2f6fed;
+  font-weight: 600;
 }
 
 .dialog {

@@ -31,6 +31,13 @@ class _SystemFilterListPageState extends State<SystemFilterListPage>
   static const _bg = Color(0xFFF7F7FA);
   static const _muted = Color(0xFF737A85);
 
+  static const _mediaKinds = <({String? code, String label})>[
+    (code: null, label: '全部'),
+    (code: 'article', label: '文章'),
+    (code: 'gallery', label: '图集'),
+    (code: 'video', label: '视频'),
+  ];
+
   final _repo = SystemFiltersRepository();
   final _itemsRepo = ItemsRepository();
   final _scroll = ScrollController();
@@ -40,12 +47,21 @@ class _SystemFilterListPageState extends State<SystemFilterListPage>
   bool _loadingMore = false;
   String? _error;
 
+  /// 状态列表内的形态筛选（未读 / 所有 / 今天 / 无标签 / 批注）。
+  String? _mediaKind;
+
   bool _selecting = false;
   final Set<int> _selectedIds = {};
   bool _deleting = false;
 
   bool get _hasMore => _items.length < _total;
   bool get _isUntagged => widget.code == 'untagged';
+  bool get _showMediaKinds =>
+      widget.code == 'unread' ||
+      widget.code == 'all' ||
+      widget.code == 'today' ||
+      widget.code == 'untagged' ||
+      widget.code == 'annotated';
   bool get _allSelected =>
       _items.isNotEmpty && _selectedIds.length >= _items.length;
 
@@ -53,7 +69,10 @@ class _SystemFilterListPageState extends State<SystemFilterListPage>
   String get dwellScreen => AnalyticsScreens.filterList;
 
   @override
-  Map<String, Object?> get dwellProps => {'filter': widget.code};
+  Map<String, Object?> get dwellProps => {
+        'filter': widget.code,
+        if (_mediaKind != null) 'media_kind': _mediaKind,
+      };
 
   @override
   void initState() {
@@ -149,6 +168,7 @@ class _SystemFilterListPageState extends State<SystemFilterListPage>
     try {
       final result = await _repo.listItems(
         filter: widget.code,
+        mediaKind: _mediaKind,
         limit: kItemsPageSize,
         offset: 0,
       );
@@ -174,12 +194,43 @@ class _SystemFilterListPageState extends State<SystemFilterListPage>
     }
   }
 
+  void _selectMediaKind(String? code) {
+    if (!_showMediaKinds || _mediaKind == code) return;
+    setState(() => _mediaKind = code);
+    _load(reset: true);
+  }
+
+  IconData get _emptyIcon {
+    switch (_mediaKind) {
+      case 'article':
+        return Icons.article_outlined;
+      case 'gallery':
+        return Icons.photo_library_outlined;
+      case 'video':
+        return Icons.play_circle_outline_rounded;
+      default:
+        switch (widget.code) {
+          case 'unread':
+            return Icons.mark_email_unread_outlined;
+          case 'today':
+            return Icons.calendar_today_outlined;
+          case 'untagged':
+            return Icons.label_off_outlined;
+          case 'annotated':
+            return Icons.edit_outlined;
+          default:
+            return Icons.inbox_outlined;
+        }
+    }
+  }
+
   Future<void> _loadMore() async {
     if (_loading || _loadingMore || !_hasMore) return;
     setState(() => _loadingMore = true);
     try {
       final result = await _repo.listItems(
         filter: widget.code,
+        mediaKind: _mediaKind,
         limit: kItemsPageSize,
         offset: _items.length,
       );
@@ -329,26 +380,39 @@ class _SystemFilterListPageState extends State<SystemFilterListPage>
                       16,
                       _selecting ? 16 : 24,
                     ),
-                    itemCount: _items.isEmpty ? 2 : (2 + _items.length),
+                    itemCount: _items.isEmpty
+                        ? 2
+                        : (2 + _items.length),
                     itemBuilder: (context, index) {
                       if (index == 0) {
                         return Padding(
                           padding: const EdgeInsets.only(bottom: 12),
-                          child: Text(
-                            '共 $_total 条',
-                            style: const TextStyle(fontSize: 13, color: _muted),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              if (_showMediaKinds) ...[
+                                _MediaKindBar(
+                                  kinds: _mediaKinds,
+                                  selected: _mediaKind,
+                                  onSelect: _selectMediaKind,
+                                ),
+                                const SizedBox(height: 12),
+                              ],
+                              Text(
+                                '共 $_total 条',
+                                style: const TextStyle(
+                                  fontSize: 13,
+                                  color: _muted,
+                                ),
+                              ),
+                            ],
                           ),
                         );
                       }
                       if (_items.isEmpty) {
-                        return const Padding(
-                          padding: EdgeInsets.only(top: 48),
-                          child: Center(
-                            child: Text(
-                              '暂无内容',
-                              style: TextStyle(color: _muted),
-                            ),
-                          ),
+                        return Padding(
+                          padding: const EdgeInsets.only(top: 48),
+                          child: _ListEmptyHint(icon: _emptyIcon),
                         );
                       }
                       final itemIndex = index - 1;
@@ -377,6 +441,81 @@ class _SystemFilterListPageState extends State<SystemFilterListPage>
                     },
                   ),
       ),
+    );
+  }
+}
+
+class _ListEmptyHint extends StatelessWidget {
+  const _ListEmptyHint({required this.icon});
+
+  final IconData icon;
+
+  static const _muted = Color(0xFF737A85);
+  static const _iconMuted = Color(0xFFC5CAD3);
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 42, color: _iconMuted),
+          const SizedBox(height: 10),
+          const Text(
+            '暂无内容',
+            style: TextStyle(fontSize: 14, color: _muted),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _MediaKindBar extends StatelessWidget {
+  const _MediaKindBar({
+    required this.kinds,
+    required this.selected,
+    required this.onSelect,
+  });
+
+  final List<({String? code, String label})> kinds;
+  final String? selected;
+  final ValueChanged<String?> onSelect;
+
+  static const _ink = Color(0xFF1F242E);
+  static const _fill = Color(0xFFF0F2F5);
+  static const _onFill = Color(0xFFE5EDFF);
+  static const _onInk = Color(0xFF2F6FED);
+
+  @override
+  Widget build(BuildContext context) {
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: [
+        for (final k in kinds)
+          GestureDetector(
+            onTap: () => onSelect(k.code),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 160),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+              decoration: BoxDecoration(
+                color: selected == k.code ? _onFill : _fill,
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Text(
+                k.label,
+                style: TextStyle(
+                  fontSize: 13,
+                  height: 1.2,
+                  fontWeight:
+                      selected == k.code ? FontWeight.w600 : FontWeight.w500,
+                  color: selected == k.code ? _onInk : _ink.withValues(alpha: 0.78),
+                ),
+              ),
+            ),
+          ),
+      ],
     );
   }
 }

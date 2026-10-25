@@ -23,17 +23,26 @@ class SystemFiltersRepository {
 
   int get _tzOffsetMinutes => DateTime.now().timeZoneOffset.inMinutes;
 
-  Future<({List<SystemFilter> filters, List<SystemFilter> others})>
-      listFilters() async {
+  Future<
+      ({
+        List<SystemFilter> filters,
+        List<SystemFilter> mediaFilters,
+        List<SystemFilter> others,
+      })> listFilters() async {
     final token = await _token();
     final json = await _api.get(
       '/api/system-filters?tzOffsetMinutes=$_tzOffsetMinutes',
       accessToken: token,
     );
     final list = json['filters'] as List<dynamic>? ?? const [];
+    final media = json['mediaFilters'] as List<dynamic>? ?? const [];
     final others = json['others'] as List<dynamic>? ?? const [];
     return (
       filters: list
+          .whereType<Map<String, dynamic>>()
+          .map(SystemFilter.fromJson)
+          .toList(),
+      mediaFilters: media
           .whereType<Map<String, dynamic>>()
           .map(SystemFilter.fromJson)
           .toList(),
@@ -46,12 +55,17 @@ class SystemFiltersRepository {
 
   Future<({List<CollectionItem> items, int total})> listItems({
     required String filter,
+    String? mediaKind,
     int limit = 50,
     int offset = 0,
   }) async {
     final token = await _token();
+    final kindQs = (mediaKind != null && mediaKind.isNotEmpty)
+        ? '&mediaKind=$mediaKind'
+        : '';
     final json = await _api.get(
       '/api/items?filter=$filter'
+      '$kindQs'
       '&tzOffsetMinutes=$_tzOffsetMinutes'
       '&limit=$limit&offset=$offset',
       accessToken: token,

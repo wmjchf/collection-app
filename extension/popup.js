@@ -127,6 +127,9 @@ const ICON = {
   annotated: { bg: '#A270F5', svg: '<path d="M5 18.5 7.2 12 16 3.2l4.8 4.8L12 16.8z"/><path d="M14.2 5l4.8 4.8" fill="none" stroke="#fff" stroke-width="1.2"/>' },
   recent_read: { bg: '#40BAC4', svg: '<circle cx="12" cy="12" r="7.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 8v4.5l3 1.8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>' },
   archived: { bg: '#96A0AF', svg: '<path d="M4.5 7.5h15v3h-15z"/><path d="M6 10.5h12V19H6z"/>' },
+  article: { bg: '#5B8FF9', svg: '<path d="M6 4.5h9.5L18 7v12.5H6z" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M8.5 10h7M8.5 13.5h7M8.5 17h4.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>' },
+  gallery: { bg: '#52C41A', svg: '<rect x="3.5" y="6.5" width="12.5" height="10.5" rx="1.5"/><path d="M8 16.5l2.2-2.8 1.6 1.8 2.4-3.2 2.8 4.2H8z"/><rect x="8" y="4.5" width="12.5" height="10.5" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.4"/>' },
+  video: { bg: '#FF6B6B', svg: '<circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M10 8.8v6.4l5.2-3.2z"/>' },
   trash: { bg: '#F56C6C', svg: '<path d="M5 8h14l-1.2 12H6.2z"/><path d="M9 4.5h6l1 3.5H8z"/>' },
   folder: { bg: '#5B8FF9', svg: '<path d="M4 7.2A2 2 0 0 1 6 5.2h3.2L11 7.4h7A2 2 0 0 1 20 9.4v7.4a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/>' },
   tagSystem: { bg: '#788CAA', svg: '<path d="M12.8 4.8 19.2 11a2 2 0 0 1 0 2.8l-5.4 5.4a2 2 0 0 1-2.8 0L4.6 13V4.8z"/><circle cx="8.2" cy="8.4" r="1.2" fill="#fff"/>' },
@@ -191,11 +194,20 @@ function emptyMore() {
     source: 'filter',
     key: '',
     kind: 'unread',
+    /** 状态列表形态筛选：null=全部，article|gallery|video */
+    mediaKind: null,
     items: [],
     total: 0,
     loading: false,
   };
 }
+
+const MEDIA_KIND_CHIPS = [
+  { code: null, label: '全部' },
+  { code: 'article', label: '文章' },
+  { code: 'gallery', label: '图集' },
+  { code: 'video', label: '视频' },
+];
 
 function emptySearch() {
   return {
@@ -213,6 +225,7 @@ function emptySearch() {
 function emptyCollection() {
   return {
     filters: [],
+    mediaFilters: [],
     modules: [],
     ungrouped: [],
     loading: false,
@@ -1089,6 +1102,7 @@ async function openMore({ source, key, title, kind }) {
     source,
     key,
     kind: kind || kindForFilter(key),
+    mediaKind: null,
     items: [],
     total: 0,
     loading: false,
@@ -1098,12 +1112,55 @@ async function openMore({ source, key, title, kind }) {
   moreStatus.hidden = false;
   moreStatus.textContent = '加载中…';
   setMoreAction('');
+  renderMoreMediaChips();
   pushView('more');
   await loadMorePage({ reset: true });
 }
 
+function showMoreMediaKinds() {
+  return (
+    more.source === 'filter' &&
+    (more.key === 'unread' ||
+      more.key === 'all' ||
+      more.key === 'today' ||
+      more.key === 'untagged' ||
+      more.key === 'annotated')
+  );
+}
+
+function renderMoreMediaChips() {
+  let bar = $('more-media-kinds');
+  const show = showMoreMediaKinds();
+  if (!show) {
+    if (bar) bar.hidden = true;
+    return;
+  }
+  if (!bar) {
+    bar = document.createElement('div');
+    bar.id = 'more-media-kinds';
+    bar.className = 'more-media-kinds';
+    moreList.parentNode.insertBefore(bar, moreList);
+  }
+  bar.hidden = false;
+  bar.replaceChildren();
+  for (const chip of MEDIA_KIND_CHIPS) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'more-media-chip';
+    if (more.mediaKind === chip.code) btn.classList.add('is-on');
+    btn.textContent = chip.label;
+    btn.addEventListener('click', () => {
+      if (more.mediaKind === chip.code) return;
+      more.mediaKind = chip.code;
+      renderMoreMediaChips();
+      loadMorePage({ reset: true });
+    });
+    bar.append(btn);
+  }
+}
+
 async function fetchMorePage(offset) {
-  const { source, key } = more;
+  const { source, key, mediaKind } = more;
   if (source === 'tag') {
     return listTagItems(key, { limit: PAGE, offset });
   }
@@ -1113,7 +1170,12 @@ async function fetchMorePage(offset) {
   if (source === 'roam') {
     return fetchRoam({ limit: PAGE, offset });
   }
-  return listItems({ filter: key, limit: PAGE, offset });
+  return listItems({
+    filter: key,
+    mediaKind: mediaKind || null,
+    limit: PAGE,
+    offset,
+  });
 }
 
 async function fillRoamList(container, snippets) {
@@ -1151,15 +1213,26 @@ async function loadMorePage({ reset = false } = {}) {
     if (more.source === 'roam') await fillRoamList(moreList, more.items);
     else fillList(moreList, more.items, more.kind);
     const hasMore = more.items.length < more.total;
+    moreStatus.className = 'list-msg';
     moreStatus.hidden = !hasMore;
     moreStatus.textContent = hasMore ? '上滑加载更多' : '';
     if (!more.items.length) {
       moreStatus.hidden = false;
-      moreStatus.textContent = '暂无内容';
+      moreStatus.className = 'list-msg list-empty';
+      moreStatus.replaceChildren();
+      const icon = document.createElement('span');
+      icon.className = 'list-empty-icon';
+      icon.setAttribute('aria-hidden', 'true');
+      icon.innerHTML =
+        '<svg width="42" height="42" viewBox="0 0 24 24" fill="none" stroke="#C5CAD3" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>';
+      const text = document.createElement('span');
+      text.textContent = '暂无内容';
+      moreStatus.append(icon, text);
     }
   } catch (err) {
     if (await handleAuthError(err)) return;
     moreStatus.hidden = false;
+    moreStatus.className = 'list-msg';
     moreStatus.textContent = err.message || '加载失败';
   } finally {
     more.loading = false;
@@ -1420,6 +1493,30 @@ function sectionLabel(title, { expandable, expanded, onToggle, onAdd } = {}) {
   return row;
 }
 
+function filterPanel({ title, subtitle, filters }) {
+  const panel = document.createElement('section');
+  panel.className = 'modules-panel';
+  const header = document.createElement('div');
+  header.className = 'modules-header';
+  const titles = document.createElement('div');
+  titles.className = 'modules-titles';
+  const h = document.createElement('h2');
+  h.textContent = title;
+  const sub = document.createElement('p');
+  sub.textContent = subtitle;
+  titles.append(h, sub);
+  // 占位与归类标题行右侧 ＋ 同宽，两块标题基线对齐
+  const spacer = document.createElement('span');
+  spacer.className = 'modules-create is-spacer';
+  spacer.setAttribute('aria-hidden', 'true');
+  header.append(titles, spacer);
+  const grid = document.createElement('div');
+  grid.className = 'filter-grid';
+  for (const f of filters) grid.append(filterTile(f));
+  panel.append(header, grid);
+  return panel;
+}
+
 function filterTile(filter) {
   const btn = document.createElement('button');
   btn.type = 'button';
@@ -1627,27 +1724,13 @@ function renderCollection() {
 
   const filters = collectionFilters(s.filters);
   if (filters.length) {
-    const panel = document.createElement('section');
-    panel.className = 'modules-panel';
-    const header = document.createElement('div');
-    header.className = 'modules-header';
-    const titles = document.createElement('div');
-    titles.className = 'modules-titles';
-    const h = document.createElement('h2');
-    h.textContent = '系统分类';
-    const sub = document.createElement('p');
-    sub.textContent = '按状态快速筛选收藏';
-    titles.append(h, sub);
-    // 占位与归类标题行右侧 ＋ 同宽，两块标题基线对齐
-    const spacer = document.createElement('span');
-    spacer.className = 'modules-create is-spacer';
-    spacer.setAttribute('aria-hidden', 'true');
-    header.append(titles, spacer);
-    const grid = document.createElement('div');
-    grid.className = 'filter-grid';
-    for (const f of filters) grid.append(filterTile(f));
-    panel.append(header, grid);
-    collectionBody.append(panel);
+    collectionBody.append(
+      filterPanel({
+        title: '系统分类',
+        subtitle: '按状态快速筛选收藏',
+        filters,
+      }),
+    );
   }
 
   const panel = document.createElement('section');
@@ -1722,6 +1805,7 @@ async function loadCollection({ quiet = false } = {}) {
     collectionState.modules = modulesRes.modules || [];
     collectionState.ungrouped = modulesRes.ungrouped || [];
     collectionState.filters = filtersRes.filters || [];
+    collectionState.mediaFilters = filtersRes.mediaFilters || [];
     collectionState.loading = false;
     collectionState.error = null;
     renderCollection();

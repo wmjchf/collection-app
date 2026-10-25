@@ -66,8 +66,19 @@ function isImageGallery(row) {
   return true;
 }
 
+/**
+ * 持久化 / 筛选用形态：video > gallery > article
+ * @returns {'article'|'gallery'|'video'}
+ */
+function resolveMediaKind(row) {
+  if (hasTopVideo(row)) return 'video';
+  if (isImageGallery(row)) return 'gallery';
+  return 'article';
+}
+
 module.exports = {
   parseImageUrls,
   hasTopVideo,
   isImageGallery,
+  resolveMediaKind,
 };

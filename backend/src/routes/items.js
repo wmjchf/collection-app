@@ -25,8 +25,8 @@ router.post('/', async (req, res, next) => {
 });
 
 /**
- * GET /api/items?filter=unread|all|today|annotated|recent_read|archived
- * Query: tzOffsetMinutes, limit, offset
+ * GET /api/items?filter=unread|all|today|untagged|annotated|recent_read|archived|article|gallery|video
+ * Query: tzOffsetMinutes, limit, offset, mediaKind（可选 article|gallery|video，与状态筛选叠加）
  */
 router.get('/', async (req, res, next) => {
   try {
@@ -34,13 +34,19 @@ router.get('/', async (req, res, next) => {
     if (!filter) {
       return res.status(400).json({
         message:
-          '请指定 filter（unread/all/today/annotated/recent_read/archived）',
+          '请指定 filter（unread/all/today/untagged/annotated/recent_read/archived）',
       });
     }
+    const mediaKindRaw = req.query.mediaKind;
+    const mediaKind =
+      mediaKindRaw == null || String(mediaKindRaw).trim() === ''
+        ? null
+        : String(mediaKindRaw).trim();
     const result = await itemService.listBySystemFilter(req.auth.userId, filter, {
       tzOffsetMinutes: Number(req.query.tzOffsetMinutes ?? 480),
       limit: Number(req.query.limit ?? 50),
       offset: Number(req.query.offset ?? 0),
+      mediaKind,
     });
     return res.json(result);
   } catch (err) {

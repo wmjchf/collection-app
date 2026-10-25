@@ -527,9 +527,23 @@ class _ItemsBrowsePageState extends State<ItemsBrowsePage> with ScreenDwellMixin
                         return const Padding(
                           padding: EdgeInsets.only(top: 48),
                           child: Center(
-                            child: Text(
-                              '暂无内容',
-                              style: TextStyle(color: _muted),
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  Icons.inbox_outlined,
+                                  size: 42,
+                                  color: Color(0xFFC5CAD3),
+                                ),
+                                SizedBox(height: 10),
+                                Text(
+                                  '暂无内容',
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    color: _muted,
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
                         );

@@ -44,6 +44,7 @@ const transcriptSegments = require('./transcriptSegments');
 const aiMeta = require('./aiMeta');
 const guideItemService = require('./guideItemService');
 const mediaProxy = require('./mediaProxy');
+const itemMediaKind = require('./itemMediaKind');
 
 /** 服务端抓取被拦时，等待客户端上报 HTML */
 const NEED_CLIENT_FETCH = 'NEED_CLIENT_FETCH';
@@ -370,6 +371,16 @@ async function runContentParse(itemId) {
         row.url,
       );
       const preserveUserContent = !!row.content_edited_at;
+      const content = preserveUserContent ? row.content : parsed.content;
+      const canonicalUrl = fixedCanonical || row.canonical_url;
+      const mediaKind = itemMediaKind.resolveMediaKind({
+        video_url: parsed.videoUrl || null,
+        image_urls: imageUrls,
+        content,
+        platform: row.platform,
+        canonical_url: canonicalUrl,
+        url: row.url,
+      });
       await pool.execute(
         `UPDATE items SET
            title = COALESCE(:title, title),
@@ -377,6 +388,7 @@ async function runContentParse(itemId) {
            cover_image_url = COALESCE(:coverImageUrl, cover_image_url),
            image_urls = CAST(:imageUrls AS JSON),
            video_url = :videoUrl,
+           media_kind = :mediaKind,
            content = :content,
            canonical_url = COALESCE(:canonicalUrl, canonical_url),
            status = 'success',
@@ -389,7 +401,8 @@ async function runContentParse(itemId) {
           coverImageUrl: parsed.coverImageUrl || null,
           imageUrls: JSON.stringify(imageUrls),
           videoUrl: parsed.videoUrl || null,
-          content: preserveUserContent ? row.content : parsed.content,
+          mediaKind,
+          content,
           canonicalUrl: fixedCanonical,
         },
       );
@@ -516,6 +529,14 @@ async function parseWithClientHtml(userId, itemId, html) {
     const imageUrls = Array.isArray(parsed.imageUrls)
       ? parsed.imageUrls.filter(Boolean).slice(0, 30)
       : [];
+    const mediaKind = itemMediaKind.resolveMediaKind({
+      video_url: parsed.videoUrl || null,
+      image_urls: imageUrls,
+      content: parsed.content,
+      platform: item.platform,
+      canonical_url: item.canonicalUrl,
+      url: item.url,
+    });
     await pool.execute(
       `UPDATE items SET
          title = COALESCE(:title, title),
@@ -523,6 +544,7 @@ async function parseWithClientHtml(userId, itemId, html) {
          cover_image_url = COALESCE(:coverImageUrl, cover_image_url),
          image_urls = CAST(:imageUrls AS JSON),
          video_url = :videoUrl,
+         media_kind = :mediaKind,
          content = :content,
          status = 'success',
          error_message = NULL
@@ -535,6 +557,7 @@ async function parseWithClientHtml(userId, itemId, html) {
         coverImageUrl: parsed.coverImageUrl || null,
         imageUrls: JSON.stringify(imageUrls),
         videoUrl: parsed.videoUrl || null,
+        mediaKind,
         content: parsed.content,
       },
     );
@@ -670,10 +693,29 @@ async function refreshItemVideo(userId, itemId) {
     { itemId, userId },
   );
   const preserveUserContent = !!rows[0]?.content_edited_at;
+  const nextContent = preserveUserContent
+    ? item.content
+    : parsed.content || item.content;
+  const nextCanonical =
+    normalizeCanonicalForPlatform(
+      item.platform,
+      parsed.pageUrl,
+      item.canonicalUrl,
+      item.url,
+    ) || item.canonicalUrl;
+  const mediaKind = itemMediaKind.resolveMediaKind({
+    video_url: parsed.videoUrl || null,
+    image_urls: item.imageUrls,
+    content: nextContent,
+    platform: item.platform,
+    canonical_url: nextCanonical,
+    url: item.url,
+  });
 
   await pool.execute(
     `UPDATE items
      SET video_url = :videoUrl,
+         media_kind = :mediaKind,
          content = COALESCE(:content, content),
          cover_image_url = COALESCE(:coverImageUrl, cover_image_url),
          canonical_url = COALESCE(:canonicalUrl, canonical_url),
@@ -683,6 +725,7 @@ async function refreshItemVideo(userId, itemId) {
       itemId,
       userId,
       videoUrl: parsed.videoUrl || null,
+      mediaKind,
       content: preserveUserContent ? null : parsed.content || null,
       coverImageUrl: parsed.coverImageUrl || null,
       canonicalUrl: normalizeCanonicalForPlatform(
@@ -845,13 +888,22 @@ async function updateContent(userId, itemId, content) {
   }
   const value =
     content == null ? null : String(content).slice(0, CONTENT_MAX_LEN);
+  const mediaKind = itemMediaKind.resolveMediaKind({
+    video_url: existing.videoUrl,
+    image_urls: existing.imageUrls,
+    content: value,
+    platform: existing.platform,
+    canonical_url: existing.canonicalUrl,
+    url: existing.url,
+  });
   await pool.execute(
     `UPDATE items
      SET content = :content,
+         media_kind = :mediaKind,
          content_edited_at = CURRENT_TIMESTAMP(3),
          updated_at = CURRENT_TIMESTAMP(3)
      WHERE id = :itemId AND user_id = :userId AND deleted_at IS NULL`,
-    { itemId, userId, content: value },
+    { itemId, userId, content: value, mediaKind },
   );
   return getByIdForUser(userId, itemId);
 }

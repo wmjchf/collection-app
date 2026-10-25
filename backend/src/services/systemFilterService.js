@@ -9,10 +9,13 @@ const SYSTEM_CODES = [
   'recent_read',
 ];
 
+/** 内容形态筛选（收藏页「内容类型」分区） */
+const MEDIA_CODES = ['article', 'gallery', 'video'];
+
 /** 「其他」分区（一期已不在导航展示；保留 archived 等 DB 行供 API） */
 const OTHER_CODES = [];
 
-const ALL_FILTER_CODES = [...SYSTEM_CODES, ...OTHER_CODES];
+const ALL_FILTER_CODES = [...SYSTEM_CODES, ...MEDIA_CODES, ...OTHER_CODES];
 
 /** 活跃条目：未删除、未归档 */
 function baseWhere() {
@@ -22,31 +25,50 @@ function baseWhere() {
 /**
  * @param {string} code
  * @param {{ dayStart?: Date, dayEnd?: Date }} [range]
+ * @param {string|null} [mediaKind] article|gallery|video；与状态筛选叠加
  */
-function filterClause(code, range = {}) {
+function filterClause(code, range = {}, mediaKind = null) {
+  let where;
   switch (code) {
     case 'unread':
-      return `${baseWhere()} AND i.is_unread = 1`;
+      where = `${baseWhere()} AND i.is_unread = 1`;
+      break;
     case 'all':
-      return baseWhere();
+      where = baseWhere();
+      break;
     case 'today':
-      return `${baseWhere()} AND i.created_at >= :dayStart AND i.created_at < :dayEnd`;
+      where = `${baseWhere()} AND i.created_at >= :dayStart AND i.created_at < :dayEnd`;
+      break;
     case 'untagged':
-      return `${baseWhere()} AND NOT EXISTS (
+      where = `${baseWhere()} AND NOT EXISTS (
         SELECT 1 FROM item_tags it WHERE it.item_id = i.id
       )`;
+      break;
     case 'annotated':
-      return `${baseWhere()} AND EXISTS (
+      where = `${baseWhere()} AND EXISTS (
         SELECT 1 FROM annotations a WHERE a.item_id = i.id
       )`;
+      break;
     case 'recent_read':
       // 未读优先在「未读」；最近阅读：已读且近 7 天内打开过
-      return `${baseWhere()} AND i.last_read_at IS NOT NULL AND i.is_unread = 0 AND i.last_read_at >= :recentReadSince`;
+      where = `${baseWhere()} AND i.last_read_at IS NOT NULL AND i.is_unread = 0 AND i.last_read_at >= :recentReadSince`;
+      break;
+    case 'article':
+    case 'gallery':
+    case 'video':
+      // 兼容旧客户端：filter=article 等价于 all + mediaKind
+      where = `${baseWhere()} AND i.media_kind = :mediaKind`;
+      break;
     case 'archived':
-      return `i.user_id = :userId AND i.deleted_at IS NULL AND i.is_archived = 1`;
+      where = `i.user_id = :userId AND i.deleted_at IS NULL AND i.is_archived = 1`;
+      break;
     default:
       throw Object.assign(new Error('未知的系统筛选'), { status: 400 });
   }
+  if (mediaKind && MEDIA_CODES.includes(mediaKind) && !MEDIA_CODES.includes(code)) {
+    where = `${where} AND i.media_kind = :mediaKind`;
+  }
+  return where;
 }
 
 function orderClause(code) {
@@ -80,8 +102,13 @@ function todayRange(tzOffsetMinutes = 480) {
   };
 }
 
-async function countByFilter(userId, code, range) {
-  const where = filterClause(code, range);
+function resolveMediaKind(code, mediaKind) {
+  if (MEDIA_CODES.includes(code)) return code;
+  if (mediaKind && MEDIA_CODES.includes(mediaKind)) return mediaKind;
+  return null;
+}
+
+function bindFilterParams(code, range, userId, mediaKind = null) {
   const params = { userId };
   if (code === 'today') {
     params.dayStart = range.dayStart;
@@ -90,6 +117,14 @@ async function countByFilter(userId, code, range) {
   if (code === 'recent_read') {
     params.recentReadSince = range.recentReadSince;
   }
+  const kind = resolveMediaKind(code, mediaKind);
+  if (kind) params.mediaKind = kind;
+  return params;
+}
+
+async function countByFilter(userId, code, range, mediaKind = null) {
+  const where = filterClause(code, range, mediaKind);
+  const params = bindFilterParams(code, range, userId, mediaKind);
   const [rows] = await pool.execute(
     `SELECT COUNT(*) AS cnt FROM items i WHERE ${where}`,
     params,
@@ -97,22 +132,16 @@ async function countByFilter(userId, code, range) {
   return Number(rows[0]?.cnt || 0);
 }
 
-/**
- * 系统筛选导航（含数量）
- */
-async function listSystemFilters(userId, tzOffsetMinutes = 480) {
+async function listFiltersByCodes(userId, codes, range) {
   const [defs] = await pool.execute(
     `SELECT id, code, name, sort_order
      FROM categories
      WHERE user_id = 0 AND section = 'system'
      ORDER BY sort_order ASC, id ASC`,
   );
-
-  const range = todayRange(tzOffsetMinutes);
   const byCode = new Map(defs.map((r) => [r.code, r]));
-
   const filters = [];
-  for (const code of SYSTEM_CODES) {
+  for (const code of codes) {
     const def = byCode.get(code);
     if (!def) continue;
     const itemCount = await countByFilter(userId, code, range);
@@ -127,6 +156,22 @@ async function listSystemFilters(userId, tzOffsetMinutes = 480) {
     });
   }
   return filters;
+}
+
+/**
+ * 系统筛选导航（含数量）
+ */
+async function listSystemFilters(userId, tzOffsetMinutes = 480) {
+  const range = todayRange(tzOffsetMinutes);
+  return listFiltersByCodes(userId, SYSTEM_CODES, range);
+}
+
+/**
+ * 内容形态筛选（文章 / 图集 / 视频）
+ */
+async function listMediaFilters(userId, tzOffsetMinutes = 480) {
+  const range = todayRange(tzOffsetMinutes);
+  return listFiltersByCodes(userId, MEDIA_CODES, range);
 }
 
 /**
@@ -168,27 +213,29 @@ function assertSystemFilter(code) {
 
 /**
  * 按系统筛选列出条目
+ * @param {object} [options]
+ * @param {string} [options.mediaKind] article|gallery|video，与状态筛选叠加
  */
 async function listItemsBySystemFilter(
   userId,
   code,
-  { tzOffsetMinutes = 480, limit = 50, offset = 0 } = {},
+  { tzOffsetMinutes = 480, limit = 50, offset = 0, mediaKind = null } = {},
 ) {
   assertSystemFilter(code);
+  const kind =
+    mediaKind && MEDIA_CODES.includes(String(mediaKind))
+      ? String(mediaKind)
+      : null;
+  if (mediaKind && !kind) {
+    throw Object.assign(new Error('未知的内容类型'), { status: 400 });
+  }
   const range = todayRange(tzOffsetMinutes);
-  const where = filterClause(code, range);
+  const where = filterClause(code, range, kind);
   const order = orderClause(code);
   const safeLimit = Math.min(Math.max(Number(limit) || 50, 1), 100);
   const safeOffset = Math.max(Number(offset) || 0, 0);
 
-  const params = { userId };
-  if (code === 'today') {
-    params.dayStart = range.dayStart;
-    params.dayEnd = range.dayEnd;
-  }
-  if (code === 'recent_read') {
-    params.recentReadSince = range.recentReadSince;
-  }
+  const params = bindFilterParams(code, range, userId, kind);
 
   const [rows] = await pool.execute(
     `SELECT i.*
@@ -199,10 +246,11 @@ async function listItemsBySystemFilter(
     params,
   );
 
-  const total = await countByFilter(userId, code, range);
+  const total = await countByFilter(userId, code, range, kind);
 
   return {
     filter: code,
+    mediaKind: kind,
     total,
     items: rows,
     limit: safeLimit,
@@ -212,9 +260,11 @@ async function listItemsBySystemFilter(
 
 module.exports = {
   SYSTEM_CODES,
+  MEDIA_CODES,
   OTHER_CODES,
   ALL_FILTER_CODES,
   listSystemFilters,
+  listMediaFilters,
   listOtherFilters,
   listItemsBySystemFilter,
   todayRange,

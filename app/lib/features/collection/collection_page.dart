@@ -113,11 +113,15 @@ class _CollectionPageState extends State<CollectionPage> {
       if (!mounted) return;
       final modulesResult =
           results[0] as ({List<TagModule> modules, List<Tag> ungrouped});
-      final filterResult =
-          results[1] as ({List<SystemFilter> filters, List<SystemFilter> others});
+      final filterResult = results[1] as ({
+        List<SystemFilter> filters,
+        List<SystemFilter> mediaFilters,
+        List<SystemFilter> others,
+      });
       setState(() {
         _modules = modulesResult.modules;
         _ungrouped = modulesResult.ungrouped;
+        // mediaFilters 留给「所有」列表页；收藏首页只展示状态类
         _systemFilters = filterResult.filters
             .where((f) => f.code != 'unread' && f.code != 'recent_read')
             .toList(growable: false);
@@ -448,6 +452,8 @@ class _CollectionPageState extends State<CollectionPage> {
                     children: [
                       if (_systemFilters.isNotEmpty)
                         _EntityGroup(
+                          title: '系统分类',
+                          subtitle: '按状态快速筛选收藏',
                           entries: [
                             for (final f in _systemFilters)
                               _EntityEntry(
@@ -552,6 +558,21 @@ class _CollectionNavIcon {
           icon: Icons.inventory_2_rounded,
           background: Color(0xFF96A0AF),
         );
+      case 'article':
+        return const _CollectionNavIcon(
+          icon: Icons.article_outlined,
+          background: Color(0xFF5B8FF9),
+        );
+      case 'gallery':
+        return const _CollectionNavIcon(
+          icon: Icons.photo_library_outlined,
+          background: Color(0xFF52C41A),
+        );
+      case 'video':
+        return const _CollectionNavIcon(
+          icon: Icons.play_circle_outline_rounded,
+          background: Color(0xFFFF6B6B),
+        );
       default:
         return const _CollectionNavIcon(
           icon: Icons.circle,
@@ -576,8 +597,14 @@ class _EntityEntry {
 }
 
 class _EntityGroup extends StatelessWidget {
-  const _EntityGroup({required this.entries});
+  const _EntityGroup({
+    required this.title,
+    required this.subtitle,
+    required this.entries,
+  });
 
+  final String title;
+  final String subtitle;
   final List<_EntityEntry> entries;
 
   static const _panelRadius = 16.0;
@@ -619,13 +646,13 @@ class _EntityGroup extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const SizedBox(
+                SizedBox(
                   height: 36,
                   child: Align(
                     alignment: Alignment.centerLeft,
                     child: Text(
-                      '系统分类',
-                      style: TextStyle(
+                      title,
+                      style: const TextStyle(
                         fontSize: 17,
                         fontWeight: FontWeight.w600,
                         letterSpacing: 0.6,
@@ -637,7 +664,7 @@ class _EntityGroup extends StatelessWidget {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  '按状态快速筛选收藏',
+                  subtitle,
                   style: TextStyle(
                     fontSize: 12,
                     height: 1.35,
