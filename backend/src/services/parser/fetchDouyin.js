@@ -178,28 +178,65 @@ function pickImageUrl(img) {
   );
 }
 
+/** 同图不同 CDN / ~tplv 尺寸 / query 时归一，避免图集张数膨胀 */
+function mediaDedupeKey(url) {
+  if (!url) return '';
+  try {
+    const u = new URL(String(url));
+    let path = u.pathname || '';
+    path = path.replace(/~[^/]+/g, '');
+    path = path.replace(/\/+/g, '/').replace(/\/$/, '');
+    return path.toLowerCase();
+  } catch {
+    return String(url).split('?')[0].replace(/~[^/]+/g, '').toLowerCase();
+  }
+}
+
+function imageIdentity(img) {
+  if (!img) return '';
+  if (typeof img === 'string') return mediaDedupeKey(img);
+  const uri = img.uri || img.Uri || img.uri_list?.[0];
+  if (uri && typeof uri === 'string') {
+    return uri
+      .replace(/^https?:\/\//i, '')
+      .split('?')[0]
+      .replace(/~[^/]+/g, '')
+      .toLowerCase();
+  }
+  return mediaDedupeKey(pickImageUrl(img));
+}
+
+/**
+ * 只取一份权威图集，勿把 images / image_list / image_post_info 拼在一起
+ *（同图不同 url_list 条目会变成 6×N 张）。
+ */
 function collectGallery(aweme) {
+  if (!aweme || typeof aweme !== 'object') return [];
+  const candidates = [
+    aweme.image_post_info?.images,
+    aweme.imagePostInfo?.images,
+    aweme.images,
+    aweme.image_post_info?.image_list,
+    aweme.imagePostInfo?.image_list,
+    aweme.image_list,
+    aweme.imageList,
+  ];
+  let src = [];
+  for (const arr of candidates) {
+    if (Array.isArray(arr) && arr.length) {
+      src = arr;
+      break;
+    }
+  }
   const gallery = [];
-  const src = [];
-  const pushAll = (arr) => {
-    if (Array.isArray(arr)) src.push(...arr);
-  };
-  pushAll(aweme.images);
-  pushAll(aweme.image_list);
-  pushAll(aweme.imageList);
-  if (aweme.image_post_info) {
-    pushAll(aweme.image_post_info.images);
-    pushAll(aweme.image_post_info.image_list);
-  }
-  if (aweme.imagePostInfo) {
-    pushAll(aweme.imagePostInfo.images);
-    pushAll(aweme.imagePostInfo.image_list);
-  }
+  const seen = new Set();
   for (const img of src) {
     const https = preferHttps(pickImageUrl(img));
-    if (https && !isJunkMediaUrl(https) && !gallery.includes(https)) {
-      gallery.push(https);
-    }
+    if (!https || isJunkMediaUrl(https)) continue;
+    const key = imageIdentity(img) || mediaDedupeKey(https);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    gallery.push(https);
   }
   return gallery;
 }
@@ -369,11 +406,14 @@ function extractDouyinFromHtml(html, opts = {}) {
         (desc.split(/\n+/).map((s) => s.trim()).find(Boolean) || '').slice(0, 40) ||
         null;
       const imageUrls = [];
+      const seenImg = new Set();
       const pushImg = (u) => {
         const https = preferHttps(u);
-        if (https && !isJunkMediaUrl(https) && !imageUrls.includes(https)) {
-          imageUrls.push(https);
-        }
+        if (!https || isJunkMediaUrl(https)) return;
+        const key = mediaDedupeKey(https);
+        if (!key || seenImg.has(key)) return;
+        seenImg.add(key);
+        imageUrls.push(https);
       };
       if (Array.isArray(data.imageUrls)) {
         for (const u of data.imageUrls) pushImg(u);
@@ -611,6 +651,8 @@ module.exports = {
   extractAwemeId,
   extractDouyinFromHtml,
   fetchDouyin,
+  collectGallery,
+  mediaDedupeKey,
   isNoteOrSlidesUrl,
   isWafChallenge,
   preferHttps,

@@ -686,27 +686,52 @@ class ClientWebViewFetch {
       firstUrlList(im.downloadUrlList ? {url_list: im.downloadUrlList} : null) ||
       abs(im.url);
   }
+  function mediaDedupeKey(url){
+    if(!url) return '';
+    try {
+      var u = new URL(String(url));
+      var path = u.pathname || '';
+      path = path.replace(/~[^/]+/g, '');
+      path = path.replace(/\/+/g, '/').replace(/\/$/, '');
+      return path.toLowerCase();
+    } catch (e) {
+      return String(url).split('?')[0].replace(/~[^/]+/g, '').toLowerCase();
+    }
+  }
+  function imageIdentity(im){
+    if(!im) return '';
+    if(typeof im==='string') return mediaDedupeKey(im);
+    var uri = im.uri || im.Uri || (im.uri_list && im.uri_list[0]);
+    if(uri && typeof uri==='string'){
+      return uri.replace(/^https?:\/\//i,'').split('?')[0].replace(/~[^/]+/g,'').toLowerCase();
+    }
+    return mediaDedupeKey(pickImageUrl(im));
+  }
+  // 只取一份权威图集，勿拼 images+image_list+image_post_info（同图不同 CDN 会变成 6×N）
   function collectGallery(aweme){
-    var out = [];
+    if(!aweme) return [];
+    var candidates = [
+      aweme.image_post_info && aweme.image_post_info.images,
+      aweme.imagePostInfo && aweme.imagePostInfo.images,
+      aweme.images,
+      aweme.image_post_info && aweme.image_post_info.image_list,
+      aweme.imagePostInfo && aweme.imagePostInfo.image_list,
+      aweme.image_list,
+      aweme.imageList
+    ];
     var src = [];
-    function pushAll(arr){
-      if(!Array.isArray(arr)) return;
-      for(var i=0;i<arr.length;i++) src.push(arr[i]);
+    for(var c=0;c<candidates.length;c++){
+      if(Array.isArray(candidates[c]) && candidates[c].length){ src = candidates[c]; break; }
     }
-    pushAll(aweme.images);
-    pushAll(aweme.image_list);
-    pushAll(aweme.imageList);
-    if(aweme.image_post_info){
-      pushAll(aweme.image_post_info.images);
-      pushAll(aweme.image_post_info.image_list);
-    }
-    if(aweme.imagePostInfo){
-      pushAll(aweme.imagePostInfo.images);
-      pushAll(aweme.imagePostInfo.image_list);
-    }
+    var out = [];
+    var seen = {};
     for(var i=0;i<src.length;i++){
       var one = pickImageUrl(src[i]);
-      if(one && !isJunk(one) && out.indexOf(one)<0) out.push(one);
+      if(!one || isJunk(one)) continue;
+      var key = imageIdentity(src[i]) || mediaDedupeKey(one);
+      if(!key || seen[key]) continue;
+      seen[key] = 1;
+      out.push(one);
     }
     return out;
   }
@@ -842,13 +867,18 @@ class ClientWebViewFetch {
     if(isJunk(cover)) cover = null;
     var gallery = (picked && picked.imageUrls) ? picked.imageUrls.slice() : [];
     gallery = gallery.filter(function(u){ return u && !isJunk(u); });
-    // note/slides：DOM 正文图并入（补 JSON 不全时）
-    if(isNotePage){
+    // note/slides：仅当 JSON 图集为空时才用 DOM 补图；有 JSON 时勿再塞缩略图（否则 6 张变二十多）
+    if(isNotePage && gallery.length === 0){
+      var seenDom = {};
       var imgs = document.querySelectorAll('img');
       for(var j=0;j<imgs.length;j++){
         var isrc = abs(imgs[j].currentSrc || imgs[j].src || '');
         if(!isrc || isJunk(isrc)) continue;
-        if(/tos-cn-p-|tos-cn-i-|~tplv-/i.test(isrc) && gallery.indexOf(isrc)<0) gallery.push(isrc);
+        if(!/tos-cn-p-|tos-cn-i-|~tplv-/i.test(isrc)) continue;
+        var dkey = mediaDedupeKey(isrc);
+        if(!dkey || seenDom[dkey]) continue;
+        seenDom[dkey] = 1;
+        gallery.push(isrc);
       }
     }
     if(!cover && gallery.length) cover = gallery[0];

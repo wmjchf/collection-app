@@ -271,7 +271,8 @@ class CollectionItem {
     return null;
   }
 
-  /// 展示用图集：有 imageUrls 用它，否则退回单封面（按 path 去重，避免同图不同 query *2）
+  /// 展示用图集：有 imageUrls 用它，否则退回单封面。
+  /// 去重：去掉 query，并剥掉 `~tplv-*` 等尺寸变换，避免同图多 CDN 变体刷屏。
   List<String> get displayImages {
     final raw = <String>[];
     if (imageUrls.isNotEmpty) {
@@ -285,12 +286,22 @@ class CollectionItem {
     for (final u in raw) {
       final t = u.trim();
       if (t.isEmpty) continue;
-      final key = t.split('?').first;
-      if (seen.contains(key)) continue;
+      final key = _mediaDedupeKey(t);
+      if (key.isEmpty || seen.contains(key)) continue;
       seen.add(key);
       out.add(t);
     }
     return out;
+  }
+
+  static String _mediaDedupeKey(String url) {
+    final uri = Uri.tryParse(url);
+    var path = (uri?.path.isNotEmpty == true ? uri!.path : url.split('?').first)
+        .trim();
+    path = path.replaceAll(RegExp(r'~[^/]+'), '');
+    path = path.replaceAll(RegExp(r'/+'), '/');
+    if (path.endsWith('/')) path = path.substring(0, path.length - 1);
+    return path.toLowerCase();
   }
 
   factory CollectionItem.fromJson(Map<String, dynamic> json) {
