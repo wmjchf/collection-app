@@ -59,7 +59,10 @@ module.exports = {
       'https://dashscope.aliyuncs.com/compatible-mode/v1',
     /** 百炼 API 根（转写等非 compatible-mode 接口）；默认同域推导 */
     dashScopeApiRoot: process.env.DASHSCOPE_API_ROOT || '',
+    /** 解读 / 脑图等付费能力默认模型 */
     aiModel: process.env.ALIYUN_AI_MODEL || 'qwen3.8-max',
+    /** 打标 / 自动归类（调用量大，用更便宜的 flash） */
+    aiModelTags: process.env.ALIYUN_AI_MODEL_TAGS || 'qwen3.8-flash',
   },
   /**
    * 月额度：free / basic / prince / emperor；USAGE_ENFORCING 控制触顶（默认 true）

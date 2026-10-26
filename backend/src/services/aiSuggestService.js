@@ -256,7 +256,10 @@ async function requestAiSuggest(userId, itemId, { force = false, autoApply = fal
       regenerateFrom,
       autoApply: autoApplyFlag,
     });
-    meta.model = require('../config').aliyun.aiModel || 'qwen3.8-max';
+    meta.model =
+      require('../config').aliyun.aiModelTags ||
+      require('../config').aliyun.aiModel ||
+      'qwen3.8-flash';
     await saveAiMeta(itemId, meta);
 
     const itemService = require('./itemService');
@@ -302,7 +305,10 @@ async function requestAiSuggest(userId, itemId, { force = false, autoApply = fal
     regenerateFrom,
     autoApply: autoApplyFlag,
   });
-  meta.model = require('../config').aliyun.aiModel || 'qwen3.8-max';
+  meta.model =
+    require('../config').aliyun.aiModelTags ||
+    require('../config').aliyun.aiModel ||
+    'qwen3.8-flash';
   await saveAiMeta(itemId, meta);
 
   const { enqueueAiSuggest } = require('./aiSuggestQueue');
@@ -397,8 +403,13 @@ async function runAiSuggestJob(itemId) {
       });
     }
 
+    const tagsModel =
+      require('../config').aliyun.aiModelTags ||
+      require('../config').aliyun.aiModel ||
+      'qwen3.8-flash';
     const { json: result, usage: modelUsage } = await aliyunDashScope.chatJson({
       messages,
+      model: tagsModel,
     });
 
     const rawTags = Array.isArray(result?.tags) ? result.tags : [];

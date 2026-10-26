@@ -247,8 +247,13 @@ async function suggestOrganize(userId, { hint, skipQuota = false } = {}) {
     });
   }
 
+  const tagsModel =
+    require('../config').aliyun.aiModelTags ||
+    require('../config').aliyun.aiModel ||
+    'qwen3.8-flash';
   const { json: result, usage: modelUsage } = await aliyunDashScope.chatJson({
     messages,
+    model: tagsModel,
   });
 
   const proposal = normalizeProposal(
