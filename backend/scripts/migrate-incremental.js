@@ -233,6 +233,74 @@ async function apply019(conn) {
   );
 }
 
+async function tableExists(conn, dbName, table) {
+  const [rows] = await conn.query(
+    `
+    SELECT 1 FROM information_schema.TABLES
+    WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?
+    LIMIT 1
+    `,
+    [dbName, table],
+  );
+  return rows.length > 0;
+}
+
+/** 001 全量 schema 已含 tag_modules / module_id 时幂等跳过 */
+async function apply022(conn, dbName) {
+  if (!(await tableExists(conn, dbName, 'tag_modules'))) {
+    await conn.query(`
+CREATE TABLE IF NOT EXISTS \`tag_modules\` (
+  \`id\` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  \`user_id\` BIGINT UNSIGNED NOT NULL,
+  \`name\` VARCHAR(64) NOT NULL,
+  \`sort_order\` INT NOT NULL DEFAULT 0,
+  \`created_at\` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  \`updated_at\` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+  PRIMARY KEY (\`id\`),
+  UNIQUE KEY \`uk_tag_modules_user_name\` (\`user_id\`, \`name\`),
+  KEY \`idx_tag_modules_user_sort\` (\`user_id\`, \`sort_order\`),
+  CONSTRAINT \`fk_tag_modules_user\` FOREIGN KEY (\`user_id\`) REFERENCES \`users\` (\`id\`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`);
+    console.log('[db:migrate] 022: 已创建 tag_modules');
+  } else {
+    console.log('[db:migrate] 022: tag_modules 已存在，跳过建表');
+  }
+
+  if (!(await columnExists(conn, dbName, 'categories', 'module_id'))) {
+    await conn.query(`
+ALTER TABLE \`categories\`
+  ADD COLUMN \`module_id\` BIGINT UNSIGNED DEFAULT NULL
+    COMMENT '标签所属模块；仅 section=tag' AFTER \`sort_order\``);
+    console.log('[db:migrate] 022: 已添加 module_id');
+  } else {
+    console.log('[db:migrate] 022: module_id 已存在，跳过加列');
+  }
+
+  if (!(await indexExists(conn, dbName, 'categories', 'idx_categories_module'))) {
+    await conn.query(
+      'ALTER TABLE `categories` ADD KEY `idx_categories_module` (`module_id`)',
+    );
+    console.log('[db:migrate] 022: 已添加 idx_categories_module');
+  }
+
+  const [fks] = await conn.query(
+    `
+    SELECT 1 FROM information_schema.TABLE_CONSTRAINTS
+    WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'categories'
+      AND CONSTRAINT_NAME = 'fk_categories_module' AND CONSTRAINT_TYPE = 'FOREIGN KEY'
+    LIMIT 1
+    `,
+    [dbName],
+  );
+  if (!fks.length) {
+    await conn.query(`
+ALTER TABLE \`categories\`
+  ADD CONSTRAINT \`fk_categories_module\`
+    FOREIGN KEY (\`module_id\`) REFERENCES \`tag_modules\` (\`id\`) ON DELETE SET NULL`);
+    console.log('[db:migrate] 022: 已添加 fk_categories_module');
+  }
+}
+
 async function apply024(conn, dbName) {
   if (await columnExists(conn, dbName, 'categories', 'description')) {
     console.log('[db:migrate] 024: description 已存在，跳过');
@@ -241,6 +309,20 @@ async function apply024(conn, dbName) {
   await conn.query(
     "ALTER TABLE `categories` ADD COLUMN `description` VARCHAR(80) DEFAULT NULL COMMENT '标签短说明（可选）' AFTER `name`",
   );
+}
+
+async function apply030(conn, dbName) {
+  if (await columnExists(conn, dbName, 'users', 'survey_completed_at')) {
+    console.log('[db:migrate] 030: survey_* 已存在，跳过');
+    return;
+  }
+  await conn.query(`
+ALTER TABLE \`users\`
+  ADD COLUMN \`survey_completed_at\` DATETIME(3) DEFAULT NULL AFTER \`last_login_at\`,
+  ADD COLUMN \`survey_age_range\` VARCHAR(32) DEFAULT NULL AFTER \`survey_completed_at\`,
+  ADD COLUMN \`survey_source\` VARCHAR(32) DEFAULT NULL AFTER \`survey_age_range\`,
+  ADD COLUMN \`survey_interests\` JSON DEFAULT NULL AFTER \`survey_source\``);
+  console.log('[db:migrate] 030: 已添加 survey_*');
 }
 
 async function apply026(conn, dbName) {
@@ -353,12 +435,20 @@ async function applyMigration(conn, dbName, file) {
     await apply019(conn);
     return;
   }
+  if (file === '022_tag_modules.sql') {
+    await apply022(conn, dbName);
+    return;
+  }
   if (file === '024_tag_description.sql') {
     await apply024(conn, dbName);
     return;
   }
   if (file === '026_help_page_blocks.sql') {
     await apply026(conn, dbName);
+    return;
+  }
+  if (file === '030_user_onboarding_survey.sql') {
+    await apply030(conn, dbName);
     return;
   }
   if (file === '032_annotation_source.sql') {

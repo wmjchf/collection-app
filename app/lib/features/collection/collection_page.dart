@@ -121,10 +121,13 @@ class _CollectionPageState extends State<CollectionPage> {
       setState(() {
         _modules = modulesResult.modules;
         _ungrouped = modulesResult.ungrouped;
-        // mediaFilters 留给「所有」列表页；收藏首页只展示状态类
-        _systemFilters = filterResult.filters
-            .where((f) => f.code != 'unread' && f.code != 'recent_read')
-            .toList(growable: false);
+        // mediaFilters 留给列表页；收藏首页：所有 / 今天 / 最近阅读 / 批注
+        // （无标签、未读不在此展示；未读在首页）
+        const order = ['all', 'today', 'recent_read', 'annotated'];
+        _systemFilters = [
+          for (final code in order)
+            ...filterResult.filters.where((f) => f.code == code),
+        ];
         _loading = false;
         _error = null;
       });

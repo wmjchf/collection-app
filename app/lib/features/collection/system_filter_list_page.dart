@@ -47,7 +47,7 @@ class _SystemFilterListPageState extends State<SystemFilterListPage>
   bool _loadingMore = false;
   String? _error;
 
-  /// 状态列表内的形态筛选（未读 / 所有 / 今天 / 无标签 / 批注）。
+  /// 状态列表内的形态筛选（未读 / 所有 / 今天 / 最近阅读 / 批注等）。
   String? _mediaKind;
 
   bool _selecting = false;
@@ -60,6 +60,7 @@ class _SystemFilterListPageState extends State<SystemFilterListPage>
       widget.code == 'unread' ||
       widget.code == 'all' ||
       widget.code == 'today' ||
+      widget.code == 'recent_read' ||
       widget.code == 'untagged' ||
       widget.code == 'annotated';
   bool get _allSelected =>
@@ -216,6 +217,8 @@ class _SystemFilterListPageState extends State<SystemFilterListPage>
             return Icons.calendar_today_outlined;
           case 'untagged':
             return Icons.label_off_outlined;
+          case 'recent_read':
+            return Icons.schedule_rounded;
           case 'annotated':
             return Icons.edit_outlined;
           default:

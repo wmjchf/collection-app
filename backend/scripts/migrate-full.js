@@ -40,7 +40,10 @@ async function main() {
       applied_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
   `);
-  const incremental = [
+  // 001_schema.sql 已是「当前快照」，下列增量效果已烘焙进 001，标为已执行，
+  // 避免随后 pnpm db:migrate 再 ALTER 撞 Duplicate column。
+  // 未列入的（如 010/012–021/025–027/031/033–034）仍须跑增量。
+  const alreadyInFullSchema = [
     '002_last_read_at.sql',
     '003_trash_rename.sql',
     '004_item_image_urls.sql',
@@ -48,8 +51,20 @@ async function main() {
     '007_transcript_segments.sql',
     '008_item_ai_meta.sql',
     '009_trash_system_section.sql',
+    '011_drop_untagged.sql',
+    '017_remove_trash.sql',
+    '018_remove_starred_filter.sql',
+    '021_remove_parsed_filter.sql',
+    '022_tag_modules.sql',
+    '023_untagged_system_filter.sql',
+    '024_tag_description.sql',
+    '028_rename_untagged_filter.sql',
+    '029_rename_annotated_filter.sql',
+    '030_user_onboarding_survey.sql',
+    '032_annotation_source.sql',
+    '035_item_media_kind.sql',
   ];
-  for (const name of incremental) {
+  for (const name of alreadyInFullSchema) {
     await conn.query(
       'INSERT IGNORE INTO schema_migrations (name) VALUES (?)',
       [name],

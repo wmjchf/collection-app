@@ -1843,7 +1843,7 @@ button {
   color: var(--blue);
 }
 
-/* 状态列表（未读/所有/今天/无标签/批注）：文章 / 图集 / 视频 */
+/* 状态列表（未读/所有/今天/最近阅读/批注等）：文章 / 图集 / 视频 */
 .more-media-kinds {
   display: flex;
   flex-wrap: wrap;

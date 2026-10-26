@@ -233,11 +233,11 @@ function emptyCollection() {
   };
 }
 
-/** 与 App 收藏页一致：首页已有未读/漫游，这里不再展示 unread / recent_read */
+/** 与 App 收藏页一致：所有 / 今天 / 最近阅读 / 批注（不含未读、无标签） */
 function collectionFilters(filters) {
-  return (filters || []).filter(
-    (f) => f.code !== 'unread' && f.code !== 'recent_read',
-  );
+  const order = ['all', 'today', 'recent_read', 'annotated'];
+  const byCode = new Map((filters || []).map((f) => [f.code, f]));
+  return order.map((code) => byCode.get(code)).filter(Boolean);
 }
 
 function filterDisplayName(filter) {
@@ -1123,6 +1123,7 @@ function showMoreMediaKinds() {
     (more.key === 'unread' ||
       more.key === 'all' ||
       more.key === 'today' ||
+      more.key === 'recent_read' ||
       more.key === 'untagged' ||
       more.key === 'annotated')
   );
