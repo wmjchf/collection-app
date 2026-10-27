@@ -361,7 +361,7 @@ class _ReadingSummarySheetState extends State<_ReadingSummarySheet> {
               ),
             ),
             if (share) ...[
-              const SizedBox(width: 8),
+              const Spacer(),
               _summaryShareButton(),
             ],
           ],
