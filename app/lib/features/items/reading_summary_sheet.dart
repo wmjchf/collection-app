@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:super_collection/core/analytics/analytics.dart';
 import 'package:super_collection/core/network/api_client.dart';
 import 'package:super_collection/core/ui/app_bottom_sheet.dart';
 import 'package:super_collection/core/ui/app_toast.dart';
@@ -9,6 +10,7 @@ import 'package:super_collection/features/items/ai_scholar_copy.dart';
 import 'package:super_collection/features/items/item_models.dart';
 import 'package:super_collection/features/items/items_repository.dart';
 import 'package:super_collection/features/items/reading_quote_share.dart';
+import 'package:super_collection/features/items/reading_regenerate_confirm_dialog.dart';
 import 'package:super_collection/features/items/transcript_models.dart';
 import 'package:super_collection/features/settings/quota_gate.dart';
 import 'package:super_collection/features/settings/usage_repository.dart';
@@ -54,13 +56,16 @@ class _ReadingSummarySheetState extends State<_ReadingSummarySheet> {
   final _repo = ItemsRepository();
   late CollectionItem _item;
   bool _requesting = false;
-  bool _retryInFlight = false;
+  bool _generateInFlight = false;
   bool _isPro = false;
   int _pollGen = 0;
 
   AiSummaryMeta get _meta => _item.aiMeta.summary;
 
   bool get _hasResult => _meta.isSuccess && _meta.hasText;
+
+  bool get _shouldAutoStart =>
+      !_meta.isPending && !_meta.isFailed && !_hasResult;
 
   @override
   void initState() {
@@ -69,6 +74,11 @@ class _ReadingSummarySheetState extends State<_ReadingSummarySheet> {
     unawaited(_loadPro());
     if (_meta.isPending) {
       unawaited(_poll());
+    } else if (_shouldAutoStart) {
+      _requesting = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) unawaited(_generate());
+      });
     }
   }
 
@@ -91,30 +101,75 @@ class _ReadingSummarySheetState extends State<_ReadingSummarySheet> {
     widget.onItemUpdated?.call(item);
   }
 
-  /// 失败重试：走自动解读通道（不计额度），不再提供「重新生成」入口。
-  Future<void> _retryAuto() async {
-    if (_retryInFlight || _meta.isPending || _hasResult) return;
+  Future<void> _generate({bool force = false}) async {
+    if (_generateInFlight || _meta.isPending) return;
 
-    _retryInFlight = true;
-    setState(() => _requesting = true);
+    if (_item.hasAnyTranscriptPending && !_meta.awaitTranscript) {
+      if (mounted) {
+        setState(() => _requesting = false);
+        AppToast.show(context, '转写进行中，请稍候再生成 AI 解读');
+      }
+      return;
+    }
+    if (!_item.canRequestAiSuggest &&
+        !_item.shouldAutoTranscribeBeforeMindmap) {
+      if (mounted) {
+        setState(() => _requesting = false);
+        AppToast.show(context, '内容不足，无法生成 AI 解读');
+      }
+      return;
+    }
+
+    final needs = <PlanFeatureRequirement>[
+      (has: (f) => f.aiSummary, tier: UsagePlan.prince),
+    ];
+    if (_item.shouldAutoTranscribeBeforeMindmap) {
+      needs.add((has: (f) => f.transcript, tier: UsagePlan.prince));
+    }
+    final allowed = await ensurePlanFeatures(
+      context,
+      hasResultOrPending: false,
+      requirements: needs,
+    );
+    if (!allowed || !mounted) {
+      if (mounted) setState(() => _requesting = false);
+      return;
+    }
+
+    final isRegen = force || _hasResult;
+    if (isRegen) {
+      final ok = await showReadingRegenerateConfirmDialog(
+        context,
+        ReadingRegenerateKind.summary,
+      );
+      if (ok != true || !mounted) return;
+      force = true;
+    }
+
+    _generateInFlight = true;
+    if (!_requesting) setState(() => _requesting = true);
     try {
+      Analytics.instance.aiSummaryRequest(
+        itemId: widget.itemId,
+        force: force,
+      );
       final updated = await _repo.requestSummary(
         widget.itemId,
-        auto: true,
+        force: force,
       );
       if (!mounted) return;
       _syncItem(updated);
-      _retryInFlight = false;
+      _generateInFlight = false;
       setState(() => _requesting = false);
       unawaited(_poll());
     } on ApiException catch (e) {
       if (!mounted) return;
-      _retryInFlight = false;
+      _generateInFlight = false;
       setState(() => _requesting = false);
       await handleApiException(context, e);
     } catch (_) {
       if (!mounted) return;
-      _retryInFlight = false;
+      _generateInFlight = false;
       setState(() => _requesting = false);
       AppToast.show(context, '生成失败，请稍后重试');
     }
@@ -208,7 +263,12 @@ class _ReadingSummarySheetState extends State<_ReadingSummarySheet> {
         final item = await _repo.getItem(widget.itemId);
         if (!mounted || gen != _pollGen) return;
         _syncItem(item);
-        if (st.summary.isFailed) {
+        if (st.summary.isSuccess) {
+          AppToast.show(
+            context,
+            aiDoneToast('AI 解读已生成', st.summary.creditsUsed),
+          );
+        } else if (st.summary.isFailed) {
           AppToast.show(context, st.summary.error ?? 'AI 解读生成失败');
         }
         return;
@@ -221,6 +281,7 @@ class _ReadingSummarySheetState extends State<_ReadingSummarySheet> {
   @override
   Widget build(BuildContext context) {
     final maxSheetHeight = MediaQuery.sizeOf(context).height * 0.72;
+    final showRegen = _hasResult && !_meta.isPending && !_requesting;
 
     return Material(
       color: Colors.white,
@@ -245,13 +306,32 @@ class _ReadingSummarySheetState extends State<_ReadingSummarySheet> {
                 ),
               ),
               const SizedBox(height: 12),
-              const Text(
-                'AI 解读',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w700,
-                  color: _text,
-                ),
+              Row(
+                children: [
+                  const Expanded(
+                    child: Text(
+                      'AI 解读',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                        color: _text,
+                      ),
+                    ),
+                  ),
+                  if (showRegen)
+                    GestureDetector(
+                      onTap: () => unawaited(_generate(force: true)),
+                      behavior: HitTestBehavior.opaque,
+                      child: const Padding(
+                        padding: EdgeInsets.all(4),
+                        child: Icon(
+                          Icons.refresh_rounded,
+                          size: 20,
+                          color: _muted,
+                        ),
+                      ),
+                    ),
+                ],
               ),
               const SizedBox(height: 12),
               ConstrainedBox(
@@ -397,7 +477,7 @@ class _ReadingSummarySheetState extends State<_ReadingSummarySheet> {
             ),
             const SizedBox(height: 10),
             GestureDetector(
-              onTap: () => unawaited(_retryAuto()),
+              onTap: () => unawaited(_generate(force: true)),
               child: const Text(
                 '重试',
                 style: TextStyle(
@@ -446,34 +526,14 @@ class _ReadingSummarySheetState extends State<_ReadingSummarySheet> {
 
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 24),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(
-            '解析完成后会自动生成总结与解读',
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              fontSize: 14,
-              color: _muted.withValues(alpha: 0.9),
-              height: 1.5,
-            ),
-          ),
-          if (_item.canRequestAiSuggest &&
-              !_item.shouldAutoTranscribeBeforeMindmap) ...[
-            const SizedBox(height: 12),
-            GestureDetector(
-              onTap: () => unawaited(_retryAuto()),
-              child: const Text(
-                '现在生成',
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: _blue,
-                ),
-              ),
-            ),
-          ],
-        ],
+      child: Text(
+        '根据正文提炼核心要点，方便快速回顾',
+        textAlign: TextAlign.center,
+        style: TextStyle(
+          fontSize: 14,
+          color: _muted.withValues(alpha: 0.9),
+          height: 1.5,
+        ),
       ),
     );
   }

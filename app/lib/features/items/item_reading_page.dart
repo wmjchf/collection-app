@@ -651,7 +651,22 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
   }
 
   Future<void> _openSummarySheet() async {
-    // 解读/总结解析后自动生成，全员可查看；不再卡门控
+    final summary = _item.aiMeta.summary;
+    final needs = <PlanFeatureRequirement>[
+      (has: (f) => f.aiSummary, tier: UsagePlan.prince),
+    ];
+    if (_item.shouldAutoTranscribeBeforeMindmap) {
+      needs.add((has: (f) => f.transcript, tier: UsagePlan.prince));
+    }
+    final ok = await ensurePlanFeatures(
+      context,
+      usageRepo: _usageRepo,
+      hasResultOrPending:
+          summary.hasText || summary.isPending || summary.isFailed,
+      requirements: needs,
+    );
+    if (!ok || !mounted) return;
+
     _summaryPollGen++;
     await showReadingSummarySheet(
       context,

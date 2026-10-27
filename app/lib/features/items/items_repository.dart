@@ -466,14 +466,12 @@ class ItemsRepository {
   Future<CollectionItem> requestSummary(
     int id, {
     bool force = false,
-    bool auto = false,
   }) async {
     final token = await _token();
     final json = await _api.post(
       '/api/items/$id/summary',
       body: {
         'force': force,
-        'auto': auto,
       },
       accessToken: token,
     );
