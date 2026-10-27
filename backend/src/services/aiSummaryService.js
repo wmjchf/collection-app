@@ -2,6 +2,7 @@ const { pool } = require('../db');
 const aiMeta = require('./aiMeta');
 const aliyunDashScope = require('./aliyunDashScope');
 const transcriptSegments = require('./transcriptSegments');
+const itemMediaKind = require('./itemMediaKind');
 const {
   hasAiInput,
   buildInputText,
@@ -12,6 +13,14 @@ const {
   snapshotRegenerateFrom,
   formatRegenerateUserBlock,
 } = require('./aiRegeneratePrompt');
+
+function summaryModelId() {
+  return (
+    require('../config').aliyun.aiModelSummary ||
+    require('../config').aliyun.aiModel ||
+    'qwen3.8-flash'
+  );
+}
 
 const SUMMARY_SYSTEM_PROMPT = `你是内容解读助手。输入已是用户收藏的可读文本（标题、正文、音视频转写稿等），**不要假设还能打开链接、看视频或拉取字幕**。信息不足时在 text 中简短说明缺什么，禁止编造。
 
@@ -130,7 +139,11 @@ async function onTranscriptSettledForSummary(itemId) {
   enqueueSummary(itemId);
 }
 
-async function requestSummary(userId, itemId, { force = false } = {}) {
+async function requestSummary(
+  userId,
+  itemId,
+  { force = false, autoApply = false } = {},
+) {
   if (!aliyunDashScope.isConfigured()) {
     throw Object.assign(
       new Error('AI 未配置：请设置 DASHSCOPE_API_KEY'),
@@ -166,15 +179,22 @@ async function requestSummary(userId, itemId, { force = false } = {}) {
     return itemService.getByIdForUser(userId, itemId);
   }
 
+  const autoApplyFlag = autoApply === true;
   const usageService = require('./usageService');
-  await usageService.assertPlanFeatureForUser(userId, 'ai_summary');
-  await usageService.assertAiQuota(userId);
+  // 自动解读对全员开放；手动仍卡门控与额度
+  if (!autoApplyFlag) {
+    await usageService.assertPlanFeatureForUser(userId, 'ai_summary');
+    await usageService.assertAiQuota(userId);
+  }
 
-  const regenerateFrom = force
-    ? snapshotRegenerateFrom(meta, 'summary')
-    : null;
+  const regenerateFrom =
+    force && !autoApplyFlag ? snapshotRegenerateFrom(meta, 'summary') : null;
 
   if (transcriptSegments.shouldAutoTranscribeBeforeMindmap(row)) {
+    // 自动解读不拉转写（视频应已在 maybeAuto 跳过或等转写后再入队）
+    if (autoApplyFlag) {
+      throw Object.assign(new Error('视频内容不自动解读'), { status: 400 });
+    }
     await usageService.assertTranscriptQuota(userId);
     const aliyunAsr = require('./aliyunAsr');
     if (!aliyunAsr.isConfigured()) {
@@ -195,13 +215,14 @@ async function requestSummary(userId, itemId, { force = false } = {}) {
       status: 'pending',
       awaitTranscript: true,
       text: null,
-    brief: null,
+      brief: null,
       contentHash: null,
       error: null,
       generatedAt: null,
       regenerateFrom,
+      autoApply: false,
     });
-    meta.model = require('../config').aliyun.aiModel || 'qwen3.8-max';
+    meta.model = summaryModelId();
     await saveAiMeta(itemId, meta);
 
     const itemService = require('./itemService');
@@ -227,14 +248,16 @@ async function requestSummary(userId, itemId, { force = false } = {}) {
   const previewMessages = buildAiTaskMessages(inputText, [
     SUMMARY_SYSTEM_PROMPT,
     regenBlock,
-      '请按上述要求解读内容，并另写 brief：把文章核心说清楚即可，不限字数，不要把 text 写成摘要提纲。输出 JSON（仅 JSON，无其它文字）。',
-    ]);
-  await usageService.assertAiQuota(userId, {
-    estimatedTokens: usageService.estimateAiTokens({
-      messages: previewMessages,
-      feature: 'summary',
-    }),
-  });
+    '请按上述要求解读内容，并另写 brief：把文章核心说清楚即可，不限字数，不要把 text 写成摘要提纲。输出 JSON（仅 JSON，无其它文字）。',
+  ]);
+  if (!autoApplyFlag) {
+    await usageService.assertAiQuota(userId, {
+      estimatedTokens: usageService.estimateAiTokens({
+        messages: previewMessages,
+        feature: 'summary',
+      }),
+    });
+  }
 
   meta = aiMeta.withSummaryState(meta, {
     status: 'pending',
@@ -245,8 +268,9 @@ async function requestSummary(userId, itemId, { force = false } = {}) {
     error: null,
     generatedAt: null,
     regenerateFrom,
+    autoApply: autoApplyFlag,
   });
-  meta.model = require('../config').aliyun.aiModel || 'qwen3.8-max';
+  meta.model = summaryModelId();
   await saveAiMeta(itemId, meta);
 
   const { enqueueSummary } = require('./aiSummaryQueue');
@@ -296,15 +320,19 @@ async function runSummaryJob(itemId) {
     ]);
 
     const usageService = require('./usageService');
-    await usageService.assertAiQuota(row.user_id, {
-      estimatedTokens: usageService.estimateAiTokens({
-        messages,
-        feature: 'summary',
-      }),
-    });
+    const isAuto = meta.summary.autoApply === true;
+    if (!isAuto) {
+      await usageService.assertAiQuota(row.user_id, {
+        estimatedTokens: usageService.estimateAiTokens({
+          messages,
+          feature: 'summary',
+        }),
+      });
+    }
 
     const { json: result, usage: modelUsage } = await aliyunDashScope.chatJson({
       messages,
+      model: summaryModelId(),
     });
 
     const text = normalizeSummaryText(result);
@@ -315,7 +343,9 @@ async function runSummaryJob(itemId) {
 
     const contentHash = computeContentHash(row);
     const generatedAt = new Date().toISOString();
-    const creditsUsed = usageService.creditsFromModelUsage(modelUsage);
+    const creditsUsed = isAuto
+      ? null
+      : usageService.creditsFromModelUsage(modelUsage);
     meta = aiMeta.withSummaryState(meta, {
       status: 'success',
       awaitTranscript: false,
@@ -326,33 +356,44 @@ async function runSummaryJob(itemId) {
       generatedAt,
       regenerateFrom: null,
       creditsUsed: creditsUsed || null,
+      autoApply: false,
     });
     await saveAiMeta(itemId, meta);
-    require('./analyticsService').trackAiJobOutcome(row, 'summary', { ok: true });
-    try {
-      await usageService.recordAiTokenUsage({
-        userId: row.user_id,
-        itemId,
-        feature: 'summary',
-        tokens: modelUsage.totalTokens,
-        generatedAt,
-        meta: modelUsage,
-      });
-    } catch (usageErr) {
-      console.warn(`[runSummaryJob] usage record failed item=${itemId}`, usageErr.message);
+    require('./analyticsService').trackAiJobOutcome(row, 'summary', {
+      ok: true,
+      extra: { auto: isAuto },
+    });
+    // 自动解读不计用户额度（仍消耗我方模型费）
+    if (!isAuto) {
+      try {
+        await usageService.recordAiTokenUsage({
+          userId: row.user_id,
+          itemId,
+          feature: 'summary',
+          tokens: modelUsage.totalTokens,
+          generatedAt,
+          meta: modelUsage,
+        });
+      } catch (usageErr) {
+        console.warn(
+          `[runSummaryJob] usage record failed item=${itemId}`,
+          usageErr.message,
+        );
+      }
     }
     console.log(
-      `[runSummaryJob] ok item=${itemId} billable=${usageService.billableAiTokensFromUsage(modelUsage)} total=${modelUsage.totalTokens} cached=${modelUsage.cachedTokens || 0} ms=${Date.now() - started}`,
+      `[runSummaryJob] ok item=${itemId} auto=${isAuto} billable=${usageService.billableAiTokensFromUsage(modelUsage)} total=${modelUsage.totalTokens} cached=${modelUsage.cachedTokens || 0} ms=${Date.now() - started}`,
     );
   } catch (err) {
     meta = aiMeta.withSummaryState(meta, {
       status: 'failed',
       awaitTranscript: false,
       text: null,
-    brief: null,
+      brief: null,
       error: (err.message || '生成失败').slice(0, 500),
       generatedAt: new Date().toISOString(),
       regenerateFrom: null,
+      autoApply: false,
     });
     await saveAiMeta(itemId, meta);
     require('./analyticsService').trackAiJobOutcome(row, 'summary', {
@@ -366,10 +407,99 @@ async function runSummaryJob(itemId) {
   }
 }
 
+/**
+ * 解析成功后：文章全员自动解读；图集跳过；视频等转写成功后再生成。
+ */
+async function maybeAutoSummaryAfterParse(userId, itemId) {
+  try {
+    if (!aliyunDashScope.isConfigured()) return;
+
+    const guideItemService = require('./guideItemService');
+    const row = await getItemRow(itemId, userId);
+    if (!row) return;
+    if (guideItemService.isGuideItem(row)) return;
+    if (itemMediaKind.isImageGallery(row)) {
+      console.log(`[maybeAutoSummaryAfterParse] skip gallery item=${itemId}`);
+      return;
+    }
+    if (itemMediaKind.hasTopVideo(row)) {
+      const target = transcriptSegments.topBarTranscriptTarget(row);
+      const ready =
+        target &&
+        target.status === 'success' &&
+        String(target.text || '').trim();
+      if (!ready) {
+        console.log(
+          `[maybeAutoSummaryAfterParse] defer video until transcript item=${itemId}`,
+        );
+        return;
+      }
+    }
+
+    const meta = aiMeta.parseAiMeta(row.ai_meta);
+    if (meta.summary.status === 'pending') return;
+    if (meta.summary.status === 'success' && meta.summary.text) return;
+    if (!hasAiInput(row)) return;
+
+    await requestSummary(userId, itemId, { autoApply: true });
+    console.log(`[maybeAutoSummaryAfterParse] enqueued item=${itemId}`);
+  } catch (err) {
+    console.warn(
+      `[maybeAutoSummaryAfterParse] skip item=${itemId}`,
+      err.message || err,
+    );
+  }
+}
+
+/**
+ * 转写成功后：顶栏视频条目自动解读（图集不打；已有成功解读则跳过）。
+ */
+async function maybeAutoSummaryAfterTranscript(itemId) {
+  try {
+    if (!aliyunDashScope.isConfigured()) return;
+
+    const [rows] = await pool.execute(
+      `SELECT * FROM items WHERE id = :itemId AND deleted_at IS NULL LIMIT 1`,
+      { itemId },
+    );
+    const row = rows[0];
+    if (!row) return;
+
+    const guideItemService = require('./guideItemService');
+    if (guideItemService.isGuideItem(row)) return;
+    if (itemMediaKind.isImageGallery(row)) return;
+    if (!itemMediaKind.hasTopVideo(row)) return;
+
+    const target = transcriptSegments.topBarTranscriptTarget(row);
+    if (
+      !target ||
+      target.status !== 'success' ||
+      !String(target.text || '').trim()
+    ) {
+      return;
+    }
+
+    const meta = aiMeta.parseAiMeta(row.ai_meta);
+    if (meta.summary.status === 'pending') return;
+    if (meta.summary.status === 'success' && meta.summary.text) return;
+    if (!hasAiInput(row)) return;
+
+    await requestSummary(row.user_id, itemId, { autoApply: true });
+    console.log(`[maybeAutoSummaryAfterTranscript] enqueued item=${itemId}`);
+  } catch (err) {
+    console.warn(
+      `[maybeAutoSummaryAfterTranscript] skip item=${itemId}`,
+      err.message || err,
+    );
+  }
+}
+
 module.exports = {
   requestSummary,
   getSummaryStatus,
   runSummaryJob,
   failSummaryJob,
   onTranscriptSettledForSummary,
+  maybeAutoSummaryAfterParse,
+  maybeAutoSummaryAfterTranscript,
 };

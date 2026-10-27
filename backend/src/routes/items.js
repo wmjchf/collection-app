@@ -282,6 +282,7 @@ router.post('/:id/summary', async (req, res, next) => {
       Number(req.params.id),
       {
         force: !!req.body?.force,
+        autoApply: !!req.body?.auto,
       },
     );
     return res.json({ item, message: '正在生成 AI 总结…' });

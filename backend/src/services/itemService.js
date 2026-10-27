@@ -411,8 +411,13 @@ async function runContentParse(itemId) {
         via: 'server',
       });
       setImmediate(() => {
-        require('./aiSuggestService')
+        const aiSuggestService = require('./aiSuggestService');
+        const aiSummaryService = require('./aiSummaryService');
+        aiSuggestService
           .maybeAutoTagAfterParse(row.user_id, itemId)
+          .catch(() => {});
+        aiSummaryService
+          .maybeAutoSummaryAfterParse(row.user_id, itemId)
           .catch(() => {});
       });
       return;
@@ -571,8 +576,11 @@ async function parseWithClientHtml(userId, itemId, html) {
       { ok: true, via: 'client_html' },
     );
     setImmediate(() => {
-      require('./aiSuggestService')
-        .maybeAutoTagAfterParse(userId, itemId)
+      const aiSuggestService = require('./aiSuggestService');
+      const aiSummaryService = require('./aiSummaryService');
+      aiSuggestService.maybeAutoTagAfterParse(userId, itemId).catch(() => {});
+      aiSummaryService
+        .maybeAutoSummaryAfterParse(userId, itemId)
         .catch(() => {});
     });
     return getByIdForUser(userId, itemId);
@@ -1550,6 +1558,15 @@ async function runTranscriptJob(itemId) {
     } catch (err) {
       console.error(
         `[runTranscriptJob] ai-suggest resume failed item=${itemId}`,
+        err.message,
+      );
+    }
+    try {
+      const aiSummaryService = require('./aiSummaryService');
+      await aiSummaryService.maybeAutoSummaryAfterTranscript(itemId);
+    } catch (err) {
+      console.error(
+        `[runTranscriptJob] auto summary failed item=${itemId}`,
         err.message,
       );
     }

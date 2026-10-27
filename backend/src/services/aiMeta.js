@@ -31,6 +31,8 @@ const DEFAULT_SUMMARY = {
   awaitTranscript: false,
   regenerateFrom: null,
   creditsUsed: null,
+  /** 解析后自动解读：不计用户额度、不卡门控 */
+  autoApply: false,
 };
 
 const {
@@ -131,6 +133,7 @@ function parseAiMeta(raw) {
       awaitTranscript: summary.awaitTranscript === true,
       regenerateFrom: normalizeRegenerateFrom(summary.regenerateFrom),
       creditsUsed: parseCreditsUsed(summary.creditsUsed),
+      autoApply: summary.autoApply === true,
     },
     model: obj.model != null ? String(obj.model) : null,
   };
