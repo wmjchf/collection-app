@@ -9,14 +9,12 @@ class AppSideNav extends StatelessWidget {
     super.key,
     required this.currentIndex,
     required this.onChanged,
-    required this.onSearch,
     required this.onOpenAccount,
   });
 
-  /// 0=首页，1=收藏
+  /// 0=首页，1=收藏，2=搜索
   final int currentIndex;
   final ValueChanged<int> onChanged;
-  final VoidCallback onSearch;
   final VoidCallback onOpenAccount;
 
   static const width = 200.0;
@@ -63,8 +61,8 @@ class AppSideNav extends StatelessWidget {
             _NavItem(
               label: '搜索',
               icon: Icons.search_rounded,
-              selected: false,
-              onTap: onSearch,
+              selected: currentIndex == 2,
+              onTap: () => onChanged(2),
             ),
             const Spacer(),
             _AccountRow(onTap: onOpenAccount),

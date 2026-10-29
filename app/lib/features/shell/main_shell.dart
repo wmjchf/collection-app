@@ -35,8 +35,11 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
   ScreenDwellTracker? _tabDwell;
   ScreenDwellTracker? _drawerDwell;
 
-  static String _tabScreen(int index) =>
-      index == 0 ? AnalyticsScreens.home : AnalyticsScreens.library;
+  static String _tabScreen(int index) => switch (index) {
+        0 => AnalyticsScreens.home,
+        1 => AnalyticsScreens.library,
+        _ => AnalyticsScreens.search,
+      };
 
   void _startTabDwell(int index) {
     _tabDwell?.stop();
@@ -66,6 +69,10 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
   }
 
   void _openSearch() {
+    if (AppOrientation.isTablet(context)) {
+      _switchTab(2);
+      return;
+    }
     Navigator.of(context).push(
       MaterialPageRoute<void>(builder: (_) => const SearchPage()),
     );
@@ -146,20 +153,25 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
     final tablet = AppOrientation.isTablet(context);
     final navH = tablet ? 0.0 : AppBottomNavBar.heightOf(context);
     final mq = MediaQuery.of(context);
+    final stackIndex = tablet ? _index : _index.clamp(0, 1);
     final pages = Stack(
       children: [
         IndexedStack(
-          index: _index,
+          index: stackIndex,
           children: [
             HomePage(
-              isActive: _index == 0,
+              isActive: stackIndex == 0,
               refreshTick: _homeRefreshTick,
               onOpenAccount: _openAccountDrawer,
             ),
             CollectionPage(
-              isActive: _index == 1,
+              isActive: stackIndex == 1,
               refreshTick: _homeRefreshTick,
               onOpenAccount: _openAccountDrawer,
+            ),
+            SearchPage(
+              embedded: true,
+              isActive: stackIndex == 2,
             ),
           ],
         ),
@@ -190,7 +202,6 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
                   AppSideNav(
                     currentIndex: _index,
                     onChanged: _switchTab,
-                    onSearch: _openSearch,
                     onOpenAccount: _openAccountDrawer,
                   ),
                   Expanded(child: pages),
@@ -208,7 +219,7 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
               height: AppBottomNavBar.barH,
               padding: EdgeInsets.zero,
               child: AppBottomNavBar(
-                currentIndex: _index,
+                currentIndex: _index.clamp(0, 1),
                 onChanged: _switchTab,
                 onSearch: _openSearch,
               ),

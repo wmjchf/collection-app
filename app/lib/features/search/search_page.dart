@@ -15,8 +15,19 @@ import 'package:super_collection/features/items/item_reading_page.dart';
 import 'package:super_collection/features/items/items_repository.dart';
 
 /// 统一搜索：结果区可按标签筛选（弹框多选），下方为匹配内容。
+///
+/// [embedded]：iPad 壳内三列（结果|阅读），无取消、不 push 阅读页。
 class SearchPage extends StatefulWidget {
-  const SearchPage({super.key});
+  const SearchPage({
+    super.key,
+    this.embedded = false,
+    this.isActive = true,
+  });
+
+  final bool embedded;
+
+  /// 壳内 Tab 是否当前可见（用于切回时抢焦点）。
+  final bool isActive;
 
   @override
   State<SearchPage> createState() => _SearchPageState();
@@ -31,6 +42,7 @@ class _SearchPageState extends State<SearchPage> with ScreenDwellMixin {
   static const _brandSoft = Color(0xFFE5EDFF);
   static const _hairline = Color(0xFFD5DAE2);
   static const _searchRadius = 20.0;
+  static const _tabletListWidth = 360.0;
 
   final _itemsRepo = ItemsRepository();
   final _tagsRepo = TagsRepository();
@@ -53,6 +65,8 @@ class _SearchPageState extends State<SearchPage> with ScreenDwellMixin {
   bool _loadingMore = false;
   String? _error;
   bool _searched = false;
+  int? _selectedId;
+  CollectionItem? _selectedItem;
 
   bool get _filteringByTags => _selectedTagIds.isNotEmpty;
 
@@ -96,8 +110,18 @@ class _SearchPageState extends State<SearchPage> with ScreenDwellMixin {
     super.initState();
     _scroll.addListener(_onScroll);
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _focus.requestFocus();
+      if (mounted && widget.isActive) _focus.requestFocus();
     });
+  }
+
+  @override
+  void didUpdateWidget(covariant SearchPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.isActive && !oldWidget.isActive) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && widget.isActive) _focus.requestFocus();
+      });
+    }
   }
 
   @override
@@ -129,6 +153,50 @@ class _SearchPageState extends State<SearchPage> with ScreenDwellMixin {
     _loadingMore = false;
     _error = null;
     _searched = false;
+    _selectedId = null;
+    _selectedItem = null;
+  }
+
+  void _syncSelectionAfterSearch() {
+    if (!widget.embedded) return;
+    final items = _visibleContent;
+    if (items.isEmpty) {
+      _selectedId = null;
+      _selectedItem = null;
+      return;
+    }
+    if (_selectedId != null) {
+      final still = items.where((e) => e.id == _selectedId);
+      if (still.isNotEmpty) {
+        _selectedItem = still.first;
+        return;
+      }
+    }
+    _selectedId = items.first.id;
+    _selectedItem = items.first;
+  }
+
+  void _selectEmbedded(CollectionItem item) {
+    setState(() {
+      _selectedId = item.id;
+      _selectedItem = item;
+    });
+  }
+
+  void _onEmbeddedDeleted() {
+    final id = _selectedId;
+    if (id == null) return;
+    setState(() {
+      _textHits = _textHits.where((e) => e.item.id != id).toList();
+      _textTotal = (_textTotal - 1).clamp(0, 1 << 30);
+      _matchedTagItems = _matchedTagItems.where((e) => e.id != id).toList();
+      _contentTags = _mergeContentTags(
+        textFacet: _textFacetTags,
+        tagSearchTags: _tagSearchTags,
+        items: _baseContent,
+      );
+      _syncSelectionAfterSearch();
+    });
   }
 
   void _onQueryChanged(String value) {
@@ -188,6 +256,7 @@ class _SearchPageState extends State<SearchPage> with ScreenDwellMixin {
           ],
         );
         _loading = false;
+        _syncSelectionAfterSearch();
       });
       Analytics.instance.searchSubmit(
         hasResult: text.total > 0 ||
@@ -275,6 +344,7 @@ class _SearchPageState extends State<SearchPage> with ScreenDwellMixin {
       } else {
         _selectedTagIds.add(tag.id);
       }
+      _syncSelectionAfterSearch();
     });
   }
 
@@ -288,7 +358,10 @@ class _SearchPageState extends State<SearchPage> with ScreenDwellMixin {
           selectedTagIds: Set<int>.from(_selectedTagIds),
           hashName: _hashName,
           onChanged: (ids) {
-            setState(() => _selectedTagIds = ids);
+            setState(() {
+              _selectedTagIds = ids;
+              _syncSelectionAfterSearch();
+            });
           },
         );
       },
@@ -351,6 +424,10 @@ class _SearchPageState extends State<SearchPage> with ScreenDwellMixin {
   }
 
   Future<void> _openItem(CollectionItem item, {required String entry}) async {
+    if (widget.embedded) {
+      _selectEmbedded(item);
+      return;
+    }
     final deleted = await Navigator.of(context).push<bool>(
       MaterialPageRoute(
         builder: (_) => ItemReadingPage(
@@ -423,125 +500,182 @@ class _SearchPageState extends State<SearchPage> with ScreenDwellMixin {
 
   String get _idleHint => '输入关键词，查看相关标签和内容';
 
+  Widget _buildSearchField() {
+    return Container(
+      height: 40,
+      decoration: BoxDecoration(
+        color: _inputBg,
+        borderRadius: BorderRadius.circular(_searchRadius),
+        border: Border.all(
+          color: const Color(0xFFB8CCFA),
+          width: 1,
+        ),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Row(
+        children: [
+          const Padding(
+            padding: EdgeInsets.only(left: 12),
+            child: Icon(
+              Icons.search_rounded,
+              color: _muted,
+              size: 20,
+            ),
+          ),
+          Expanded(
+            child: TextField(
+              controller: _controller,
+              focusNode: _focus,
+              textInputAction: TextInputAction.search,
+              onChanged: _onQueryChanged,
+              onTapOutside: (_) => _unfocusSearch(),
+              onSubmitted: (v) {
+                _debounce?.cancel();
+                final q = v.trim();
+                if (q.isNotEmpty) unawaited(_search(q));
+                _unfocusSearch();
+              },
+              style: const TextStyle(
+                fontSize: 15,
+                color: _text,
+                height: 1.2,
+              ),
+              decoration: InputDecoration(
+                hintText: _hintText,
+                hintStyle: const TextStyle(
+                  fontSize: 15,
+                  color: _muted,
+                ),
+                border: InputBorder.none,
+                enabledBorder: InputBorder.none,
+                focusedBorder: InputBorder.none,
+                isDense: true,
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 10,
+                ),
+              ),
+            ),
+          ),
+          if (_controller.text.isNotEmpty)
+            IconButton(
+              icon: const Icon(
+                Icons.close_rounded,
+                color: _muted,
+                size: 22,
+              ),
+              padding: const EdgeInsets.only(right: 4),
+              constraints: const BoxConstraints(
+                minWidth: 36,
+                minHeight: 36,
+              ),
+              onPressed: () {
+                _controller.clear();
+                _onQueryChanged('');
+                _focus.requestFocus();
+              },
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildResultsColumn({required bool showCancel}) {
+    return Column(
+      children: [
+        Padding(
+          padding: EdgeInsets.fromLTRB(12, widget.embedded ? 16 : 10, 8, 10),
+          child: Row(
+            children: [
+              Expanded(child: _buildSearchField()),
+              if (showCancel)
+                TextButton(
+                  onPressed: () => Navigator.of(context).maybePop(),
+                  style: TextButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    minimumSize: const Size(0, 36),
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                  child: const Text(
+                    '取消',
+                    style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w500,
+                      color: _text,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+        Expanded(
+          child: GestureDetector(
+            onTap: _unfocusSearch,
+            behavior: HitTestBehavior.translucent,
+            child: _buildBody(),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildEmbeddedReading() {
+    final id = _selectedId;
+    if (id == null) {
+      return const ColoredBox(
+        color: Colors.white,
+        child: Center(
+          child: Text(
+            '选择左侧结果开始阅读',
+            style: TextStyle(color: _muted, fontSize: 15),
+          ),
+        ),
+      );
+    }
+    return ItemReadingPage(
+      key: ValueKey('search-read-$id'),
+      itemId: id,
+      initialItem: _selectedItem,
+      openEntry: 'search',
+      embedded: true,
+      onDeleted: _onEmbeddedDeleted,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    if (widget.embedded) {
+      return ColoredBox(
+        color: _bg,
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            SizedBox(
+              width: _tabletListWidth,
+              child: DecoratedBox(
+                decoration: const BoxDecoration(
+                  color: _bg,
+                  border: Border(
+                    right: BorderSide(color: Color(0xFFE9EBEF)),
+                  ),
+                ),
+                child: SafeArea(
+                  right: false,
+                  child: _buildResultsColumn(showCancel: false),
+                ),
+              ),
+            ),
+            Expanded(child: _buildEmbeddedReading()),
+          ],
+        ),
+      );
+    }
+
     return Scaffold(
       backgroundColor: _bg,
       body: SafeArea(
         bottom: false,
-        child: Column(
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(12, 10, 8, 10),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Container(
-                      height: 40,
-                      decoration: BoxDecoration(
-                        color: _inputBg,
-                        borderRadius: BorderRadius.circular(_searchRadius),
-                        border: Border.all(
-                          color: const Color(0xFFB8CCFA),
-                          width: 1,
-                        ),
-                      ),
-                      clipBehavior: Clip.antiAlias,
-                      child: Row(
-                        children: [
-                          const Padding(
-                            padding: EdgeInsets.only(left: 12),
-                            child: Icon(
-                              Icons.search_rounded,
-                              color: _muted,
-                              size: 20,
-                            ),
-                          ),
-                          Expanded(
-                            child: TextField(
-                              controller: _controller,
-                              focusNode: _focus,
-                              textInputAction: TextInputAction.search,
-                              onChanged: _onQueryChanged,
-                              onTapOutside: (_) => _unfocusSearch(),
-                              onSubmitted: (v) {
-                                _debounce?.cancel();
-                                final q = v.trim();
-                                if (q.isNotEmpty) unawaited(_search(q));
-                                _unfocusSearch();
-                              },
-                              style: const TextStyle(
-                                fontSize: 15,
-                                color: _text,
-                                height: 1.2,
-                              ),
-                              decoration: InputDecoration(
-                                hintText: _hintText,
-                                hintStyle: const TextStyle(
-                                  fontSize: 15,
-                                  color: _muted,
-                                ),
-                                border: InputBorder.none,
-                                enabledBorder: InputBorder.none,
-                                focusedBorder: InputBorder.none,
-                                isDense: true,
-                                contentPadding: const EdgeInsets.symmetric(
-                                  horizontal: 10,
-                                  vertical: 10,
-                                ),
-                              ),
-                            ),
-                          ),
-                          if (_controller.text.isNotEmpty)
-                            IconButton(
-                              icon: const Icon(
-                                Icons.close_rounded,
-                                color: _muted,
-                                size: 22,
-                              ),
-                              padding: const EdgeInsets.only(right: 4),
-                              constraints: const BoxConstraints(
-                                minWidth: 36,
-                                minHeight: 36,
-                              ),
-                              onPressed: () {
-                                _controller.clear();
-                                _onQueryChanged('');
-                                _focus.requestFocus();
-                              },
-                            ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  TextButton(
-                    onPressed: () => Navigator.of(context).maybePop(),
-                    style: TextButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(horizontal: 8),
-                      minimumSize: const Size(0, 36),
-                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                    ),
-                    child: const Text(
-                      '取消',
-                      style: TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w500,
-                        color: _text,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            Expanded(
-              child: GestureDetector(
-                onTap: _unfocusSearch,
-                behavior: HitTestBehavior.translucent,
-                child: _buildBody(),
-              ),
-            ),
-          ],
-        ),
+        child: _buildResultsColumn(showCancel: true),
       ),
     );
   }
@@ -643,14 +777,27 @@ class _SearchPageState extends State<SearchPage> with ScreenDwellMixin {
                     );
                   }
                   final item = contentItems[index];
+                  final selected =
+                      widget.embedded && item.id == _selectedId;
                   return Padding(
                     key: ValueKey('search-item-${item.id}'),
                     padding: const EdgeInsets.only(bottom: 8),
-                    child: ItemListTile.fromItem(
-                      item,
-                      subtitle: _subtitle(item),
-                      onTap: () => unawaited(
-                        _openItem(item, entry: 'search'),
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(12),
+                        border: selected
+                            ? Border.all(
+                                color: _brand.withValues(alpha: 0.35),
+                              )
+                            : null,
+                      ),
+                      child: ItemListTile.fromItem(
+                        item,
+                        subtitle: _subtitle(item),
+                        selected: selected,
+                        onTap: () => unawaited(
+                          _openItem(item, entry: 'search'),
+                        ),
                       ),
                     ),
                   );
