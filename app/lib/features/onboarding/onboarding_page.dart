@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:super_collection/core/config/app_brand.dart';
+import 'package:super_collection/core/ui/app_form_width.dart';
 import 'package:super_collection/features/onboarding/onboarding_prefs.dart';
 import 'package:super_collection/features/onboarding/shortcuts_help_page.dart';
 import 'package:super_collection/features/shell/main_shell.dart';
@@ -37,7 +38,8 @@ class OnboardingPage extends StatelessWidget {
     return Scaffold(
       backgroundColor: Colors.white,
       body: SafeArea(
-        child: Column(
+        child: wrapAppFormWidth(
+          child: Column(
           children: [
             Expanded(
               child: ListView(
@@ -134,6 +136,7 @@ class OnboardingPage extends StatelessWidget {
               ),
             ),
           ],
+        ),
         ),
       ),
     );
