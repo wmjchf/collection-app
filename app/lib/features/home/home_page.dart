@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:super_collection/core/analytics/analytics.dart';
 import 'package:super_collection/core/network/api_client.dart';
+import 'package:super_collection/core/ui/app_haptics.dart';
 import 'package:super_collection/core/ui/app_toast.dart';
 import 'package:super_collection/core/ui/client_fetch_backfill.dart';
 import 'package:super_collection/core/ui/parse_progress_tracker.dart';
@@ -993,7 +994,10 @@ class _HomeItemStackSection extends StatelessWidget {
             ),
             const Spacer(),
             GestureDetector(
-              onTap: onMore,
+              onTap: () {
+                AppHaptics.select();
+                onMore();
+              },
               behavior: HitTestBehavior.opaque,
               child: Padding(
                 padding: const EdgeInsets.symmetric(vertical: 2),
@@ -1033,7 +1037,10 @@ class _HomeItemStackSection extends StatelessWidget {
                       ItemListTile.fromItem(
                         items[i],
                         subtitle: _homeUnreadSubtitle(items[i]),
-                        onTap: () => onOpen(items[i]),
+                        onTap: () {
+                          AppHaptics.select();
+                          onOpen(items[i]);
+                        },
                       ),
                     ],
                     if (items.length < _homeUnreadSlotCount)

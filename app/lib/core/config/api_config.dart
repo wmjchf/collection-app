@@ -8,5 +8,6 @@ class ApiConfig {
     // defaultValue: 'http://127.0.0.1:3001',
     // defaultValue:'http://192.168.10.4:3001'
     // defaultValue:'http://47.97.67.47:3002'
+    // defaultValue:'http://47.99.139.248:3001'
   );
 }
