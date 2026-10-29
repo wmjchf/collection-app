@@ -12,7 +12,9 @@ import 'package:super_collection/core/ui/pro_copy.dart';
 import 'package:super_collection/core/utils/clipboard_utils.dart';
 import 'package:super_collection/core/utils/link_utils.dart';
 import 'package:super_collection/features/auth/auth_repository.dart';
+import 'package:super_collection/core/ui/app_orientation.dart';
 import 'package:super_collection/features/collection/system_filter_list_page.dart';
+import 'package:super_collection/features/collection/system_filters_repository.dart';
 import 'package:super_collection/features/home/add_link_sheet.dart';
 import 'package:super_collection/features/home/home_format.dart';
 import 'package:super_collection/features/home/home_repository.dart';
@@ -28,6 +30,7 @@ import 'package:super_collection/features/items/items_repository.dart';
 import 'package:super_collection/features/onboarding/coach_prefs.dart';
 import 'package:super_collection/features/onboarding/home_coach_overlay.dart';
 import 'package:super_collection/features/onboarding/shortcuts_help_page.dart';
+import 'package:super_collection/features/shell/tablet_items_split.dart';
 import 'package:super_collection/features/shell/user_avatar_button.dart';
 import 'package:super_collection/features/settings/quota_gate.dart';
 import 'package:super_collection/features/settings/trial_expiry_banner.dart';
@@ -62,7 +65,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
 
   final _repo = HomeRepository();
   final _items = ItemsRepository();
+  final _filtersRepo = SystemFiltersRepository();
   final _auth = AuthRepository();
+  int _tabletListTick = 0;
   HomeData? _data;
   Set<String> _roamMuted = {};
   bool _loading = true;
@@ -140,6 +145,11 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     if (widget.refreshTick != oldWidget.refreshTick) {
       _load(quiet: true);
     }
+  }
+
+  void _bumpTabletList() {
+    if (!mounted) return;
+    setState(() => _tabletListTick++);
   }
 
   Future<void> _load({bool quiet = false}) async {
@@ -584,10 +594,14 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
             initialStatus: result.item.status,
             platform: result.item.platform,
             url: result.item.canonicalUrl ?? result.item.url,
-            onSettled: () => _load(quiet: true),
+            onSettled: () {
+              _bumpTabletList();
+              return _load(quiet: true);
+            },
           ),
         );
       }
+      _bumpTabletList();
       await _load(quiet: true);
     } on ApiException catch (e) {
       ParseProgressTracker.cancel();
@@ -690,8 +704,53 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     await _load(quiet: true);
   }
 
+  Widget _tabletAddButton() {
+    return IconButton(
+      key: _addButtonKey,
+      tooltip: '添加',
+      onPressed: _pasting ? null : _onAddPressed,
+      icon: Container(
+        width: 32,
+        height: 32,
+        decoration: BoxDecoration(
+          color: _pasting ? _blue.withValues(alpha: 0.45) : _blue,
+          shape: BoxShape.circle,
+        ),
+        alignment: Alignment.center,
+        child: SvgPicture.asset(
+          'assets/icons/add.svg',
+          width: 18,
+          height: 18,
+          colorFilter: const ColorFilter.mode(Colors.white, BlendMode.srcIn),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTabletBody() {
+    return TabletItemsSplit(
+      title: unreadSectionTitle(isPro: _isPro),
+      emptyText: unreadEmptyText(isPro: _isPro),
+      openEntry: 'unread',
+      refreshTick: widget.refreshTick + _tabletListTick,
+      trailing: _tabletAddButton(),
+      loader: ({required limit, required offset}) => _filtersRepo.listItems(
+        filter: 'unread',
+        limit: limit,
+        offset: offset,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    if (AppOrientation.isTablet(context)) {
+      return ColoredBox(
+        color: _bg,
+        child: _buildTabletBody(),
+      );
+    }
+
     final unread = _data?.unread.items ?? const <CollectionItem>[];
     final roam = _roamItems;
 
