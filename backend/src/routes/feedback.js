@@ -91,8 +91,8 @@ router.get('/admin', requireDashboardToken, async (req, res, next) => {
 });
 
 /**
- * PATCH /api/feedback/admin/:id — 改处理状态
- * body: { status }
+ * PATCH /api/feedback/admin/:id — 改进展与/或官方回复
+ * body: { status?, adminReply? }（至少一项）
  */
 router.patch('/admin/:id', requireDashboardToken, async (req, res, next) => {
   try {

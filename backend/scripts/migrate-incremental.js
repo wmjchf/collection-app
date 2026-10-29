@@ -43,6 +43,7 @@ const MIGRATION_FILES = [
   '033_feedback_public.sql',
   '034_feedback_images.sql',
   '035_item_media_kind.sql',
+  '036_feedback_reply.sql',
 ];
 
 async function getConnection() {

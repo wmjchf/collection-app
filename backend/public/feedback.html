@@ -94,6 +94,37 @@
     }
     .status-row label { font-size: 12px; color: var(--muted); }
     .status-row select { font-size: 13px; padding: 6px 10px; }
+    .reply-block { margin-top: 12px; }
+    .reply-block label {
+      display: block;
+      font-size: 12px;
+      color: var(--muted);
+      margin-bottom: 6px;
+    }
+    .reply-block textarea {
+      width: 100%;
+      min-height: 72px;
+      resize: vertical;
+      font: inherit;
+      font-size: 14px;
+      border-radius: 10px;
+      border: 1px solid var(--line);
+      background: #fff;
+      color: var(--text);
+      padding: 10px 12px;
+      line-height: 1.5;
+    }
+    .reply-actions {
+      margin-top: 8px;
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    .reply-actions .hint {
+      font-size: 12px;
+      color: var(--muted);
+    }
     .pager { display: flex; gap: 8px; align-items: center; margin-top: 16px; }
     .empty { text-align: center; color: var(--muted); padding: 40px 12px; font-size: 14px; }
   </style>
@@ -102,7 +133,7 @@
   <div class="wrap">
     <h1>意见反馈后台</h1>
     <p class="sub">
-      查看并更新处理进展。公开墙：
+      改进展、写官方回复（公开墙可见）。公开墙：
       <a href="/feedback" target="_blank" rel="noopener">/feedback</a>
       ·
       <a href="/internal/analytics">埋点看板</a>
@@ -191,6 +222,10 @@
             ).join('')}</div>`
           : '';
         const st = it.status || 'pending';
+        const reply = it.adminReply || '';
+        const repliedHint = it.repliedAt
+          ? `上次回复 ${escapeHtml(fmtTime(it.repliedAt))}`
+          : '公开墙可见；清空并保存可撤回';
         return `
           <article class="card" data-id="${it.id}">
             <div class="card-top">
@@ -210,6 +245,14 @@
                 <option value="done"${st === 'done' ? ' selected' : ''}>已完成</option>
               </select>
             </div>
+            <div class="reply-block">
+              <label for="reply-${it.id}">官方回复</label>
+              <textarea id="reply-${it.id}" class="reply-input" data-id="${it.id}" maxlength="2000" placeholder="写给用户的回复…">${escapeHtml(reply)}</textarea>
+              <div class="reply-actions">
+                <button type="button" class="reply-save" data-id="${it.id}">保存回复</button>
+                <span class="hint">${repliedHint}</span>
+              </div>
+            </div>
           </article>
         `;
       }).join('');
@@ -218,18 +261,8 @@
         sel.addEventListener('change', async () => {
           const id = sel.getAttribute('data-id');
           const status = sel.value;
-          const t = token();
           try {
-            const res = await fetch('/api/feedback/admin/' + id, {
-              method: 'PATCH',
-              headers: {
-                'Content-Type': 'application/json',
-                'X-Analytics-Token': t,
-              },
-              body: JSON.stringify({ status }),
-            });
-            const json = await res.json().catch(() => ({}));
-            if (!res.ok) throw new Error(json.message || '更新失败');
+            const json = await patchFeedback(id, { status });
             show(`#${id} → ${json.statusLabel || status}`, true);
           } catch (e) {
             show(e.message || '更新失败', false);
@@ -237,6 +270,49 @@
           }
         });
       });
+
+      root.querySelectorAll('.reply-save').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+          const id = btn.getAttribute('data-id');
+          const ta = root.querySelector(`.reply-input[data-id="${id}"]`);
+          const adminReply = ta ? ta.value.trim() : '';
+          btn.disabled = true;
+          try {
+            const json = await patchFeedback(id, { adminReply });
+            show(
+              adminReply
+                ? `#${id} 回复已保存`
+                : `#${id} 回复已清空`,
+              true,
+            );
+            const hint = btn.parentElement?.querySelector('.hint');
+            if (hint) {
+              hint.textContent = json.repliedAt
+                ? `上次回复 ${fmtTime(json.repliedAt)}`
+                : '公开墙可见；清空并保存可撤回';
+            }
+          } catch (e) {
+            show(e.message || '保存失败', false);
+          } finally {
+            btn.disabled = false;
+          }
+        });
+      });
+    }
+
+    async function patchFeedback(id, body) {
+      const t = token();
+      const res = await fetch('/api/feedback/admin/' + id, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Analytics-Token': t,
+        },
+        body: JSON.stringify(body),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json.message || '更新失败');
+      return json;
     }
 
     async function load() {

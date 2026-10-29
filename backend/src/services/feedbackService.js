@@ -20,6 +20,7 @@ const STATUS_LABELS = {
 };
 
 const MAX_CONTENT = 2000;
+const MAX_REPLY = 2000;
 const MAX_CONTACT = 128;
 const MAX_NICKNAME = 32;
 const MAX_PER_DAY_AUTH = 10;
@@ -74,6 +75,26 @@ function normalizeStatus(raw) {
     throw Object.assign(new Error('无效的处理状态'), { status: 400 });
   }
   return status;
+}
+
+/**
+ * @param {unknown} raw
+ * @param {{ allowEmpty?: boolean }} [opts]
+ * @returns {string|null|undefined} undefined = 未传；null/string = 要写入
+ */
+function normalizeReply(raw, opts = {}) {
+  if (raw === undefined) return undefined;
+  const reply = String(raw ?? '').trim();
+  if (!reply) {
+    if (opts.allowEmpty === false) {
+      throw Object.assign(new Error('回复不能为空'), { status: 400 });
+    }
+    return null;
+  }
+  if (reply.length > MAX_REPLY) {
+    throw Object.assign(new Error(`回复最多 ${MAX_REPLY} 字`), { status: 400 });
+  }
+  return reply;
 }
 
 function normalizeImageKeys(raw) {
@@ -268,7 +289,9 @@ function buildListWhere(opts = {}) {
 
   const q = String(opts.q || '').trim().slice(0, 80);
   if (q) {
-    where.push('(f.content LIKE :q OR f.nickname LIKE :q)');
+    where.push(
+      '(f.content LIKE :q OR f.nickname LIKE :q OR f.admin_reply LIKE :q)',
+    );
     params.q = `%${q.replace(/[%_]/g, '')}%`;
   }
 
@@ -299,6 +322,8 @@ async function listPublicFeedback(opts = {}) {
        f.category,
        f.content,
        f.status,
+       f.admin_reply AS adminReply,
+       f.replied_at AS repliedAt,
        f.images,
        f.created_at AS createdAt
      FROM user_feedback f
@@ -320,6 +345,8 @@ async function listPublicFeedback(opts = {}) {
       content: r.content,
       status: r.status || 'pending',
       statusLabel: STATUS_LABELS[r.status] || STATUS_LABELS.pending,
+      adminReply: r.adminReply || null,
+      repliedAt: r.repliedAt || null,
       images: mapPublicImages(r.images),
       createdAt: r.createdAt,
     })),
@@ -351,6 +378,8 @@ async function listFeedback(opts = {}) {
        f.contact,
        f.app_version AS appVersion,
        f.status,
+       f.admin_reply AS adminReply,
+       f.replied_at AS repliedAt,
        f.images,
        f.created_at AS createdAt
      FROM user_feedback f
@@ -377,6 +406,8 @@ async function listFeedback(opts = {}) {
       appVersion: r.appVersion || null,
       status: r.status || 'pending',
       statusLabel: STATUS_LABELS[r.status] || STATUS_LABELS.pending,
+      adminReply: r.adminReply || null,
+      repliedAt: r.repliedAt || null,
       images: mapPublicImages(r.images),
       createdAt: r.createdAt,
     })),
@@ -384,28 +415,62 @@ async function listFeedback(opts = {}) {
 }
 
 /**
- * 后台更新状态。
+ * 后台更新进展与/或官方回复。
  * @param {number} id
- * @param {{ status?: string }} body
+ * @param {{ status?: string, adminReply?: string|null }} body
  */
 async function updateFeedbackStatus(id, body) {
   const feedbackId = Number(id);
   if (!Number.isFinite(feedbackId) || feedbackId <= 0) {
     throw Object.assign(new Error('无效的反馈 ID'), { status: 400 });
   }
-  const status = normalizeStatus(body?.status);
+
+  const hasStatus = body?.status !== undefined && body?.status !== null && String(body.status).trim() !== '';
+  const hasReply = Object.prototype.hasOwnProperty.call(body || {}, 'adminReply');
+  if (!hasStatus && !hasReply) {
+    throw Object.assign(new Error('请提供 status 或 adminReply'), { status: 400 });
+  }
+
+  const sets = [];
+  const params = { id: feedbackId };
+
+  if (hasStatus) {
+    params.status = normalizeStatus(body.status);
+    sets.push('status = :status');
+  }
+
+  if (hasReply) {
+    const reply = normalizeReply(body.adminReply);
+    params.adminReply = reply;
+    sets.push('admin_reply = :adminReply');
+    if (reply) {
+      sets.push('replied_at = NOW(3)');
+    } else {
+      sets.push('replied_at = NULL');
+    }
+  }
 
   const [result] = await pool.execute(
-    `UPDATE user_feedback SET status = :status WHERE id = :id`,
-    { id: feedbackId, status },
+    `UPDATE user_feedback SET ${sets.join(', ')} WHERE id = :id`,
+    params,
   );
   if (!result.affectedRows) {
     throw Object.assign(new Error('反馈不存在'), { status: 404 });
   }
+
+  const [rows] = await pool.execute(
+    `SELECT status, admin_reply AS adminReply, replied_at AS repliedAt
+     FROM user_feedback WHERE id = :id`,
+    { id: feedbackId },
+  );
+  const row = rows?.[0] || {};
+  const status = row.status || 'pending';
   return {
     id: feedbackId,
     status,
-    statusLabel: STATUS_LABELS[status],
+    statusLabel: STATUS_LABELS[status] || STATUS_LABELS.pending,
+    adminReply: row.adminReply || null,
+    repliedAt: row.repliedAt || null,
   };
 }
 

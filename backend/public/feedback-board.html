@@ -179,6 +179,28 @@
       white-space: pre-wrap;
       word-break: break-word;
     }
+    .card .reply {
+      margin: 14px 0 0;
+      padding: 12px 14px;
+      border-radius: 12px;
+      border: 1px solid rgba(155, 184, 245, 0.22);
+      background: rgba(47, 111, 237, 0.12);
+    }
+    .card .reply-label {
+      margin: 0 0 6px;
+      font-size: 12px;
+      font-weight: 650;
+      letter-spacing: 0.04em;
+      color: var(--blue-soft);
+    }
+    .card .reply-body {
+      margin: 0;
+      font-size: 14px;
+      line-height: 1.6;
+      color: var(--text);
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
     .card-images {
       display: flex;
       flex-wrap: wrap;
@@ -608,6 +630,12 @@
                   '<img src="' + escapeHtml(url) + '" alt="" loading="lazy" /></a>';
               }).join('') + '</div>'
             : '';
+          var replyHtml = it.adminReply
+            ? '<div class="reply">' +
+                '<p class="reply-label">官方回复</p>' +
+                '<p class="reply-body">' + escapeHtml(it.adminReply) + '</p>' +
+              '</div>'
+            : '';
           return (
             '<article class="card">' +
               '<div class="card-top">' +
@@ -618,6 +646,7 @@
               '</div>' +
               '<p class="content">' + escapeHtml(it.content) + '</p>' +
               imgHtml +
+              replyHtml +
             '</article>'
           );
         }).join('');
