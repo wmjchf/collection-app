@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:super_collection/core/ui/app_orientation.dart';
 
 /// 统一确认弹框（对齐回收站「彻底删除」/ 阅读页删除确认）
 Future<bool?> showAppConfirmDialog(
@@ -43,65 +44,77 @@ class _AppConfirmDialog extends StatelessWidget {
   static const _danger = Color(0xFFBF3333);
   static const _primary = Color(0xFF2F6FED);
 
+  /// 平板上限宽，避免横屏被 insetPadding 拉成通栏
+  static const _tabletMaxWidth = 360.0;
+
   @override
   Widget build(BuildContext context) {
+    final tablet = AppOrientation.isTablet(context);
     return Dialog(
       backgroundColor: Colors.transparent,
       elevation: 0,
-      insetPadding: const EdgeInsets.symmetric(horizontal: 45),
-      child: Material(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        clipBehavior: Clip.antiAlias,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 22, 20, 18),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                title,
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                  fontSize: 17,
-                  fontWeight: FontWeight.w700,
-                  color: _text,
-                  height: 1.2,
-                ),
-              ),
-              const SizedBox(height: 12),
-              Text(
-                message,
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w400,
-                  color: _muted,
-                  height: 1.3,
-                ),
-              ),
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  Expanded(
-                    child: _ActionButton(
-                      label: cancelLabel,
-                      background: _cancelBg,
-                      foreground: _text,
-                      onTap: () => Navigator.pop(context, false),
-                    ),
+      insetPadding: EdgeInsets.symmetric(
+        horizontal: tablet ? 48 : 45,
+        vertical: 24,
+      ),
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxWidth: tablet ? _tabletMaxWidth : double.infinity,
+        ),
+        child: Material(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          clipBehavior: Clip.antiAlias,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 22, 20, 18),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  title,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    fontSize: 17,
+                    fontWeight: FontWeight.w700,
+                    color: _text,
+                    height: 1.2,
                   ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: _ActionButton(
-                      label: confirmLabel,
-                      background: dangerConfirm ? _danger : _primary,
-                      foreground: Colors.white,
-                      onTap: () => Navigator.pop(context, true),
-                    ),
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  message,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w400,
+                    color: _muted,
+                    height: 1.3,
                   ),
-                ],
-              ),
-            ],
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _ActionButton(
+                        label: cancelLabel,
+                        background: _cancelBg,
+                        foreground: _text,
+                        onTap: () => Navigator.pop(context, false),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: _ActionButton(
+                        label: confirmLabel,
+                        background: dangerConfirm ? _danger : _primary,
+                        foreground: Colors.white,
+                        onTap: () => Navigator.pop(context, true),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
           ),
         ),
       ),

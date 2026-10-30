@@ -8,7 +8,9 @@ import 'package:super_collection/core/analytics/analytics.dart';
 import 'package:super_collection/core/analytics/screen_dwell_tracker.dart';
 import 'package:super_collection/core/network/api_client.dart';
 import 'package:super_collection/core/network/media_http_headers.dart';
+import 'package:super_collection/core/ui/app_bottom_sheet.dart';
 import 'package:super_collection/core/ui/app_confirm_dialog.dart';
+import 'package:super_collection/core/ui/app_orientation.dart';
 import 'package:super_collection/core/ui/app_toast.dart';
 import 'package:super_collection/core/ui/parse_progress_tracker.dart';
 import 'package:super_collection/core/ui/pro_copy.dart';
@@ -53,6 +55,8 @@ class ItemReadingPage extends StatefulWidget {
     this.openEntry = 'unknown',
     this.focusAnnotationId,
     this.openNoteOnLaunch = false,
+    this.embedded = false,
+    this.onDeleted,
   });
 
   final int itemId;
@@ -66,6 +70,11 @@ class ItemReadingPage extends StatefulWidget {
 
   /// 打开后直接弹出感想（如漫游点感想进入）
   final bool openNoteOnLaunch;
+
+  /// iPad 分栏嵌入：无返回钮，删除后回调宿主而非 pop。
+  final bool embedded;
+
+  final VoidCallback? onDeleted;
 
   @override
   State<ItemReadingPage> createState() => _ItemReadingPageState();
@@ -366,6 +375,7 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
   /// 离开阅读页：若已认真看过且仍无标签，轻推打标（可跳过）。
   /// 需要拦截时 [PopScope.canPop] 为 false，须用 [Navigator.pop] 强制出栈。
   Future<void> _handleBack() async {
+    if (widget.embedded) return;
     if (_handlingBack) return;
     _handlingBack = true;
     try {
@@ -460,7 +470,11 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
       await _repo.deleteItem(_item.id);
       if (!mounted) return;
       AppToast.show(context, '已删除');
-      Navigator.of(context).pop(true);
+      if (widget.embedded) {
+        widget.onDeleted?.call();
+      } else {
+        Navigator.of(context).pop(true);
+      }
     } on ApiException catch (e) {
       if (!mounted) return;
       AppToast.show(context, e.message);
@@ -970,15 +984,17 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
   }
 
   void _showAnnotationList() {
-    showModalBottomSheet<void>(
+    showAppBottomSheet<void>(
       context: context,
-      backgroundColor: Colors.white,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
+      padding: EdgeInsets.zero,
       builder: (context) {
-        return SafeArea(
+        final tablet = AppOrientation.isTablet(context);
+        return Material(
+          color: Colors.white,
+          borderRadius: tablet
+              ? BorderRadius.circular(20)
+              : const BorderRadius.vertical(top: Radius.circular(20)),
+          clipBehavior: Clip.antiAlias,
           child: ConstrainedBox(
             constraints: BoxConstraints(
               maxHeight: MediaQuery.sizeOf(context).height * 0.6,
@@ -1671,6 +1687,7 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
           children: [
             _ReadingTopBar(
               onBack: () => Navigator.of(context).maybePop(),
+              showBack: !widget.embedded,
               menuEnabled: false,
               editEnabled: false,
               onEditContent: _onEditContent,
@@ -1694,6 +1711,7 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
           children: [
             _ReadingTopBar(
               onBack: () => Navigator.of(context).maybePop(),
+              showBack: !widget.embedded,
               menuEnabled: false,
               editEnabled: false,
               onEditContent: _onEditContent,
@@ -1722,12 +1740,14 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
 
     final mq = MediaQuery.of(context);
     final topChrome = mq.padding.top + _topBarHeight;
-    final bottomChrome = mq.padding.bottom + _bottomBarHeight;
+    // 壳内分栏阅读不占 Home Indicator，避免操作栏下方多出一条空白
+    final bottomSafe = widget.embedded ? 0.0 : mq.padding.bottom;
+    final bottomChrome = bottomSafe + _bottomBarHeight;
 
     return PopScope(
-      canPop: !_shouldNudgeOnLeave,
+      canPop: widget.embedded || !_shouldNudgeOnLeave,
       onPopInvokedWithResult: (didPop, result) {
-        if (didPop) return;
+        if (didPop || widget.embedded) return;
         unawaited(_handleBack());
       },
       child: Scaffold(
@@ -1741,7 +1761,7 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
               top: _chromeVisible ? topChrome : mq.padding.top,
               bottom: _chromeVisible && canRead
                   ? bottomChrome
-                  : mq.padding.bottom,
+                  : bottomSafe,
             ),
             child: GestureDetector(
               onTap: canRead ? _toggleReadingChrome : null,
@@ -1895,6 +1915,7 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
                       _chromeVisible ? Offset.zero : const Offset(0, -1),
                   child: _ReadingTopBar(
                     onBack: _handleBack,
+                    showBack: !widget.embedded,
                     menuEnabled: true,
                     editEnabled: canRead,
                     showMarkUnread: !_item.isUnread,
@@ -1931,6 +1952,7 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
                       ),
                       child: SafeArea(
                         top: false,
+                        bottom: !widget.embedded,
                         child: SizedBox(
                           height: _bottomBarHeight,
                           child: Row(
@@ -3061,6 +3083,7 @@ class _ReadingTopBar extends StatelessWidget {
     required this.onEditContent,
     required this.onFontSize,
     this.onMarkUnread,
+    this.showBack = true,
     this.menuEnabled = true,
     this.editEnabled = false,
     this.showMarkUnread = false,
@@ -3074,6 +3097,7 @@ class _ReadingTopBar extends StatelessWidget {
   final VoidCallback onEditContent;
   final VoidCallback onFontSize;
   final VoidCallback? onMarkUnread;
+  final bool showBack;
   final bool menuEnabled;
   final bool editEnabled;
   final bool showMarkUnread;
@@ -3094,18 +3118,22 @@ class _ReadingTopBar extends StatelessWidget {
             padding: const EdgeInsets.only(left: 4, right: 4),
             child: Row(
               children: [
-                TextButton.icon(
-                  onPressed: onBack,
-                  style: TextButton.styleFrom(
-                    foregroundColor: _text,
-                    padding: const EdgeInsets.symmetric(horizontal: 8),
-                  ),
-                  icon: const Icon(Icons.chevron_left, size: 28),
-                  label: const Text(
-                    '返回',
-                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.w400),
-                  ),
-                ),
+                if (showBack)
+                  TextButton.icon(
+                    onPressed: onBack,
+                    style: TextButton.styleFrom(
+                      foregroundColor: _text,
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                    ),
+                    icon: const Icon(Icons.chevron_left, size: 28),
+                    label: const Text(
+                      '返回',
+                      style:
+                          TextStyle(fontSize: 15, fontWeight: FontWeight.w400),
+                    ),
+                  )
+                else
+                  const SizedBox(width: 8),
                 const Spacer(),
                 IconButton(
                   tooltip: '文字大小',

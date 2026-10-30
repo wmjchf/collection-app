@@ -2,10 +2,12 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:super_collection/features/settings/settings_modal.dart';
 import 'package:in_app_purchase/in_app_purchase.dart';
 import 'package:super_collection/core/analytics/analytics.dart';
 import 'package:super_collection/core/analytics/screen_dwell_tracker.dart';
 import 'package:super_collection/core/network/api_client.dart';
+import 'package:super_collection/core/ui/app_orientation.dart';
 import 'package:super_collection/core/ui/app_toast.dart';
 import 'package:super_collection/features/settings/apple_iap_service.dart';
 import 'package:super_collection/features/settings/legal_docs.dart';
@@ -392,15 +394,25 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
     return id.contains('year') || id.contains('annual');
   }
 
-  String _subscribeLabel() {
-    if (_busy && !_restoreFlow) return _phaseLabel;
-    if (_selectedOwned) return '已开通 ${_tierDisplayName(_selectedTier)}';
-    final p = _selected;
-    if (p == null) return '选择方案';
+  String _subscribeLabel() => _subscribeLabelForTier(_selectedTier);
+
+  String _subscribeLabelForTier(String tier) {
+    final buyingThis =
+        _busy && !_restoreFlow && UsagePlan.normalize(tier) == _selectedTier;
+    if (buyingThis) return _phaseLabel;
+    if (_isTierOwned(tier)) return '已开通 ${_tierDisplayName(tier)}';
+    final p = _productForTier(tier);
+    if (p == null) return '立即订阅';
     if (_isYearlyProduct(p)) return '订阅 ${p.price} / 年';
-    final trial = _selectedTrial;
+    final trial = _trialForTier(tier);
     if (trial != null) return '免费试用 ${trial.days} 天';
-    return '订阅 ${p.price} / 月';
+    return '立即订阅';
+  }
+
+  bool _ctaEnabledForTier(String tier) {
+    if (_busy || _isTierOwned(tier) || !_isIos) return false;
+    if (_productsLoading || _error != null) return false;
+    return _productForTier(tier) != null;
   }
 
   void _setPhase(AppleIapPhase? phase) {
@@ -408,10 +420,12 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
     setState(() => _phase = phase);
   }
 
-  Future<void> _buy() async {
-    final product = _selected;
-    if (product == null || _busy || _selectedOwned) return;
+  Future<void> _buy([String? tier]) async {
+    final t = UsagePlan.normalize(tier ?? _selectedTier);
+    final product = _productForTier(t);
+    if (product == null || _busy || _isTierOwned(t)) return;
     setState(() {
+      _selectedTier = t;
       _restoreFlow = false;
       _phase = AppleIapPhase.paying;
     });
@@ -426,7 +440,7 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
       );
       if (!mounted) return;
       UsageRefresh.bump();
-      AppToast.show(context, '${_tierDisplayName(_selectedTier)} 已开通');
+      AppToast.show(context, '${_tierDisplayName(t)} 已开通');
       Navigator.of(context).maybePop(true);
     } on ApiException catch (e) {
       if (!mounted) return;
@@ -490,39 +504,202 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
 
   @override
   Widget build(BuildContext context) {
+    final tablet = AppOrientation.isTablet(context);
     return Scaffold(
       backgroundColor: _bg,
       appBar: AppBar(
         backgroundColor: Colors.white,
         surfaceTintColor: Colors.transparent,
         elevation: 0,
-        centerTitle: true,
-        leadingWidth: 80,
-        leading: TextButton.icon(
-          onPressed: () => Navigator.of(context).maybePop(),
-          style: TextButton.styleFrom(
-            foregroundColor: _text,
-            padding: const EdgeInsets.only(left: 8),
-          ),
-          icon: const Icon(Icons.chevron_left, size: 30),
-          label: const Text('返回', style: TextStyle(fontSize: 15)),
-        ),
-        title: const Text(
-          '订阅会员',
-          style: TextStyle(
-            fontSize: 17,
-            fontWeight: FontWeight.w700,
-            color: _text,
-          ),
-        ),
+        centerTitle: !tablet,
+        leadingWidth: SettingsBackButton.leadingWidth,
+        leading: const SettingsBackButton(),
+        title: tablet
+            ? null
+            : const Text(
+                '订阅会员',
+                style: TextStyle(
+                  fontSize: 17,
+                  fontWeight: FontWeight.w700,
+                  color: _text,
+                ),
+              ),
       ),
-      body: Column(
-        children: [
-          Expanded(
-            child: ListView(
-              padding: const EdgeInsets.fromLTRB(16, 14, 16, 20),
+      body: tablet ? _buildTabletBody() : _buildPhoneBody(),
+    );
+  }
+
+  Widget _buildPhoneBody() {
+    return Column(
+      children: [
+        Expanded(
+          child: ListView(
+            padding: const EdgeInsets.fromLTRB(16, 14, 16, 20),
+            children: [
+              const _MembershipIntro(),
+              if (_isAndroid) ...[
+                const SizedBox(height: 12),
+                const _AndroidComingSoonHint(),
+              ] else if (_nextUpgradeableTier == null) ...[
+                const SizedBox(height: 12),
+                const _AlreadyTopPlanHint(),
+              ],
+              const SizedBox(height: 16),
+              if (_isIos && !_selectedOwned)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: Row(
+                    children: [
+                      const Spacer(),
+                      _BillingPeriodToggle(
+                        yearly: _yearlyBilling,
+                        enabled: !_busy &&
+                            !_productsLoading &&
+                            _error == null,
+                        onChanged: _setBillingPeriod,
+                      ),
+                    ],
+                  ),
+                ),
+              _TierPlanCard(
+                title: '普通会员',
+                tagline: '订阅期内无限收藏：突破免费条数上限',
+                owned: _isTierOwned(UsagePlan.basic),
+                priceWidget: _cardPriceWidget(
+                  UsagePlan.basic,
+                  selected: _selectedTier == UsagePlan.basic,
+                ),
+                features: _basicFeatures(),
+                selected: _selectedTier == UsagePlan.basic,
+                onTap: () => _selectTier(UsagePlan.basic),
+              ),
+              const SizedBox(height: 10),
+              _TierPlanCard(
+                title: '太子Pro',
+                tagline: '智能整理：含普通会员，解锁解读、脑图与转写',
+                owned: _isTierOwned(UsagePlan.prince),
+                priceWidget: _cardPriceWidget(
+                  UsagePlan.prince,
+                  selected: _selectedTier == UsagePlan.prince,
+                ),
+                features: _princeFeatures(_quotas),
+                selected: _selectedTier == UsagePlan.prince,
+                onTap: () => _selectTier(UsagePlan.prince),
+              ),
+              const SizedBox(height: 10),
+              _TierPlanCard(
+                title: '帝王Pro',
+                tagline: '更高额度：含太子Pro 全部能力，AI 与转写额度更大',
+                owned: _isTierOwned(UsagePlan.emperor),
+                priceWidget: _cardPriceWidget(
+                  UsagePlan.emperor,
+                  selected: _selectedTier == UsagePlan.emperor,
+                ),
+                features: _emperorFeatures(_quotas),
+                selected: _selectedTier == UsagePlan.emperor,
+                onTap: () => _selectTier(UsagePlan.emperor),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                '免费用户收藏上限 ${_quotas.free.itemLimit ?? 100} 条；AI / 转写额度按自然月重置',
+                style: const TextStyle(
+                  fontSize: 12,
+                  color: _muted,
+                  height: 1.45,
+                ),
+              ),
+              if (_isIos) ...[
+                if (_productsLoading)
+                  const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 28),
+                    child: Center(
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                  )
+                else if (_error != null) ...[
+                  Text(
+                    _error!,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      fontSize: 14,
+                      color: _muted,
+                      height: 1.4,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  TextButton(
+                    onPressed: _busy ? null : _load,
+                    child: const Text('重试'),
+                  ),
+                ] else if (!_selectedOwned && !_selectedTierProductsReady) ...[
+                  const SizedBox(height: 16),
+                  _TierProductsSyncHint(
+                    tierLabel: _tierDisplayName(_selectedTier),
+                    missingIds: _missingIdsForSelectedTier(),
+                    onRetry: _busy ? null : _load,
+                  ),
+                ],
+              ] else if (!_isAndroid)
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 12),
+                  child: Text(
+                    '请在 iPhone 上通过 App Store 订阅。',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(fontSize: 14, color: _muted, height: 1.4),
+                  ),
+                ),
+            ],
+          ),
+        ),
+        if (_isIos)
+          _BottomActionBar(
+            showPurchaseActions: !_productsLoading && _error == null,
+            showLegalFooter: true,
+            subscribeLabel: _subscribeLabel(),
+            restoreLabel: _busy && _restoreFlow ? _phaseLabel : '恢复购买',
+            busy: _busy,
+            restoreFlow: _restoreFlow,
+            subscribeEnabled: !_selectedOwned &&
+                _selected != null &&
+                _selectedTierProductsReady,
+            trialOffer: _selectedOwned ? null : _selectedTrial,
+            selectedPrice: _selectedOwned ? null : _selected?.price,
+            lifetimePurchase: false,
+            onSubscribe: () => _buy(),
+            onRestore: _restore,
+            onUserAgreement: () => _openLegal(
+              title: '用户协议',
+              body: LegalDocs.userAgreement,
+            ),
+            onPrivacy: () => _openLegal(
+              title: '隐私政策',
+              body: LegalDocs.privacyPolicy,
+            ),
+          ),
+      ],
+    );
+  }
+
+  /// iPad：英雄条 + 三档横排铺满剩余高度，每卡自带 CTA；底栏仅恢复/协议。
+  Widget _buildTabletBody() {
+    final freeLimit = _quotas.free.itemLimit ?? 100;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Expanded(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(40, 16, 40, 0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                const _MembershipIntro(),
+                _TabletMembershipHero(
+                  freeItemLimit: freeLimit,
+                  showBillingToggle: _isIos && _nextUpgradeableTier != null,
+                  yearly: _yearlyBilling,
+                  billingEnabled:
+                      !_busy && !_productsLoading && _error == null,
+                  onBillingChanged: _setBillingPeriod,
+                ),
                 if (_isAndroid) ...[
                   const SizedBox(height: 12),
                   const _AndroidComingSoonHint(),
@@ -530,140 +707,119 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
                   const SizedBox(height: 12),
                   const _AlreadyTopPlanHint(),
                 ],
-                const SizedBox(height: 16),
-                if (_isIos && !_selectedOwned)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 10),
-                    child: Row(
-                      children: [
-                        const Spacer(),
-                        _BillingPeriodToggle(
-                          yearly: _yearlyBilling,
-                          enabled: !_busy &&
-                              !_productsLoading &&
-                              _error == null,
-                          onChanged: _setBillingPeriod,
+                if (_isIos && _error != null) ...[
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          _error!,
+                          style: const TextStyle(
+                            fontSize: 13,
+                            color: _muted,
+                            height: 1.4,
+                          ),
                         ),
-                      ],
-                    ),
-                  ),
-                _TierPlanCard(
-                  title: '普通会员',
-                  tagline: '订阅期内无限收藏：突破免费条数上限',
-                  owned: _isTierOwned(UsagePlan.basic),
-                  priceWidget: _cardPriceWidget(
-                    UsagePlan.basic,
-                    selected: _selectedTier == UsagePlan.basic,
-                  ),
-                  features: _basicFeatures(),
-                  selected: _selectedTier == UsagePlan.basic,
-                  onTap: () => _selectTier(UsagePlan.basic),
-                ),
-                const SizedBox(height: 10),
-                _TierPlanCard(
-                  title: '太子Pro',
-                  tagline: '智能整理：含普通会员，解锁解读、脑图与转写',
-                  owned: _isTierOwned(UsagePlan.prince),
-                  priceWidget: _cardPriceWidget(
-                    UsagePlan.prince,
-                    selected: _selectedTier == UsagePlan.prince,
-                  ),
-                  features: _princeFeatures(_quotas),
-                  selected: _selectedTier == UsagePlan.prince,
-                  onTap: () => _selectTier(UsagePlan.prince),
-                ),
-                const SizedBox(height: 10),
-                _TierPlanCard(
-                  title: '帝王Pro',
-                  tagline: '更高额度：含太子Pro 全部能力，AI 与转写额度更大',
-                  owned: _isTierOwned(UsagePlan.emperor),
-                  priceWidget: _cardPriceWidget(
-                    UsagePlan.emperor,
-                    selected: _selectedTier == UsagePlan.emperor,
-                  ),
-                  features: _emperorFeatures(_quotas),
-                  selected: _selectedTier == UsagePlan.emperor,
-                  onTap: () => _selectTier(UsagePlan.emperor),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  '免费用户收藏上限 ${_quotas.free.itemLimit ?? 100} 条；AI / 转写额度按自然月重置',
-                  style: const TextStyle(
-                    fontSize: 12,
-                    color: _muted,
-                    height: 1.45,
-                  ),
-                ),
-                if (_isIos) ...[
-                  if (_productsLoading)
-                    const Padding(
-                      padding: EdgeInsets.symmetric(vertical: 28),
-                      child: Center(
-                        child: CircularProgressIndicator(strokeWidth: 2),
                       ),
-                    )
-                  else if (_error != null) ...[
-                    Text(
-                      _error!,
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(
-                        fontSize: 14,
-                        color: _muted,
-                        height: 1.4,
+                      TextButton(
+                        onPressed: _busy ? null : _load,
+                        child: const Text('重试'),
                       ),
-                    ),
-                    const SizedBox(height: 12),
-                    TextButton(
-                      onPressed: _busy ? null : _load,
-                      child: const Text('重试'),
-                    ),
-                  ] else if (!_selectedOwned && !_selectedTierProductsReady) ...[
-                    const SizedBox(height: 16),
-                    _TierProductsSyncHint(
-                      tierLabel: _tierDisplayName(_selectedTier),
-                      missingIds: _missingIdsForSelectedTier(),
-                      onRetry: _busy ? null : _load,
-                    ),
-                  ],
-                ] else if (!_isAndroid)
-                  const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 12),
-                    child: Text(
-                      '请在 iPhone 上通过 App Store 订阅。',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(fontSize: 14, color: _muted, height: 1.4),
-                    ),
+                    ],
                   ),
+                ],
+                const SizedBox(height: 16),
+                Expanded(
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Expanded(
+                        child: _TabletPlanCard(
+                          title: '普通会员',
+                          tagline: '订阅期内无限收藏：突破免费条数上限',
+                          owned: _isTierOwned(UsagePlan.basic),
+                          featured: false,
+                          selected: _selectedTier == UsagePlan.basic,
+                          priceWidget: _cardPriceWidget(
+                            UsagePlan.basic,
+                            selected: _selectedTier == UsagePlan.basic,
+                          ),
+                          features: _basicFeatures(),
+                          ctaLabel: _subscribeLabelForTier(UsagePlan.basic),
+                          ctaEnabled: _ctaEnabledForTier(UsagePlan.basic),
+                          ctaBusy: _busy &&
+                              !_restoreFlow &&
+                              _selectedTier == UsagePlan.basic,
+                          onSelect: () => _selectTier(UsagePlan.basic),
+                          onSubscribe: () => _buy(UsagePlan.basic),
+                        ),
+                      ),
+                      const SizedBox(width: 14),
+                      Expanded(
+                        child: _TabletPlanCard(
+                          title: '太子Pro',
+                          tagline: '智能整理：含普通会员，解锁解读、脑图与转写',
+                          badge: '推荐',
+                          owned: _isTierOwned(UsagePlan.prince),
+                          featured: true,
+                          selected: _selectedTier == UsagePlan.prince,
+                          priceWidget: _cardPriceWidget(
+                            UsagePlan.prince,
+                            selected: _selectedTier == UsagePlan.prince,
+                          ),
+                          features: _princeFeatures(_quotas),
+                          ctaLabel: _subscribeLabelForTier(UsagePlan.prince),
+                          ctaEnabled: _ctaEnabledForTier(UsagePlan.prince),
+                          ctaBusy: _busy &&
+                              !_restoreFlow &&
+                              _selectedTier == UsagePlan.prince,
+                          onSelect: () => _selectTier(UsagePlan.prince),
+                          onSubscribe: () => _buy(UsagePlan.prince),
+                        ),
+                      ),
+                      const SizedBox(width: 14),
+                      Expanded(
+                        child: _TabletPlanCard(
+                          title: '帝王Pro',
+                          tagline: '更高额度：含太子Pro 全部能力，AI 与转写额度更大',
+                          owned: _isTierOwned(UsagePlan.emperor),
+                          featured: false,
+                          selected: _selectedTier == UsagePlan.emperor,
+                          priceWidget: _cardPriceWidget(
+                            UsagePlan.emperor,
+                            selected: _selectedTier == UsagePlan.emperor,
+                          ),
+                          features: _emperorFeatures(_quotas),
+                          ctaLabel: _subscribeLabelForTier(UsagePlan.emperor),
+                          ctaEnabled: _ctaEnabledForTier(UsagePlan.emperor),
+                          ctaBusy: _busy &&
+                              !_restoreFlow &&
+                              _selectedTier == UsagePlan.emperor,
+                          onSelect: () => _selectTier(UsagePlan.emperor),
+                          onSubscribe: () => _buy(UsagePlan.emperor),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               ],
             ),
           ),
-          if (_isIos)
-            _BottomActionBar(
-              showPurchaseActions: !_productsLoading && _error == null,
-              showLegalFooter: true,
-              subscribeLabel: _subscribeLabel(),
-              restoreLabel: _busy && _restoreFlow ? _phaseLabel : '恢复购买',
-              busy: _busy,
-              restoreFlow: _restoreFlow,
-              subscribeEnabled: !_selectedOwned &&
-                  _selected != null &&
-                  _selectedTierProductsReady,
-              trialOffer: _selectedOwned ? null : _selectedTrial,
-              selectedPrice: _selectedOwned ? null : _selected?.price,
-              lifetimePurchase: false,
-              onSubscribe: _buy,
-              onRestore: _restore,
-              onUserAgreement: () => _openLegal(
-                title: '用户协议',
-                body: LegalDocs.userAgreement,
-              ),
-              onPrivacy: () => _openLegal(
-                title: '隐私政策',
-                body: LegalDocs.privacyPolicy,
-              ),
-            ),
-        ],
-      ),
+        ),
+        _TabletProFooter(
+          restoreLabel: _busy && _restoreFlow ? _phaseLabel : '恢复购买',
+          restoreEnabled: _isIos && !_busy,
+          onRestore: _isIos ? _restore : null,
+          onUserAgreement: () => _openLegal(
+            title: '用户协议',
+            body: LegalDocs.userAgreement,
+          ),
+          onPrivacy: () => _openLegal(
+            title: '隐私政策',
+            body: LegalDocs.privacyPolicy,
+          ),
+        ),
+      ],
     );
   }
 
@@ -729,22 +885,30 @@ class _BillingPeriodToggle extends StatelessWidget {
     required this.yearly,
     required this.enabled,
     required this.onChanged,
+    this.onDark = false,
   });
 
   final bool yearly;
   final bool enabled;
   final ValueChanged<bool> onChanged;
+  final bool onDark;
 
   @override
   Widget build(BuildContext context) {
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: _UpgradeProPageState._border),
+        color: onDark
+            ? Colors.white.withValues(alpha: 0.10)
+            : Colors.white,
+        borderRadius: BorderRadius.circular(onDark ? 12 : 10),
+        border: Border.all(
+          color: onDark
+              ? Colors.white.withValues(alpha: 0.16)
+              : _UpgradeProPageState._border,
+        ),
       ),
       child: Padding(
-        padding: const EdgeInsets.all(3),
+        padding: EdgeInsets.all(onDark ? 4 : 3),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -752,12 +916,14 @@ class _BillingPeriodToggle extends StatelessWidget {
               label: '月付',
               selected: !yearly,
               enabled: enabled,
+              onDark: onDark,
               onTap: () => onChanged(false),
             ),
             _BillingPeriodChip(
               label: '年付',
               selected: yearly,
               enabled: enabled,
+              onDark: onDark,
               onTap: () => onChanged(true),
             ),
           ],
@@ -773,31 +939,47 @@ class _BillingPeriodChip extends StatelessWidget {
     required this.selected,
     required this.enabled,
     required this.onTap,
+    this.onDark = false,
   });
 
   final String label;
   final bool selected;
   final bool enabled;
   final VoidCallback onTap;
+  final bool onDark;
 
   @override
   Widget build(BuildContext context) {
+    final Color bg;
+    final Color fg;
+    if (onDark) {
+      bg = selected ? Colors.white : Colors.transparent;
+      fg = selected
+          ? _UpgradeProPageState._accent
+          : Colors.white.withValues(alpha: 0.75);
+    } else {
+      bg = selected ? _UpgradeProPageState._accentSoft : Colors.transparent;
+      fg = selected
+          ? _UpgradeProPageState._accent
+          : _UpgradeProPageState._muted;
+    }
     return Material(
-      color: selected ? _UpgradeProPageState._accentSoft : Colors.transparent,
-      borderRadius: BorderRadius.circular(8),
+      color: bg,
+      borderRadius: BorderRadius.circular(onDark ? 9 : 8),
       child: InkWell(
         onTap: enabled ? onTap : null,
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(onDark ? 9 : 8),
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+          padding: EdgeInsets.symmetric(
+            horizontal: onDark ? 16 : 14,
+            vertical: onDark ? 9 : 7,
+          ),
           child: Text(
             label,
             style: TextStyle(
-              fontSize: 13,
+              fontSize: onDark ? 14 : 13,
               fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
-              color: selected
-                  ? _UpgradeProPageState._accent
-                  : _UpgradeProPageState._muted,
+              color: fg,
             ),
           ),
         ),
@@ -1010,6 +1192,456 @@ class _MembershipIntro extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// iPad 横屏英雄条：左文案、右月/年切换
+class _TabletMembershipHero extends StatelessWidget {
+  const _TabletMembershipHero({
+    required this.freeItemLimit,
+    required this.showBillingToggle,
+    required this.yearly,
+    required this.billingEnabled,
+    required this.onBillingChanged,
+  });
+
+  final int freeItemLimit;
+  final bool showBillingToggle;
+  final bool yearly;
+  final bool billingEnabled;
+  final ValueChanged<bool> onBillingChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(16),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.fromLTRB(28, 22, 24, 22),
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment(-0.85, -0.4),
+            end: Alignment(0.9, 1.0),
+            colors: [
+              Color(0xFF12151A),
+              Color(0xFF1C2A48),
+              Color(0xFF243B6E),
+            ],
+            stops: [0.0, 0.55, 1.0],
+          ),
+        ),
+        child: Stack(
+          clipBehavior: Clip.none,
+          children: [
+            Positioned(
+              right: -20,
+              top: -36,
+              child: Container(
+                width: 160,
+                height: 120,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: const Color(0xFF5B8FF9).withValues(alpha: 0.22),
+                ),
+              ),
+            ),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        '订阅会员',
+                        style: TextStyle(
+                          fontSize: 28,
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xFFE8EEF8),
+                          height: 1.2,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      const Text(
+                        '选一个适合你的档位，\n已生成的内容始终可查看。',
+                        style: TextStyle(
+                          fontSize: 15,
+                          color: Color(0xC7FFFFFF),
+                          height: 1.45,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        '免费收藏上限 $freeItemLimit 条 · AI / 转写按自然月重置',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.white.withValues(alpha: 0.45),
+                          height: 1.35,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                if (showBillingToggle) ...[
+                  const SizedBox(width: 24),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      _BillingPeriodToggle(
+                        yearly: yearly,
+                        enabled: billingEnabled,
+                        onChanged: onBillingChanged,
+                        onDark: true,
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        '年付可省约 2 个月',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.white.withValues(alpha: 0.55),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// iPad 方案卡：等高铺满，底部 CTA
+class _TabletPlanCard extends StatelessWidget {
+  const _TabletPlanCard({
+    required this.title,
+    required this.tagline,
+    required this.features,
+    required this.selected,
+    required this.featured,
+    required this.owned,
+    required this.ctaLabel,
+    required this.ctaEnabled,
+    required this.ctaBusy,
+    required this.onSelect,
+    required this.onSubscribe,
+    this.badge,
+    this.priceWidget,
+  });
+
+  final String title;
+  final String tagline;
+  final String? badge;
+  final List<_PlanFeature> features;
+  final bool selected;
+  final bool featured;
+  final bool owned;
+  final Widget? priceWidget;
+  final String ctaLabel;
+  final bool ctaEnabled;
+  final bool ctaBusy;
+  final VoidCallback onSelect;
+  final VoidCallback onSubscribe;
+
+  @override
+  Widget build(BuildContext context) {
+    final borderColor = selected || featured
+        ? _UpgradeProPageState._accent
+        : _UpgradeProPageState._border;
+    return Opacity(
+      opacity: owned && !selected ? 0.78 : 1,
+      child: Material(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onSelect,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 180),
+            padding: const EdgeInsets.fromLTRB(20, 22, 20, 20),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: borderColor,
+                width: selected || featured ? 2 : 1,
+              ),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Flexible(
+                      child: Text(
+                        title,
+                        style: const TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.w700,
+                          color: _UpgradeProPageState._text,
+                          height: 1.2,
+                        ),
+                      ),
+                    ),
+                    if (badge != null) ...[
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 3,
+                        ),
+                        decoration: BoxDecoration(
+                          color: _UpgradeProPageState._accent,
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Text(
+                          badge!,
+                          style: const TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ),
+                    ],
+                    if (owned) ...[
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 3,
+                        ),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF0F2F5),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: const Text(
+                          '已开通',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                            color: _UpgradeProPageState._muted,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  tagline,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    color: _UpgradeProPageState._muted,
+                    height: 1.4,
+                  ),
+                ),
+                if (priceWidget != null) ...[
+                  const SizedBox(height: 8),
+                  priceWidget!,
+                ],
+                const SizedBox(height: 18),
+                ...features.map(
+                  (f) => Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: _FeatureLine(feature: f),
+                  ),
+                ),
+                const Spacer(),
+                _TabletCardCta(
+                  label: ctaLabel,
+                  primary: featured,
+                  enabled: ctaEnabled,
+                  busy: ctaBusy,
+                  onPressed: onSubscribe,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _TabletCardCta extends StatelessWidget {
+  const _TabletCardCta({
+    required this.label,
+    required this.primary,
+    required this.enabled,
+    required this.busy,
+    required this.onPressed,
+  });
+
+  final String label;
+  final bool primary;
+  final bool enabled;
+  final bool busy;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final canTap = enabled && !busy;
+    if (primary) {
+      return SizedBox(
+        width: double.infinity,
+        height: 48,
+        child: FilledButton(
+          onPressed: canTap ? onPressed : null,
+          style: FilledButton.styleFrom(
+            backgroundColor: _UpgradeProPageState._accent,
+            foregroundColor: Colors.white,
+            disabledBackgroundColor: busy
+                ? _UpgradeProPageState._accent
+                : _UpgradeProPageState._accent.withValues(alpha: 0.45),
+            disabledForegroundColor: Colors.white,
+            elevation: 0,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+          ),
+          child: busy
+              ? const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: Colors.white,
+                  ),
+                )
+              : Text(
+                  label,
+                  style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+        ),
+      );
+    }
+    return SizedBox(
+      width: double.infinity,
+      height: 48,
+      child: OutlinedButton(
+        onPressed: canTap ? onPressed : null,
+        style: OutlinedButton.styleFrom(
+          foregroundColor: _UpgradeProPageState._accent,
+          backgroundColor: _UpgradeProPageState._accentSoft,
+          disabledForegroundColor:
+              _UpgradeProPageState._accent.withValues(alpha: 0.45),
+          side: BorderSide(
+            color: _UpgradeProPageState._accent.withValues(alpha: 0.25),
+          ),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+        ),
+        child: busy
+            ? SizedBox(
+                width: 18,
+                height: 18,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: _UpgradeProPageState._accent,
+                ),
+              )
+            : Text(
+                label,
+                style: const TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+      ),
+    );
+  }
+}
+
+class _TabletProFooter extends StatelessWidget {
+  const _TabletProFooter({
+    required this.restoreLabel,
+    required this.restoreEnabled,
+    required this.onUserAgreement,
+    required this.onPrivacy,
+    this.onRestore,
+  });
+
+  final String restoreLabel;
+  final bool restoreEnabled;
+  final VoidCallback? onRestore;
+  final VoidCallback onUserAgreement;
+  final VoidCallback onPrivacy;
+
+  @override
+  Widget build(BuildContext context) {
+    final bottom = MediaQuery.paddingOf(context).bottom;
+    return Padding(
+      padding: EdgeInsets.fromLTRB(40, 12, 40, 16 + bottom),
+      child: Row(
+        children: [
+          if (onRestore != null)
+            TextButton(
+              onPressed: restoreEnabled ? onRestore : null,
+              style: TextButton.styleFrom(
+                foregroundColor: _UpgradeProPageState._accent,
+                padding: EdgeInsets.zero,
+                minimumSize: Size.zero,
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+              child: Text(
+                restoreLabel,
+                style: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            )
+          else
+            const SizedBox.shrink(),
+          const Spacer(),
+          Text.rich(
+            TextSpan(
+              style: const TextStyle(
+                fontSize: 12,
+                color: _UpgradeProPageState._muted,
+              ),
+              children: [
+                WidgetSpan(
+                  alignment: PlaceholderAlignment.baseline,
+                  baseline: TextBaseline.alphabetic,
+                  child: GestureDetector(
+                    onTap: onUserAgreement,
+                    child: const Text(
+                      '用户协议',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: _UpgradeProPageState._muted,
+                      ),
+                    ),
+                  ),
+                ),
+                const TextSpan(text: ' · '),
+                WidgetSpan(
+                  alignment: PlaceholderAlignment.baseline,
+                  baseline: TextBaseline.alphabetic,
+                  child: GestureDetector(
+                    onTap: onPrivacy,
+                    child: const Text(
+                      '隐私政策',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: _UpgradeProPageState._muted,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }

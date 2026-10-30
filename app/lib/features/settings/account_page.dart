@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:super_collection/core/analytics/screen_dwell_tracker.dart';
 import 'package:super_collection/features/auth/auth_repository.dart';
+import 'package:super_collection/features/settings/settings_modal.dart';
 import 'package:super_collection/features/settings/trial_expiry_banner.dart';
 import 'package:super_collection/features/settings/upgrade_pro_page.dart';
 import 'package:super_collection/features/settings/usage_events_page.dart';
@@ -120,12 +121,11 @@ class _AccountPageState extends State<AccountPage> with ScreenDwellMixin {
   }
 
   void _openUsageEvents(UsageEventsKind kind) {
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => UsageEventsPage(
-          kind: kind,
-          yearMonth: _usage?.yearMonth,
-        ),
+    openSettingsPage<void>(
+      context,
+      UsageEventsPage(
+        kind: kind,
+        yearMonth: _usage?.yearMonth,
       ),
     );
   }
@@ -139,16 +139,8 @@ class _AccountPageState extends State<AccountPage> with ScreenDwellMixin {
         surfaceTintColor: Colors.transparent,
         elevation: 0,
         centerTitle: true,
-        leadingWidth: 80,
-        leading: TextButton.icon(
-          onPressed: () => Navigator.of(context).maybePop(),
-          style: TextButton.styleFrom(
-            foregroundColor: _text,
-            padding: const EdgeInsets.only(left: 8),
-          ),
-          icon: const Icon(Icons.chevron_left, size: 30),
-          label: const Text('返回', style: TextStyle(fontSize: 15)),
-        ),
+        leadingWidth: SettingsBackButton.leadingWidth,
+        leading: const SettingsBackButton(),
         title: const Text(
           '账户和用量',
           style: TextStyle(

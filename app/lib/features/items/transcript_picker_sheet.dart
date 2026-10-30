@@ -1,16 +1,17 @@
 import 'package:flutter/material.dart';
+import 'package:super_collection/core/ui/app_bottom_sheet.dart';
+import 'package:super_collection/core/ui/app_orientation.dart';
 import 'package:super_collection/features/items/transcript_models.dart';
 
 Future<TranscriptTarget?> showTranscriptPickerSheet(
   BuildContext context, {
   required List<TranscriptTarget> targets,
 }) {
-  return showModalBottomSheet<TranscriptTarget>(
+  return showAppBottomSheet<TranscriptTarget>(
     context: context,
-    backgroundColor: Colors.transparent,
     barrierColor: const Color(0x66000000),
-    isScrollControlled: true,
-    useSafeArea: false,
+    padding: EdgeInsets.zero,
+    includeSafeArea: false,
     builder: (context) => _TranscriptPickerSheet(targets: targets),
   );
 }
@@ -28,9 +29,15 @@ class _TranscriptPickerSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final tablet = AppOrientation.isTablet(context);
+    final radius = tablet
+        ? BorderRadius.circular(16)
+        : const BorderRadius.vertical(top: Radius.circular(16));
+
     return Material(
       color: Colors.white,
-      borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+      borderRadius: radius,
+      clipBehavior: Clip.antiAlias,
       child: SafeArea(
         top: false,
         child: Padding(

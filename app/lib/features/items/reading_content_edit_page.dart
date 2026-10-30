@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:super_collection/core/network/api_client.dart';
+import 'package:super_collection/core/ui/app_confirm_dialog.dart';
 import 'package:super_collection/core/ui/app_toast.dart';
 import 'package:super_collection/features/items/item_models.dart';
 import 'package:super_collection/features/items/items_repository.dart';
@@ -64,22 +65,12 @@ class _ReadingContentEditPageState extends State<ReadingContentEditPage> {
 
   Future<bool> _confirmDiscard() async {
     if (!_dirty) return true;
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('放弃修改？'),
-        content: const Text('当前编辑尚未保存。'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('继续编辑'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('放弃'),
-          ),
-        ],
-      ),
+    final ok = await showAppConfirmDialog(
+      context,
+      title: '放弃修改？',
+      message: '当前编辑尚未保存。',
+      cancelLabel: '继续编辑',
+      confirmLabel: '放弃',
     );
     return ok == true;
   }

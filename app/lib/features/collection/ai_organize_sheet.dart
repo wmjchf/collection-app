@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:super_collection/core/network/api_client.dart';
+import 'package:super_collection/core/ui/app_bottom_sheet.dart';
 import 'package:super_collection/core/ui/app_toast.dart';
 import 'package:super_collection/features/collection/ai_organize_models.dart';
 import 'package:super_collection/features/collection/tag_modules_repository.dart';
@@ -9,20 +10,10 @@ import 'package:super_collection/features/settings/quota_gate.dart';
 
 /// 弹出 AI 标签归类：生成建议 → 预览 → 应用。成功返回 true。
 Future<bool?> showAiOrganizeSheet(BuildContext context) {
-  return showModalBottomSheet<bool>(
+  return showAppBottomSheet<bool>(
     context: context,
-    isScrollControlled: true,
-    backgroundColor: Colors.transparent,
-    barrierColor: const Color(0x59000000),
-    useSafeArea: false,
-    builder: (context) {
-      return Padding(
-        padding: EdgeInsets.only(
-          bottom: MediaQuery.viewInsetsOf(context).bottom,
-        ),
-        child: const _AiOrganizeSheet(),
-      );
-    },
+    padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
+    builder: (context) => const _AiOrganizeSheet(),
   );
 }
 
@@ -111,11 +102,11 @@ class _AiOrganizeSheetState extends State<_AiOrganizeSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final bottom = MediaQuery.paddingOf(context).bottom;
     final maxH = MediaQuery.sizeOf(context).height * 0.78;
 
+    // 底部安全区由 AppBottomSheetShell 处理
     return Padding(
-      padding: EdgeInsets.fromLTRB(16, 0, 16, 16 + (bottom > 0 ? bottom : 0)),
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
       child: Material(
         color: Colors.white,
         borderRadius: BorderRadius.circular(24),

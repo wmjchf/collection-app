@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:super_collection/core/analytics/analytics.dart';
 import 'package:super_collection/core/config/app_brand.dart';
 import 'package:super_collection/core/network/api_client.dart';
+import 'package:super_collection/core/ui/app_form_width.dart';
 import 'package:super_collection/core/ui/app_toast.dart';
 import 'package:super_collection/features/onboarding/onboarding_flow.dart';
 import 'package:super_collection/features/onboarding/onboarding_survey_repository.dart';
@@ -129,7 +130,8 @@ class _FirstSurveyPageState extends State<FirstSurveyPage> {
     return Scaffold(
       backgroundColor: Colors.white,
       body: SafeArea(
-        child: Column(
+        child: wrapAppFormWidth(
+          child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Padding(
@@ -263,6 +265,7 @@ class _FirstSurveyPageState extends State<FirstSurveyPage> {
               ),
             ),
           ],
+        ),
         ),
       ),
     );

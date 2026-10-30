@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:super_collection/core/ui/app_bottom_sheet.dart';
+import 'package:super_collection/core/ui/app_orientation.dart';
 
 enum ReadingMoreAction { transcript, note }
 
@@ -7,12 +9,13 @@ Future<ReadingMoreAction?> showReadingMoreSheet(
   bool showTranscript = false,
   bool hasNote = false,
 }) {
-  return showModalBottomSheet<ReadingMoreAction>(
+  return showAppBottomSheet<ReadingMoreAction>(
     context: context,
-    backgroundColor: Colors.transparent,
     barrierColor: const Color(0x66000000),
-    // 关闭默认安全区：否则透明背景下真机会在 Home 条上方露出一条底色
-    useSafeArea: false,
+    // sheet 自带 SafeArea；padding 仅补键盘，避免手机侧缝变大
+    padding: EdgeInsets.zero,
+    includeSafeArea: false,
+    isScrollControlled: false,
     builder: (context) => _ReadingMoreSheet(
       showTranscript: showTranscript,
       hasNote: hasNote,
@@ -37,9 +40,15 @@ class _ReadingMoreSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final tablet = AppOrientation.isTablet(context);
+    final radius = tablet
+        ? BorderRadius.circular(20)
+        : const BorderRadius.vertical(top: Radius.circular(20));
+
     return Material(
       color: Colors.white,
-      borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+      borderRadius: radius,
+      clipBehavior: Clip.antiAlias,
       child: SafeArea(
         top: false,
         child: Padding(
