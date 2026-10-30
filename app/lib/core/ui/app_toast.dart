@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
@@ -8,6 +9,9 @@ class AppToast {
 
   static const _bg = Color(0xFF1F242E);
   static const _fg = Colors.white;
+
+  /// 平板 / 宽屏上限，避免通栏拉伸
+  static const _maxWidth = 420.0;
 
   static OverlayEntry? _entry;
   static Timer? _hideTimer;
@@ -46,27 +50,26 @@ class AppToast {
         MediaQuery.viewInsetsOf(ctx);
         final data = MediaQueryData.fromView(View.of(ctx));
         final bottomInset = data.padding.bottom + data.viewInsets.bottom;
-        return Stack(
-          children: [
-            Positioned(
-              left: 24,
-              right: 24,
-              bottom: 16 + bottomInset,
-              child: Center(
-                child: _ToastPill(
-                  message: message,
-                  loading: loading,
-                  actionLabel: actionLabel,
-                  onAction: onAction == null
-                      ? null
-                      : () {
-                          hide(context);
-                          onAction();
-                        },
-                ),
+        final maxW = math.min(_maxWidth, data.size.width - 48);
+        return Align(
+          alignment: Alignment.bottomCenter,
+          child: Padding(
+            padding: EdgeInsets.fromLTRB(24, 0, 24, 16 + bottomInset),
+            child: ConstrainedBox(
+              constraints: BoxConstraints(maxWidth: maxW),
+              child: _ToastPill(
+                message: message,
+                loading: loading,
+                actionLabel: actionLabel,
+                onAction: onAction == null
+                    ? null
+                    : () {
+                        hide(context);
+                        onAction();
+                      },
               ),
             ),
-          ],
+          ),
         );
       },
     );
@@ -90,6 +93,7 @@ class AppToast {
 
     final data = MediaQueryData.fromView(View.of(context));
     final bottomInset = data.padding.bottom + data.viewInsets.bottom;
+    final maxW = math.min(_maxWidth, data.size.width - 48);
     messenger.showSnackBar(
       SnackBar(
         backgroundColor: Colors.transparent,
@@ -102,16 +106,19 @@ class AppToast {
         dismissDirection:
             loading ? DismissDirection.none : DismissDirection.down,
         content: Center(
-          child: _ToastPill(
-            message: message,
-            loading: loading,
-            actionLabel: actionLabel,
-            onAction: onAction == null
-                ? null
-                : () {
-                    messenger.hideCurrentSnackBar();
-                    onAction();
-                  },
+          child: ConstrainedBox(
+            constraints: BoxConstraints(maxWidth: maxW),
+            child: _ToastPill(
+              message: message,
+              loading: loading,
+              actionLabel: actionLabel,
+              onAction: onAction == null
+                  ? null
+                  : () {
+                      messenger.hideCurrentSnackBar();
+                      onAction();
+                    },
+            ),
           ),
         ),
       ),
@@ -155,6 +162,7 @@ class _ToastPill extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
         child: Row(
           mainAxisSize: MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
             if (loading) ...[
               const SizedBox(

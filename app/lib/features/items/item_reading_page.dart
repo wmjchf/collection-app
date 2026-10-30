@@ -8,7 +8,10 @@ import 'package:super_collection/core/analytics/analytics.dart';
 import 'package:super_collection/core/analytics/screen_dwell_tracker.dart';
 import 'package:super_collection/core/network/api_client.dart';
 import 'package:super_collection/core/network/media_http_headers.dart';
+import 'package:super_collection/core/ui/app_bottom_sheet.dart';
 import 'package:super_collection/core/ui/app_confirm_dialog.dart';
+import 'package:super_collection/core/ui/app_orientation.dart';
+import 'package:super_collection/core/ui/app_side_drawer.dart';
 import 'package:super_collection/core/ui/app_toast.dart';
 import 'package:super_collection/core/ui/parse_progress_tracker.dart';
 import 'package:super_collection/core/ui/pro_copy.dart';
@@ -16,6 +19,8 @@ import 'package:super_collection/features/collection/items_browse_page.dart';
 import 'package:super_collection/features/collection/tag_models.dart';
 import 'package:super_collection/features/collection/tags_repository.dart';
 import 'package:super_collection/features/home/home_format.dart';
+import 'package:super_collection/features/home/roam_models.dart';
+import 'package:super_collection/features/home/widgets/roam_quote_card.dart';
 import 'package:super_collection/features/items/ai_meta_models.dart';
 import 'package:super_collection/features/items/article_body_text.dart';
 import 'package:super_collection/features/items/article_content_blocks.dart';
@@ -53,6 +58,8 @@ class ItemReadingPage extends StatefulWidget {
     this.openEntry = 'unknown',
     this.focusAnnotationId,
     this.openNoteOnLaunch = false,
+    this.embedded = false,
+    this.onDeleted,
   });
 
   final int itemId;
@@ -66,6 +73,11 @@ class ItemReadingPage extends StatefulWidget {
 
   /// 打开后直接弹出感想（如漫游点感想进入）
   final bool openNoteOnLaunch;
+
+  /// iPad 分栏嵌入：无返回钮，删除后回调宿主而非 pop。
+  final bool embedded;
+
+  final VoidCallback? onDeleted;
 
   @override
   State<ItemReadingPage> createState() => _ItemReadingPageState();
@@ -107,6 +119,9 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
   late final DateTime _openedAt;
   double _bodyFontSize = ReadingFontPrefs.defaultSize;
   bool _focusScrollDone = false;
+
+  /// 侧栏点选后滚动定位到正文高亮（与入页 focusAnnotationId 分开）
+  int? _locateAnnotationId;
   bool _noteSheetLaunched = false;
 
   /// 停留满此时长才标已读，避免误点进阅读页就从「未读」消失。
@@ -366,6 +381,7 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
   /// 离开阅读页：若已认真看过且仍无标签，轻推打标（可跳过）。
   /// 需要拦截时 [PopScope.canPop] 为 false，须用 [Navigator.pop] 强制出栈。
   Future<void> _handleBack() async {
+    if (widget.embedded) return;
     if (_handlingBack) return;
     _handlingBack = true;
     try {
@@ -460,7 +476,11 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
       await _repo.deleteItem(_item.id);
       if (!mounted) return;
       AppToast.show(context, '已删除');
-      Navigator.of(context).pop(true);
+      if (widget.embedded) {
+        widget.onDeleted?.call();
+      } else {
+        Navigator.of(context).pop(true);
+      }
     } on ApiException catch (e) {
       if (!mounted) return;
       AppToast.show(context, e.message);
@@ -587,9 +607,16 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
   }
 
   void _onFocusAnnotationRect(Rect localRect, RenderBox stackBox) {
-    if (_focusScrollDone || !mounted) return;
+    if (!mounted) return;
+    final locating = _locateAnnotationId != null;
+    if (!locating && _focusScrollDone) return;
     if (!_scrollController.hasClients) return;
-    _focusScrollDone = true;
+
+    if (locating) {
+      _locateAnnotationId = null;
+    } else {
+      _focusScrollDone = true;
+    }
 
     final scrollCtx =
         _scrollController.position.context.notificationContext;
@@ -605,7 +632,85 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
       0.0,
       _scrollController.position.maxScrollExtent,
     );
-    _scrollController.jumpTo(target);
+    if (locating) {
+      unawaited(
+        _scrollController.animateTo(
+          target,
+          duration: const Duration(milliseconds: 320),
+          curve: Curves.easeOutCubic,
+        ),
+      );
+    } else {
+      _scrollController.jumpTo(target);
+    }
+  }
+
+  void _locateAnnotation(ItemAnnotation ann) {
+    final segmentKey = ann.transcriptSegmentKey;
+    if (segmentKey != null) {
+      final seg = _item.segmentTranscript(segmentKey);
+      final text = (seg?.text ?? '').trim();
+      if (text.isNotEmpty) {
+        Navigator.of(context).push(
+          MaterialPageRoute<void>(
+            builder: (_) => ItemTranscriptPage(
+              text: text,
+              cues: seg?.cues ?? const [],
+              fontSize: _bodyFontSize,
+              itemId: _item.id,
+              segmentKey: segmentKey,
+              focusAnnotationId: ann.id,
+              onShareQuote: _shareExistingQuote,
+            ),
+          ),
+        );
+        return;
+      }
+    }
+
+    setState(() => _locateAnnotationId = ann.id);
+    // 量不到热区时退回 TextPainter 估算
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      Future<void>.delayed(const Duration(milliseconds: 420), () {
+        if (!mounted || _locateAnnotationId != ann.id) return;
+        _scrollToBodyAnnotationByPainter(ann.id);
+        if (mounted) setState(() => _locateAnnotationId = null);
+      });
+    });
+  }
+
+  void _scrollToBodyAnnotationByPainter(int annotationId) {
+    if (!_scrollController.hasClients) return;
+    final body = _bodyText;
+    if (body.isEmpty) return;
+    ({int start, int end, ItemAnnotation ann})? target;
+    for (final r in _annotationRanges(body)) {
+      if (r.ann.id == annotationId) {
+        target = r;
+        break;
+      }
+    }
+    if (target == null) return;
+
+    final width = MediaQuery.sizeOf(context).width - 44;
+    final painter = TextPainter(
+      text: TextSpan(
+        text: body.substring(0, target.start),
+        style: _bodyTextStyle,
+      ),
+      textDirection: TextDirection.ltr,
+    )..layout(maxWidth: width);
+
+    const aboveBody = 160.0;
+    final targetOffset = (aboveBody + painter.height - 80)
+        .clamp(0.0, _scrollController.position.maxScrollExtent);
+    unawaited(
+      _scrollController.animateTo(
+        targetOffset,
+        duration: const Duration(milliseconds: 320),
+        curve: Curves.easeOutCubic,
+      ),
+    );
   }
 
   /// 量不到热区时（如表情 WidgetSpan）用 TextPainter 估算滚动
@@ -875,7 +980,7 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
         context,
         annotationSavedToast(isPro: _isPro),
         actionLabel: '查看',
-        onAction: _showAnnotationList,
+        onAction: _showNoteAnnotationList,
       );
     }
   }
@@ -969,112 +1074,100 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
     );
   }
 
-  void _showAnnotationList() {
-    showModalBottomSheet<void>(
+  bool _annotationHasNote(ItemAnnotation ann) =>
+      ann.note != null && ann.note!.trim().isNotEmpty;
+
+  RoamSnippet _annotationToRoamSnippet(ItemAnnotation ann) {
+    final hasNote = _annotationHasNote(ann);
+    return RoamSnippet(
+      id: 'local-ann-${ann.id}',
+      kind: hasNote ? 'note' : 'highlight',
+      text: hasNote ? ann.note!.trim() : ann.selectedText,
+      quote: hasNote ? ann.selectedText : null,
+      itemId: _item.id,
+      annotationId: ann.id,
+      annotationSource: ann.source,
+      createdAt: ann.createdAt,
+    );
+  }
+
+  void _showHighlightList() => _showAnnotationList(notesOnly: false);
+
+  void _showNoteAnnotationList() => _showAnnotationList(notesOnly: true);
+
+  /// [notesOnly] false=仅高亮（无批注正文）；true=有批注正文的列表。
+  void _showAnnotationList({bool notesOnly = false}) {
+    final items = _annotations
+        .where((a) => notesOnly ? _annotationHasNote(a) : !_annotationHasNote(a))
+        .toList();
+    final empty = notesOnly
+        ? (_isPro ? '暂无朱批' : '暂无批注')
+        : '暂无高亮';
+    final emptyHint = notesOnly
+        ? '选中正文后可添加批注'
+        : '选中正文后点「高亮」即可记下';
+
+    showAppSideDrawer<void>(
       context: context,
-      backgroundColor: Colors.white,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (context) {
-        return SafeArea(
-          child: ConstrainedBox(
-            constraints: BoxConstraints(
-              maxHeight: MediaQuery.sizeOf(context).height * 0.6,
-            ),
-            child: ListView(
-              shrinkWrap: true,
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
-              children: [
-                Text(
-                  annotationSectionTitle(isPro: _isPro),
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w700,
-                    color: _text,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  annotationListHint(isPro: _isPro),
-                  style: const TextStyle(fontSize: 12, color: _muted),
-                ),
-                const SizedBox(height: 12),
-                for (final ann in _annotations) ...[
-                  Material(
-                    color: const Color(0xFFF5F7FA),
-                    borderRadius: BorderRadius.circular(12),
-                    child: InkWell(
-                      borderRadius: BorderRadius.circular(12),
-                      onTap: () {
-                        Navigator.pop(context);
-                        _openAnnotation(ann);
-                      },
-                      child: Padding(
-                        padding: const EdgeInsets.all(12),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Stack(
-                              clipBehavior: Clip.none,
-                              children: [
-                                Container(
-                                  width: double.infinity,
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 10,
-                                    vertical: 8,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: _highlight,
-                                    borderRadius: BorderRadius.circular(8),
-                                  ),
-                                  child: Text(
-                                    ann.selectedText,
-                                    maxLines: 3,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(
-                                      fontSize: 14,
-                                      color: _text,
-                                      height: 1.4,
-                                    ),
-                                  ),
-                                ),
-                                if (ann.note != null &&
-                                    ann.note!.trim().isNotEmpty)
-                                  const Positioned(
-                                    right: 6,
-                                    top: 4,
-                                    child: Icon(
-                                      Icons.sticky_note_2_outlined,
-                                      size: 16,
-                                      color: _blue,
-                                    ),
-                                  ),
-                              ],
-                            ),
-                            const SizedBox(height: 8),
-                            Text(
-                              (ann.note != null && ann.note!.trim().isNotEmpty)
-                                  ? ann.note!
-                                  : annotationEmptyNoteHint(isPro: _isPro),
-                              style: const TextStyle(
-                                fontSize: 13,
-                                color: _muted,
-                                height: 1.4,
-                              ),
-                            ),
-                          ],
+      builder: (drawerContext) {
+        final top = MediaQuery.paddingOf(drawerContext).top;
+        final bottom = MediaQuery.paddingOf(drawerContext).bottom;
+        return items.isEmpty
+            ? Padding(
+                padding: EdgeInsets.fromLTRB(28, top, 28, bottom),
+                child: Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        notesOnly
+                            ? Icons.sticky_note_2_outlined
+                            : Icons.border_color_outlined,
+                        size: 28,
+                        color: _muted.withValues(alpha: 0.45),
+                      ),
+                      const SizedBox(height: 14),
+                      Text(
+                        empty,
+                        style: const TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
+                          color: _text,
                         ),
                       ),
-                    ),
+                      const SizedBox(height: 6),
+                      Text(
+                        emptyHint,
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 13,
+                          height: 1.4,
+                          color: _muted.withValues(alpha: 0.9),
+                        ),
+                      ),
+                    ],
                   ),
-                  const SizedBox(height: 8),
-                ],
-              ],
-            ),
-          ),
-        );
+                ),
+              )
+            : ListView.separated(
+                padding: EdgeInsets.fromLTRB(16, 12 + top, 16, 28 + bottom),
+                itemCount: items.length,
+                separatorBuilder: (_, __) => const SizedBox(height: 10),
+                itemBuilder: (context, index) {
+                  final ann = items[index];
+                  return RoamQuoteCard(
+                    snippet: _annotationToRoamSnippet(ann),
+                    // 标注列表完整展示；高亮列表仍截断
+                    maxLines: notesOnly ? null : 6,
+                    onTap: () {
+                      Navigator.pop(drawerContext);
+                      WidgetsBinding.instance.addPostFrameCallback((_) {
+                        if (mounted) _locateAnnotation(ann);
+                      });
+                    },
+                  );
+                },
+              );
       },
     );
   }
@@ -1671,6 +1764,7 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
           children: [
             _ReadingTopBar(
               onBack: () => Navigator.of(context).maybePop(),
+              showBack: !widget.embedded,
               menuEnabled: false,
               editEnabled: false,
               onEditContent: _onEditContent,
@@ -1678,6 +1772,8 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
               onReparse: _reparseItem,
               onDelete: _confirmDelete,
               onFontSize: _openFontSizeSheet,
+              onHighlights: null,
+              onAnnotations: null,
             ),
             const Expanded(
               child: Center(child: CircularProgressIndicator()),
@@ -1694,6 +1790,7 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
           children: [
             _ReadingTopBar(
               onBack: () => Navigator.of(context).maybePop(),
+              showBack: !widget.embedded,
               menuEnabled: false,
               editEnabled: false,
               onEditContent: _onEditContent,
@@ -1701,6 +1798,8 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
               onReparse: _reparseItem,
               onDelete: _confirmDelete,
               onFontSize: _openFontSizeSheet,
+              onHighlights: null,
+              onAnnotations: null,
             ),
             Expanded(
               child: Center(
@@ -1722,12 +1821,14 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
 
     final mq = MediaQuery.of(context);
     final topChrome = mq.padding.top + _topBarHeight;
-    final bottomChrome = mq.padding.bottom + _bottomBarHeight;
+    // 壳内分栏阅读不占 Home Indicator，避免操作栏下方多出一条空白
+    final bottomSafe = widget.embedded ? 0.0 : mq.padding.bottom;
+    final bottomChrome = bottomSafe + _bottomBarHeight;
 
     return PopScope(
-      canPop: !_shouldNudgeOnLeave,
+      canPop: widget.embedded || !_shouldNudgeOnLeave,
       onPopInvokedWithResult: (didPop, result) {
-        if (didPop) return;
+        if (didPop || widget.embedded) return;
         unawaited(_handleBack());
       },
       child: Scaffold(
@@ -1741,7 +1842,7 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
               top: _chromeVisible ? topChrome : mq.padding.top,
               bottom: _chromeVisible && canRead
                   ? bottomChrome
-                  : mq.padding.bottom,
+                  : bottomSafe,
             ),
             child: GestureDetector(
               onTap: canRead ? _toggleReadingChrome : null,
@@ -1841,7 +1942,8 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
                       onTapAnnotation: _openAnnotation,
                       onBodyTap: _toggleReadingChrome,
                       onSelectionChanged: _onBodySelectionChanged,
-                      focusAnnotationId: widget.focusAnnotationId,
+                      focusAnnotationId:
+                          _locateAnnotationId ?? widget.focusAnnotationId,
                       onFocusAnnotationRect: _onFocusAnnotationRect,
                       itemId: _item.id,
                       pageUrl: _item.sourcePageUrl,
@@ -1863,7 +1965,8 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
                       onBodyTap: _toggleReadingChrome,
                       onSelectionChanged: _onBodySelectionChanged,
                       textStyle: _bodyTextStyle,
-                      focusAnnotationId: widget.focusAnnotationId,
+                      focusAnnotationId:
+                          _locateAnnotationId ?? widget.focusAnnotationId,
                       onFocusAnnotationRect: _onFocusAnnotationRect,
                     ),
                   if (_loadingAnns) ...[
@@ -1895,6 +1998,7 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
                       _chromeVisible ? Offset.zero : const Offset(0, -1),
                   child: _ReadingTopBar(
                     onBack: _handleBack,
+                    showBack: !widget.embedded,
                     menuEnabled: true,
                     editEnabled: canRead,
                     showMarkUnread: !_item.isUnread,
@@ -1905,6 +2009,8 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
                     onDelete: _confirmDelete,
                     onMarkUnread: _markAsUnread,
                     onFontSize: _openFontSizeSheet,
+                    onHighlights: canRead ? _showHighlightList : null,
+                    onAnnotations: canRead ? _showNoteAnnotationList : null,
                   ),
                 ),
               ),
@@ -1931,6 +2037,7 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
                       ),
                       child: SafeArea(
                         top: false,
+                        bottom: !widget.embedded,
                         child: SizedBox(
                           height: _bottomBarHeight,
                           child: Row(
@@ -2737,6 +2844,7 @@ class _AnnotatedBodyStackState extends State<_AnnotatedBodyStack> {
         oldWidget.annotations.length != widget.annotations.length ||
         oldWidget.spans.length != widget.spans.length ||
         oldWidget.textStyle?.fontSize != widget.textStyle?.fontSize ||
+        oldWidget.focusAnnotationId != widget.focusAnnotationId ||
         !_sameAnnotationIds(oldWidget.annotations, widget.annotations)) {
       _laidOutWidth = null;
       _measureMisses = 0;
@@ -3061,6 +3169,9 @@ class _ReadingTopBar extends StatelessWidget {
     required this.onEditContent,
     required this.onFontSize,
     this.onMarkUnread,
+    this.onHighlights,
+    this.onAnnotations,
+    this.showBack = true,
     this.menuEnabled = true,
     this.editEnabled = false,
     this.showMarkUnread = false,
@@ -3074,6 +3185,9 @@ class _ReadingTopBar extends StatelessWidget {
   final VoidCallback onEditContent;
   final VoidCallback onFontSize;
   final VoidCallback? onMarkUnread;
+  final VoidCallback? onHighlights;
+  final VoidCallback? onAnnotations;
+  final bool showBack;
   final bool menuEnabled;
   final bool editEnabled;
   final bool showMarkUnread;
@@ -3084,6 +3198,7 @@ class _ReadingTopBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final noteLabel = annotationSectionTitle(isPro: isPro);
     return Material(
       color: Colors.white,
       child: SafeArea(
@@ -3094,19 +3209,43 @@ class _ReadingTopBar extends StatelessWidget {
             padding: const EdgeInsets.only(left: 4, right: 4),
             child: Row(
               children: [
-                TextButton.icon(
-                  onPressed: onBack,
-                  style: TextButton.styleFrom(
-                    foregroundColor: _text,
-                    padding: const EdgeInsets.symmetric(horizontal: 8),
-                  ),
-                  icon: const Icon(Icons.chevron_left, size: 28),
-                  label: const Text(
-                    '返回',
-                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.w400),
-                  ),
-                ),
+                if (showBack)
+                  TextButton.icon(
+                    onPressed: onBack,
+                    style: TextButton.styleFrom(
+                      foregroundColor: _text,
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                    ),
+                    icon: const Icon(Icons.chevron_left, size: 28),
+                    label: const Text(
+                      '返回',
+                      style:
+                          TextStyle(fontSize: 15, fontWeight: FontWeight.w400),
+                    ),
+                  )
+                else
+                  const SizedBox(width: 8),
                 const Spacer(),
+                if (onHighlights != null)
+                  IconButton(
+                    tooltip: '高亮',
+                    onPressed: onHighlights,
+                    icon: const Icon(
+                      Icons.border_color_outlined,
+                      size: 22,
+                      color: _text,
+                    ),
+                  ),
+                if (onAnnotations != null)
+                  IconButton(
+                    tooltip: noteLabel,
+                    onPressed: onAnnotations,
+                    icon: const Icon(
+                      Icons.sticky_note_2_outlined,
+                      size: 22,
+                      color: _text,
+                    ),
+                  ),
                 IconButton(
                   tooltip: '文字大小',
                   onPressed: onFontSize,

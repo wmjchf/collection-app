@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:super_collection/features/settings/account_page.dart';
+import 'package:super_collection/features/settings/settings_modal.dart';
 import 'package:super_collection/features/settings/settings_panel.dart';
 import 'package:super_collection/features/settings/upgrade_pro_page.dart';
 import 'package:super_collection/features/settings/usage_repository.dart';
@@ -82,9 +83,7 @@ class _AccountDrawerState extends State<AccountDrawer> {
   void _openUpgradeToEmperor() => _openUpgrade(initialTier: UsagePlan.emperor);
 
   void _openAccount() {
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(builder: (_) => const AccountPage()),
-    );
+    openSettingsPage<void>(context, const AccountPage());
   }
 
   @override

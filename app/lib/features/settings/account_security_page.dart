@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:super_collection/features/settings/settings_modal.dart';
 import 'package:super_collection/core/analytics/screen_dwell_tracker.dart';
 import 'package:super_collection/core/network/api_client.dart';
 import 'package:super_collection/core/ui/app_toast.dart';
@@ -43,7 +44,7 @@ class _AccountSecurityPageState extends State<AccountSecurityPage>
         await SurveyPrefs.clear(userId: userId);
       }
       if (!mounted) return;
-      Navigator.of(context).pushAndRemoveUntil(
+      Navigator.of(context, rootNavigator: true).pushAndRemoveUntil(
         MaterialPageRoute<void>(builder: (_) => const LoginPage()),
         (_) => false,
       );
@@ -67,16 +68,8 @@ class _AccountSecurityPageState extends State<AccountSecurityPage>
         surfaceTintColor: Colors.transparent,
         elevation: 0,
         centerTitle: true,
-        leadingWidth: 80,
-        leading: TextButton.icon(
-          onPressed: () => Navigator.of(context).maybePop(),
-          style: TextButton.styleFrom(
-            foregroundColor: _text,
-            padding: const EdgeInsets.only(left: 8),
-          ),
-          icon: const Icon(Icons.chevron_left, size: 30),
-          label: const Text('返回', style: TextStyle(fontSize: 15)),
-        ),
+        leadingWidth: SettingsBackButton.leadingWidth,
+        leading: const SettingsBackButton(),
         title: const Text(
           '账号安全',
           style: TextStyle(

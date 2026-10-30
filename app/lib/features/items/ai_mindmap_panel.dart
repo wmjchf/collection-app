@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:super_collection/core/ui/app_orientation.dart';
 import 'package:super_collection/core/ui/app_toast.dart';
 import 'package:super_collection/features/items/ai_meta_models.dart';
 import 'package:super_collection/features/items/ai_scholar_copy.dart';
@@ -441,9 +442,7 @@ class _MindmapFullscreenPageState extends State<MindmapFullscreenPage> {
 
   @override
   void dispose() {
-    SystemChrome.setPreferredOrientations(const [
-      DeviceOrientation.portraitUp,
-    ]);
+    AppOrientation.applyDefault();
     super.dispose();
   }
 
@@ -461,14 +460,14 @@ class _MindmapFullscreenPageState extends State<MindmapFullscreenPage> {
     setState(() {
       _landscape = !_landscape;
     });
-    SystemChrome.setPreferredOrientations(
-      _landscape
-          ? const [
-              DeviceOrientation.landscapeLeft,
-              DeviceOrientation.landscapeRight,
-            ]
-          : const [DeviceOrientation.portraitUp],
-    );
+    if (_landscape) {
+      SystemChrome.setPreferredOrientations(const [
+        DeviceOrientation.landscapeLeft,
+        DeviceOrientation.landscapeRight,
+      ]);
+    } else {
+      AppOrientation.applyDefault();
+    }
   }
 
   @override

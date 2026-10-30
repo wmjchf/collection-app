@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:super_collection/core/network/api_client.dart';
 import 'package:super_collection/core/ui/app_confirm_dialog.dart';
+import 'package:super_collection/core/ui/app_orientation.dart';
 import 'package:super_collection/core/ui/app_toast.dart';
 import 'package:super_collection/core/ui/pro_copy.dart';
 import 'package:super_collection/features/collection/collection_tag_modules_section.dart';
@@ -15,6 +16,7 @@ import 'package:super_collection/features/collection/tag_module_models.dart';
 import 'package:super_collection/features/collection/tag_modules_repository.dart';
 import 'package:super_collection/features/collection/tags_repository.dart';
 import 'package:super_collection/features/settings/usage_repository.dart';
+import 'package:super_collection/features/shell/tablet_items_split.dart';
 import 'package:super_collection/features/shell/user_avatar_button.dart';
 
 /// 我的收藏（系统分类 + 标签）
@@ -57,6 +59,10 @@ class _CollectionPageState extends State<CollectionPage> {
   String? _error;
   /// 归类标签收进顶栏：0 未贴顶，1 完全收起
   final _tagsFocusT = ValueNotifier<double>(0);
+
+  /// iPad 浏览态：点分类/标签后切三列；null=枢纽。
+  _TabletBrowse? _tabletBrowse;
+  int _tabletBrowseTick = 0;
 
   @override
   void initState() {
@@ -268,6 +274,24 @@ class _CollectionPageState extends State<CollectionPage> {
       filter.name,
       isPro: _isPro,
     );
+    if (AppOrientation.isTablet(context)) {
+      setState(() {
+        _tabletBrowse = _TabletBrowse(
+          title: title,
+          openEntry: 'library',
+          showMediaKinds: true,
+          loader: ({required limit, required offset, mediaKind}) =>
+              _systemFiltersRepo.listItems(
+            filter: filter.code,
+            mediaKind: mediaKind,
+            limit: limit,
+            offset: offset,
+          ),
+        );
+        _tabletBrowseTick++;
+      });
+      return;
+    }
     Navigator.of(context)
         .push(
       MaterialPageRoute<void>(
@@ -283,6 +307,22 @@ class _CollectionPageState extends State<CollectionPage> {
   }
 
   void _openTag(Tag tag) {
+    if (AppOrientation.isTablet(context)) {
+      setState(() {
+        _tabletBrowse = _TabletBrowse(
+          title: tag.name,
+          openEntry: 'tag',
+          loader: ({required limit, required offset, mediaKind}) =>
+              _tagsRepo.listTagItems(
+            tag.id,
+            limit: limit,
+            offset: offset,
+          ),
+        );
+        _tabletBrowseTick++;
+      });
+      return;
+    }
     Navigator.of(context)
         .push(
       MaterialPageRoute<void>(
@@ -303,6 +343,22 @@ class _CollectionPageState extends State<CollectionPage> {
   }
 
   void _openModule(TagModule module) {
+    if (AppOrientation.isTablet(context)) {
+      setState(() {
+        _tabletBrowse = _TabletBrowse(
+          title: module.name,
+          openEntry: 'library',
+          loader: ({required limit, required offset, mediaKind}) =>
+              _tagModulesRepo.listModuleItems(
+            module.id,
+            limit: limit,
+            offset: offset,
+          ),
+        );
+        _tabletBrowseTick++;
+      });
+      return;
+    }
     Navigator.of(context)
         .push(
       MaterialPageRoute<void>(
@@ -320,6 +376,11 @@ class _CollectionPageState extends State<CollectionPage> {
         .then((_) {
       if (mounted) _load(quiet: true);
     });
+  }
+
+  void _closeTabletBrowse() {
+    setState(() => _tabletBrowse = null);
+    _load(quiet: true);
   }
 
   PreferredSizeWidget _buildAppBar() {
@@ -418,9 +479,23 @@ class _CollectionPageState extends State<CollectionPage> {
 
   @override
   Widget build(BuildContext context) {
+    final tablet = AppOrientation.isTablet(context);
+    final browse = _tabletBrowse;
+    if (tablet && browse != null) {
+      return TabletItemsSplit(
+        key: ValueKey('browse-${browse.title}-$_tabletBrowseTick'),
+        title: browse.title,
+        loader: browse.loader,
+        openEntry: browse.openEntry,
+        onBack: _closeTabletBrowse,
+        refreshTick: widget.refreshTick + _tabletBrowseTick,
+        showMediaKinds: browse.showMediaKinds,
+      );
+    }
+
     return Scaffold(
       backgroundColor: _bg,
-      appBar: _buildAppBar(),
+      appBar: tablet ? null : _buildAppBar(),
       body: RefreshIndicator(
         onRefresh: _load,
         child: CustomScrollView(
@@ -682,7 +757,12 @@ class _EntityGroup extends StatelessWidget {
           LayoutBuilder(
             builder: (context, constraints) {
               const gap = 8.0;
-              final tileW = (constraints.maxWidth - gap) / 2;
+              // 手机两列；iPad 横屏四枚一排，再多则换行。
+              final cols = constraints.maxWidth >= 720
+                  ? (entries.length >= 4 ? 4 : entries.length.clamp(1, 4))
+                  : 2;
+              final tileW =
+                  (constraints.maxWidth - gap * (cols - 1)) / cols;
               return Wrap(
                 spacing: gap,
                 runSpacing: gap,
@@ -832,4 +912,18 @@ class _ErrorCard extends StatelessWidget {
 
 abstract final class _CollectionColors {
   static const muted = Color(0xFF737A85);
+}
+
+class _TabletBrowse {
+  const _TabletBrowse({
+    required this.title,
+    required this.loader,
+    required this.openEntry,
+    this.showMediaKinds = false,
+  });
+
+  final String title;
+  final TabletItemsLoader loader;
+  final String openEntry;
+  final bool showMediaKinds;
 }

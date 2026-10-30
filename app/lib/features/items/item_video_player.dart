@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:super_collection/core/network/media_http_headers.dart';
 import 'package:super_collection/core/network/qq_video_resolve.dart';
+import 'package:super_collection/core/ui/app_orientation.dart';
 import 'package:super_collection/features/items/reading_media_controller.dart';
 import 'package:video_player/video_player.dart';
 import 'package:visibility_detector/visibility_detector.dart';
@@ -821,11 +822,7 @@ class _FullscreenWebVideoPageState extends State<_FullscreenWebVideoPage> {
   void initState() {
     super.initState();
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
-    SystemChrome.setPreferredOrientations(const [
-      DeviceOrientation.portraitUp,
-      DeviceOrientation.landscapeLeft,
-      DeviceOrientation.landscapeRight,
-    ]);
+    AppOrientation.allowPortraitAndLandscape();
     _controller = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..setUserAgent(widget.userAgent)
@@ -840,9 +837,7 @@ class _FullscreenWebVideoPageState extends State<_FullscreenWebVideoPage> {
   @override
   void dispose() {
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
-    SystemChrome.setPreferredOrientations(const [
-      DeviceOrientation.portraitUp,
-    ]);
+    AppOrientation.applyDefault();
     super.dispose();
   }
 
@@ -889,20 +884,14 @@ class _FullscreenVideoPageState extends State<_FullscreenVideoPage> {
     super.initState();
     widget.controller.addListener(_onTick);
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
-    SystemChrome.setPreferredOrientations(const [
-      DeviceOrientation.portraitUp,
-      DeviceOrientation.landscapeLeft,
-      DeviceOrientation.landscapeRight,
-    ]);
+    AppOrientation.allowPortraitAndLandscape();
   }
 
   @override
   void dispose() {
     widget.controller.removeListener(_onTick);
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
-    SystemChrome.setPreferredOrientations(const [
-      DeviceOrientation.portraitUp,
-    ]);
+    AppOrientation.applyDefault();
     super.dispose();
   }
 

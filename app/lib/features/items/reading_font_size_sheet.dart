@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:super_collection/core/ui/app_bottom_sheet.dart';
+import 'package:super_collection/core/ui/app_orientation.dart';
 import 'package:super_collection/features/items/reading_font_prefs.dart';
 
 /// 阅读页正文字号：A− / A+ 连续加减。
@@ -7,12 +9,11 @@ Future<void> showReadingFontSizeSheet(
   required double fontSize,
   required ValueChanged<double> onChanged,
 }) {
-  return showModalBottomSheet<void>(
+  return showAppBottomSheet<void>(
     context: context,
-    backgroundColor: Colors.transparent,
     barrierColor: const Color(0x66000000),
-    useSafeArea: false,
-    isScrollControlled: true,
+    padding: EdgeInsets.zero,
+    includeSafeArea: false,
     builder: (context) => _ReadingFontSizeSheet(
       fontSize: fontSize,
       onChanged: onChanged,
@@ -59,9 +60,15 @@ class _ReadingFontSizeSheetState extends State<_ReadingFontSizeSheet> {
     final canDecrease = _size > ReadingFontPrefs.min;
     final canIncrease = _size < ReadingFontPrefs.max;
 
+    final tablet = AppOrientation.isTablet(context);
+    final radius = tablet
+        ? BorderRadius.circular(20)
+        : const BorderRadius.vertical(top: Radius.circular(20));
+
     return Material(
       color: Colors.white,
-      borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+      borderRadius: radius,
+      clipBehavior: Clip.antiAlias,
       child: SafeArea(
         top: false,
         child: Padding(
