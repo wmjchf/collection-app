@@ -24,7 +24,9 @@ class RoamQuoteCard extends StatelessWidget {
 
   /// 弹层：「不再回顾」上方单独一行的分享。传入按钮在屏幕上的位置。
   final void Function(Rect? origin)? onShare;
-  final int maxLines;
+
+  /// 正文最多行数；`null` 表示不省略、完整展示。
+  final int? maxLines;
   final bool showMeta;
   final double elevation;
   final Color color;
@@ -49,23 +51,25 @@ class RoamQuoteCard extends StatelessWidget {
     final quote = snippet.quote;
     final hasQuote = quote != null && quote.isNotEmpty;
     final expand = fillHeight || scrollBody;
-    // 叠卡预览批注少行；列表给更多行；弹层滚动则不限行
-    final noteLines = scrollBody
+    final unlimited = maxLines == null;
+    final capped = maxLines ?? 4;
+    // 叠卡预览批注少行；列表给更多行；弹层滚动 / maxLines==null 则不限行
+    final noteLines = scrollBody || unlimited
         ? null
         : !hasQuote
             ? 0
             : fillHeight
                 ? 1
-                : (maxLines >= 10
+                : (capped >= 10
                     ? 8
-                    : (maxLines >= 6 ? 4 : 2));
-    final quoteLines = scrollBody
+                    : (capped >= 6 ? 4 : 2));
+    final quoteLines = scrollBody || unlimited
         ? null
         : !hasQuote
-            ? maxLines
+            ? capped
             : fillHeight
-                ? (maxLines - (noteLines ?? 1)).clamp(1, maxLines)
-                : (maxLines - (noteLines ?? 2)).clamp(2, maxLines);
+                ? (capped - (noteLines ?? 1)).clamp(1, capped)
+                : (capped - (noteLines ?? 2)).clamp(2, capped);
     final primary = hasQuote ? quote! : snippet.text;
     final timeStr = formatRelativeTime(snippet.createdAt);
     final titleStr = (snippet.itemTitle ?? '').trim();
@@ -306,7 +310,10 @@ class RoamQuoteCard extends StatelessWidget {
         ],
       );
     } else {
-      final note = noteBlock(lines: noteLines);
+      final note = noteBlock(
+        lines: noteLines,
+        stacked: unlimited && hasQuote,
+      );
       body = Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,

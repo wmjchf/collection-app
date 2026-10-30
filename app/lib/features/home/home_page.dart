@@ -733,8 +733,12 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       openEntry: 'unread',
       refreshTick: widget.refreshTick + _tabletListTick,
       trailing: _tabletAddButton(),
-      loader: ({required limit, required offset}) => _filtersRepo.listItems(
+      autoSelectFirst: false,
+      showMediaKinds: true,
+      loader: ({required limit, required offset, mediaKind}) =>
+          _filtersRepo.listItems(
         filter: 'unread',
+        mediaKind: mediaKind,
         limit: limit,
         offset: offset,
       ),

@@ -7,7 +7,7 @@ import 'package:super_collection/features/items/item_models.dart';
 import 'package:super_collection/features/items/item_reading_page.dart';
 
 typedef TabletItemsLoader = Future<({List<CollectionItem> items, int total})>
-    Function({required int limit, required int offset});
+    Function({required int limit, required int offset, String? mediaKind});
 
 /// iPad 分栏：左条目列表（分页）| 右嵌入阅读（无返回）。
 class TabletItemsSplit extends StatefulWidget {
@@ -21,6 +21,8 @@ class TabletItemsSplit extends StatefulWidget {
     this.trailing,
     this.emptyText = '暂无条目',
     this.refreshTick = 0,
+    this.autoSelectFirst = true,
+    this.showMediaKinds = false,
   });
 
   final String title;
@@ -32,6 +34,12 @@ class TabletItemsSplit extends StatefulWidget {
   final String emptyText;
   final int refreshTick;
 
+  /// 列表有数据且当前无选中时，是否自动选中第一条（未读传 false）
+  final bool autoSelectFirst;
+
+  /// 是否显示「全部 / 文章 / 图集 / 视频」（对齐手机系统筛选列表）
+  final bool showMediaKinds;
+
   @override
   State<TabletItemsSplit> createState() => _TabletItemsSplitState();
 }
@@ -40,6 +48,13 @@ class _TabletItemsSplitState extends State<TabletItemsSplit> {
   static const _bg = Color(0xFFF7F7FA);
   static const _muted = Color(0xFF737A85);
   static const _hairline = Color(0xFFE9EBEF);
+
+  static const _mediaKinds = <({String? code, String label})>[
+    (code: null, label: '全部'),
+    (code: 'article', label: '文章'),
+    (code: 'gallery', label: '图集'),
+    (code: 'video', label: '视频'),
+  ];
 
   String _subtitle(CollectionItem item) {
     final pageUrl = (item.canonicalUrl?.trim().isNotEmpty == true)
@@ -63,6 +78,7 @@ class _TabletItemsSplitState extends State<TabletItemsSplit> {
   String? _error;
   int? _selectedId;
   CollectionItem? _selectedItem;
+  String? _mediaKind;
 
   bool get _hasMore => _items.length < _total;
 
@@ -78,6 +94,7 @@ class _TabletItemsSplitState extends State<TabletItemsSplit> {
     super.didUpdateWidget(oldWidget);
     if (widget.refreshTick != oldWidget.refreshTick ||
         widget.title != oldWidget.title) {
+      _mediaKind = null;
       _load(reset: true);
     }
   }
@@ -93,6 +110,16 @@ class _TabletItemsSplitState extends State<TabletItemsSplit> {
     if (shouldLoadMore(_scroll)) _loadMore();
   }
 
+  void _selectMediaKind(String? code) {
+    if (!widget.showMediaKinds || _mediaKind == code) return;
+    setState(() {
+      _mediaKind = code;
+      _selectedId = null;
+      _selectedItem = null;
+    });
+    _load(reset: true);
+  }
+
   Future<void> _load({required bool reset}) async {
     if (reset) {
       setState(() {
@@ -101,7 +128,11 @@ class _TabletItemsSplitState extends State<TabletItemsSplit> {
       });
     }
     try {
-      final page = await widget.loader(limit: 40, offset: 0);
+      final page = await widget.loader(
+        limit: 40,
+        offset: 0,
+        mediaKind: widget.showMediaKinds ? _mediaKind : null,
+      );
       if (!mounted) return;
       setState(() {
         _items = page.items;
@@ -117,7 +148,9 @@ class _TabletItemsSplitState extends State<TabletItemsSplit> {
             _selectedItem = still.first;
           }
         }
-        if (_selectedId == null && _items.isNotEmpty) {
+        if (widget.autoSelectFirst &&
+            _selectedId == null &&
+            _items.isNotEmpty) {
           _selectedId = _items.first.id;
           _selectedItem = _items.first;
         }
@@ -141,8 +174,11 @@ class _TabletItemsSplitState extends State<TabletItemsSplit> {
     if (_loadingMore || !_hasMore || _loading) return;
     setState(() => _loadingMore = true);
     try {
-      final page =
-          await widget.loader(limit: 40, offset: _items.length);
+      final page = await widget.loader(
+        limit: 40,
+        offset: _items.length,
+        mediaKind: widget.showMediaKinds ? _mediaKind : null,
+      );
       if (!mounted) return;
       setState(() {
         _items = [..._items, ...page.items];
@@ -168,7 +204,7 @@ class _TabletItemsSplitState extends State<TabletItemsSplit> {
     setState(() {
       _items = _items.where((e) => e.id != id).toList();
       _total = (_total - 1).clamp(0, 1 << 30);
-      if (_items.isEmpty) {
+      if (_items.isEmpty || !widget.autoSelectFirst) {
         _selectedId = null;
         _selectedItem = null;
       } else {
@@ -200,6 +236,18 @@ class _TabletItemsSplitState extends State<TabletItemsSplit> {
                     onBack: widget.onBack,
                     trailing: widget.trailing,
                   ),
+                  if (widget.showMediaKinds)
+                    Material(
+                      color: Colors.white,
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
+                        child: _MediaKindBar(
+                          kinds: _mediaKinds,
+                          selected: _mediaKind,
+                          onSelect: _selectMediaKind,
+                        ),
+                      ),
+                    ),
                   Expanded(child: _buildList()),
                 ],
               ),
@@ -239,10 +287,21 @@ class _TabletItemsSplitState extends State<TabletItemsSplit> {
       );
     }
     if (_items.isEmpty) {
-      return Center(
-        child: Text(
-          widget.emptyText,
-          style: const TextStyle(color: _muted, fontSize: 14),
+      return RefreshIndicator(
+        onRefresh: () => _load(reset: true),
+        child: ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          children: [
+            SizedBox(
+              height: MediaQuery.sizeOf(context).height * 0.55,
+              child: Center(
+                child: Text(
+                  widget.emptyText,
+                  style: const TextStyle(color: _muted, fontSize: 14),
+                ),
+              ),
+            ),
+          ],
         ),
       );
     }
@@ -360,6 +419,57 @@ class _ListHeader extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+class _MediaKindBar extends StatelessWidget {
+  const _MediaKindBar({
+    required this.kinds,
+    required this.selected,
+    required this.onSelect,
+  });
+
+  final List<({String? code, String label})> kinds;
+  final String? selected;
+  final ValueChanged<String?> onSelect;
+
+  static const _ink = Color(0xFF1F242E);
+  static const _fill = Color(0xFFF0F2F5);
+  static const _onFill = Color(0xFFE5EDFF);
+  static const _onInk = Color(0xFF2F6FED);
+
+  @override
+  Widget build(BuildContext context) {
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: [
+        for (final k in kinds)
+          GestureDetector(
+            onTap: () => onSelect(k.code),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 160),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+              decoration: BoxDecoration(
+                color: selected == k.code ? _onFill : _fill,
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Text(
+                k.label,
+                style: TextStyle(
+                  fontSize: 13,
+                  height: 1.2,
+                  fontWeight:
+                      selected == k.code ? FontWeight.w600 : FontWeight.w500,
+                  color: selected == k.code
+                      ? _onInk
+                      : _ink.withValues(alpha: 0.78),
+                ),
+              ),
+            ),
+          ),
+      ],
     );
   }
 }
