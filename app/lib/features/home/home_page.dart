@@ -30,6 +30,7 @@ import 'package:super_collection/features/items/items_repository.dart';
 import 'package:super_collection/features/onboarding/coach_prefs.dart';
 import 'package:super_collection/features/onboarding/home_coach_overlay.dart';
 import 'package:super_collection/features/onboarding/shortcuts_help_page.dart';
+import 'package:super_collection/features/settings/settings_modal.dart';
 import 'package:super_collection/features/shell/tablet_items_split.dart';
 import 'package:super_collection/features/shell/user_avatar_button.dart';
 import 'package:super_collection/features/settings/quota_gate.dart';
@@ -514,9 +515,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       case 'paste':
         await _pasteClipboardLink();
       case 'shortcuts':
-        await Navigator.of(context).push(
-          MaterialPageRoute<void>(builder: (_) => const ShortcutsHelpPage()),
-        );
+        await openSettingsPage(context, const ShortcutsHelpPage());
     }
   }
 

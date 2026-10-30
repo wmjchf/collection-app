@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:super_collection/features/settings/settings_modal.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:super_collection/core/analytics/screen_dwell_tracker.dart';
 import 'package:super_collection/core/network/api_client.dart';
@@ -95,15 +96,9 @@ class _FeedbackPageState extends State<FeedbackPage> with ScreenDwellMixin {
         surfaceTintColor: Colors.transparent,
         elevation: 0,
         centerTitle: true,
-        leadingWidth: 80,
-        leading: TextButton.icon(
+        leadingWidth: SettingsBackButton.leadingWidth,
+        leading: SettingsBackButton(
           onPressed: _busy ? null : () => Navigator.of(context).maybePop(),
-          style: TextButton.styleFrom(
-            foregroundColor: _text,
-            padding: const EdgeInsets.only(left: 8),
-          ),
-          icon: const Icon(Icons.chevron_left, size: 30),
-          label: const Text('返回', style: TextStyle(fontSize: 15)),
         ),
         title: const Text(
           '意见反馈',

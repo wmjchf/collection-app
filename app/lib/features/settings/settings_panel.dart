@@ -10,6 +10,7 @@ import 'package:super_collection/features/settings/feedback_page.dart';
 import 'package:super_collection/features/settings/how_to_add_link_page.dart';
 import 'package:super_collection/features/settings/legal_docs.dart';
 import 'package:super_collection/features/settings/logout_confirm_dialog.dart';
+import 'package:super_collection/features/settings/settings_modal.dart';
 import 'package:super_collection/features/settings/simple_doc_page.dart';
 
 /// 设置内容（设置页 / 账户抽屉共用）
@@ -41,7 +42,7 @@ class _SettingsPanelState extends State<SettingsPanel> {
   }
 
   void _open(Widget page) {
-    Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => page));
+    openSettingsPage<void>(context, page);
   }
 
   @override

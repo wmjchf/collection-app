@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:super_collection/features/settings/settings_modal.dart';
 import 'package:super_collection/core/analytics/screen_dwell_tracker.dart';
 import 'package:super_collection/core/config/app_brand.dart';
 import 'package:super_collection/features/items/item_image_gallery.dart';
@@ -26,16 +27,8 @@ class HowToAddLinkPage extends StatelessWidget {
           surfaceTintColor: Colors.transparent,
           elevation: 0,
           centerTitle: true,
-          leadingWidth: 80,
-          leading: TextButton.icon(
-            onPressed: () => Navigator.of(context).maybePop(),
-            style: TextButton.styleFrom(
-              foregroundColor: _text,
-              padding: const EdgeInsets.only(left: 8),
-            ),
-            icon: const Icon(Icons.chevron_left, size: 30),
-            label: const Text('返回', style: TextStyle(fontSize: 15)),
-          ),
+          leadingWidth: SettingsBackButton.leadingWidth,
+          leading: const SettingsBackButton(),
           title: const Text(
             '如何添加链接',
             style: TextStyle(

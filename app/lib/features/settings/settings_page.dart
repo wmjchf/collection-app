@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:super_collection/features/settings/settings_modal.dart';
 import 'package:super_collection/features/settings/settings_panel.dart';
 
 /// 设置页（对齐 Figma `24. 设置`）；内容与账户抽屉共用 [SettingsPanel]。
@@ -17,16 +18,8 @@ class SettingsPage extends StatelessWidget {
         surfaceTintColor: Colors.transparent,
         elevation: 0,
         centerTitle: true,
-        leadingWidth: 80,
-        leading: TextButton.icon(
-          onPressed: () => Navigator.of(context).maybePop(),
-          style: TextButton.styleFrom(
-            foregroundColor: _text,
-            padding: const EdgeInsets.only(left: 8),
-          ),
-          icon: const Icon(Icons.chevron_left, size: 30),
-          label: const Text('返回', style: TextStyle(fontSize: 15)),
-        ),
+        leadingWidth: SettingsBackButton.leadingWidth,
+        leading: const SettingsBackButton(),
         title: const Text(
           '设置',
           style: TextStyle(

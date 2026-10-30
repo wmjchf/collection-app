@@ -8,7 +8,9 @@ import 'package:super_collection/core/analytics/analytics.dart';
 import 'package:super_collection/core/analytics/screen_dwell_tracker.dart';
 import 'package:super_collection/core/network/api_client.dart';
 import 'package:super_collection/core/network/media_http_headers.dart';
+import 'package:super_collection/core/ui/app_bottom_sheet.dart';
 import 'package:super_collection/core/ui/app_confirm_dialog.dart';
+import 'package:super_collection/core/ui/app_orientation.dart';
 import 'package:super_collection/core/ui/app_toast.dart';
 import 'package:super_collection/core/ui/parse_progress_tracker.dart';
 import 'package:super_collection/core/ui/pro_copy.dart';
@@ -982,15 +984,17 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
   }
 
   void _showAnnotationList() {
-    showModalBottomSheet<void>(
+    showAppBottomSheet<void>(
       context: context,
-      backgroundColor: Colors.white,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
+      padding: EdgeInsets.zero,
       builder: (context) {
-        return SafeArea(
+        final tablet = AppOrientation.isTablet(context);
+        return Material(
+          color: Colors.white,
+          borderRadius: tablet
+              ? BorderRadius.circular(20)
+              : const BorderRadius.vertical(top: Radius.circular(20)),
+          clipBehavior: Clip.antiAlias,
           child: ConstrainedBox(
             constraints: BoxConstraints(
               maxHeight: MediaQuery.sizeOf(context).height * 0.6,
@@ -1736,7 +1740,9 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
 
     final mq = MediaQuery.of(context);
     final topChrome = mq.padding.top + _topBarHeight;
-    final bottomChrome = mq.padding.bottom + _bottomBarHeight;
+    // 壳内分栏阅读不占 Home Indicator，避免操作栏下方多出一条空白
+    final bottomSafe = widget.embedded ? 0.0 : mq.padding.bottom;
+    final bottomChrome = bottomSafe + _bottomBarHeight;
 
     return PopScope(
       canPop: widget.embedded || !_shouldNudgeOnLeave,
@@ -1755,7 +1761,7 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
               top: _chromeVisible ? topChrome : mq.padding.top,
               bottom: _chromeVisible && canRead
                   ? bottomChrome
-                  : mq.padding.bottom,
+                  : bottomSafe,
             ),
             child: GestureDetector(
               onTap: canRead ? _toggleReadingChrome : null,
@@ -1946,6 +1952,7 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
                       ),
                       child: SafeArea(
                         top: false,
+                        bottom: !widget.embedded,
                         child: SizedBox(
                           height: _bottomBarHeight,
                           child: Row(

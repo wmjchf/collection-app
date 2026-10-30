@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:super_collection/core/network/api_client.dart';
+import 'package:super_collection/core/ui/app_bottom_sheet.dart';
 import 'package:super_collection/features/collection/tag_module_models.dart';
 import 'package:super_collection/features/collection/tag_modules_repository.dart';
 
@@ -20,21 +21,11 @@ Future<TagModule?> _showModuleNameSheet(
   BuildContext context, {
   TagModule? module,
 }) {
-  return showModalBottomSheet<TagModule>(
+  return showAppBottomSheet<TagModule>(
     context: context,
-    isScrollControlled: true,
-    backgroundColor: Colors.transparent,
-    barrierColor: const Color(0x59000000),
-    useSafeArea: false,
-    builder: (context) {
-      return Padding(
-        padding: EdgeInsets.only(
-          bottom: MediaQuery.viewInsetsOf(context).bottom +
-              MediaQuery.paddingOf(context).bottom,
-        ),
-        child: _ModuleNameSheet(module: module),
-      );
-    },
+    // 底部安全区由 shell 处理，避免与 sheet 内 padding 叠加
+    padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
+    builder: (context) => _ModuleNameSheet(module: module),
   );
 }
 
@@ -119,10 +110,9 @@ class _ModuleNameSheetState extends State<_ModuleNameSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final bottom = MediaQuery.paddingOf(context).bottom;
-
+    // 底部安全区由 AppBottomSheetShell 处理
     return Padding(
-      padding: EdgeInsets.fromLTRB(16, 0, 16, 16 + (bottom > 0 ? bottom : 0)),
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
       child: Material(
         color: Colors.white,
         borderRadius: BorderRadius.circular(24),

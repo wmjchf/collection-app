@@ -3,6 +3,7 @@ import 'package:super_collection/core/config/app_brand.dart';
 import 'package:super_collection/core/ui/app_form_width.dart';
 import 'package:super_collection/features/onboarding/onboarding_prefs.dart';
 import 'package:super_collection/features/onboarding/shortcuts_help_page.dart';
+import 'package:super_collection/features/settings/settings_modal.dart';
 import 'package:super_collection/features/shell/main_shell.dart';
 import 'package:super_collection/features/shortcuts/shortcut_inbound.dart';
 
@@ -28,9 +29,7 @@ class OnboardingPage extends StatelessWidget {
   }
 
   void _openShortcutsHelp(BuildContext context) {
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(builder: (_) => const ShortcutsHelpPage()),
-    );
+    openSettingsPage(context, const ShortcutsHelpPage());
   }
 
   @override

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:super_collection/core/analytics/analytics.dart';
 import 'package:super_collection/core/network/api_client.dart';
+import 'package:super_collection/core/ui/app_orientation.dart';
 import 'package:super_collection/core/ui/app_toast.dart';
 import 'package:super_collection/core/ui/parse_progress_tracker.dart';
 import 'package:super_collection/core/utils/clipboard_utils.dart';
@@ -9,7 +10,7 @@ import 'package:super_collection/features/items/item_reading_page.dart';
 import 'package:super_collection/features/items/items_repository.dart';
 import 'package:super_collection/features/settings/quota_gate.dart';
 
-/// 弹出「添加链接」底部弹框（对齐 Figma）。
+/// 弹出「添加链接」：手机底部弹层；平板居中弹框。
 /// 可预填 [initialUrl]；若为空则尝试读取剪贴板中的 URL。
 Future<void> showAddLinkSheet(
   BuildContext context, {
@@ -21,6 +22,52 @@ Future<void> showAddLinkSheet(
   }
 
   if (!context.mounted) return;
+
+  if (AppOrientation.isTablet(context)) {
+    await showGeneralDialog<void>(
+      context: context,
+      barrierDismissible: true,
+      barrierLabel: MaterialLocalizations.of(context).modalBarrierDismissLabel,
+      barrierColor: const Color(0x73000000),
+      transitionDuration: const Duration(milliseconds: 220),
+      pageBuilder: (ctx, animation, secondaryAnimation) {
+        return SizedBox.expand(
+          child: Center(
+            child: Padding(
+              padding: EdgeInsets.only(
+                bottom: MediaQuery.viewInsetsOf(ctx).bottom,
+              ),
+              child: Material(
+                color: Colors.transparent,
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 440),
+                  child: AddLinkSheet(
+                    initialUrl: url,
+                    centered: true,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+      transitionBuilder: (ctx, animation, secondaryAnimation, child) {
+        final curved = CurvedAnimation(
+          parent: animation,
+          curve: Curves.easeOutCubic,
+          reverseCurve: Curves.easeInCubic,
+        );
+        return FadeTransition(
+          opacity: curved,
+          child: ScaleTransition(
+            scale: Tween<double>(begin: 0.96, end: 1).animate(curved),
+            child: child,
+          ),
+        );
+      },
+    );
+    return;
+  }
 
   await showModalBottomSheet<void>(
     context: context,
@@ -40,9 +87,16 @@ Future<void> showAddLinkSheet(
 }
 
 class AddLinkSheet extends StatefulWidget {
-  const AddLinkSheet({super.key, this.initialUrl = ''});
+  const AddLinkSheet({
+    super.key,
+    this.initialUrl = '',
+    this.centered = false,
+  });
 
   final String initialUrl;
+
+  /// 平板居中弹框：四角圆角、无拖拽条
+  final bool centered;
 
   @override
   State<AddLinkSheet> createState() => _AddLinkSheetState();
@@ -155,29 +209,39 @@ class _AddLinkSheetState extends State<AddLinkSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final bottom = MediaQuery.paddingOf(context).bottom;
+    final bottom = widget.centered ? 0.0 : MediaQuery.paddingOf(context).bottom;
+    final radius = widget.centered
+        ? BorderRadius.circular(16)
+        : const BorderRadius.vertical(top: Radius.circular(20));
 
     return PopScope(
       canPop: !_saving,
       child: Container(
         width: double.infinity,
-        decoration: const BoxDecoration(
+        decoration: BoxDecoration(
           color: Colors.white,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+          borderRadius: radius,
         ),
-        padding: EdgeInsets.fromLTRB(20, 12, 20, 28 + bottom),
+        padding: EdgeInsets.fromLTRB(
+          20,
+          widget.centered ? 20 : 12,
+          20,
+          28 + bottom,
+        ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Container(
-              width: 40,
-              height: 4,
-              decoration: BoxDecoration(
-                color: _handle,
-                borderRadius: BorderRadius.circular(2),
+            if (!widget.centered) ...[
+              Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: _handle,
+                  borderRadius: BorderRadius.circular(2),
+                ),
               ),
-            ),
-            const SizedBox(height: 14),
+              const SizedBox(height: 14),
+            ],
             SizedBox(
               height: 28,
               child: Row(
