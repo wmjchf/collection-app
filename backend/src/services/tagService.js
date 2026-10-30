@@ -11,6 +11,12 @@ function normalizeDescription(raw) {
 
 function mapTag(row) {
   const desc = row.description != null ? String(row.description).trim() : '';
+  const origin =
+    row.origin === 'ai' || row.origin === 'user' ? row.origin : 'user';
+  const placementOrigin =
+    row.placement_origin === 'ai' || row.placement_origin === 'user'
+      ? row.placement_origin
+      : null;
   return {
     id: row.id,
     name: row.name,
@@ -19,10 +25,63 @@ function mapTag(row) {
     isSystem: !!row.is_system,
     sortOrder: row.sort_order,
     moduleId: row.module_id == null ? null : Number(row.module_id),
+    origin,
+    placementOrigin,
+    /** AI 可挪：AI 创建且用户从未拖动过 */
+    aiMovable: !row.is_system && origin === 'ai' && placementOrigin !== 'user',
     itemCount: Number(row.item_count || 0),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
+}
+
+function isTagAiMovable(tagOrRow) {
+  if (!tagOrRow || tagOrRow.isSystem || tagOrRow.is_system) return false;
+  if (typeof tagOrRow.aiMovable === 'boolean') return tagOrRow.aiMovable;
+  const origin = tagOrRow.origin === 'ai' ? 'ai' : 'user';
+  const placement =
+    tagOrRow.placementOrigin === 'user' || tagOrRow.placement_origin === 'user'
+      ? 'user'
+      : tagOrRow.placementOrigin === 'ai' || tagOrRow.placement_origin === 'ai'
+        ? 'ai'
+        : null;
+  return origin === 'ai' && placement !== 'user';
+}
+
+async function bumpOrganizeAiCreatedSince(userId, count = 1) {
+  const n = Math.max(0, Number(count) || 0);
+  if (n < 1) return;
+  await pool.execute(
+    `UPDATE users
+     SET tag_organize_ai_created_since = tag_organize_ai_created_since + :n
+     WHERE id = :userId`,
+    { userId, n },
+  );
+}
+
+async function getOrganizeState(userId) {
+  const [rows] = await pool.execute(
+    `SELECT tag_organize_full_at, tag_organize_ai_created_since
+     FROM users WHERE id = :userId LIMIT 1`,
+    { userId },
+  );
+  const row = rows[0];
+  return {
+    fullAt: row?.tag_organize_full_at
+      ? new Date(row.tag_organize_full_at)
+      : null,
+    aiCreatedSince: Number(row?.tag_organize_ai_created_since || 0),
+  };
+}
+
+async function markFullOrganizeDone(userId) {
+  await pool.execute(
+    `UPDATE users
+     SET tag_organize_full_at = CURRENT_TIMESTAMP(3),
+         tag_organize_ai_created_since = 0
+     WHERE id = :userId`,
+    { userId },
+  );
 }
 
 /**
@@ -40,6 +99,8 @@ async function listTags(userId) {
        c.is_system,
        c.sort_order,
        c.module_id,
+       c.origin,
+       c.placement_origin,
        c.created_at,
        c.updated_at,
        COUNT(i.id) AS item_count
@@ -58,7 +119,11 @@ async function listTags(userId) {
   return rows.map(mapTag);
 }
 
-async function createTag(userId, rawName, { moduleId, description: rawDescription } = {}) {
+async function createTag(
+  userId,
+  rawName,
+  { moduleId, description: rawDescription, origin: rawOrigin } = {},
+) {
   const name = String(rawName || '').trim();
   if (!name) {
     throw Object.assign(new Error('请输入标签名称'), { status: 400 });
@@ -70,6 +135,7 @@ async function createTag(userId, rawName, { moduleId, description: rawDescriptio
     throw Object.assign(new Error('不能使用系统预留名称'), { status: 400 });
   }
   const description = normalizeDescription(rawDescription);
+  const origin = rawOrigin === 'ai' ? 'ai' : 'user';
 
   let resolvedModuleId = null;
   if (moduleId != null && moduleId !== '') {
@@ -81,6 +147,9 @@ async function createTag(userId, rawName, { moduleId, description: rawDescriptio
     await getOwnedModule(userId, mid);
     resolvedModuleId = mid;
   }
+
+  const placementOrigin =
+    resolvedModuleId == null ? null : origin === 'ai' ? 'ai' : 'user';
 
   const [existing] = await pool.execute(
     `SELECT id FROM categories
@@ -109,15 +178,17 @@ async function createTag(userId, rawName, { moduleId, description: rawDescriptio
   try {
     const [result] = await pool.execute(
       `INSERT INTO categories
-         (user_id, section, code, name, description, is_system, sort_order, module_id)
+         (user_id, section, code, name, description, is_system, sort_order, module_id, origin, placement_origin)
        VALUES
-         (:userId, 'tag', NULL, :name, :description, 0, :sortOrder, :moduleId)`,
+         (:userId, 'tag', NULL, :name, :description, 0, :sortOrder, :moduleId, :origin, :placementOrigin)`,
       {
         userId,
         name,
         description,
         sortOrder,
         moduleId: resolvedModuleId,
+        origin,
+        placementOrigin,
       },
     );
 
@@ -245,9 +316,30 @@ async function renameTag(userId, tagId, rawName) {
 
 /**
  * 放置标签：调整所属模块，并可插入到目标组内指定标签之前（beforeTagId 为空则追加到末尾）
+ * @param {{ moduleId?: number|null, beforeTagId?: number|null, source?: 'user'|'ai' }} [opts]
+ *   source=user（默认）：用户拖动，写入 placement_origin=user，之后 AI 不可再挪
+ *   source=ai：仅当标签可 AI 挪动时生效；否则原样返回
  */
-async function placeTag(userId, tagId, { moduleId, beforeTagId } = {}) {
+async function placeTag(
+  userId,
+  tagId,
+  { moduleId, beforeTagId, source: rawSource } = {},
+) {
   const tag = await getOwnedTag(userId, tagId);
+  const source = rawSource === 'ai' ? 'ai' : 'user';
+
+  if (source === 'ai' && !isTagAiMovable(tag)) {
+    const [rows] = await pool.execute(
+      `SELECT c.*,
+         (SELECT COUNT(*) FROM item_tags it
+          INNER JOIN items i ON i.id = it.item_id
+            AND i.user_id = :userId AND i.deleted_at IS NULL
+          WHERE it.category_id = c.id) AS item_count
+       FROM categories c WHERE c.id = :id LIMIT 1`,
+      { id: tag.id, userId },
+    );
+    return mapTag(rows[0]);
+  }
 
   let resolvedModuleId = null;
   if (moduleId != null && moduleId !== '') {
@@ -258,6 +350,16 @@ async function placeTag(userId, tagId, { moduleId, beforeTagId } = {}) {
     const { getOwnedModule } = require('./tagModuleService');
     await getOwnedModule(userId, mid);
     resolvedModuleId = mid;
+  }
+
+  // 用户拖到未归类仍记 user，防止 AI 再塞回；AI 留未归类则 NULL（仍可再排）
+  let placementOrigin;
+  if (source === 'user') {
+    placementOrigin = 'user';
+  } else if (resolvedModuleId == null) {
+    placementOrigin = null;
+  } else {
+    placementOrigin = 'ai';
   }
 
   let beforeId = null;
@@ -304,9 +406,16 @@ async function placeTag(userId, tagId, { moduleId, beforeTagId } = {}) {
     await conn.beginTransaction();
     await conn.execute(
       `UPDATE categories
-       SET module_id = :moduleId, updated_at = CURRENT_TIMESTAMP(3)
+       SET module_id = :moduleId,
+           placement_origin = :placementOrigin,
+           updated_at = CURRENT_TIMESTAMP(3)
        WHERE id = :tagId AND user_id = :userId AND section = 'tag'`,
-      { moduleId: resolvedModuleId, tagId: tag.id, userId },
+      {
+        moduleId: resolvedModuleId,
+        placementOrigin,
+        tagId: tag.id,
+        userId,
+      },
     );
     for (let i = 0; i < orderedIds.length; i += 1) {
       await conn.execute(
@@ -442,6 +551,8 @@ async function searchTagsAndItems(
        c.is_system,
        c.sort_order,
        c.module_id,
+       c.origin,
+       c.placement_origin,
        c.created_at,
        c.updated_at,
        COUNT(i.id) AS item_count
@@ -527,6 +638,8 @@ async function searchTagsAndItems(
        c.is_system,
        c.sort_order,
        c.module_id,
+       c.origin,
+       c.placement_origin,
        c.created_at,
        c.updated_at,
        COUNT(DISTINCT i.id) AS item_count
@@ -582,6 +695,7 @@ async function searchTagsAndItems(
 
 module.exports = {
   mapTag,
+  isTagAiMovable,
   normalizeDescription,
   DESCRIPTION_MAX,
   listTags,
@@ -592,4 +706,7 @@ module.exports = {
   deleteTag,
   listTagItems,
   searchTagsAndItems,
+  bumpOrganizeAiCreatedSince,
+  getOrganizeState,
+  markFullOrganizeDone,
 };

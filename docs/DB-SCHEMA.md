@@ -78,6 +78,8 @@
 | survey_age_range | VARCHAR(32) NULL | 年龄段 |
 | survey_source | VARCHAR(32) NULL | 获客来源 id |
 | survey_interests | JSON NULL | 所选兴趣类 id 列表 |
+| tag_organize_full_at | DATETIME(3) NULL | 上次标签全量重排（迁移 `037`） |
+| tag_organize_ai_created_since | INT NOT NULL DEFAULT 0 | 距上次全量新建的 AI 标签数 |
 | created_at / updated_at | DATETIME(3) | |
 
 ### `user_feedback`（迁移 `031` + `033`）
@@ -142,18 +144,22 @@
 | is_system | TINYINT(1) NOT NULL DEFAULT 0 | |
 | sort_order | INT NOT NULL DEFAULT 0 | |
 | module_id | BIGINT UNSIGNED NULL | 仅 `section=tag`；FK → `tag_modules`，模块删除时置 NULL |
+| origin | ENUM('user','ai') NOT NULL DEFAULT 'user' | 标签创建来源（迁移 `037`） |
+| placement_origin | ENUM('user','ai') NULL | 归类放置来源；用户拖动后为 `user`（AI 不可再挪）；NULL=未归类或 AI 留未归类 |
 | created_at / updated_at | DATETIME(3) | |
 
 约束：`UNIQUE (user_id, section, name)`
-系统 `code` 由 seed 保证唯一（`user_id=0`）。
+系统 `code` 由 seed 保证唯一（`user_id=0`）。  
+AI 可挪条件：`origin=ai` 且 `placement_origin<>'user'`。
 
-### `tag_modules`（迁移 `022`）
+### `tag_modules`（迁移 `022`；来源 `037`）
 
 归类标签的**展示分组**（有独立标题，无父子层级）。
 
 | 字段 | 说明 |
 | --- | --- |
 | id / user_id / name / sort_order | 用户维度唯一 `name` |
+| origin | ENUM('user','ai') NOT NULL DEFAULT 'user' | 归类创建来源；空 AI 归类可在全量重排后清理 |
 | created_at / updated_at | |
 
 ### 预置（user_id = 0）

@@ -44,6 +44,7 @@ const MIGRATION_FILES = [
   '034_feedback_images.sql',
   '035_item_media_kind.sql',
   '036_feedback_reply.sql',
+  '037_tag_origin_organize.sql',
 ];
 
 async function getConnection() {
@@ -346,6 +347,49 @@ async function apply032(conn, dbName) {
   );
 }
 
+async function apply037(conn, dbName) {
+  if (!(await columnExists(conn, dbName, 'categories', 'origin'))) {
+    await conn.query(
+      "ALTER TABLE `categories` ADD COLUMN `origin` ENUM('user', 'ai') NOT NULL DEFAULT 'user' COMMENT '标签创建来源：user=手建/问卷；ai=自动打标新建' AFTER `module_id`",
+    );
+    console.log('[db:migrate] 037: categories.origin');
+  }
+  if (!(await columnExists(conn, dbName, 'categories', 'placement_origin'))) {
+    await conn.query(
+      "ALTER TABLE `categories` ADD COLUMN `placement_origin` ENUM('user', 'ai') DEFAULT NULL COMMENT '归类放置来源：user=用户拖动；ai=AI 归类；NULL=未归类或未记录' AFTER `origin`",
+    );
+    console.log('[db:migrate] 037: categories.placement_origin');
+  }
+  if (!(await columnExists(conn, dbName, 'tag_modules', 'origin'))) {
+    await conn.query(
+      "ALTER TABLE `tag_modules` ADD COLUMN `origin` ENUM('user', 'ai') NOT NULL DEFAULT 'user' COMMENT '归类创建来源' AFTER `sort_order`",
+    );
+    console.log('[db:migrate] 037: tag_modules.origin');
+  }
+  if (!(await columnExists(conn, dbName, 'users', 'tag_organize_full_at'))) {
+    await conn.query(
+      "ALTER TABLE `users` ADD COLUMN `tag_organize_full_at` DATETIME(3) DEFAULT NULL COMMENT '上次标签全量重排时间' AFTER `survey_interests`",
+    );
+    console.log('[db:migrate] 037: users.tag_organize_full_at');
+  }
+  if (!(await columnExists(conn, dbName, 'users', 'tag_organize_ai_created_since'))) {
+    await conn.query(
+      "ALTER TABLE `users` ADD COLUMN `tag_organize_ai_created_since` INT NOT NULL DEFAULT 0 COMMENT '距上次全量重排新建的 AI 标签数' AFTER `tag_organize_full_at`",
+    );
+    console.log('[db:migrate] 037: users.tag_organize_ai_created_since');
+  }
+
+  // 存量视为用户确认，避免误拆既有结构
+  await conn.query(`
+    UPDATE \`categories\`
+    SET \`origin\` = 'user',
+        \`placement_origin\` = IF(\`module_id\` IS NULL, NULL, 'user')
+    WHERE \`section\` = 'tag' AND \`is_system\` = 0
+  `);
+  await conn.query(`UPDATE \`tag_modules\` SET \`origin\` = 'user'`);
+  console.log('[db:migrate] 037: 存量标签/归类已标为 user');
+}
+
 async function apply035(conn, dbName) {
   if (!(await columnExists(conn, dbName, 'items', 'media_kind'))) {
     await conn.query(
@@ -458,6 +502,10 @@ async function applyMigration(conn, dbName, file) {
   }
   if (file === '035_item_media_kind.sql') {
     await apply035(conn, dbName);
+    return;
+  }
+  if (file === '037_tag_origin_organize.sql') {
+    await apply037(conn, dbName);
     return;
   }
   await runSqlFile(conn, file);

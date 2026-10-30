@@ -602,6 +602,7 @@ async function applyAiSuggest(userId, itemId, { names = [] } = {}) {
     currentTags.filter((t) => !t.isSystem).map((t) => t.id),
   );
 
+  let newAiTagCount = 0;
   for (const name of selected) {
     const sug = suggestionMap.get(name.toLowerCase());
     let tagId = sug?.existingTagId ?? null;
@@ -618,12 +619,16 @@ async function applyAiSuggest(userId, itemId, { names = [] } = {}) {
       } else {
         const created = await tagService.createTag(userId, name, {
           description: sug?.description,
+          origin: 'ai',
         });
         tagId = created.id;
+        newAiTagCount += 1;
         userTags.push({
           id: created.id,
           name: created.name,
           description: created.description,
+          origin: created.origin,
+          placementOrigin: created.placementOrigin,
         });
       }
     } else if (sug?.description) {
@@ -642,6 +647,10 @@ async function applyAiSuggest(userId, itemId, { names = [] } = {}) {
       }
     }
     if (tagId) tagIdSet.add(tagId);
+  }
+
+  if (newAiTagCount > 0) {
+    await tagService.bumpOrganizeAiCreatedSince(userId, newAiTagCount);
   }
 
   await itemService.setItemTags(userId, itemId, [...tagIdSet]);
