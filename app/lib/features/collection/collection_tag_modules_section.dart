@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:super_collection/core/ui/app_haptics.dart';
+import 'package:super_collection/core/ui/app_orientation.dart';
 import 'package:super_collection/features/collection/tag_models.dart';
 import 'package:super_collection/features/collection/tag_module_models.dart';
 
@@ -454,18 +455,11 @@ class _ModuleBlock extends StatelessWidget {
                 ),
               ),
             )
-          : Wrap(
-              spacing: 6,
-              runSpacing: 6,
-              children: [
-                for (final tag in tags)
-                  _TagChip(
-                    tag: tag,
-                    muted: ungrouped,
-                    onTap: () => onOpenTag(tag),
-                    draggable: onPlaceTag != null,
-                  ),
-              ],
+          : _ModuleTagsLayout(
+              tags: tags,
+              muted: ungrouped,
+              onOpenTag: onOpenTag,
+              draggable: onPlaceTag != null,
             ),
     );
 
@@ -651,6 +645,80 @@ class _ModuleBlock extends StatelessWidget {
   }
 }
 
+/// iPhone：每行 3 个，整行可横滑看全名；iPad：自然换行。
+class _ModuleTagsLayout extends StatelessWidget {
+  const _ModuleTagsLayout({
+    required this.tags,
+    required this.muted,
+    required this.onOpenTag,
+    required this.draggable,
+  });
+
+  final List<Tag> tags;
+  final bool muted;
+  final ValueChanged<Tag> onOpenTag;
+  final bool draggable;
+
+  static const _spacing = 6.0;
+  static const _perRow = 3;
+
+  List<_TagChip> _chipsFor(List<Tag> slice) {
+    return [
+      for (final tag in slice)
+        _TagChip(
+          tag: tag,
+          muted: muted,
+          onTap: () => onOpenTag(tag),
+          draggable: draggable,
+        ),
+    ];
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (AppOrientation.isTablet(context)) {
+      return Wrap(
+        spacing: _spacing,
+        runSpacing: _spacing,
+        children: _chipsFor(tags),
+      );
+    }
+
+    final rows = <Widget>[];
+    for (var i = 0; i < tags.length; i += _perRow) {
+      final end = (i + _perRow > tags.length) ? tags.length : i + _perRow;
+      final slice = tags.sublist(i, end);
+      if (rows.isNotEmpty) {
+        rows.add(const SizedBox(height: _spacing));
+      }
+      rows.add(
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          physics: const BouncingScrollPhysics(),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              for (var j = 0; j < slice.length; j++) ...[
+                if (j > 0) const SizedBox(width: _spacing),
+                _TagChip(
+                  tag: slice[j],
+                  muted: muted,
+                  onTap: () => onOpenTag(slice[j]),
+                  draggable: draggable,
+                ),
+              ],
+            ],
+          ),
+        ),
+      );
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: rows,
+    );
+  }
+}
+
 class _TagChip extends StatefulWidget {
   const _TagChip({
     required this.tag,
@@ -789,20 +857,17 @@ class _TagChipState extends State<_TagChip> {
                 ),
               ),
               const SizedBox(width: 5),
-              ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 160),
-                child: Text(
-                  text,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: feedback ? 14 : 13,
-                    fontWeight: FontWeight.w500,
-                    height: 1.25,
-                    letterSpacing: 0.1,
-                    color: CollectionTagModulesSection.ink
-                        .withValues(alpha: 0.88),
-                  ),
+              Text(
+                text,
+                maxLines: 1,
+                softWrap: false,
+                style: TextStyle(
+                  fontSize: feedback ? 14 : 13,
+                  fontWeight: FontWeight.w500,
+                  height: 1.25,
+                  letterSpacing: 0.1,
+                  color: CollectionTagModulesSection.ink
+                      .withValues(alpha: 0.88),
                 ),
               ),
               if (widget.tag.itemCount > 0) ...[
