@@ -279,9 +279,11 @@ class _CollectionPageState extends State<CollectionPage> {
         _tabletBrowse = _TabletBrowse(
           title: title,
           openEntry: 'library',
-          loader: ({required limit, required offset}) =>
+          showMediaKinds: true,
+          loader: ({required limit, required offset, mediaKind}) =>
               _systemFiltersRepo.listItems(
             filter: filter.code,
+            mediaKind: mediaKind,
             limit: limit,
             offset: offset,
           ),
@@ -310,7 +312,8 @@ class _CollectionPageState extends State<CollectionPage> {
         _tabletBrowse = _TabletBrowse(
           title: tag.name,
           openEntry: 'tag',
-          loader: ({required limit, required offset}) => _tagsRepo.listTagItems(
+          loader: ({required limit, required offset, mediaKind}) =>
+              _tagsRepo.listTagItems(
             tag.id,
             limit: limit,
             offset: offset,
@@ -345,7 +348,7 @@ class _CollectionPageState extends State<CollectionPage> {
         _tabletBrowse = _TabletBrowse(
           title: module.name,
           openEntry: 'library',
-          loader: ({required limit, required offset}) =>
+          loader: ({required limit, required offset, mediaKind}) =>
               _tagModulesRepo.listModuleItems(
             module.id,
             limit: limit,
@@ -486,6 +489,7 @@ class _CollectionPageState extends State<CollectionPage> {
         openEntry: browse.openEntry,
         onBack: _closeTabletBrowse,
         refreshTick: widget.refreshTick + _tabletBrowseTick,
+        showMediaKinds: browse.showMediaKinds,
       );
     }
 
@@ -915,9 +919,11 @@ class _TabletBrowse {
     required this.title,
     required this.loader,
     required this.openEntry,
+    this.showMediaKinds = false,
   });
 
   final String title;
   final TabletItemsLoader loader;
   final String openEntry;
+  final bool showMediaKinds;
 }
