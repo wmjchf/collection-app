@@ -19,7 +19,7 @@ const ORGANIZE_SYSTEM_PROMPT_UNGROUPED =
   '3. 并入已有归类：existingModuleId 必填，name 用原名；tagIds **只写本次新加入的待安置标签 id**。' +
   '4. 新建归类：existingModuleId 为 null；tagIds 只能来自待安置；至少 2 个标签才能新建。' +
   '5. 新建归类名必须是**单一主题**短名（2～8 字）；严禁用「与」「及」「和」「、」「/」「·」拼两个主题。' +
-  '6. 专有名词按「它是什么」归；凑不齐的放 ungroupedTagIds。' +
+  '6. 专有名词按「它是什么」归（同业/同类实体可并，勿建笼统的「品牌」「人名」筐）；凑不齐的放 ungroupedTagIds。' +
   '7. 只使用输入里的待安置 tagId；禁止编造 id；每个待安置标签最多出现一次。' +
   '8. 全部待安置 tagId 都必须出现：要么在 modules[].tagIds，要么在 ungroupedTagIds。' +
   '只输出 JSON：{"modules":[{"name":"归类名","existingModuleId":null,"tagIds":[1,2]}],"ungroupedTagIds":[3]}';
@@ -32,9 +32,10 @@ const ORGANIZE_SYSTEM_PROMPT_FULL =
   '2. 每个可重排标签必须恰好出现一次：在某个 modules[].tagIds，或在 ungroupedTagIds。' +
   '3. 并入已有归类：existingModuleId 必填，name 用原名；tagIds 只写进入该归类的**可重排**标签（不要罗列锁定标签）。' +
   '4. 新建归类：existingModuleId 为 null；tagIds 只能来自可重排；至少 2 个。' +
-  '5. 新建归类名必须是单一主题短名（2～8 字）；严禁「与」「及」「和」「、」「/」「·」拼主题。' +
-  '6. 可把原先已在某归类中的可重排标签挪到别的归类或未归类。' +
-  '7. 禁止编造 id。' +
+  '5. 新建归类名必须是**单一主题**短名（2～8 字）；严禁用「与」「及」「和」「、」「/」「·」拼两个主题。' +
+  '6. 专有名词按「它是什么」归（同业/同类实体可并，勿建笼统的「品牌」「人名」筐）；凑不齐的放 ungroupedTagIds。' +
+  '7. 可把原先已在某归类中的可重排标签挪到别的归类或未归类。' +
+  '8. 只使用输入里的可重排 tagId；禁止编造 id。' +
   '只输出 JSON：{"modules":[{"name":"归类名","existingModuleId":null,"tagIds":[1,2]}],"ungroupedTagIds":[3]}';
 
 function formatTagLine(t) {
