@@ -6,6 +6,7 @@ function mapModule(row) {
     id: row.id,
     name: row.name,
     sortOrder: row.sort_order,
+    origin: row.origin === 'ai' ? 'ai' : 'user',
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -47,6 +48,8 @@ async function listModules(userId) {
        c.is_system,
        c.sort_order,
        c.module_id,
+       c.origin,
+       c.placement_origin,
        c.created_at,
        c.updated_at,
        COUNT(i.id) AS item_count
@@ -83,7 +86,7 @@ async function listModules(userId) {
   return { modules, ungrouped };
 }
 
-async function createModule(userId, rawName) {
+async function createModule(userId, rawName, { origin: rawOrigin } = {}) {
   const name = String(rawName || '').trim();
   if (!name) {
     throw Object.assign(new Error('请输入归类名称'), { status: 400 });
@@ -91,6 +94,7 @@ async function createModule(userId, rawName) {
   if (name.length > 64) {
     throw Object.assign(new Error('名称最多 64 个字'), { status: 400 });
   }
+  const origin = rawOrigin === 'ai' ? 'ai' : 'user';
 
   const [existing] = await pool.execute(
     `SELECT id FROM tag_modules
@@ -111,9 +115,9 @@ async function createModule(userId, rawName) {
 
   try {
     const [result] = await pool.execute(
-      `INSERT INTO tag_modules (user_id, name, sort_order)
-       VALUES (:userId, :name, :sortOrder)`,
-      { userId, name, sortOrder },
+      `INSERT INTO tag_modules (user_id, name, sort_order, origin)
+       VALUES (:userId, :name, :sortOrder, :origin)`,
+      { userId, name, sortOrder, origin },
     );
     const [rows] = await pool.execute(
       `SELECT * FROM tag_modules WHERE id = :id LIMIT 1`,
@@ -126,6 +130,17 @@ async function createModule(userId, rawName) {
     }
     throw err;
   }
+}
+
+/** 删除无标签的 AI 归类（全量重排后收尾） */
+async function pruneEmptyAiModules(userId) {
+  await pool.execute(
+    `DELETE tm FROM tag_modules tm
+     LEFT JOIN categories c
+       ON c.module_id = tm.id AND c.section = 'tag' AND c.user_id = tm.user_id
+     WHERE tm.user_id = :userId AND tm.origin = 'ai' AND c.id IS NULL`,
+    { userId },
+  );
 }
 
 async function renameModule(userId, moduleId, rawName) {
@@ -269,6 +284,7 @@ module.exports = {
   renameModule,
   listModuleItems,
   deleteModule,
+  pruneEmptyAiModules,
   getOwnedModule,
   mapModule,
 };
