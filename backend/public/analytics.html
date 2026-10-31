@@ -161,6 +161,17 @@
       </div>
 
       <div class="card section" style="margin-top:12px">
+        <h2>留存（按注册日）</h2>
+        <p class="muted" style="margin:0 0 10px;font-size:13px">
+          Cohort = <code>users.created_at</code> 当日新用户；Dn = 注册后第 n 个自然日至少 1 次 <code>app_open</code>。未满观察窗显示 —。
+        </p>
+        <div id="retentionKpis" class="grid" style="margin-bottom:12px"></div>
+        <div style="overflow-x:auto">
+          <div id="retention"></div>
+        </div>
+      </div>
+
+      <div class="card section" style="margin-top:12px">
         <h2>主链路 · 入库 → 阅读 → 付费</h2>
         <p class="muted" style="margin:0 0 10px;font-size:13px">
           用户漏斗：周期内有过入库的用户，后续步骤按时间顺序发生（可跨会话）。同会话统计见下方。
@@ -388,6 +399,78 @@
         ${hint ? `<div class="hint">${esc(hint)}</div>` : ''}</div>`;
     }
 
+    function fmtRate(v) {
+      if (v == null) return '—';
+      return `${v}%`;
+    }
+
+    function retentionBlock(ret, singleUser) {
+      if (!ret) {
+        $('retentionKpis').innerHTML = '';
+        $('retention').innerHTML = '<p class="muted">暂无数据</p>';
+        return;
+      }
+      const dayKeys = ret.days || [0, 1, 3, 7, 14];
+
+      if (singleUser && ret.user) {
+        const u = ret.user;
+        $('retentionKpis').innerHTML = [
+          kpi('注册日', u.signupDate, 'users.created_at'),
+          ...dayKeys.map((n) => {
+            const v = u.returnedOn?.[n];
+            return kpi(
+              `D${n}`,
+              v == null ? '—' : v ? '回访' : '未回',
+              v == null ? '未满观察窗' : '当日有 app_open',
+            );
+          }),
+        ].join('');
+        $('retention').innerHTML =
+          '<p class="muted" style="margin:0">单用户视图：看上方 Dn 是否在对应自然日打开过 App。</p>';
+        return;
+      }
+
+      const avg = ret.averages || {};
+      $('retentionKpis').innerHTML = [
+        kpi('D1 留存', fmtRate(avg[1]), '已成熟 cohort 加权'),
+        kpi('D3 留存', fmtRate(avg[3]), '已成熟 cohort 加权'),
+        kpi('D7 留存', fmtRate(avg[7]), '已成熟 cohort 加权'),
+        kpi('D14 留存', fmtRate(avg[14]), '已成熟 cohort 加权'),
+      ].join('');
+
+      const cohorts = ret.cohorts || [];
+      if (!cohorts.length) {
+        $('retention').innerHTML = '<p class="muted">周期内无新注册用户</p>';
+        return;
+      }
+
+      const head = dayKeys.map((n) => `<th>D${n}</th>`).join('');
+      const rows = cohorts
+        .slice()
+        .reverse()
+        .map((c) => {
+          const cells = dayKeys
+            .map((n) => {
+              const rate = c.rates?.[n];
+              const cnt = c.retained?.[n];
+              if (rate == null) return '<td class="muted">—</td>';
+              return `<td class="mono">${rate}% <span class="muted">(${cnt}/${c.newUsers})</span></td>`;
+            })
+            .join('');
+          return `<tr>
+            <td class="mono">${esc(String(c.date).slice(5))}</td>
+            <td class="mono">${c.newUsers}</td>
+            ${cells}
+          </tr>`;
+        })
+        .join('');
+
+      $('retention').innerHTML = `<table>
+        <thead><tr><th>注册日</th><th>新用户</th>${head}</tr></thead>
+        <tbody>${rows}</tbody>
+      </table>`;
+    }
+
     function funnelSteps(steps, singleUser) {
       if (!steps?.length) return '<p class="muted">暂无数据</p>';
       const base = Number(steps[0]?.users) || 1;
@@ -519,6 +602,8 @@
 
         const dau = (data.dau || []).map((x) => ({ label: String(x.date).slice(5), count: x.users }));
         $('dau').innerHTML = bars(dau);
+
+        retentionBlock(data.retention, singleUser);
 
         $('parse').innerHTML =
           `<p>ready <b class="ok">${p.ready ?? 0}</b> · fail <b class="bad">${p.fail ?? 0}</b>` +
