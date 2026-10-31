@@ -1097,7 +1097,7 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
 
   /// [notesOnly] false=仅高亮（无批注正文）；true=有批注正文的列表。
   void _showAnnotationList({bool notesOnly = false}) {
-    final items = _annotations
+    var items = _annotations
         .where((a) => notesOnly ? _annotationHasNote(a) : !_annotationHasNote(a))
         .toList();
     final empty = notesOnly
@@ -1107,67 +1107,101 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
         ? '选中正文后可添加批注'
         : '选中正文后点「高亮」即可记下';
 
+    Widget emptyBody(double top, double bottom) {
+      return Padding(
+        padding: EdgeInsets.fromLTRB(28, top, 28, bottom),
+        child: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                notesOnly
+                    ? Icons.sticky_note_2_outlined
+                    : Icons.border_color_outlined,
+                size: 28,
+                color: _muted.withValues(alpha: 0.45),
+              ),
+              const SizedBox(height: 14),
+              Text(
+                empty,
+                style: const TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600,
+                  color: _text,
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                emptyHint,
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 13,
+                  height: 1.4,
+                  color: _muted.withValues(alpha: 0.9),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
     showAppSideDrawer<void>(
       context: context,
       builder: (drawerContext) {
         final top = MediaQuery.paddingOf(drawerContext).top;
         final bottom = MediaQuery.paddingOf(drawerContext).bottom;
-        return items.isEmpty
-            ? Padding(
-                padding: EdgeInsets.fromLTRB(28, top, 28, bottom),
-                child: Center(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        notesOnly
-                            ? Icons.sticky_note_2_outlined
-                            : Icons.border_color_outlined,
-                        size: 28,
-                        color: _muted.withValues(alpha: 0.45),
+        return StatefulBuilder(
+          builder: (context, setDrawerState) {
+            if (items.isEmpty) return emptyBody(top, bottom);
+            return ListView.separated(
+              padding: EdgeInsets.fromLTRB(16, 12 + top, 16, 28 + bottom),
+              itemCount: items.length,
+              separatorBuilder: (_, __) => const SizedBox(height: 10),
+              itemBuilder: (context, index) {
+                final ann = items[index];
+                return RoamQuoteCard(
+                  snippet: _annotationToRoamSnippet(ann),
+                  // 标注列表完整展示；高亮列表仍截断
+                  maxLines: notesOnly ? null : 6,
+                  onTap: () {
+                    Navigator.pop(drawerContext);
+                    WidgetsBinding.instance.addPostFrameCallback((_) {
+                      if (mounted) _locateAnnotation(ann);
+                    });
+                  },
+                  onDelete: () async {
+                    final ok = await showAppConfirmDialog(
+                      drawerContext,
+                      title: deleteAnnotationTitle(
+                        isPro: _isPro,
+                        highlightOnly: !notesOnly,
                       ),
-                      const SizedBox(height: 14),
-                      Text(
-                        empty,
-                        style: const TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w600,
-                          color: _text,
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      Text(
-                        emptyHint,
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          fontSize: 13,
-                          height: 1.4,
-                          color: _muted.withValues(alpha: 0.9),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              )
-            : ListView.separated(
-                padding: EdgeInsets.fromLTRB(16, 12 + top, 16, 28 + bottom),
-                itemCount: items.length,
-                separatorBuilder: (_, __) => const SizedBox(height: 10),
-                itemBuilder: (context, index) {
-                  final ann = items[index];
-                  return RoamQuoteCard(
-                    snippet: _annotationToRoamSnippet(ann),
-                    // 标注列表完整展示；高亮列表仍截断
-                    maxLines: notesOnly ? null : 6,
-                    onTap: () {
-                      Navigator.pop(drawerContext);
-                      WidgetsBinding.instance.addPostFrameCallback((_) {
-                        if (mounted) _locateAnnotation(ann);
+                      message: '删除后不可恢复。',
+                      confirmLabel: '删除',
+                    );
+                    if (ok != true) return;
+                    try {
+                      await _repo.deleteAnnotation(_item.id, ann.id);
+                      if (!mounted) return;
+                      setState(() {
+                        _annotations =
+                            _annotations.where((a) => a.id != ann.id).toList();
                       });
-                    },
-                  );
-                },
-              );
+                      setDrawerState(() {
+                        items = items.where((a) => a.id != ann.id).toList();
+                      });
+                      AppToast.show(context, '已删除');
+                    } on ApiException catch (e) {
+                      if (!mounted) return;
+                      AppToast.show(context, e.message);
+                    }
+                  },
+                );
+              },
+            );
+          },
+        );
       },
     );
   }

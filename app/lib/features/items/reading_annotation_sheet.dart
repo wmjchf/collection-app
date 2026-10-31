@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:super_collection/core/network/api_client.dart';
 import 'package:super_collection/core/ui/app_bottom_sheet.dart';
-import 'package:super_collection/core/ui/app_confirm_dialog.dart';
 import 'package:super_collection/core/ui/app_toast.dart';
 import 'package:super_collection/core/ui/pro_copy.dart';
 import 'package:super_collection/features/items/item_models.dart';
@@ -114,7 +113,7 @@ class _AnnotationNoteSheetState extends State<_AnnotationNoteSheet> {
     return '「${q.substring(0, 36)}…」';
   }
 
-  /// 已有高亮记录、但还没有批注正文
+  /// 已有高亮记录、但还没有批注正文（影响弹框标题）
   bool get _highlightOnly {
     if (widget.isCreate || widget.annotation == null) return false;
     return (widget.annotation!.note ?? '').trim().isEmpty;
@@ -167,32 +166,6 @@ class _AnnotationNoteSheetState extends State<_AnnotationNoteSheet> {
     final note = (widget.annotation?.note ?? widget.initialNote ?? '').trim();
     Navigator.pop(context);
     await share(quote, origin, note: note.isEmpty ? null : note);
-  }
-
-  Future<void> _delete() async {
-    if (widget.isCreate || widget.annotation == null) {
-      Navigator.pop(context);
-      return;
-    }
-    final ok = await showAppConfirmDialog(
-      context,
-      title: deleteAnnotationTitle(
-        isPro: widget.isPro,
-        highlightOnly: _highlightOnly,
-      ),
-      message: '删除后不可恢复。',
-      confirmLabel: '删除',
-    );
-    if (ok != true || !mounted) return;
-    try {
-      await _repo.deleteAnnotation(widget.itemId, widget.annotation!.id);
-      if (!mounted) return;
-      widget.onChanged?.call();
-      Navigator.pop(context);
-    } on ApiException catch (e) {
-      if (!mounted) return;
-      AppToast.show(context, e.message);
-    }
   }
 
   @override
@@ -314,7 +287,7 @@ class _AnnotationNoteSheetState extends State<_AnnotationNoteSheet> {
                   child: SizedBox(
                     height: 48,
                     child: FilledButton(
-                      onPressed: _delete,
+                      onPressed: () => Navigator.pop(context),
                       style: FilledButton.styleFrom(
                         backgroundColor: _fieldBg,
                         foregroundColor: _text,
@@ -323,14 +296,9 @@ class _AnnotationNoteSheetState extends State<_AnnotationNoteSheet> {
                           borderRadius: BorderRadius.circular(12),
                         ),
                       ),
-                      child: Text(
-                        widget.isCreate
-                            ? '取消'
-                            : deleteAnnotationLabel(
-                                isPro: widget.isPro,
-                                highlightOnly: _highlightOnly,
-                              ),
-                        style: const TextStyle(
+                      child: const Text(
+                        '取消',
+                        style: TextStyle(
                           fontSize: 15,
                           fontWeight: FontWeight.w500,
                         ),
