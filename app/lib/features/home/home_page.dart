@@ -993,7 +993,8 @@ class _HomeRoamSection extends StatelessWidget {
   }
 }
 
-/// 封面 64 + 上下内边距 24；条目内标题一行、标签行固定占位，高度恒定。
+/// 封面 64 + 上下内边距 24；条目高度恒定。
+/// 太子/帝王：标题一行 + `#标签`；普通/免费：标题两行省略。
 const _homeUnreadTileHeight = 88.0;
 const _homeUnreadTileGap = 8.0;
 const _homeUnreadSlotCount = 3;
