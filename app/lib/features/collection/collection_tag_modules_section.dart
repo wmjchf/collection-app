@@ -62,6 +62,7 @@ class CollectionTagModulesSection extends StatelessWidget {
   Widget build(BuildContext context) {
     // 归类间距放进各自 DragTarget（topInset），避免空隙落空接不住。
     const moduleGap = 12.0;
+    final sparseEmpty = modules.isEmpty && ungrouped.isEmpty;
     final blocks = <Widget>[
       _ModuleBlock(
         moduleId: null,
@@ -73,10 +74,7 @@ class CollectionTagModulesSection extends StatelessWidget {
         onAiOrganize: onAiOrganize,
         onPlaceTag: onPlaceTag,
       ),
-    ];
-
-    for (final m in modules) {
-      blocks.add(
+      for (final m in modules)
         _ModuleBlock(
           moduleId: m.id,
           title: m.name,
@@ -92,23 +90,26 @@ class CollectionTagModulesSection extends StatelessWidget {
               onDeleteModule != null ? () => onDeleteModule!(m) : null,
           onPlaceTag: onPlaceTag,
         ),
-      );
-    }
+    ];
 
-    // 整区一块白底；外层 minHeight 时用 Container 把底色撑满，内容置顶。
+    // 整区一块白底贴满剩余高度；全空时用引导文案填满匣下空白，不硬拉空匣。
     return KeyedSubtree(
       key: headerKey,
       child: LayoutBuilder(
         builder: (context, constraints) {
-          // Expanded / 外层 minHeight：优先用可用高度撑满。
           final minH = !fillRemaining
               ? 0.0
               : constraints.hasBoundedHeight
                   ? constraints.maxHeight
                   : (constraints.minHeight.isFinite ? constraints.minHeight : 0.0);
+          final boxConstraints = minH <= 0
+              ? null
+              : sparseEmpty
+                  ? BoxConstraints(minHeight: minH, maxHeight: minH)
+                  : BoxConstraints(minHeight: minH);
           return Container(
             width: double.infinity,
-            constraints: minH > 0 ? BoxConstraints(minHeight: minH) : null,
+            constraints: boxConstraints,
             alignment: Alignment.topCenter,
             decoration: BoxDecoration(
               color: panel,
@@ -118,13 +119,20 @@ class CollectionTagModulesSection extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(14, 14, 12, 14),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
-              mainAxisSize: MainAxisSize.min,
+              mainAxisSize:
+                  sparseEmpty ? MainAxisSize.max : MainAxisSize.min,
               children: [
                 _CollapsingSectionHeader(
                   collapse: headerCollapse,
                   onCreateModule: onCreateModule,
+                  // 全空引导里已有「新建归类」，隐藏右上角 +
+                  showCreate: !sparseEmpty,
                 ),
                 ...blocks,
+                if (sparseEmpty)
+                  Expanded(
+                    child: _TagsEmptyGuide(onCreateModule: onCreateModule),
+                  ),
               ],
             ),
           );
@@ -134,21 +142,101 @@ class CollectionTagModulesSection extends StatelessWidget {
   }
 }
 
+/// 全空时填满匣下白底：说明 + 新建归类。
+class _TagsEmptyGuide extends StatelessWidget {
+  const _TagsEmptyGuide({required this.onCreateModule});
+
+  final VoidCallback onCreateModule;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(8, 28, 8, 12),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Container(
+            width: 56,
+            height: 56,
+            decoration: const BoxDecoration(
+              color: CollectionTagModulesSection.chipFill,
+              shape: BoxShape.circle,
+            ),
+            child: Icon(
+              Icons.folder_special_outlined,
+              size: 28,
+              color: CollectionTagModulesSection.muted.withValues(alpha: 0.9),
+            ),
+          ),
+          const SizedBox(height: 16),
+          const Text(
+            '先建一个归类',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w600,
+              color: CollectionTagModulesSection.ink,
+              height: 1.3,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            '收藏打上标签后会进未归类；\n再建归类，长按标签拖进去整理。',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 13,
+              height: 1.45,
+              color: CollectionTagModulesSection.muted.withValues(alpha: 0.95),
+            ),
+          ),
+          const SizedBox(height: 20),
+          TextButton(
+            onPressed: () {
+              HapticFeedback.selectionClick();
+              onCreateModule();
+            },
+            style: TextButton.styleFrom(
+              foregroundColor: CollectionTagModulesSection.brand,
+              backgroundColor: CollectionTagModulesSection.brandSoft,
+              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
+            ),
+            child: const Text(
+              '新建归类',
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _CollapsingSectionHeader extends StatelessWidget {
   const _CollapsingSectionHeader({
     required this.onCreateModule,
     this.collapse,
+    this.showCreate = true,
   });
 
   final ValueListenable<double>? collapse;
   final VoidCallback onCreateModule;
+  final bool showCreate;
 
   @override
   Widget build(BuildContext context) {
     final header = Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _SectionHeader(onCreateModule: onCreateModule),
+        _SectionHeader(
+          onCreateModule: onCreateModule,
+          showCreate: showCreate,
+        ),
         const SizedBox(height: 12),
       ],
     );
@@ -180,9 +268,13 @@ class _CollapsingSectionHeader extends StatelessWidget {
 }
 
 class _SectionHeader extends StatelessWidget {
-  const _SectionHeader({required this.onCreateModule});
+  const _SectionHeader({
+    required this.onCreateModule,
+    this.showCreate = true,
+  });
 
   final VoidCallback onCreateModule;
+  final bool showCreate;
 
   @override
   Widget build(BuildContext context) {
@@ -205,7 +297,8 @@ class _SectionHeader extends StatelessWidget {
                   ),
                 ),
               ),
-              CollectionCreateModuleButton(onPressed: onCreateModule),
+              if (showCreate)
+                CollectionCreateModuleButton(onPressed: onCreateModule),
             ],
           ),
           const SizedBox(height: 4),
