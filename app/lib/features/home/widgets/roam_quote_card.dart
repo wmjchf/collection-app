@@ -8,6 +8,7 @@ class RoamQuoteCard extends StatelessWidget {
     required this.snippet,
     this.onTap,
     this.onMute,
+    this.onDelete,
     this.onShare,
     this.maxLines = 4,
     this.showMeta = true,
@@ -21,6 +22,9 @@ class RoamQuoteCard extends StatelessWidget {
   final VoidCallback? onTap;
   /// 弹层：元信息右侧「不再回顾」
   final VoidCallback? onMute;
+
+  /// 阅读页高亮/批注列表：元信息右侧「删除」
+  final VoidCallback? onDelete;
 
   /// 弹层：「不再回顾」上方单独一行的分享。传入按钮在屏幕上的位置。
   final void Function(Rect? origin)? onShare;
@@ -139,7 +143,8 @@ class RoamQuoteCard extends StatelessWidget {
     ];
     final metaText = metaParts.where((e) => e.isNotEmpty).join(' · ');
     final showMetaRow =
-        showMeta && (metaText.isNotEmpty || onMute != null);
+        showMeta &&
+        (metaText.isNotEmpty || onMute != null || onDelete != null);
     final metaBlock = showMetaRow
         ? Padding(
             padding: EdgeInsets.only(top: hasQuote ? 12 : 10),
@@ -155,6 +160,29 @@ class RoamQuoteCard extends StatelessWidget {
                           style: const TextStyle(fontSize: 12, color: _meta),
                         ),
                 ),
+                if (onDelete != null) ...[
+                  const SizedBox(width: 12),
+                  TextButton(
+                    onPressed: onDelete,
+                    style: TextButton.styleFrom(
+                      foregroundColor: const Color(0xFFD14343),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 4,
+                      ),
+                      minimumSize: Size.zero,
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      visualDensity: VisualDensity.compact,
+                    ),
+                    child: const Text(
+                      '删除',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                ],
                 if (onMute != null) ...[
                   const SizedBox(width: 16),
                   FilledButton(

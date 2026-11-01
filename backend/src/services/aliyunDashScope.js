@@ -31,7 +31,7 @@ function parseCachedTokens(usage) {
  * 调用百炼 OpenAI 兼容接口（qwen3.8-max 等）
  * @returns {Promise<{ json: object, usage: { promptTokens, completionTokens, totalTokens, cachedTokens, model } }>}
  */
-async function chatJson({ messages, model }) {
+async function chatJson({ messages, model, temperature }) {
   const apiKey = config.aliyun.dashScopeApiKey;
   if (!apiKey) {
     throw Object.assign(new Error('AI 未配置：请设置 DASHSCOPE_API_KEY'), {
@@ -42,18 +42,23 @@ async function chatJson({ messages, model }) {
   const baseUrl = (config.aliyun.dashScopeBaseUrl || '').replace(/\/$/, '');
   const modelId = model || config.aliyun.aiModel || 'qwen3.8-max';
 
+  const payload = {
+    model: modelId,
+    messages,
+    response_format: { type: 'json_object' },
+    enable_thinking: false,
+  };
+  if (temperature != null && Number.isFinite(Number(temperature))) {
+    payload.temperature = Number(temperature);
+  }
+
   const res = await fetch(`${baseUrl}/chat/completions`, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${apiKey}`,
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({
-      model: modelId,
-      messages,
-      response_format: { type: 'json_object' },
-      enable_thinking: false,
-    }),
+    body: JSON.stringify(payload),
   });
 
   const text = await res.text();

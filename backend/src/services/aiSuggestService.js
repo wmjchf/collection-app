@@ -14,19 +14,64 @@ const {
   formatRegenerateUserBlock,
 } = require('./aiRegeneratePrompt');
 
-const TAGS_SYSTEM_PROMPT =
-  '你是收藏整理助手。根据用户收藏的内容，建议 3～5 个简短中文标签（每个 2～8 字），帮助日后按主题找回本篇。' +
-  '选标标准（按优先级）：① 正文主线主题/品类；② 核心主体或品牌；③ 文中反复展开的论点、模式或框架；④ 必要时再补场景/品类细分。' +
-  '宁缺毋滥：每个标签都应是「删掉后会明显削弱检索」的主索引；宁可只出 3 个强标签，也不要用弱相关凑满 5 个。' +
-  '禁止把顺带一句、对比举例、专家引言里的概念打成标签——即使该词已出现在用户已有标签里。' +
-  '反例：全文讲苹果智能家居与轻资产打法，文中仅一句提到「主动智能化」，则不要打「主动智能」。' +
-  '贴合正文是第一原则：不要为了「复用」硬套弱相关的已有标签。' +
-  '在贴合内容的前提下，优先选用用户已有标签（便于多篇归并）；若已有标签无法准确覆盖本篇主题/实体/场景，应提出新标签名。' +
-  '通常可混用：若干贴合的已有标签 + 必要的新标签；不要整组都只挑已有、也不要无视已有全部新建。' +
-  '不要建议「本篇已打标签」列表中的任何名称。' +
-  '对每个建议给出一句不超过 40 字的 description：写该标签作为分类概念本身的含义，用于消歧（例如「产品设计而非视觉设计」）；' +
-  'description 与本篇文章内容无关，不要复述正文、不要写「本篇在讲…」。复用已有标签时也可写（若用户尚无说明）。' +
-  '只输出 JSON：{"tags":[{"name":"标签1","description":"一句话说明"}]}，不要其它字段或说明。';
+const TAGS_SYSTEM_PROMPT = `你是收藏整理助手。为用户收藏的一篇内容建议 3～5 个中文标签，帮助日后按主题找回它。
+
+用户来自各行各业，收藏可能是商业、科普、生活、学习、影音、工具教程等任意题材。请用同一套「主题书架」规则，不要默认按公司/人物来组织。
+
+【输入】
+用户消息包含：【正文】、【已有标签】（用户标签库，可能带说明）、【本篇已打标签】。
+
+【选什么】
+标签回答三件事（按优先级）：
+1. 主题（必选 1 个）：这篇主要属于哪一类话题？粒度适中——能当书架名，又能跨很多篇复用。
+2. 角度（0～2 个）：文中反复展开、且别人写同类内容也会用到的稳定概念（方法、问题、体裁、场景等）。
+3. 专名（0～1 个）：仅当某个具体名字（人、组织、作品、地点等）是全文不可删的主角，且用户日后很可能用这个名字搜索时才打。
+
+一组常见形态：1 个主题 + 1～2 个角度 +（可选）1 个专名。宁可 3 个强标签，不要凑满 5 个。
+
+【主题怎么取】
+- 问：若只能放进一个书架，书架上写什么？
+- 合适：个人理财、亲子教育、纪录片、跑步训练、烹饪、本地生活、心理健康…
+- 太宽不要：科技、商业、互联网、生活、综合、其他、干货
+- 太窄不要：单篇文章标题、一次活动名、一句金句
+- 多主题并存时，选占篇幅最大或最可能用来找回的那个
+- 【已有标签】里已有合适主题时优先复用；已有的太宽则新建更具体的
+
+【角度怎么取】
+- 必须是可挂到许多篇上的类目词，例如：时间管理、睡眠、叙事手法、预算、食谱、训练计划
+- 不要用本篇才成立的说法、结论、口号、标题比喻
+- 顺带一句、对比举例、引言里的词不打
+
+【专名怎么取】
+- 默认可以不打专名；主题+角度往往更够用
+- 删掉该名字后主线仍成立 → 不打（对照、举例、配角）
+- 用大众通行称呼；不加公司/集团等后缀；不要拼型号或过细专名
+
+【检验】每个非主题标签都要过：
+- 删掉后检索是否明显变差？
+- 以后别的收藏还会不会用到？
+- 是不是全文主线（不是标题金句/本篇判断）？
+
+【命名】
+- 2～6 字为宜，最长 8 字；英文专名可例外
+- 一词一事；不要用「+」「·」「/」把两件事拼成一个标签
+- 不用「…指南/攻略/手册」和标题式短语
+- 具体角度拆成稳定词，不要合成「一人做爆款App」这类专属句
+
+【复用】
+- 贴合正文时优先【已有标签】，名称逐字一致
+- 不贴切就新建；勿硬套弱相关
+- 不得输出【本篇已打标签】中的名称
+
+【description】
+≤40 字，说明该标签作为跨篇索引指什么；专名写「是什么」，主题/角度只做消歧。
+不复述正文，不写「涵盖…」「本篇…」。已有说明则沿用。
+
+【兜底】
+正文过短，或是报错页、登录页、与内容无关时：{"tags":[]}
+
+【输出】
+只输出 JSON：{"tags":[{"name":"...","description":"..."}]}，不要其它字段或说明。`;
 
 /** 进程内临时推荐结果：不写入 ai_meta.items，退出进程即失效 */
 const ephemeralTagSuggestions = new Map();
@@ -207,9 +252,9 @@ async function requestAiSuggest(userId, itemId, { force = false, autoApply = fal
 
   const autoApplyFlag = autoApply === true;
   const usageService = require('./usageService');
-  // 自动打标对全员开放（视频/图集在 maybeAutoTag 已跳过）；手动建议仍卡门控与额度
+  // 自动打标 / 手动建议均需太子+；自动打标不计额度
+  await usageService.assertPlanFeatureForUser(userId, 'ai_tags');
   if (!autoApplyFlag) {
-    await usageService.assertPlanFeatureForUser(userId, 'ai_tags');
     await usageService.assertAiQuota(userId);
   }
 
@@ -285,7 +330,6 @@ async function requestAiSuggest(userId, itemId, { force = false, autoApply = fal
   const previewMessages = buildAiTaskMessages(inputText, [
     TAGS_SYSTEM_PROMPT,
     regenBlock,
-    '请根据正文建议标签：先抓主线主题与核心主体，再决定复用已有还是新建；忽略仅顺带出现的概念。',
   ]);
   if (!autoApplyFlag) {
     await usageService.assertAiQuota(userId, {
@@ -387,10 +431,9 @@ async function runAiSuggestJob(itemId) {
     const regenBlock = formatRegenerateUserBlock(meta.tags.regenerateFrom);
     const messages = buildAiTaskMessages(inputText, [
       TAGS_SYSTEM_PROMPT,
-      `用户已有标签（仅当与正文确实贴合时才复用）：${existingNames}`,
-      `本篇已打标签（请勿重复建议）：${currentNames}`,
+      `【已有标签】${existingNames}`,
+      `【本篇已打标签】${currentNames}`,
       regenBlock,
-      '请根据正文建议标签：先抓主线主题与核心主体，再决定复用已有还是新建；忽略仅顺带出现的概念。',
     ]);
 
     const usageService = require('./usageService');
@@ -668,12 +711,25 @@ async function applyAiSuggest(userId, itemId, { names = [] } = {}) {
 }
 
 /**
- * 解析成功后：文章全员自动打标；图集跳过；视频等转写成功后再打。
+ * 解析成功后：太子+ 自动打标；图集跳过；视频等转写成功后再打。
  * 失败不影响解析结果（内容不足等静默跳过）。
  */
 async function maybeAutoTagAfterParse(userId, itemId) {
   try {
     if (!aliyunDashScope.isConfigured()) return;
+
+    const planService = require('./planService');
+    const subscriptionService = require('./subscriptionService');
+    const { plan } = await subscriptionService.getPlanForUser(userId);
+    if (
+      require('../config').usage.enforcing !== false &&
+      !planService.hasPrince(plan)
+    ) {
+      console.log(
+        `[maybeAutoTagAfterParse] skip non-prince user=${userId} item=${itemId}`,
+      );
+      return;
+    }
 
     const guideItemService = require('./guideItemService');
     const itemService = require('./itemService');
@@ -715,7 +771,7 @@ async function maybeAutoTagAfterParse(userId, itemId) {
 }
 
 /**
- * 转写成功后：顶栏视频条目自动打标（图集不打；已有用户标签则跳过）。
+ * 转写成功后：太子+ 顶栏视频条目自动打标（图集不打；已有用户标签则跳过）。
  */
 async function maybeAutoTagAfterTranscript(itemId) {
   try {
@@ -727,6 +783,19 @@ async function maybeAutoTagAfterTranscript(itemId) {
     );
     const row = rows[0];
     if (!row) return;
+
+    const planService = require('./planService');
+    const subscriptionService = require('./subscriptionService');
+    const { plan } = await subscriptionService.getPlanForUser(row.user_id);
+    if (
+      require('../config').usage.enforcing !== false &&
+      !planService.hasPrince(plan)
+    ) {
+      console.log(
+        `[maybeAutoTagAfterTranscript] skip non-prince user=${row.user_id} item=${itemId}`,
+      );
+      return;
+    }
 
     const guideItemService = require('./guideItemService');
     if (guideItemService.isGuideItem(row)) return;

@@ -734,6 +734,143 @@ async function getJourneySummary(start, userId = null) {
   return out;
 }
 
+const RETENTION_DAYS = [0, 1, 3, 7, 14];
+
+/**
+ * 留存：按 users.created_at 注册日 cohort；回访=当日有 app_open。
+ * 未满观察窗口的格子为 null（前端显示 —）。
+ */
+async function getRetention(start, userId = null) {
+  const uid = userId ? Number(userId) : null;
+  const today = new Date();
+  const todayYmd = today.toISOString().slice(0, 10);
+
+  if (uid) {
+    const [uRows] = await pool.execute(
+      `SELECT id, created_at FROM users WHERE id = :userId LIMIT 1`,
+      { userId: uid },
+    );
+    const u = uRows[0];
+    if (!u) {
+      return { days: RETENTION_DAYS, cohorts: [], averages: {}, user: null };
+    }
+    const signup = u.created_at instanceof Date ? u.created_at : new Date(u.created_at);
+    const signupYmd =
+      signup instanceof Date && !Number.isNaN(signup.getTime())
+        ? signup.toISOString().slice(0, 10)
+        : String(u.created_at).slice(0, 10);
+
+    const [activeRows] = await pool.execute(
+      `SELECT DISTINCT DATE(created_at) AS d
+       FROM analytics_events
+       WHERE user_id = :userId AND name = 'app_open'
+       ORDER BY d ASC`,
+      { userId: uid },
+    );
+    const activeSet = new Set(
+      activeRows.map((r) =>
+        r.d instanceof Date ? r.d.toISOString().slice(0, 10) : String(r.d).slice(0, 10),
+      ),
+    );
+    const signupDate = new Date(`${signupYmd}T00:00:00.000Z`);
+    const returnedOn = {};
+    for (const n of RETENTION_DAYS) {
+      const d = new Date(signupDate.getTime() + n * 86400000);
+      const ymd = d.toISOString().slice(0, 10);
+      const mature = ymd <= todayYmd;
+      returnedOn[n] = mature ? activeSet.has(ymd) : null;
+    }
+    return {
+      days: RETENTION_DAYS,
+      cohorts: [],
+      averages: {},
+      user: {
+        userId: uid,
+        signupDate: signupYmd,
+        returnedOn,
+      },
+    };
+  }
+
+  const [cohortRows] = await pool.execute(
+    `SELECT DATE(created_at) AS cohort_day, COUNT(*) AS new_users
+     FROM users
+     WHERE created_at >= :start
+     GROUP BY DATE(created_at)
+     ORDER BY cohort_day ASC`,
+    { start },
+  );
+
+  const [hitRows] = await pool.execute(
+    `SELECT
+       DATE(u.created_at) AS cohort_day,
+       DATEDIFF(DATE(e.created_at), DATE(u.created_at)) AS day_n,
+       COUNT(DISTINCT u.id) AS users
+     FROM users u
+     INNER JOIN analytics_events e
+       ON e.user_id = u.id AND e.name = 'app_open'
+     WHERE u.created_at >= :start
+       AND DATEDIFF(DATE(e.created_at), DATE(u.created_at)) IN (${RETENTION_DAYS.join(',')})
+     GROUP BY DATE(u.created_at), day_n`,
+    { start },
+  );
+
+  const hits = new Map(); // `${ymd}:${n}` -> count
+  for (const r of hitRows) {
+    const ymd =
+      r.cohort_day instanceof Date
+        ? r.cohort_day.toISOString().slice(0, 10)
+        : String(r.cohort_day).slice(0, 10);
+    hits.set(`${ymd}:${Number(r.day_n)}`, Number(r.users));
+  }
+
+  const cohorts = [];
+  const sumRetained = Object.fromEntries(RETENTION_DAYS.map((n) => [n, 0]));
+  const sumBase = Object.fromEntries(RETENTION_DAYS.map((n) => [n, 0]));
+
+  for (const r of cohortRows) {
+    const ymd =
+      r.cohort_day instanceof Date
+        ? r.cohort_day.toISOString().slice(0, 10)
+        : String(r.cohort_day).slice(0, 10);
+    const newUsers = Number(r.new_users);
+    const cohortDate = new Date(`${ymd}T00:00:00.000Z`);
+    const retained = {};
+    const rates = {};
+    for (const n of RETENTION_DAYS) {
+      const observe = new Date(cohortDate.getTime() + n * 86400000);
+      const observeYmd = observe.toISOString().slice(0, 10);
+      if (observeYmd > todayYmd) {
+        retained[n] = null;
+        rates[n] = null;
+        continue;
+      }
+      const c = hits.get(`${ymd}:${n}`) || 0;
+      retained[n] = c;
+      rates[n] =
+        newUsers > 0 ? Math.round((c / newUsers) * 1000) / 10 : null;
+      sumRetained[n] += c;
+      sumBase[n] += newUsers;
+    }
+    cohorts.push({
+      date: ymd,
+      newUsers,
+      retained,
+      rates,
+    });
+  }
+
+  const averages = {};
+  for (const n of RETENTION_DAYS) {
+    averages[n] =
+      sumBase[n] > 0
+        ? Math.round((sumRetained[n] / sumBase[n]) * 1000) / 10
+        : null;
+  }
+
+  return { days: RETENTION_DAYS, cohorts, averages, user: null };
+}
+
 /**
  * 内部看板聚合（近 N 天）；可选 userId 查看单用户
  */
@@ -838,11 +975,12 @@ async function getSummary(days = 7, userId = null) {
   const saveFail = byName.item_save_fail || 0;
   const parseReady = byName.parse_ready || 0;
   const parseFail = byName.parse_fail || 0;
-  const [journey, selectedUser, trial, usage] = await Promise.all([
+  const [journey, selectedUser, trial, usage, retention] = await Promise.all([
     journeyPromise,
     uid ? getUserMeta(uid, start) : Promise.resolve(null),
     subscriptionService.getTrialStats({ userId: uid }),
     usageService.getUsageLeaderboard({ userId: uid, limit: uid ? 1 : 100 }),
+    getRetention(start, uid),
   ]);
 
   return {
@@ -853,6 +991,7 @@ async function getSummary(days = 7, userId = null) {
     selectedUser,
     trial,
     usage,
+    retention,
     byName,
     dau: dauRows.map((r) => ({
       date: r.d instanceof Date ? r.d.toISOString().slice(0, 10) : String(r.d),
