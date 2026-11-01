@@ -156,14 +156,14 @@ module.exports = {
     productEmperorYearly:
       process.env.APPLE_IAP_PRODUCT_EMPEROR_YEARLY ||
       'com.bufang.supercollection.emperor.yearly',
-    /** 普通会员月付 / 年付（自动续期） */
+    /** 普通会员月付 / 年付（仅识别已购；新购主售买断） */
     productBasicMonthly:
       process.env.APPLE_IAP_PRODUCT_BASIC_MONTHLY ||
       'com.bufang.supercollection.basic.monthly',
     productBasicYearly:
       process.env.APPLE_IAP_PRODUCT_BASIC_YEARLY ||
       'com.bufang.supercollection.basic.yearly',
-    /** 旧版非消耗型买断；仅用于识别已购，新购走月/年 */
+    /** 普通会员非消耗型一次买断（永久无限收藏） */
     productBasic:
       process.env.APPLE_IAP_PRODUCT_BASIC ||
       'com.bufang.supercollection.basic',

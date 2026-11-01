@@ -195,6 +195,12 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
     if (next != null) _selectedTier = next;
   }
 
+  bool get _isBasicSelected =>
+      UsagePlan.normalize(_selectedTier) == UsagePlan.basic;
+
+  String get _basicLifetimeId =>
+      _billing?.basicLifetime ?? IapProductIds.basicLifetime;
+
   TierProductIds get _tierIds => _idsForTier(_selectedTier);
 
   ProductDetails? get _selected => _productForTier(_selectedTier);
@@ -204,11 +210,6 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
     final t = UsagePlan.normalize(tier);
     if (billing == null) {
       switch (t) {
-        case UsagePlan.basic:
-          return const TierProductIds(
-            monthly: IapProductIds.basicMonthly,
-            yearly: IapProductIds.basicYearly,
-          );
         case UsagePlan.emperor:
           return const TierProductIds(
             monthly: IapProductIds.emperorMonthly,
@@ -222,8 +223,6 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
       }
     }
     switch (t) {
-      case UsagePlan.basic:
-        return billing.basic;
       case UsagePlan.emperor:
         return billing.emperor;
       default:
@@ -233,6 +232,20 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
 
   ProductDetails? _productForTier(String tier) {
     final t = UsagePlan.normalize(tier);
+    if (t == UsagePlan.basic) {
+      final direct = _products[_basicLifetimeId];
+      if (direct != null) return direct;
+      for (final p in _products.values) {
+        final id = p.id.toLowerCase();
+        if (id.contains('basic') &&
+            !id.contains('month') &&
+            !id.contains('year')) {
+          return p;
+        }
+      }
+      return null;
+    }
+
     final ids = _idsForTier(tier);
     final preferred = _yearlyBilling ? ids.yearly : ids.monthly;
     final direct = _products[preferred];
@@ -242,7 +255,6 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
       final id = p.id.toLowerCase();
       final isEmperor = id.contains('emperor');
       final isBasic = id.contains('basic');
-      if (t == UsagePlan.basic && !isBasic) continue;
       if (t == UsagePlan.prince && (isEmperor || isBasic)) continue;
       if (t == UsagePlan.emperor && !isEmperor) continue;
       final isYear = _isYearlyProduct(p);
@@ -293,8 +305,22 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
     return _priceWidgetForTier(tier, selected: selected);
   }
 
-  /// 月付价签；年付：删除线（月×12）+ 立省。
+  /// 普通：买断价；太子/帝王月付价签；年付：删除线（月×12）+ 立省。
   Widget? _priceWidgetForTier(String tier, {required bool selected}) {
+    final t = UsagePlan.normalize(tier);
+    if (t == UsagePlan.basic) {
+      final p = _productForTier(tier);
+      if (p == null) return null;
+      return Text(
+        '${p.price} 一次买断',
+        style: TextStyle(
+          fontSize: 22,
+          fontWeight: FontWeight.w700,
+          color: selected ? _accent : _text,
+          height: 1.2,
+        ),
+      );
+    }
     if (_yearlyBilling) {
       return _yearlySavingsLabel(tier, selected: selected);
     }
@@ -379,6 +405,11 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
   }
 
   List<String> _missingIdsForSelectedTier() {
+    if (_isBasicSelected) {
+      return _products.containsKey(_basicLifetimeId)
+          ? const []
+          : [_basicLifetimeId];
+    }
     final ids = _tierIds;
     return [ids.monthly, ids.yearly]
         .where((id) => !_products.containsKey(id))
@@ -397,11 +428,16 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
   String _subscribeLabel() => _subscribeLabelForTier(_selectedTier);
 
   String _subscribeLabelForTier(String tier) {
+    final t = UsagePlan.normalize(tier);
     final buyingThis =
-        _busy && !_restoreFlow && UsagePlan.normalize(tier) == _selectedTier;
+        _busy && !_restoreFlow && t == UsagePlan.normalize(_selectedTier);
     if (buyingThis) return _phaseLabel;
     if (_isTierOwned(tier)) return '已开通 ${_tierDisplayName(tier)}';
     final p = _productForTier(tier);
+    if (t == UsagePlan.basic) {
+      if (p == null) return '一次买断';
+      return '一次买断 ${p.price}';
+    }
     if (p == null) return '立即订阅';
     if (_isYearlyProduct(p)) return '订阅 ${p.price} / 年';
     final trial = _trialForTier(tier);
@@ -545,7 +581,7 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
                 const _AlreadyTopPlanHint(),
               ],
               const SizedBox(height: 16),
-              if (_isIos && !_selectedOwned)
+              if (_isIos && !_selectedOwned && !_isBasicSelected)
                 Padding(
                   padding: const EdgeInsets.only(bottom: 10),
                   child: Row(
@@ -563,7 +599,7 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
                 ),
               _TierPlanCard(
                 title: '普通会员',
-                tagline: '订阅期内无限收藏：突破免费条数上限',
+                tagline: '一次买断，永久无限收藏：突破免费条数上限',
                 owned: _isTierOwned(UsagePlan.basic),
                 priceWidget: _cardPriceWidget(
                   UsagePlan.basic,
@@ -576,7 +612,7 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
               const SizedBox(height: 10),
               _TierPlanCard(
                 title: '太子Pro',
-                tagline: '智能整理：含普通会员，解锁解读、脑图与转写',
+                tagline: '智能整理：含普通会员，解锁自动打标归类、解读、脑图与转写',
                 owned: _isTierOwned(UsagePlan.prince),
                 priceWidget: _cardPriceWidget(
                   UsagePlan.prince,
@@ -664,7 +700,7 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
                 _selectedTierProductsReady,
             trialOffer: _selectedOwned ? null : _selectedTrial,
             selectedPrice: _selectedOwned ? null : _selected?.price,
-            lifetimePurchase: false,
+            lifetimePurchase: _isBasicSelected,
             onSubscribe: () => _buy(),
             onRestore: _restore,
             onUserAgreement: () => _openLegal(
@@ -736,7 +772,7 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
                       Expanded(
                         child: _TabletPlanCard(
                           title: '普通会员',
-                          tagline: '订阅期内无限收藏：突破免费条数上限',
+                          tagline: '一次买断，永久无限收藏：突破免费条数上限',
                           owned: _isTierOwned(UsagePlan.basic),
                           featured: false,
                           selected: _selectedTier == UsagePlan.basic,
@@ -758,7 +794,7 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
                       Expanded(
                         child: _TabletPlanCard(
                           title: '太子Pro',
-                          tagline: '智能整理：含普通会员，解锁解读、脑图与转写',
+                          tagline: '智能整理：含普通会员，解锁自动打标归类、解读、脑图与转写',
                           badge: '推荐',
                           owned: _isTierOwned(UsagePlan.prince),
                           featured: true,
@@ -829,7 +865,9 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
 
   List<_PlanFeature> _basicFeatures() {
     return const [
-      _PlanFeature('订阅期内收藏不限条数', included: true),
+      _PlanFeature('一次买断，永久收藏不限条数', included: true),
+      _PlanFeature('永久解析', included: true),
+      _PlanFeature('自动打标与归类', included: false),
       _PlanFeature('AI 解读', included: false),
       _PlanFeature('AI 思维导图', included: false),
       _PlanFeature('视频 / 音频转写', included: false),
@@ -839,6 +877,7 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
   List<_PlanFeature> _princeFeatures(PlanQuotasTable quotas) {
     return [
       const _PlanFeature('含普通会员全部权益', included: true),
+      const _PlanFeature('自动打标与归类', included: true),
       const _PlanFeature('AI 解读', included: true),
       const _PlanFeature('AI 思维导图', included: true),
       const _PlanFeature('视频 / 音频转写', included: true),

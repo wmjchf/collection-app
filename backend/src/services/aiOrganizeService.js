@@ -588,11 +588,22 @@ async function applyOrganize(userId, body) {
 }
 
 /**
- * 自动打标后：每次全量重排可挪 AI 标签（ORGANIZE_SYSTEM_PROMPT_FULL）。
+ * 自动打标后：太子+ 每次全量重排可挪 AI 标签（ORGANIZE_SYSTEM_PROMPT_FULL）。
  */
 async function autoOrganizeAfterTags(userId) {
   try {
     if (!aliyunDashScope.isConfigured()) return;
+
+    const planService = require('./planService');
+    const subscriptionService = require('./subscriptionService');
+    const { plan } = await subscriptionService.getPlanForUser(userId);
+    if (
+      require('../config').usage.enforcing !== false &&
+      !planService.hasPrince(plan)
+    ) {
+      console.log(`[autoOrganizeAfterTags] skip non-prince user=${userId}`);
+      return;
+    }
 
     const { modules, ungrouped } = await tagModuleService.listModules(userId);
     const tagById = collectUserTags(modules, ungrouped);

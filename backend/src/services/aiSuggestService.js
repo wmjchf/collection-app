@@ -252,9 +252,9 @@ async function requestAiSuggest(userId, itemId, { force = false, autoApply = fal
 
   const autoApplyFlag = autoApply === true;
   const usageService = require('./usageService');
-  // 自动打标对全员开放（视频/图集在 maybeAutoTag 已跳过）；手动建议仍卡门控与额度
+  // 自动打标 / 手动建议均需太子+；自动打标不计额度
+  await usageService.assertPlanFeatureForUser(userId, 'ai_tags');
   if (!autoApplyFlag) {
-    await usageService.assertPlanFeatureForUser(userId, 'ai_tags');
     await usageService.assertAiQuota(userId);
   }
 
@@ -711,12 +711,25 @@ async function applyAiSuggest(userId, itemId, { names = [] } = {}) {
 }
 
 /**
- * 解析成功后：文章全员自动打标；图集跳过；视频等转写成功后再打。
+ * 解析成功后：太子+ 自动打标；图集跳过；视频等转写成功后再打。
  * 失败不影响解析结果（内容不足等静默跳过）。
  */
 async function maybeAutoTagAfterParse(userId, itemId) {
   try {
     if (!aliyunDashScope.isConfigured()) return;
+
+    const planService = require('./planService');
+    const subscriptionService = require('./subscriptionService');
+    const { plan } = await subscriptionService.getPlanForUser(userId);
+    if (
+      require('../config').usage.enforcing !== false &&
+      !planService.hasPrince(plan)
+    ) {
+      console.log(
+        `[maybeAutoTagAfterParse] skip non-prince user=${userId} item=${itemId}`,
+      );
+      return;
+    }
 
     const guideItemService = require('./guideItemService');
     const itemService = require('./itemService');
@@ -758,7 +771,7 @@ async function maybeAutoTagAfterParse(userId, itemId) {
 }
 
 /**
- * 转写成功后：顶栏视频条目自动打标（图集不打；已有用户标签则跳过）。
+ * 转写成功后：太子+ 顶栏视频条目自动打标（图集不打；已有用户标签则跳过）。
  */
 async function maybeAutoTagAfterTranscript(itemId) {
   try {
@@ -770,6 +783,19 @@ async function maybeAutoTagAfterTranscript(itemId) {
     );
     const row = rows[0];
     if (!row) return;
+
+    const planService = require('./planService');
+    const subscriptionService = require('./subscriptionService');
+    const { plan } = await subscriptionService.getPlanForUser(row.user_id);
+    if (
+      require('../config').usage.enforcing !== false &&
+      !planService.hasPrince(plan)
+    ) {
+      console.log(
+        `[maybeAutoTagAfterTranscript] skip non-prince user=${row.user_id} item=${itemId}`,
+      );
+      return;
+    }
 
     const guideItemService = require('./guideItemService');
     if (guideItemService.isGuideItem(row)) return;

@@ -30,7 +30,7 @@ const FEATURE_MESSAGES = {
   ai_organize: '订阅太子后可使用 AI 标签归类',
   ai_mindmap: '订阅太子后可使用 AI 思维导图',
   transcript: '订阅太子后可使用视频转写',
-  item_create: '收藏已达上限，订阅普通会员后可无限收藏',
+  item_create: '收藏已达上限，开通普通会员（一次买断）后可永久无限收藏',
 };
 
 const PLAN_LABELS = {

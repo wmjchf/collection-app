@@ -369,7 +369,7 @@ async function assertItemQuota(userId) {
   if (itemCount >= quotas.itemLimit) {
     throw Object.assign(
       new Error(
-        `收藏已达 ${quotas.itemLimit} 条上限，订阅普通会员后可无限收藏`,
+        `收藏已达 ${quotas.itemLimit} 条上限，开通普通会员（一次买断）后可永久无限收藏`,
       ),
       {
         status: 402,
