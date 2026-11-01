@@ -25,23 +25,32 @@ const ORGANIZE_SYSTEM_PROMPT_UNGROUPED =
   '8. 全部待安置 tagId 都必须出现：要么在 modules[].tagIds，要么在 ungroupedTagIds。' +
   '只输出 JSON：{"modules":[{"name":"归类名","existingModuleId":null,"tagIds":[1,2]}],"ungroupedTagIds":[3]}';
 
-const ORGANIZE_SYSTEM_PROMPT_FULL =
-  '你是收藏整理助手。用户手建或拖动过的标签**锁定、禁止挪动**。' +
-  '你只能重排「可重排」列表里的标签（AI 创建且用户从未拖动）：可改其归类、并入已有归类、新建归类，或留在未归类。' +
-  '全量重排的目的：在标签变多后把过粗的归类拆细，让同类实体/子主题各自成组；不是维持现状或再并成更大筐。' +
-  '规则：' +
-  '1. 锁定标签保持不动；输出里不要出现锁定标签的 id。' +
-  '2. 每个可重排标签必须恰好出现一次：在某个 modules[].tagIds，或在 ungroupedTagIds。' +
-  '3. 并入已有归类：existingModuleId 必填，name 用原名；tagIds 只写进入该归类的**可重排**标签（不要罗列锁定标签）。' +
-  '4. 新建归类：existingModuleId 为 null；tagIds 只能来自可重排；至少 2 个。' +
-  '5. 新建归类名必须是**单一主题**短名（2～8 字）；严禁用「与」「及」「和」「、」「/」「·」拼两个主题。' +
-  '6. 专有名词按「它是什么」归（同业/同类实体可并，勿建笼统的「品牌」「人名」筐）；凑不齐的放 ungroupedTagIds。' +
-  '7. 细化：若某个已有归类（或未归类池）里已有 ≥2 个可重排标签属于更具体的同一子类，应拆出新归类，不要继续堆在大主题下。' +
-  '   正例：加密货币下已有币安、OKX、Bitget、火币HTX → 新建「交易所」装它们；「加密货币」「黑客攻击」等可留在「加密货币」或另组。' +
-  '   正例：潮玩行业下多个具体潮玩品牌/IP → 可拆「潮玩品牌」；泛主题词与主体分开。' +
-  '8. 可把原先已在某归类中的可重排标签挪到更细的归类或未归类；空出来的粗归类可只保留仍贴合的标签。' +
-  '9. 只使用输入里的可重排 tagId；禁止编造 id。' +
-  '只输出 JSON：{"modules":[{"name":"归类名","existingModuleId":null,"tagIds":[1,2]}],"ungroupedTagIds":[3]}';
+const ORGANIZE_SYSTEM_PROMPT_FULL = `你是收藏整理助手。标签变多后，部分归类会变得过粗，你的任务是把它们理顺，让用户一眼能找到想要的标签。
+
+【输入】
+- 【锁定标签】：用户手建或拖动过，只作上下文参考，禁止挪动，输出中不得出现其 id
+- 【可重排标签】：id、名称、说明、当前归类（可能为空）
+- 【现有归类】：id、名称
+
+【目标】
+- 归类以"用户会怎么找"为准：先按领域/主题分；同一领域标签过多时，才按"它是什么"（实体类型）细分
+- 全部归类（含锁定标签所在的）合计控制在 6～15 个；单个归类一般 3～15 个标签
+- 只有改动后明显更好才改；拿不准就保持现有归类，不要为拆而拆
+
+【规则】
+1. 每个可重排标签恰好出现一次：在某个 modules[].tagIds，或在 ungroupedTagIds。只使用输入里的可重排 tagId，禁止编造
+2. 并入已有归类：existingModuleId 必须来自【现有归类】，name 用原名；tagIds 只写可重排标签
+3. 新建归类：existingModuleId 为 null；至少 3 个可重排标签（只有 2 个时留在原归类）
+4. 归类名：2～8 字，单一主题，用日常说法；严禁用「与」「及」「和」「、」「/」「·」拼接两个主题
+5. 判断归类以标签说明为准，不凭字面联想；同一个词在不同语境含义不同时，按说明里的含义归
+6. 专有名词（公司、人、产品）优先归到它所属的领域；某领域里同类实体 ≥3 个且该领域已偏大时，才拆出实体类型的归类
+   正例：币安、OKX、Bitget 在「加密货币」里已超过 12 个标签 → 新建「交易所」
+   反例：币安 + 黑客攻击 一个是交易所、一个是安全事件 → 不要并为「交易所」
+   正例：瑞幸、星巴克、Manner 在「咖啡」里偏多 → 可拆「咖啡品牌」
+7. 拆出后原归类若不足 2 个标签，把剩余并入最贴切的归类，或放入 ungroupedTagIds；不要留下空归类
+8. 凑不齐的放 ungroupedTagIds，数量不超过可重排标签的 15%
+
+只输出 JSON：{"modules":[{"name":"归类名","existingModuleId":null,"tagIds":[1,2]}],"ungroupedTagIds":[3]}`;
 
 function formatTagLine(t) {
   const name = String(t.name || '').trim();
@@ -110,25 +119,49 @@ function buildCatalogText(modules, ungrouped, { mode }) {
     ungrouped,
   );
   const lines = [];
+  const isFull = mode === 'full';
 
   if (modules.length) {
     lines.push(
-      mode === 'full'
-        ? '已有归类（锁定标签不可挪；可把可重排标签追加进来）：'
+      isFull
+        ? '【现有归类】'
         : '已有归类（锁定结构；只能往里追加待安置标签）：',
     );
     for (const m of modules) {
       const mid = Number(m.id);
       const locked = lockedByModule.get(mid) || [];
-      const lockedText =
-        locked.map((t) => formatTagLine(t)).join('、') || '（无锁定标签）';
-      lines.push(`- 模块 id=${m.id}「${m.name}」锁定← ${lockedText}`);
+      if (isFull) {
+        lines.push(`- id=${m.id}「${m.name}」`);
+      } else {
+        const lockedText =
+          locked.map((t) => formatTagLine(t)).join('、') || '（无锁定标签）';
+        lines.push(`- 模块 id=${m.id}「${m.name}」锁定← ${lockedText}`);
+      }
     }
   } else {
-    lines.push('已有归类：（无）');
+    lines.push(isFull ? '【现有归类】（无）' : '已有归类：（无）');
   }
 
-  if (lockedUngrouped.length) {
+  if (isFull) {
+    lines.push('');
+    lines.push('【锁定标签】（勿动，仅作上下文）：');
+    let anyLocked = false;
+    for (const m of modules) {
+      const locked = lockedByModule.get(Number(m.id)) || [];
+      if (!locked.length) continue;
+      anyLocked = true;
+      lines.push(
+        `- 归类「${m.name}」：` + locked.map((t) => formatTagLine(t)).join('、'),
+      );
+    }
+    if (lockedUngrouped.length) {
+      anyLocked = true;
+      lines.push(
+        '- 未归类：' + lockedUngrouped.map((t) => formatTagLine(t)).join('、'),
+      );
+    }
+    if (!anyLocked) lines.push('- （无）');
+  } else if (lockedUngrouped.length) {
     lines.push('');
     lines.push(
       '未归类中的锁定标签（勿动）：' +
@@ -136,28 +169,34 @@ function buildCatalogText(modules, ungrouped, { mode }) {
     );
   }
 
-  const listed =
-    mode === 'full'
-      ? movable
-      : movable.filter((x) => x.currentModuleId == null);
+  const listed = isFull
+    ? movable
+    : movable.filter((x) => x.currentModuleId == null);
 
   lines.push('');
-  const label = mode === 'full' ? '可重排标签' : '待安置标签';
-  if (listed.length) {
-    lines.push(`${label}（你只需处理这些）：`);
-    for (const { tag, currentModuleId } of listed) {
-      const where =
-        mode === 'full'
-          ? currentModuleId == null
-            ? '当前：未归类'
-            : `当前：模块 id=${currentModuleId}`
-          : '';
-      lines.push(
-        `- ${formatTagLine(tag)}${where ? `（${where}）` : ''}`,
+  if (isFull) {
+    lines.push('【可重排标签】');
+    if (listed.length) {
+      const moduleNameById = new Map(
+        modules.map((m) => [Number(m.id), String(m.name || '').trim()]),
       );
+      for (const { tag, currentModuleId } of listed) {
+        const where =
+          currentModuleId == null
+            ? '当前归类：未归类'
+            : `当前归类：id=${currentModuleId}「${moduleNameById.get(currentModuleId) || ''}」`;
+        lines.push(`- ${formatTagLine(tag)}（${where}）`);
+      }
+    } else {
+      lines.push('- （无）');
+    }
+  } else if (listed.length) {
+    lines.push('待安置标签（你只需处理这些）：');
+    for (const { tag } of listed) {
+      lines.push(`- ${formatTagLine(tag)}`);
     }
   } else {
-    lines.push(`${label}：（无）`);
+    lines.push('待安置标签：（无）');
   }
 
   return {
@@ -169,7 +208,7 @@ function buildCatalogText(modules, ungrouped, { mode }) {
 /**
  * 只采纳对「可挪动集合」内标签的安置；锁定标签一律忽略。
  */
-function normalizeProposal(raw, tagById, moduleById, movableIds) {
+function normalizeProposal(raw, tagById, moduleById, movableIds, opts = {}) {
   const modulesIn = Array.isArray(raw?.modules) ? raw.modules : [];
   const ungroupedIn = Array.isArray(raw?.ungroupedTagIds)
     ? raw.ungroupedTagIds
@@ -179,9 +218,11 @@ function normalizeProposal(raw, tagById, moduleById, movableIds) {
   const modules = [];
   const ungroupedTagIds = [];
   const maxModules = Math.max(12, movableIds.size);
+  /** 全量：新建至少 3；轻量：新建至少 2 */
+  const minNewModuleSize = opts.mode === 'full' ? 3 : 2;
 
   const pushModule = (name, existingId, tagIds) => {
-    const minSize = existingId != null ? 1 : 2;
+    const minSize = existingId != null ? 1 : minNewModuleSize;
     if (tagIds.length < minSize || modules.length >= maxModules) return false;
     modules.push({
       name,
@@ -333,7 +374,7 @@ async function suggestOrganize(
     catalog,
     hintText ? `用户补充偏好：${hintText}` : '',
     mode === 'full'
-      ? '请重排全部可重排标签；锁定标签保持不动。'
+      ? '请按目标与规则重排【可重排标签】；【锁定标签】保持不动。'
       : '请只安置待安置标签；锁定标签保持不动。',
   ].filter(Boolean);
 
@@ -371,6 +412,7 @@ async function suggestOrganize(
     tagById,
     moduleById,
     targetIds,
+    { mode },
   );
   if (!proposal.modules.length && !proposal.ungroupedTagIds.length) {
     throw Object.assign(new Error('未能生成有效归类建议，请稍后重试'), {
