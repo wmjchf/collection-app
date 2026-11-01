@@ -172,7 +172,7 @@ class _AccountPlanCard extends StatelessWidget {
   String get _subtitle {
     if (!isPaid) return '免费额度 · 收藏有上限';
     if (canUpgradeToEmperor) return '可升级帝王 · 更高 AI / 转写额度';
-    if (canUpgradeToPrince) return '无限收藏 · 可升级解锁自动打标、AI、脑图与转写';
+    if (canUpgradeToPrince) return '无限收藏 · 升级解锁 AI';
     return '当前方案 · 会员权益已生效';
   }
 
@@ -216,8 +216,9 @@ class _AccountPlanCard extends StatelessWidget {
                 InkWell(
                   onTap: _planAction,
                   child: Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 16, 12, 12),
+                    padding: const EdgeInsets.fromLTRB(16, 16, 12, 16),
                     child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
                         Container(
                           width: 40,
@@ -245,21 +246,25 @@ class _AccountPlanCard extends StatelessWidget {
                                   fontSize: 17,
                                   fontWeight: FontWeight.w700,
                                   color: isPaid ? _blue : _text,
-                                  height: 1.2,
+                                  height: 1.25,
                                 ),
                               ),
-                              const SizedBox(height: 3),
+                              const SizedBox(height: 6),
                               Text(
                                 _subtitle,
+                                maxLines: 1,
+                                softWrap: false,
+                                overflow: TextOverflow.ellipsis,
                                 style: const TextStyle(
                                   fontSize: 12,
                                   color: _muted,
-                                  height: 1.3,
+                                  height: 1.35,
                                 ),
                               ),
                             ],
                           ),
                         ),
+                        const SizedBox(width: 16),
                         if (_actionLabel != null)
                           Row(
                             mainAxisSize: MainAxisSize.min,
@@ -292,7 +297,7 @@ class _AccountPlanCard extends StatelessWidget {
                 InkWell(
                   onTap: onOpenAccount,
                   child: Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 4, 12, 16),
+                    padding: const EdgeInsets.fromLTRB(16, 14, 12, 16),
                     child: Row(
                       children: [
                         const Expanded(
