@@ -25,30 +25,40 @@ const ORGANIZE_SYSTEM_PROMPT_UNGROUPED =
   '8. 全部待安置 tagId 都必须出现：要么在 modules[].tagIds，要么在 ungroupedTagIds。' +
   '只输出 JSON：{"modules":[{"name":"归类名","existingModuleId":null,"tagIds":[1,2]}],"ungroupedTagIds":[3]}';
 
-const ORGANIZE_SYSTEM_PROMPT_FULL = `你是收藏整理助手。标签变多后，部分归类会变得过粗，你的任务是把它们理顺，让用户一眼能找到想要的标签。
+const ORGANIZE_SYSTEM_PROMPT_FULL = `你是收藏整理助手。标签变多后，部分归类会变得过粗或命名不当，你的任务是把它们理顺，让用户一眼能找到想要的标签。
 
 【输入】
-- 【锁定标签】：用户手建或拖动过，只作上下文参考，禁止挪动，输出中不得出现其 id
+- 【锁定标签】：id、名称、所在归类。用户手建或拖动过，只作上下文参考，禁止挪动，输出中不得出现其 id
 - 【可重排标签】：id、名称、说明、当前归类（可能为空）
 - 【现有归类】：id、名称
 
 【目标】
 - 归类以"用户会怎么找"为准：先按领域/主题分；同一领域标签过多时，才按"它是什么"（实体类型）细分
-- 全部归类（含锁定标签所在的）合计控制在 6～15 个；单个归类一般 3～15 个标签
+- 全部归类（含锁定标签所在的）合计控制在 6～15 个；单个归类一般 3～15 个标签，超过 15 个才考虑拆分
 - 只有改动后明显更好才改；拿不准就保持现有归类，不要为拆而拆
+
+【归类名】
+- 2～8 字，单一主题，用日常说法
+- 严禁用「与」「及」「和」「、」「/」「·」「&」「+」拼接两个主题
+- 严禁用过宽的词作归类名：科技、商业、互联网、财经、生活、综合、其他
+- 粒度自测：这个名字下面如果能装下 10 种以上互不相干的行业或产品，就太宽，换更具体的
+- 现有归类的名字若违反以上任一条，视为需要改名：用同一个 existingModuleId，name 填新名字，并把其中不贴合的标签重新归类
 
 【规则】
 1. 每个可重排标签恰好出现一次：在某个 modules[].tagIds，或在 ungroupedTagIds。只使用输入里的可重排 tagId，禁止编造
-2. 并入已有归类：existingModuleId 必须来自【现有归类】，name 用原名；tagIds 只写可重排标签
-3. 新建归类：existingModuleId 为 null；至少 3 个可重排标签（只有 2 个时留在原归类）
-4. 归类名：2～8 字，单一主题，用日常说法；严禁用「与」「及」「和」「、」「/」「·」拼接两个主题
-5. 判断归类以标签说明为准，不凭字面联想；同一个词在不同语境含义不同时，按说明里的含义归
-6. 专有名词（公司、人、产品）优先归到它所属的领域；某领域里同类实体 ≥3 个且该领域已偏大时，才拆出实体类型的归类
+2. 并入已有归类：existingModuleId 必须来自【现有归类】；tagIds 只写可重排标签
+3. 新建归类：existingModuleId 为 null；至少 3 个可重排标签，不足 3 个时留在原归类或放入 ungroupedTagIds
+4. 判断归类以标签说明为准，不凭字面联想；同一个词在不同语境含义不同时，按说明里的含义归
+5. 公司、产品、品牌：归到它所属的领域；某领域里同类实体 ≥3 个且该领域已偏大时，才拆出实体类型的归类
    正例：币安、OKX、Bitget 在「加密货币」里已超过 12 个标签 → 新建「交易所」
    反例：币安 + 黑客攻击 一个是交易所、一个是安全事件 → 不要并为「交易所」
-   正例：瑞幸、星巴克、Manner 在「咖啡」里偏多 → 可拆「咖啡品牌」
-7. 拆出后原归类若不足 2 个标签，把剩余并入最贴切的归类，或放入 ungroupedTagIds；不要留下空归类
-8. 凑不齐的放 ungroupedTagIds，数量不超过可重排标签的 15%
+6. 人物：按说明判断其身份，不要看名字联想领域，也不要归进过宽的归类
+   - 优先归到与该人物关联最多、且已有归类的领域（如他主要与某家车企相关，就归入该车企所在的归类）
+   - 人物标签 ≥3 个且分属不同领域时，可新建「企业家」归类集中放置
+   - 以上都不满足，放入 ungroupedTagIds
+   反例：把某位跨领域的创始人归入「科技」「商业」这类大筐
+7. 拆分后原归类若不足 2 个标签，把剩余并入最贴切的归类，或放入 ungroupedTagIds；不要留下空归类
+8. 凑不齐的放 ungroupedTagIds，数量不超过可重排标签的 20%；不要把它当垃圾桶，能归的尽量归
 
 只输出 JSON：{"modules":[{"name":"归类名","existingModuleId":null,"tagIds":[1,2]}],"ungroupedTagIds":[3]}`;
 
@@ -148,17 +158,16 @@ function buildCatalogText(modules, ungrouped, { mode }) {
     let anyLocked = false;
     for (const m of modules) {
       const locked = lockedByModule.get(Number(m.id)) || [];
-      if (!locked.length) continue;
-      anyLocked = true;
-      lines.push(
-        `- 归类「${m.name}」：` + locked.map((t) => formatTagLine(t)).join('、'),
-      );
+      for (const t of locked) {
+        anyLocked = true;
+        lines.push(
+          `- ${formatTagLine(t)}（所在归类：id=${m.id}「${m.name}」）`,
+        );
+      }
     }
-    if (lockedUngrouped.length) {
+    for (const t of lockedUngrouped) {
       anyLocked = true;
-      lines.push(
-        '- 未归类：' + lockedUngrouped.map((t) => formatTagLine(t)).join('、'),
-      );
+      lines.push(`- ${formatTagLine(t)}（所在归类：未归类）`);
     }
     if (!anyLocked) lines.push('- （无）');
   } else if (lockedUngrouped.length) {
@@ -236,6 +245,8 @@ function normalizeProposal(raw, tagById, moduleById, movableIds, opts = {}) {
     return true;
   };
 
+  const allowRename = opts.mode === 'full';
+
   const resolveExistingId = (name, existingId) => {
     let id = existingId;
     let resolvedName = name;
@@ -247,6 +258,12 @@ function normalizeProposal(raw, tagById, moduleById, movableIds, opts = {}) {
           break;
         }
       }
+    } else if (!allowRename) {
+      const m = moduleById.get(id);
+      if (m) resolvedName = m.name;
+    } else if (!resolvedName) {
+      const m = moduleById.get(id);
+      if (m) resolvedName = m.name;
     }
     return { existingId: id, name: resolvedName };
   };
@@ -260,7 +277,9 @@ function normalizeProposal(raw, tagById, moduleById, movableIds, opts = {}) {
       const mid = Number(row.existingModuleId);
       if (Number.isFinite(mid) && moduleById.has(mid)) {
         existingId = mid;
-        name = moduleById.get(mid).name;
+        if (!allowRename || !name) {
+          name = moduleById.get(mid).name;
+        }
       }
     }
     if (!name) continue;
@@ -508,7 +527,14 @@ async function applyOrganize(userId, body) {
         });
       }
       moduleId = mid;
-      name = moduleById.get(mid).name;
+      const oldName = String(moduleById.get(mid).name || '').trim();
+      if (mode === 'full' && name && name !== oldName) {
+        const renamed = await tagModuleService.renameModule(userId, mid, name);
+        moduleById.set(mid, renamed);
+        name = renamed.name;
+      } else {
+        name = oldName;
+      }
     } else {
       for (const [id, m] of moduleById) {
         if (String(m.name).trim().toLowerCase() === name.toLowerCase()) {
