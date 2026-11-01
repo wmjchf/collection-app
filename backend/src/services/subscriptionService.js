@@ -54,6 +54,19 @@ async function getPlanForUser(userId) {
   };
 }
 
+/** 是否持有指定档位的有效订阅行（普通买断与太子/帝王可并存，不按档位覆盖推断） */
+async function hasActivePlan(userId, plan) {
+  const want = planService.normalizePlan(plan);
+  if (want === planService.PLAN_FREE) return false;
+  const subs = await getActiveSubscriptions(userId);
+  return subs.some((row) => planService.normalizePlan(row.plan) === want);
+}
+
+/** 是否持有普通会员有效订阅（买断永久 / 旧月年期内）——永久条数权益 */
+async function hasUnlimitedItems(userId) {
+  return hasActivePlan(userId, planService.PLAN_BASIC);
+}
+
 function parseMeta(row) {
   if (!row) return {};
   if (typeof row.meta === 'string') {
@@ -505,6 +518,8 @@ module.exports = {
   getTrialStats,
   patchMetaByExternalId,
   getPlanForUser,
+  hasActivePlan,
+  hasUnlimitedItems,
   activateSubscription,
   activatePro,
   cancelActiveSubscriptions,
