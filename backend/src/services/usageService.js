@@ -362,6 +362,8 @@ async function assertPlanFeatureForUser(userId, feature) {
 
 async function assertItemQuota(userId) {
   if (!isEnforcing()) return;
+  // 普通买断 → 永久不限；太子/帝王 → 订阅期内不限（档位额度 itemLimit=null）
+  if (await subscriptionService.hasUnlimitedItems(userId)) return;
   const { plan } = await subscriptionService.getPlanForUser(userId);
   const quotas = quotasForPlan(plan);
   if (quotas.itemLimit == null) return;
@@ -617,10 +619,30 @@ async function listUsageEvents(userId, { kind, limit = 50, offset = 0 } = {}) {
  */
 async function getUsageSummary(userId) {
   const { yearMonth, start, end } = periodBounds();
-  const { plan, subscription } = await subscriptionService.getPlanForUser(userId);
-  const normalizedPlan = planService.normalizePlan(plan);
+  const activeSubs = await subscriptionService.getActiveSubscriptions(userId);
+  let normalizedPlan = planService.PLAN_FREE;
+  let subscription = null;
+  if (activeSubs.length) {
+    const best = activeSubs.reduce((a, b) =>
+      planService.planRank(a.plan) > planService.planRank(b.plan) ? a : b,
+    );
+    normalizedPlan = planService.normalizePlan(best.plan);
+    subscription = subscriptionService.mapSub(best);
+  }
   const isTrial = Boolean(subscription?.isTrial);
   const quotas = quotasForPlan(normalizedPlan, { isTrial });
+  const ownsBasic = activeSubs.some(
+    (row) => planService.normalizePlan(row.plan) === planService.PLAN_BASIC,
+  );
+  const ownsPrince = activeSubs.some(
+    (row) => planService.normalizePlan(row.plan) === planService.PLAN_PRINCE,
+  );
+  const ownsEmperor = activeSubs.some(
+    (row) => planService.normalizePlan(row.plan) === planService.PLAN_EMPEROR,
+  );
+  // 普通买断永久不限；太子/帝王订阅期内不限（quotas.itemLimit=null）
+  const unlimitedItems =
+    ownsBasic || planService.hasPrince(normalizedPlan);
 
   const [transcriptSeconds, aiTokens, itemCount] = await Promise.all([
     sumAmount(userId, KIND_TRANSCRIPT, start, end),
@@ -668,13 +690,19 @@ async function getUsageSummary(userId) {
           ? Math.max(0, quotas.itemLimit - itemCount)
           : null,
     },
+    /** 各档实购（普通买断与太子/帝王可并存；「已开通普通」不因订阅太子而吞掉） */
+    ownedPlans: {
+      basic: ownsBasic,
+      prince: ownsPrince || ownsEmperor,
+      emperor: ownsEmperor,
+    },
     features: {
       aiTags: planService.hasPrince(normalizedPlan),
       aiSummary: planService.hasPrince(normalizedPlan),
       aiOrganize: planService.hasPrince(normalizedPlan),
       aiMindmap: planService.hasPrince(normalizedPlan),
       transcript: planService.hasPrince(normalizedPlan),
-      unlimitedItems: planService.hasBasic(normalizedPlan),
+      unlimitedItems,
     },
   };
 }

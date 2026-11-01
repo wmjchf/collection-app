@@ -96,6 +96,42 @@ class UsageFeatures {
   }
 }
 
+class OwnedPlans {
+  const OwnedPlans({
+    this.basic = false,
+    this.prince = false,
+    this.emperor = false,
+  });
+
+  final bool basic;
+  final bool prince;
+  final bool emperor;
+
+  static const none = OwnedPlans();
+
+  factory OwnedPlans.fromJson(Map<String, dynamic>? json) {
+    if (json == null) return OwnedPlans.none;
+    return OwnedPlans(
+      basic: json['basic'] as bool? ?? false,
+      prince: json['prince'] as bool? ?? false,
+      emperor: json['emperor'] as bool? ?? false,
+    );
+  }
+
+  bool owns(String tier) {
+    switch (UsagePlan.normalize(tier)) {
+      case UsagePlan.basic:
+        return basic;
+      case UsagePlan.prince:
+        return prince || emperor;
+      case UsagePlan.emperor:
+        return emperor;
+      default:
+        return false;
+    }
+  }
+}
+
 class UsageSummary {
   const UsageSummary({
     required this.plan,
@@ -112,6 +148,7 @@ class UsageSummary {
     this.itemCount = 0,
     this.itemLimit,
     this.features = UsageFeatures.none,
+    this.ownedPlans = OwnedPlans.none,
     this.trialReminder,
     this.isTrial = false,
   });
@@ -130,6 +167,8 @@ class UsageSummary {
   final int itemCount;
   final int? itemLimit;
   final UsageFeatures features;
+  /// 各档实购（普通买断与太子/帝王可并存）
+  final OwnedPlans ownedPlans;
   final TrialReminder? trialReminder;
   /// 月付免费试用中（额度约为正式月额度的 1/4）
   final bool isTrial;
@@ -137,11 +176,19 @@ class UsageSummary {
   String get displayPlan => planLabel ?? UsagePlan.label(plan);
 
   /// 任一付费档（普通 / 太子 / 帝王）
-  bool get isPaid => UsagePlan.rank(plan) >= UsagePlan.rank(UsagePlan.basic);
-  bool get isBasic => UsagePlan.normalize(plan) == UsagePlan.basic;
+  bool get isPaid =>
+      ownedPlans.basic ||
+      ownedPlans.prince ||
+      ownedPlans.emperor ||
+      UsagePlan.rank(plan) >= UsagePlan.rank(UsagePlan.basic);
+  bool get isBasic =>
+      ownedPlans.basic || UsagePlan.normalize(plan) == UsagePlan.basic;
   bool get isPrince =>
+      ownedPlans.prince ||
+      ownedPlans.emperor ||
       UsagePlan.rank(plan) >= UsagePlan.rank(UsagePlan.prince);
   bool get isEmperor =>
+      ownedPlans.emperor ||
       UsagePlan.rank(plan) >= UsagePlan.rank(UsagePlan.emperor);
 
   /// 兼容旧逻辑：曾指「已付费」；现指太子及以上（含 AI）
@@ -153,6 +200,18 @@ class UsageSummary {
     final ai = json['ai'] as Map<String, dynamic>? ?? {};
     final storage = json['storage'] as Map<String, dynamic>? ?? {};
     final features = json['features'] as Map<String, dynamic>?;
+    final owned = json['ownedPlans'] as Map<String, dynamic>?;
+    final featuresParsed = UsageFeatures.fromJson(features);
+    // 旧接口无 ownedPlans 时：无限收藏≈已购普通；展示档推断太子/帝王
+    final ownedParsed = owned != null
+        ? OwnedPlans.fromJson(owned)
+        : OwnedPlans(
+            basic: featuresParsed.unlimitedItems,
+            prince: UsagePlan.rank(json['plan'] as String?) >=
+                UsagePlan.rank(UsagePlan.prince),
+            emperor: UsagePlan.rank(json['plan'] as String?) >=
+                UsagePlan.rank(UsagePlan.emperor),
+          );
     return UsageSummary(
       plan: UsagePlan.normalize(json['plan'] as String?),
       planLabel: json['planLabel'] as String?,
@@ -170,7 +229,8 @@ class UsageSummary {
       aiRemainingTokens: (ai['remainingTokens'] as num?)?.toInt() ?? 0,
       itemCount: (storage['itemCount'] as num?)?.toInt() ?? 0,
       itemLimit: (storage['limitItems'] as num?)?.toInt(),
-      features: UsageFeatures.fromJson(features),
+      features: featuresParsed,
+      ownedPlans: ownedParsed,
       trialReminder: TrialReminder.fromJson(
         json['trialReminder'] as Map<String, dynamic>?,
       ),

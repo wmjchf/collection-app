@@ -49,8 +49,10 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
   PlanQuotasTable _quotas = PlanQuotasTable.defaults;
   BillingProductsConfig? _billing;
   String _selectedTier = UsagePlan.basic;
-  /// 当前账号已生效档位（`free` / `basic` / `prince` / `emperor`）
+  /// 当前账号展示档位（`free` / `basic` / `prince` / `emperor`）
   String _currentPlan = UsagePlan.free;
+  /// 各档实购；普通买断与太子/帝王可并存，互不覆盖
+  OwnedPlans _ownedPlans = OwnedPlans.none;
   bool _productsLoading = true;
   AppleIapPhase? _phase;
   bool _restoreFlow = false;
@@ -61,9 +63,8 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
   bool get _isAndroid => !kIsWeb && Platform.isAndroid;
   bool get _busy => _phase != null;
 
-  /// 该档位及更低档是否已包含在当前会员里（不可再买）
-  bool _isTierOwned(String tier) =>
-      UsagePlan.rank(_currentPlan) >= UsagePlan.rank(tier);
+  /// 该档是否已实购（普通≠被太子覆盖）
+  bool _isTierOwned(String tier) => _ownedPlans.owns(tier);
 
   bool get _selectedOwned => _isTierOwned(_selectedTier);
 
@@ -151,6 +152,7 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
       _billing = billing;
       if (usage != null) {
         _currentPlan = UsagePlan.normalize(usage.plan);
+        _ownedPlans = usage.ownedPlans;
         _ensureSelectedTierUpgradeable();
       }
     });
@@ -612,7 +614,7 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
               const SizedBox(height: 10),
               _TierPlanCard(
                 title: '太子Pro',
-                tagline: '智能整理：含普通会员，解锁自动打标归类、解读、脑图与转写',
+                tagline: '智能整理：订阅期内无限收藏，解锁自动打标归类、解读、脑图与转写',
                 owned: _isTierOwned(UsagePlan.prince),
                 priceWidget: _cardPriceWidget(
                   UsagePlan.prince,
@@ -637,7 +639,7 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
               ),
               const SizedBox(height: 8),
               Text(
-                '免费用户收藏上限 ${_quotas.free.itemLimit ?? 100} 条；AI / 转写额度按自然月重置',
+                '免费上限 ${_quotas.free.itemLimit ?? 100} 条；普通买断永久不限；太子/帝王订阅期内不限；AI / 转写按自然月重置',
                 style: const TextStyle(
                   fontSize: 12,
                   color: _muted,
@@ -794,7 +796,7 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
                       Expanded(
                         child: _TabletPlanCard(
                           title: '太子Pro',
-                          tagline: '智能整理：含普通会员，解锁自动打标归类、解读、脑图与转写',
+                          tagline: '智能整理：订阅期内无限收藏，解锁自动打标归类、解读、脑图与转写',
                           badge: '推荐',
                           owned: _isTierOwned(UsagePlan.prince),
                           featured: true,
@@ -876,7 +878,7 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
 
   List<_PlanFeature> _princeFeatures(PlanQuotasTable quotas) {
     return [
-      const _PlanFeature('含普通会员全部权益', included: true),
+      const _PlanFeature('订阅期内收藏不限条数', included: true),
       const _PlanFeature('自动打标与归类', included: true),
       const _PlanFeature('AI 解读', included: true),
       const _PlanFeature('AI 思维导图', included: true),
@@ -1313,7 +1315,7 @@ class _TabletMembershipHero extends StatelessWidget {
                       ),
                       const SizedBox(height: 8),
                       Text(
-                        '免费收藏上限 $freeItemLimit 条 · AI / 转写按自然月重置',
+                        '免费上限 $freeItemLimit 条 · 普通买断永久不限 · 订阅档期内不限',
                         style: TextStyle(
                           fontSize: 12,
                           color: Colors.white.withValues(alpha: 0.45),
