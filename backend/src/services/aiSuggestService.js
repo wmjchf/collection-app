@@ -453,6 +453,7 @@ async function runAiSuggestJob(itemId) {
     const { json: result, usage: modelUsage } = await aliyunDashScope.chatJson({
       messages,
       model: tagsModel,
+      temperature: 0,
     });
 
     const rawTags = Array.isArray(result?.tags) ? result.tags : [];

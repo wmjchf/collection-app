@@ -422,6 +422,7 @@ async function suggestOrganize(
   const { json: result, usage: modelUsage } = await aliyunDashScope.chatJson({
     messages,
     model: tagsModel,
+    temperature: 0,
   });
 
   const proposal = normalizeProposal(
