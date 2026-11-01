@@ -584,7 +584,7 @@ async function applyOrganize(userId, body) {
 }
 
 /**
- * 自动打标后：轻量安置未归类 AI 标签；达阈值则全量重排可挪 AI 标签。
+ * 自动打标后：每次全量重排可挪 AI 标签（ORGANIZE_SYSTEM_PROMPT_FULL）。
  */
 async function autoOrganizeAfterTags(userId) {
   try {
@@ -597,14 +597,7 @@ async function autoOrganizeAfterTags(userId) {
     );
     if (!allMovable.length) return;
 
-    const full = await shouldFullReorg(userId, true);
-    const mode = full ? 'full' : 'ungrouped';
-
-    if (mode === 'ungrouped') {
-      const ugMovable = allMovable.filter((t) => t.moduleId == null);
-      if (!ugMovable.length) return;
-    }
-
+    const mode = 'full';
     const { proposal } = await suggestOrganize(userId, {
       skipQuota: true,
       mode,
@@ -612,13 +605,6 @@ async function autoOrganizeAfterTags(userId) {
     const placements = (proposal.modules || []).filter(
       (m) => Array.isArray(m.tagIds) && m.tagIds.length > 0,
     );
-    const hasWork =
-      placements.length > 0 ||
-      (mode === 'full' && (proposal.ungroupedTagIds || []).length > 0);
-    if (!hasWork && mode === 'ungrouped') {
-      console.log(`[autoOrganizeAfterTags] nothing to place user=${userId}`);
-      return;
-    }
 
     await applyOrganize(userId, {
       mode,
@@ -630,16 +616,10 @@ async function autoOrganizeAfterTags(userId) {
       ungroupedTagIds: proposal.ungroupedTagIds || [],
     });
 
-    if (mode === 'full') {
-      await tagService.markFullOrganizeDone(userId);
-      console.log(
-        `[autoOrganizeAfterTags] full reorg user=${userId} modules=${placements.length}`,
-      );
-    } else {
-      console.log(
-        `[autoOrganizeAfterTags] light place user=${userId} modules=${placements.length}`,
-      );
-    }
+    await tagService.markFullOrganizeDone(userId);
+    console.log(
+      `[autoOrganizeAfterTags] full reorg user=${userId} modules=${placements.length}`,
+    );
   } catch (err) {
     console.warn(
       `[autoOrganizeAfterTags] skip user=${userId}`,
