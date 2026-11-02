@@ -2,6 +2,7 @@ const aliyunDashScope = require('./aliyunDashScope');
 const tagModuleService = require('./tagModuleService');
 const tagService = require('./tagService');
 const usageService = require('./usageService');
+const { pool } = require('../db');
 
 /** 距上次全量重排新建 AI 标签达此数 → 触发全量 */
 const FULL_REORG_NEW_AI_TAGS = 8;
@@ -42,7 +43,7 @@ const ORGANIZE_SYSTEM_PROMPT_FULL = `你是收藏整理助手。把用户的标�
 - 架 = 可复用的议题/品类主题：比「科技/生活/商业」细一点，比单篇热词、型号、一时梗粗很多
 - 自测：以后再收藏同议题内容，还会不会自然挂到这个架？会 → 对；只会挂这一篇 → 太细；什么都能挂 → 太粗
 - 例：可以「人工智能」「清洁电器」「长视频」；不要「科技」；也不要「Sora 2」「某次发布会金句」
-- **禁止「一篇一架」**：不要把同一篇文章打出的标签整包塞进同一个归类。一篇里的标签常跨多个议题，应按主题拆开挂到不同架；整包塞会让架退化成「这一篇」而过细
+- **禁止「一篇一架」**：不要把同一篇文章打出的标签整包塞进同一个归类。一篇里的标签常跨多个议题，应按主题拆开；同篇独有组同一架最多 2 个。服务端会按同篇关系硬拆，勿依赖「整包装一架」蒙混
 
 【怎么分】
 - 读每个可重排标签的说明，挂到最贴切主题架；当前架不合适就挪走；没有合适的再新建
@@ -241,6 +242,93 @@ function buildCatalogText(modules, ungrouped, { mode }) {
 }
 
 /**
+ * 查出「仅挂在同一篇文章上」的可挪标签组（同篇独有）。
+ * @returns {Map<number, number[]>} itemId → tagIds（仅保留 ≥2 的组）
+ */
+async function loadExclusiveArticleGroups(userId, tagIds) {
+  const ids = [...tagIds].map(Number).filter((id) => Number.isFinite(id));
+  const groups = new Map();
+  if (!ids.length) return groups;
+
+  const placeholders = ids.map((_, i) => `:tid${i}`).join(',');
+  const params = { userId };
+  ids.forEach((id, i) => {
+    params[`tid${i}`] = id;
+  });
+  const [rows] = await pool.query(
+    `SELECT it.category_id AS tag_id, it.item_id AS item_id
+     FROM item_tags it
+     INNER JOIN items i ON i.id = it.item_id AND i.user_id = :userId
+     WHERE it.category_id IN (${placeholders})`,
+    params,
+  );
+
+  const itemsByTag = new Map();
+  for (const row of rows || []) {
+    const tid = Number(row.tag_id);
+    const iid = Number(row.item_id);
+    if (!Number.isFinite(tid) || !Number.isFinite(iid)) continue;
+    if (!itemsByTag.has(tid)) itemsByTag.set(tid, new Set());
+    itemsByTag.get(tid).add(iid);
+  }
+
+  for (const [tid, items] of itemsByTag) {
+    if (items.size !== 1) continue;
+    const itemId = [...items][0];
+    if (!groups.has(itemId)) groups.set(itemId, []);
+    groups.get(itemId).push(tid);
+  }
+
+  for (const [itemId, members] of [...groups.entries()]) {
+    if (members.length < 2) groups.delete(itemId);
+  }
+  return groups;
+}
+
+function formatExclusiveGroupsText(groups, tagById) {
+  if (!groups.size) return '';
+  const lines = [
+    '【同篇独有标签】（组内标签目前只出现在同一篇文章；硬约束：同一组进同一架最多 2 个，且不能整组进同一架）',
+  ];
+  let i = 1;
+  for (const members of groups.values()) {
+    const parts = members.map((id) => {
+      const t = tagById.get(id);
+      const name = t ? String(t.name || '').trim() : '';
+      return name ? `id=${id}「${name}」` : `id=${id}`;
+    });
+    lines.push(`- 组${i}：${parts.join('、')}`);
+    i += 1;
+  }
+  return lines.join('\n');
+}
+
+/**
+ * 拆掉「一篇整包进一架」：同篇独有组在同一架最多 min(2, |S|-1) 个
+ * （既不能全进一架，也避免单篇标签单独凑满一架）。
+ */
+function enforceNoArticlePack(tagIds, _existingId, exclusiveGroups) {
+  let kept = [...tagIds];
+  const ejected = [];
+
+  if (!exclusiveGroups?.size || !kept.length) {
+    return { kept, ejected };
+  }
+
+  for (const members of exclusiveGroups.values()) {
+    if (members.length < 2) continue;
+    const maxKeep = Math.min(2, members.length - 1);
+    const inKept = kept.filter((id) => members.includes(id));
+    if (inKept.length <= maxKeep) continue;
+    const dropIds = new Set(inKept.slice(maxKeep));
+    kept = kept.filter((id) => !dropIds.has(id));
+    ejected.push(...dropIds);
+  }
+
+  return { kept, ejected };
+}
+
+/**
  * 只采纳对「可挪动集合」内标签的安置；锁定标签一律忽略。
  */
 function normalizeProposal(raw, tagById, moduleById, movableIds, opts = {}) {
@@ -248,6 +336,7 @@ function normalizeProposal(raw, tagById, moduleById, movableIds, opts = {}) {
   const ungroupedIn = Array.isArray(raw?.ungroupedTagIds)
     ? raw.ungroupedTagIds
     : [];
+  const exclusiveGroups = opts.exclusiveGroups || new Map();
 
   const used = new Set();
   const modules = [];
@@ -323,8 +412,16 @@ function normalizeProposal(raw, tagById, moduleById, movableIds, opts = {}) {
       used.add(tid);
       tagIds.push(tid);
     }
-    if (!pushModule(name, existingId, tagIds)) {
-      for (const tid of tagIds) {
+    const { kept, ejected } = enforceNoArticlePack(
+      tagIds,
+      existingId,
+      exclusiveGroups,
+    );
+    for (const tid of ejected) {
+      ungroupedTagIds.push(tid);
+    }
+    if (!pushModule(name, existingId, kept)) {
+      for (const tid of kept) {
         ungroupedTagIds.push(tid);
       }
     }
@@ -410,6 +507,9 @@ async function suggestOrganize(
     );
   }
 
+  const exclusiveGroups = await loadExclusiveArticleGroups(userId, targetIds);
+  const exclusiveText = formatExclusiveGroupsText(exclusiveGroups, tagById);
+
   const moduleById = new Map(
     (modules || []).map((m) => [Number(m.id), m]),
   );
@@ -417,10 +517,11 @@ async function suggestOrganize(
   const hintText = String(hint || '').trim().slice(0, 200);
   const userParts = [
     catalog,
+    exclusiveText,
     hintText ? `用户补充偏好：${hintText}` : '',
     mode === 'full'
-      ? '请全量重排【可重排标签】：粒度取议题/品类级（比科技/生活细一点，比单篇热词粗很多）；禁止把同一篇文章的标签整包塞进同一架；专名进主题架；能归尽量归，未归类≤20%。【锁定标签】禁止输出、禁止挪动。看各架「已有←」再挂架。'
-      : '请只安置待安置标签；锁定标签不动。粒度同议题/品类级；禁止把同一篇文章的标签整包塞进同一架；优先并入已有架；能并入的尽量并入。看各架「已有←」。',
+      ? '请全量重排【可重排标签】：粒度取议题/品类级（比科技/生活细一点，比单篇热词粗很多）；同篇独有组禁止整组进同一架、禁止新建架整架只用同一组；专名进主题架；能归尽量归，未归类≤20%。【锁定标签】禁止输出、禁止挪动。看各架「已有←」再挂架。'
+      : '请只安置待安置标签；锁定标签不动。粒度同议题/品类级；同篇独有组禁止整组进同一架；优先并入已有架；能并入的尽量并入。看各架「已有←」。',
   ].filter(Boolean);
 
   const messages = [
@@ -457,7 +558,7 @@ async function suggestOrganize(
     tagById,
     moduleById,
     targetIds,
-    { mode },
+    { mode, exclusiveGroups },
   );
   if (!proposal.modules.length && !proposal.ungroupedTagIds.length) {
     throw Object.assign(new Error('未能生成有效归类建议，请稍后重试'), {
