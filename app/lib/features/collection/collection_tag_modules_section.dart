@@ -71,7 +71,6 @@ class CollectionTagModulesSection extends StatelessWidget {
         ungrouped: true,
         tags: ungrouped,
         onOpenTag: onOpenTag,
-        onAiOrganize: onAiOrganize,
         onPlaceTag: onPlaceTag,
       ),
       for (final m in modules)
@@ -125,6 +124,7 @@ class CollectionTagModulesSection extends StatelessWidget {
                 _CollapsingSectionHeader(
                   collapse: headerCollapse,
                   onCreateModule: onCreateModule,
+                  onAiOrganize: onAiOrganize,
                   // 全空引导里已有「新建归类」，隐藏右上角 +
                   showCreate: !sparseEmpty,
                 ),
@@ -220,12 +220,14 @@ class _TagsEmptyGuide extends StatelessWidget {
 class _CollapsingSectionHeader extends StatelessWidget {
   const _CollapsingSectionHeader({
     required this.onCreateModule,
+    this.onAiOrganize,
     this.collapse,
     this.showCreate = true,
   });
 
   final ValueListenable<double>? collapse;
   final VoidCallback onCreateModule;
+  final VoidCallback? onAiOrganize;
   final bool showCreate;
 
   @override
@@ -235,6 +237,7 @@ class _CollapsingSectionHeader extends StatelessWidget {
       children: [
         _SectionHeader(
           onCreateModule: onCreateModule,
+          onAiOrganize: onAiOrganize,
           showCreate: showCreate,
         ),
         const SizedBox(height: 12),
@@ -270,10 +273,12 @@ class _CollapsingSectionHeader extends StatelessWidget {
 class _SectionHeader extends StatelessWidget {
   const _SectionHeader({
     required this.onCreateModule,
+    this.onAiOrganize,
     this.showCreate = true,
   });
 
   final VoidCallback onCreateModule;
+  final VoidCallback? onAiOrganize;
   final bool showCreate;
 
   @override
@@ -297,6 +302,25 @@ class _SectionHeader extends StatelessWidget {
                   ),
                 ),
               ),
+              if (onAiOrganize != null)
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 2),
+                  child: IconButton(
+                    tooltip: 'AI 分类',
+                    onPressed: onAiOrganize,
+                    visualDensity: VisualDensity.compact,
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(
+                      minWidth: 36,
+                      minHeight: 36,
+                    ),
+                    icon: const Icon(
+                      Icons.auto_awesome_outlined,
+                      size: 22,
+                      color: CollectionTagModulesSection.brand,
+                    ),
+                  ),
+                ),
               if (showCreate)
                 CollectionCreateModuleButton(onPressed: onCreateModule),
             ],
@@ -341,9 +365,9 @@ class CollectionCreateModuleButton extends StatelessWidget {
         padding: EdgeInsets.zero,
         constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
         icon: const Icon(
-          Icons.add_rounded,
-          size: 26,
-          color: CollectionTagModulesSection.ink,
+          Icons.add_circle_outline_rounded,
+          size: 24,
+          color: CollectionTagModulesSection.brand,
         ),
       ),
     );
@@ -471,7 +495,6 @@ class _ModuleBlock extends StatelessWidget {
     this.onRenameModule,
     this.onAddTag,
     this.onDeleteModule,
-    this.onAiOrganize,
     this.onPlaceTag,
     this.titleMuted = false,
     this.ungrouped = false,
@@ -491,7 +514,6 @@ class _ModuleBlock extends StatelessWidget {
   final VoidCallback? onRenameModule;
   final VoidCallback? onAddTag;
   final VoidCallback? onDeleteModule;
-  final VoidCallback? onAiOrganize;
   final void Function(Tag tag, int? targetModuleId)? onPlaceTag;
 
   bool get _hasActions =>
@@ -615,28 +637,6 @@ class _ModuleBlock extends StatelessWidget {
                       );
                     },
                   ),
-                if (onAiOrganize != null)
-                  Material(
-                    color: Colors.transparent,
-                    child: InkWell(
-                      onTap: onAiOrganize,
-                      borderRadius: BorderRadius.circular(8),
-                      child: const Padding(
-                        padding: EdgeInsets.symmetric(
-                          horizontal: 6,
-                          vertical: 4,
-                        ),
-                        child: Text(
-                          'AI 标签归类',
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w500,
-                            color: CollectionTagModulesSection.brand,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
               ],
             ),
           ),
@@ -740,7 +740,7 @@ class _ModuleBlock extends StatelessWidget {
   }
 }
 
-/// iPhone：每行 3 个，整行可横滑看全名；iPad：自然换行。
+/// iPhone：每行 4 个，整行可横滑看全名；iPad：自然换行。
 class _ModuleTagsLayout extends StatelessWidget {
   const _ModuleTagsLayout({
     required this.tags,
@@ -755,7 +755,7 @@ class _ModuleTagsLayout extends StatelessWidget {
   final bool draggable;
 
   static const _spacing = 6.0;
-  static const _perRow = 3;
+  static const _perRow = 4;
 
   List<_TagChip> _chipsFor(List<Tag> slice) {
     return [

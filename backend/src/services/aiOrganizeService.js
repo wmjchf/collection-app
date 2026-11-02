@@ -11,74 +11,23 @@ const FULL_REORG_MIN_INTERVAL_MS = 24 * 60 * 60 * 1000;
 /** 超过此时间且仍有可挪 AI 标签 → 兜底全量 */
 const FULL_REORG_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 
-/** 归类粒度：与问卷兴趣预置、收藏页匣一致——领域大类 + 若干主题标签 */
-const ORGANIZE_GRANULARITY =
-  '【归类粒度（必须遵守）】' +
-  '归类 = 内容领域大类（一个领域一个匣），不是单篇话题、不是标签名升格。' +
-  '标签 = 该领域下可复用的主题词，挂在匣里；专名/角度也归入所属领域匣。' +
-  '样例（架名 ← 架内标签）：' +
-  '科技数码 ← 数码测评、效率工具、硬件选购；' +
-  '理财投资 ← 基金理财、个人账本、财商阅读；' +
-  '知识科普 ← 自然科学、历史人文、社会观察；' +
-  '职场技能 ← 办公效率、沟通协作、项目管理。' +
-  '自测：匣名应像「科技数码/理财投资」这种领域；匣内应是「数码测评/基金理财」这种主题标签。' +
-  '太粗：生活、综合、其他、科技（单字领域且无边界）。' +
-  '太细：把「数码测评」或「键盘轴体」建成匣、一文一匣、型号/金句/一次活动作匣名。' +
-  '禁止把同一篇文章打出的标签整包塞进同一匣——按所属领域拆开；同篇独有组同一匣最多 2 个。';
-
+/** 归类 prompt：暂只保留协议约束；分类口径待定，勿在此堆规则。 */
 const ORGANIZE_SYSTEM_PROMPT_UNGROUPED =
-  '你是收藏整理助手。用户手建或拖动过的标签结构锁定，**禁止改动**。' +
-  '你只能安置「待安置」列表里的标签（均为 AI 创建且用户未拖动）：可追加进已有归类，或用它们新建归类。' +
-  ORGANIZE_GRANULARITY +
-  '优先并入已有领域归类；不按公司/人名建匣。' +
-  '规则：' +
-  '1. 锁定标签一律保持不动；输出里不要挪动它们。' +
-  '2. 只处理待安置标签：可并入已有归类，或与其它待安置标签组成新归类。' +
-  '3. 并入已有归类：existingModuleId 必填，name 用原名；tagIds **只写本次新加入的待安置标签 id**。' +
-  '4. 新建归类：existingModuleId 为 null；tagIds 只能来自待安置；至少 2 个标签才能新建。' +
-  '5. 归类名 2～8 字，领域大类口径，且不得与架内任一标签同名；禁止把主题标签/热词/专名直接升格成架名。' +
-  '6. 禁公司名/人名/产品名作归类名；禁生活/综合/其他等无边界名；禁「与/及/和」拼接两领域。' +
-  '7. 以标签说明为准；专名进所属领域，角度/概念进对应领域；能并入的尽量并入，凑不齐放 ungroupedTagIds。' +
-  '8. 只使用输入里的待安置 tagId；禁止编造 id；每个待安置标签最多出现一次。' +
-  '9. 全部待安置 tagId 都必须出现：要么在 modules[].tagIds，要么在 ungroupedTagIds。' +
+  '你是收藏整理助手。把待安置标签放进归类（可并入已有或新建），凑不齐的放未归类。' +
+  '锁定标签禁止改动，输出中不要出现它们。' +
+  '并入已有：existingModuleId 必填，name 用原名，tagIds 只写本次新加入的待安置 id。' +
+  '新建：existingModuleId 为 null，tagIds 只能来自待安置。' +
+  '只用输入里的待安置 tagId，禁止编造；每个待安置标签恰好出现一次（modules 或 ungroupedTagIds）。' +
   '只输出 JSON：{"modules":[{"name":"归类名","existingModuleId":null,"tagIds":[1,2]}],"ungroupedTagIds":[3]}';
 
-const ORGANIZE_SYSTEM_PROMPT_FULL = `你是收藏整理助手。把用户的标签整理成「领域归类匣」，方便按大类浏览、按主题标签找回。题材多样，规则必须通用。
-
-【输入】
-- 【锁定标签】：用户手建或拖动过。id、名称、所在归类。**绝对禁止挪动**，输出中不得出现其 id
-- 【可重排标签】：AI 创建且用户未拖动。id、名称、说明、当前归类（可空）——按最合适领域重新安置
-- 【现有归类】：id、名称、架内已有标签——安置时看架内成员，不要只看架名
-
-【硬约束】
-- 锁定标签一律不动；不得为腾地方挪走锁定标签
-- 有锁定标签的架：可追加可重排标签，架名仅在更贴切且不与架内标签同名时可改
-
-${ORGANIZE_GRANULARITY}
-
-【怎么分】
-- 读每个可重排标签的说明，挂到最贴切的领域匣；当前匣不合适就挪走；没有合适的再新建领域匣
-- 可复用 existingModuleId（架名可改得更贴切）；需要新领域就新建
-- 专名（人/公司/产品）→ 放进所属领域匣，禁止用人名/公司名/品牌名/产品名作匣名
-- 角度/概念标签 → 放进对应领域；不要因「常一起出现」或「出自同一篇」就塞进同一匣
-- 单匣大约 3～15 个标签；明显跨两个领域再拆匣；匣总数不硬卡，按内容自然形成
-- **能分就尽量分**：能归拢的进匣；未归类只留给确实凑不齐的；ungroupedTagIds 不超过可重排的 20%
-
-【架名】
-- 2～8 字，领域大类（看架内标签共同所属领域）
-- **禁止与架内任一标签同名**；禁止把「数码测评」等主题标签或专名直接升格成匣名
-- 禁止无边界名：生活、综合、其他、干货…
-- 禁止「与/及/和/、/ /·」拼接两个领域
-- 现有架名违规或只是标签复印时：同一 existingModuleId 改成合规领域名，并挪走不贴合的可重排标签
-
-【规则】
-1. 每个可重排标签恰好出现一次：在 modules[].tagIds 或 ungroupedTagIds；禁止编造 id；禁止输出锁定标签 id
-2. 并入已有归类：existingModuleId 来自【现有归类】；tagIds 只写可重排标签
-3. 新建归类：existingModuleId 为 null；至少 3 个可重排标签，否则留未归类
-4. 以标签说明为准，不凭字面硬凑
-5. 拆后原架若只剩锁定标签可保留；可重排不足且无锁定、不足 2 个可重排：并入最贴切领域或未归类；勿留空 AI 架
-
-只输出 JSON：{"modules":[{"name":"归类名","existingModuleId":null,"tagIds":[1,2]}],"ungroupedTagIds":[3]}（modules 可为空数组）`;
+const ORGANIZE_SYSTEM_PROMPT_FULL =
+  '你是收藏整理助手。把可重排标签整理进归类（可并入已有或新建），凑不齐的放未归类。' +
+  '【锁定标签】禁止挪动，输出中不得出现其 id。' +
+  '【可重排标签】按说明安置；可改已有归类名（existingModuleId 不变）或新建。' +
+  '并入已有：existingModuleId 来自现有归类，tagIds 只写可重排标签。' +
+  '新建：existingModuleId 为 null。' +
+  '只用输入里的可重排 tagId，禁止编造；每个可重排标签恰好出现一次（modules 或 ungroupedTagIds）。' +
+  '只输出 JSON：{"modules":[{"name":"归类名","existingModuleId":null,"tagIds":[1,2]}],"ungroupedTagIds":[3]}';
 
 /** 归类目录里每架最多展示的已有标签名数 */
 const SHELF_TAG_PREVIEW_MAX = 12;
@@ -531,8 +480,8 @@ async function suggestOrganize(
     exclusiveText,
     hintText ? `用户补充偏好：${hintText}` : '',
     mode === 'full'
-      ? '请全量重排【可重排标签】：先遵守【归类粒度】（领域匣 + 主题标签）；同篇独有组同一匣最多 2 个；专名进所属领域；能归尽量归，未归类≤20%。【锁定标签】禁止输出、禁止挪动。看各架「已有←」再挂架。'
-      : '请只安置待安置标签；锁定标签不动。先遵守【归类粒度】；同篇独有组同一匣最多 2 个；优先并入已有领域匣；能并入的尽量并入。看各架「已有←」。',
+      ? '请全量重排【可重排标签】。【锁定标签】禁止输出、禁止挪动。看各架「已有←」再挂架。'
+      : '请只安置待安置标签；锁定标签不动。看各架「已有←」。',
   ].filter(Boolean);
 
   const messages = [
@@ -727,67 +676,9 @@ async function applyOrganize(userId, body) {
   };
 }
 
-/**
- * 自动打标后：太子+ 每次全量重排可挪 AI 标签。
- * 单篇标签少、库尚浅时增量容易挂偏；全量用整库标签一起定架更稳。
- */
-async function autoOrganizeAfterTags(userId) {
-  try {
-    if (!aliyunDashScope.isConfigured()) return;
-
-    const planService = require('./planService');
-    const subscriptionService = require('./subscriptionService');
-    const { plan } = await subscriptionService.getPlanForUser(userId);
-    if (
-      require('../config').usage.enforcing !== false &&
-      !planService.hasPrince(plan)
-    ) {
-      console.log(`[autoOrganizeAfterTags] skip non-prince user=${userId}`);
-      return;
-    }
-
-    const { modules, ungrouped } = await tagModuleService.listModules(userId);
-    const tagById = collectUserTags(modules, ungrouped);
-    const allMovable = [...tagById.values()].filter((t) =>
-      tagService.isTagAiMovable(t),
-    );
-    if (!allMovable.length) return;
-
-    const mode = 'full';
-    const { proposal } = await suggestOrganize(userId, {
-      skipQuota: true,
-      mode,
-    });
-    const placements = (proposal.modules || []).filter(
-      (m) => Array.isArray(m.tagIds) && m.tagIds.length > 0,
-    );
-
-    await applyOrganize(userId, {
-      mode,
-      modules: (proposal.modules || []).map((m) => ({
-        name: m.name,
-        existingModuleId: m.existingModuleId,
-        tagIds: m.tagIds,
-      })),
-      ungroupedTagIds: proposal.ungroupedTagIds || [],
-    });
-
-    await tagService.markFullOrganizeDone(userId);
-    console.log(
-      `[autoOrganizeAfterTags] full reorg user=${userId} modules=${placements.length}`,
-    );
-  } catch (err) {
-    console.warn(
-      `[autoOrganizeAfterTags] skip user=${userId}`,
-      err.message || err,
-    );
-  }
-}
-
 module.exports = {
   suggestOrganize,
   applyOrganize,
-  autoOrganizeAfterTags,
   normalizeProposal,
   shouldFullReorg,
   FULL_REORG_NEW_AI_TAGS,
