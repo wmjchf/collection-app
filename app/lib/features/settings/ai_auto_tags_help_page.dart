@@ -74,9 +74,9 @@ class AiAutoTagsHelpPage extends StatelessWidget {
             const SizedBox(height: 10),
             const _ProCard(
               child: Text(
-                '太子Pro / 帝王Pro：粘贴链接解析完成后，文章会自动打标签，并尽量归入已有或新建归类；'
-                '视频在转写成功后同样自动打标并归类；图集不自动打标。'
-                '点进去可在内容上方看到标签。',
+                '太子Pro / 帝王Pro：粘贴链接解析完成后，文章会自动打标签；'
+                '视频在转写成功后同样自动打标；图集不自动打标。'
+                '归类由你在「归类标签」里手动整理。点进去可在内容上方看到标签。',
                 style: TextStyle(
                   fontSize: 15,
                   color: Colors.white,
