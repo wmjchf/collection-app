@@ -7,16 +7,10 @@ const {
   listInterestOptions,
   getInterestById,
 } = require('./onboardingInterestCatalog');
-const {
-  ORGANIZE_STYLES,
-  ORGANIZE_STYLE_META,
-  normalizeOrganizeStyle,
-} = require('./organizeStyleCatalog');
 
 async function getSurveyStatus(userId) {
   const [rows] = await pool.execute(
-    `SELECT survey_completed_at, survey_age_range, survey_source, survey_interests,
-            survey_organize_style
+    `SELECT survey_completed_at, survey_age_range, survey_source, survey_interests
      FROM users WHERE id = :userId LIMIT 1`,
     { userId },
   );
@@ -29,7 +23,6 @@ async function getSurveyStatus(userId) {
     ageRange: row.survey_age_range || null,
     source: row.survey_source || null,
     interests: parseInterests(row.survey_interests),
-    organizeStyle: normalizeOrganizeStyle(row.survey_organize_style),
   };
 }
 
@@ -107,7 +100,7 @@ async function seedInterests(userId, interestIds) {
 }
 
 /**
- * @param {{ skipped?: boolean, ageRange?: string, source?: string, interests?: string[], organizeStyle?: string }} body
+ * @param {{ skipped?: boolean, ageRange?: string, source?: string, interests?: string[] }} body
  */
 async function submitSurvey(userId, body) {
   const skipped = body?.skipped === true;
@@ -122,8 +115,7 @@ async function submitSurvey(userId, body) {
        SET survey_completed_at = CURRENT_TIMESTAMP(3),
            survey_age_range = NULL,
            survey_source = NULL,
-           survey_interests = NULL,
-           survey_organize_style = NULL
+           survey_interests = NULL
        WHERE id = :userId`,
       { userId },
     );
@@ -136,7 +128,6 @@ async function submitSurvey(userId, body) {
   const interests = [
     ...new Set(interestsRaw.map((id) => String(id || '').trim()).filter(Boolean)),
   ];
-  const organizeStyle = normalizeOrganizeStyle(body?.organizeStyle);
 
   if (!AGE_RANGES.includes(ageRange)) {
     throw Object.assign(new Error('请选择年龄段'), { status: 400 });
@@ -152,9 +143,6 @@ async function submitSurvey(userId, body) {
       throw Object.assign(new Error('兴趣选项无效'), { status: 400 });
     }
   }
-  if (body?.organizeStyle != null && body.organizeStyle !== '' && !organizeStyle) {
-    throw Object.assign(new Error('分类习惯选项无效'), { status: 400 });
-  }
 
   const seeded = await seedInterests(userId, interests);
 
@@ -163,15 +151,13 @@ async function submitSurvey(userId, body) {
      SET survey_completed_at = CURRENT_TIMESTAMP(3),
          survey_age_range = :ageRange,
          survey_source = :source,
-         survey_interests = :interests,
-         survey_organize_style = :organizeStyle
+         survey_interests = :interests
      WHERE id = :userId`,
     {
       userId,
       ageRange,
       source,
       interests: JSON.stringify(interests),
-      organizeStyle,
     },
   );
 
@@ -182,45 +168,14 @@ async function submitSurvey(userId, body) {
     ageRange,
     source,
     interests,
-    organizeStyle,
     seeded,
   };
-}
-
-/** 问卷后或归类页可单独更新分类习惯 */
-async function updateOrganizeStyle(userId, rawStyle) {
-  const organizeStyle = normalizeOrganizeStyle(rawStyle);
-  if (!organizeStyle) {
-    throw Object.assign(new Error('请选择分类习惯'), { status: 400 });
-  }
-  await pool.execute(
-    `UPDATE users
-     SET survey_organize_style = :organizeStyle
-     WHERE id = :userId`,
-    { userId, organizeStyle },
-  );
-  return { ok: true, organizeStyle };
-}
-
-async function getOrganizeStyle(userId) {
-  const [rows] = await pool.execute(
-    `SELECT survey_organize_style FROM users WHERE id = :userId LIMIT 1`,
-    { userId },
-  );
-  if (!rows[0]) {
-    throw Object.assign(new Error('用户不存在'), { status: 404 });
-  }
-  return normalizeOrganizeStyle(rows[0].survey_organize_style);
 }
 
 module.exports = {
   getSurveyStatus,
   submitSurvey,
-  updateOrganizeStyle,
-  getOrganizeStyle,
   listInterestOptions,
   AGE_RANGES,
   SOURCES,
-  ORGANIZE_STYLES,
-  ORGANIZE_STYLE_META,
 };
