@@ -62,7 +62,8 @@ class CollectionTagModulesSection extends StatelessWidget {
   Widget build(BuildContext context) {
     // 归类间距放进各自 DragTarget（topInset），避免空隙落空接不住。
     const moduleGap = 12.0;
-    final sparseEmpty = modules.isEmpty && ungrouped.isEmpty;
+    // 无归类匣：用下方引导「新建」；有归类匣：用顶栏 +
+    final noModules = modules.isEmpty;
     final blocks = <Widget>[
       _ModuleBlock(
         moduleId: null,
@@ -91,7 +92,7 @@ class CollectionTagModulesSection extends StatelessWidget {
         ),
     ];
 
-    // 整区一块白底贴满剩余高度；全空时用引导文案填满匣下空白，不硬拉空匣。
+    // 整区一块白底贴满剩余高度；无归类时用引导文案填满匣下空白。
     return KeyedSubtree(
       key: headerKey,
       child: LayoutBuilder(
@@ -103,7 +104,7 @@ class CollectionTagModulesSection extends StatelessWidget {
                   : (constraints.minHeight.isFinite ? constraints.minHeight : 0.0);
           final boxConstraints = minH <= 0
               ? null
-              : sparseEmpty
+              : noModules
                   ? BoxConstraints(minHeight: minH, maxHeight: minH)
                   : BoxConstraints(minHeight: minH);
           return Container(
@@ -119,17 +120,16 @@ class CollectionTagModulesSection extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               mainAxisSize:
-                  sparseEmpty ? MainAxisSize.max : MainAxisSize.min,
+                  noModules ? MainAxisSize.max : MainAxisSize.min,
               children: [
                 _CollapsingSectionHeader(
                   collapse: headerCollapse,
                   onCreateModule: onCreateModule,
                   onAiOrganize: onAiOrganize,
-                  // 全空引导里已有「新建归类」，隐藏右上角 +
-                  showCreate: !sparseEmpty,
+                  showCreate: !noModules,
                 ),
                 ...blocks,
-                if (sparseEmpty)
+                if (noModules)
                   Expanded(
                     child: _TagsEmptyGuide(onCreateModule: onCreateModule),
                   ),
@@ -142,7 +142,7 @@ class CollectionTagModulesSection extends StatelessWidget {
   }
 }
 
-/// 全空时填满匣下白底：说明 + 新建归类。
+/// 无归类匣时：说明 + 新建归类（高度不够时可滚动，避免溢出）。
 class _TagsEmptyGuide extends StatelessWidget {
   const _TagsEmptyGuide({required this.onCreateModule});
 
@@ -150,69 +150,92 @@ class _TagsEmptyGuide extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(8, 28, 8, 12),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Container(
-            width: 56,
-            height: 56,
-            decoration: const BoxDecoration(
-              color: CollectionTagModulesSection.chipFill,
-              shape: BoxShape.circle,
-            ),
-            child: Icon(
-              Icons.folder_special_outlined,
-              size: 28,
-              color: CollectionTagModulesSection.muted.withValues(alpha: 0.9),
-            ),
-          ),
-          const SizedBox(height: 16),
-          const Text(
-            '先建一个归类',
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w600,
-              color: CollectionTagModulesSection.ink,
-              height: 1.3,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            '收藏打上标签后会进未归类；\n再建归类，长按标签拖进去整理。',
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              fontSize: 13,
-              height: 1.45,
-              color: CollectionTagModulesSection.muted.withValues(alpha: 0.95),
-            ),
-          ),
-          const SizedBox(height: 20),
-          TextButton(
-            onPressed: () {
-              HapticFeedback.selectionClick();
-              onCreateModule();
-            },
-            style: TextButton.styleFrom(
-              foregroundColor: CollectionTagModulesSection.brand,
-              backgroundColor: CollectionTagModulesSection.brandSoft,
-              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(10),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final compact = constraints.maxHeight < 240;
+        final body = Padding(
+          padding: EdgeInsets.fromLTRB(8, compact ? 12 : 28, 8, 12),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (!compact) ...[
+                Container(
+                  width: 56,
+                  height: 56,
+                  decoration: const BoxDecoration(
+                    color: CollectionTagModulesSection.chipFill,
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    Icons.folder_special_outlined,
+                    size: 28,
+                    color: CollectionTagModulesSection.muted
+                        .withValues(alpha: 0.9),
+                  ),
+                ),
+                const SizedBox(height: 16),
+              ],
+              const Text(
+                '先建一个归类',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                  color: CollectionTagModulesSection.ink,
+                  height: 1.3,
+                ),
               ),
-            ),
-            child: const Text(
-              '新建归类',
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
+              SizedBox(height: compact ? 6 : 8),
+              Text(
+                compact
+                    ? '长按标签拖进去整理'
+                    : '收藏打上标签后会进未归类；\n长按标签拖进去整理',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 13,
+                  height: 1.45,
+                  color: CollectionTagModulesSection.muted
+                      .withValues(alpha: 0.95),
+                ),
               ),
-            ),
+              SizedBox(height: compact ? 12 : 20),
+              TextButton(
+                onPressed: () {
+                  HapticFeedback.selectionClick();
+                  onCreateModule();
+                },
+                style: TextButton.styleFrom(
+                  foregroundColor: CollectionTagModulesSection.brand,
+                  backgroundColor: CollectionTagModulesSection.brandSoft,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 18,
+                    vertical: 10,
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                ),
+                child: const Text(
+                  '新建归类',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
           ),
-        ],
-      ),
+        );
+
+        return SingleChildScrollView(
+          physics: const ClampingScrollPhysics(),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minHeight: constraints.maxHeight),
+            child: body,
+          ),
+        );
+      },
     );
   }
 }
