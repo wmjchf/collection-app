@@ -308,7 +308,9 @@ class _SectionHeader extends StatelessWidget {
               fontSize: 12,
               height: 1.35,
               letterSpacing: 0.2,
-              color: CollectionTagModulesSection.muted.withValues(alpha: 0.9),
+              color: CollectionTagModulesSection.muted.withValues(
+                alpha: 0.9,
+              ),
             ),
           ),
         ],

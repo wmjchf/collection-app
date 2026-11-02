@@ -45,6 +45,7 @@ const MIGRATION_FILES = [
   '035_item_media_kind.sql',
   '036_feedback_reply.sql',
   '037_tag_origin_organize.sql',
+  '038_survey_organize_style.sql',
 ];
 
 async function getConnection() {
@@ -451,6 +452,17 @@ async function apply035(conn, dbName) {
   console.log(`[db:migrate] 035: media_kind backfill updated=${updated}`);
 }
 
+async function apply038(conn, dbName) {
+  if (await columnExists(conn, dbName, 'users', 'survey_organize_style')) {
+    console.log('[db:migrate] 038: survey_organize_style 已存在，跳过');
+    return;
+  }
+  await conn.query(
+    "ALTER TABLE `users` ADD COLUMN `survey_organize_style` VARCHAR(16) DEFAULT NULL COMMENT '分类习惯：coarse|topic|fine' AFTER `survey_interests`",
+  );
+  console.log('[db:migrate] 038: users.survey_organize_style');
+}
+
 async function applyMigration(conn, dbName, file) {
   if (file === '002_last_read_at.sql') {
     await apply002(conn, dbName);
@@ -506,6 +518,10 @@ async function applyMigration(conn, dbName, file) {
   }
   if (file === '037_tag_origin_organize.sql') {
     await apply037(conn, dbName);
+    return;
+  }
+  if (file === '038_survey_organize_style.sql') {
+    await apply038(conn, dbName);
     return;
   }
   await runSqlFile(conn, file);
