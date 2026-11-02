@@ -9,7 +9,7 @@ import 'package:super_collection/features/onboarding/onboarding_survey_repositor
 import 'package:super_collection/features/onboarding/survey_catalog.dart';
 import 'package:super_collection/features/onboarding/survey_prefs.dart';
 
-/// 首次问卷：三页各一题（年龄 / 来源 / 兴趣类），可跳过
+/// 首次问卷：三页（年龄 / 来源 / 兴趣类），可跳过
 class FirstSurveyPage extends StatefulWidget {
   const FirstSurveyPage({super.key, required this.userId});
 
@@ -162,7 +162,7 @@ class _FirstSurveyPageState extends State<FirstSurveyPage> {
                 children: [
                   _SurveyStep(
                     brand: AppBrand.name,
-                    subtitle: '先了解一下你，方便预置更贴合的标签分类',
+                    subtitle: '先了解一下你，方便后续推荐更贴合',
                     title: '你的年龄段',
                     child: _wrapChips(
                       children: [
@@ -194,7 +194,7 @@ class _FirstSurveyPageState extends State<FirstSurveyPage> {
                   ),
                   _SurveyStep(
                     title: '感兴趣的内容方向（可多选）',
-                    hint: '只选类别；确认后会预置对应归类与标签',
+                    hint: '可多选，只记录偏好，不会自动建归类或标签',
                     child: _wrapChips(
                       children: [
                         for (final c in SurveyCatalog.interests)

@@ -18,13 +18,24 @@ class OnboardingSurveyRepository {
     return token;
   }
 
-  Future<({bool surveyCompleted})> fetchStatus() async {
+  Future<({bool surveyCompleted, List<String> interests})> fetchStatus() async {
     final token = await _token();
     final json = await _api.get(
       '/api/onboarding/survey',
       accessToken: token,
     );
-    return (surveyCompleted: json['surveyCompleted'] == true);
+    final rawInterests = json['interests'];
+    final interests = <String>[];
+    if (rawInterests is List) {
+      for (final e in rawInterests) {
+        final id = e?.toString().trim() ?? '';
+        if (id.isNotEmpty) interests.add(id);
+      }
+    }
+    return (
+      surveyCompleted: json['surveyCompleted'] == true,
+      interests: interests,
+    );
   }
 
   Future<void> submit({

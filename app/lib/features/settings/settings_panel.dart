@@ -80,7 +80,7 @@ class _SettingsPanelState extends State<SettingsPanel> {
                     onTap: () => _open(const ShortcutsHelpPage()),
                   ),
                   _InfoRow(
-                    title: 'AI自动标签分类方法',
+                    title: 'AI自动标签方法',
                     showChevron: true,
                     onTap: () => _open(const AiAutoTagsHelpPage()),
                   ),
