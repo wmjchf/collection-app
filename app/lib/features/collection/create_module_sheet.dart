@@ -44,6 +44,7 @@ class _ModuleNameSheetState extends State<_ModuleNameSheet> {
   static const _handle = Color(0xFFE5E8ED);
 
   late final TextEditingController _controller;
+  late final FocusNode _focus;
   final _repo = TagModulesRepository();
   String? _error;
   bool _submitting = false;
@@ -54,10 +55,16 @@ class _ModuleNameSheetState extends State<_ModuleNameSheet> {
   void initState() {
     super.initState();
     _controller = TextEditingController(text: widget.module?.name ?? '');
+    _focus = FocusNode();
+    // 与「感想」一致：首帧后再抢焦点，避免弹层未落稳时键盘顶出灰遮罩
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _focus.requestFocus();
+    });
   }
 
   @override
   void dispose() {
+    _focus.dispose();
     _controller.dispose();
     super.dispose();
   }
@@ -134,41 +141,43 @@ class _ModuleNameSheetState extends State<_ModuleNameSheet> {
 
   @override
   Widget build(BuildContext context) {
-    // 与「新建标签」同壳：白底圆角卡 + 顶栏拖条，外边距交给 AppBottomSheetShell
+    // 与「感想」同壳：白底圆角卡 + 拖条，外边距交给 AppBottomSheetShell
     return Material(
       color: Colors.white,
       borderRadius: BorderRadius.circular(24),
-      clipBehavior: Clip.antiAlias,
       child: Padding(
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
         child: Column(
           mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Center(
-              child: Container(
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: _handle,
-                  borderRadius: BorderRadius.circular(2),
+            Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: _handle,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const SizedBox(height: 8),
+            SizedBox(
+              height: 40,
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  _isRename ? '修改名称' : '新建归类',
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                    color: _text,
+                  ),
                 ),
               ),
             ),
-            const SizedBox(height: 12),
-            Text(
-              _isRename ? '修改名称' : '新建归类',
-              style: const TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w700,
-                color: _text,
-              ),
-            ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 4),
             TextField(
               controller: _controller,
+              focusNode: _focus,
               enabled: !_submitting,
-              autofocus: true,
               textInputAction: TextInputAction.done,
               style: const TextStyle(fontSize: 15, color: _text),
               onChanged: (_) {
@@ -179,12 +188,15 @@ class _ModuleNameSheetState extends State<_ModuleNameSheet> {
             ),
             if (_error != null) ...[
               const SizedBox(height: 10),
-              Text(
-                _error!,
-                style: const TextStyle(
-                  fontSize: 13,
-                  color: Color(0xFFD14343),
-                  height: 1.35,
+              Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  _error!,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    color: Color(0xFFD14343),
+                    height: 1.35,
+                  ),
                 ),
               ),
             ],

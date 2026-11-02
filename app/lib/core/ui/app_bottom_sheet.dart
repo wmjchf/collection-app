@@ -103,6 +103,7 @@ Future<T?> showAppBottomSheet<T>({
     context: context,
     isScrollControlled: isScrollControlled,
     backgroundColor: Colors.transparent,
+    elevation: 0,
     barrierColor: barrierColor,
     isDismissible: isDismissible,
     enableDrag: enableDrag && !AppOrientation.isTablet(context),
