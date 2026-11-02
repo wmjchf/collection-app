@@ -21,7 +21,6 @@ class CollectionTagModulesSection extends StatelessWidget {
     this.onRenameModule,
     this.onDeleteModule,
     this.onAiOrganize,
-    this.onOrganizeStyle,
     this.onPlaceTag,
     this.headerKey,
     this.headerCollapse,
@@ -38,8 +37,6 @@ class CollectionTagModulesSection extends StatelessWidget {
   final ValueChanged<TagModule>? onRenameModule;
   final ValueChanged<TagModule>? onDeleteModule;
   final VoidCallback? onAiOrganize;
-  /// 调整归类习惯（问卷小测同款）。
-  final VoidCallback? onOrganizeStyle;
   /// 拖放到目标归类（`null` = 未归类）。
   final void Function(Tag tag, int? targetModuleId)? onPlaceTag;
   final Key? headerKey;
@@ -128,7 +125,6 @@ class CollectionTagModulesSection extends StatelessWidget {
                 _CollapsingSectionHeader(
                   collapse: headerCollapse,
                   onCreateModule: onCreateModule,
-                  onOrganizeStyle: onOrganizeStyle,
                   // 全空引导里已有「新建归类」，隐藏右上角 +
                   showCreate: !sparseEmpty,
                 ),
@@ -224,14 +220,12 @@ class _TagsEmptyGuide extends StatelessWidget {
 class _CollapsingSectionHeader extends StatelessWidget {
   const _CollapsingSectionHeader({
     required this.onCreateModule,
-    this.onOrganizeStyle,
     this.collapse,
     this.showCreate = true,
   });
 
   final ValueListenable<double>? collapse;
   final VoidCallback onCreateModule;
-  final VoidCallback? onOrganizeStyle;
   final bool showCreate;
 
   @override
@@ -241,7 +235,6 @@ class _CollapsingSectionHeader extends StatelessWidget {
       children: [
         _SectionHeader(
           onCreateModule: onCreateModule,
-          onOrganizeStyle: onOrganizeStyle,
           showCreate: showCreate,
         ),
         const SizedBox(height: 12),
@@ -277,12 +270,10 @@ class _CollapsingSectionHeader extends StatelessWidget {
 class _SectionHeader extends StatelessWidget {
   const _SectionHeader({
     required this.onCreateModule,
-    this.onOrganizeStyle,
     this.showCreate = true,
   });
 
   final VoidCallback onCreateModule;
-  final VoidCallback? onOrganizeStyle;
   final bool showCreate;
 
   @override
@@ -311,36 +302,16 @@ class _SectionHeader extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 4),
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  '分格摆放 · 长按拖动归类',
-                  style: TextStyle(
-                    fontSize: 12,
-                    height: 1.35,
-                    letterSpacing: 0.2,
-                    color: CollectionTagModulesSection.muted.withValues(
-                      alpha: 0.9,
-                    ),
-                  ),
-                ),
+          Text(
+            '分格摆放 · 长按拖动归类',
+            style: TextStyle(
+              fontSize: 12,
+              height: 1.35,
+              letterSpacing: 0.2,
+              color: CollectionTagModulesSection.muted.withValues(
+                alpha: 0.9,
               ),
-              if (onOrganizeStyle != null)
-                TextButton(
-                  onPressed: onOrganizeStyle,
-                  style: TextButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(horizontal: 6),
-                    minimumSize: Size.zero,
-                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                    foregroundColor: CollectionTagModulesSection.muted,
-                  ),
-                  child: const Text(
-                    '归类习惯',
-                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
-                  ),
-                ),
-            ],
+            ),
           ),
         ],
       ),
