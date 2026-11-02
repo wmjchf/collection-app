@@ -33,7 +33,7 @@ const DROP = new Set(['script', 'style', 'iframe', 'object', 'embed', 'link', 'm
 /** 允许 App 展示、后台编辑的帮助页。缺行时用这里的默认正文补上。 */
 const PAGES = {
   ai_auto_tags: {
-    title: 'AI自动标签分类方法',
+    title: 'AI自动标签方法',
     body: 'Pro 用户在内容解析成功后，如果这篇还没有标签，AI 会根据正文自动打上标签。\n\n标签完成后，会显示在内容上。已经有标签的内容不会重复自动打标。',
   },
 };
