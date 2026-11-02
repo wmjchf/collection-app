@@ -1,6 +1,4 @@
 const { pool } = require('../db');
-const tagModuleService = require('./tagModuleService');
-const tagService = require('./tagService');
 const {
   AGE_RANGES,
   SOURCES,
@@ -38,65 +36,6 @@ function parseInterests(raw) {
     }
   }
   return [];
-}
-
-async function ensureModule(userId, name) {
-  try {
-    return await tagModuleService.createModule(userId, name);
-  } catch (err) {
-    if (err && err.status === 409) {
-      const [rows] = await pool.execute(
-        `SELECT * FROM tag_modules
-         WHERE user_id = :userId AND name = :name
-         LIMIT 1`,
-        { userId, name },
-      );
-      if (rows[0]) {
-        return { ...tagModuleService.mapModule(rows[0]), tags: [] };
-      }
-    }
-    throw err;
-  }
-}
-
-async function ensureTag(userId, name, moduleId) {
-  try {
-    return await tagService.createTag(userId, name, { moduleId });
-  } catch (err) {
-    if (err && err.status === 409) {
-      const [rows] = await pool.execute(
-        `SELECT c.*, 0 AS item_count FROM categories c
-         WHERE c.user_id = :userId AND c.section = 'tag' AND c.name = :name
-         LIMIT 1`,
-        { userId, name },
-      );
-      if (rows[0]) {
-        const tag = tagService.mapTag(rows[0]);
-        if (tag.moduleId !== moduleId) {
-          await tagService.placeTag(userId, tag.id, { moduleId });
-          return { ...tag, moduleId };
-        }
-        return tag;
-      }
-    }
-    throw err;
-  }
-}
-
-async function seedInterests(userId, interestIds) {
-  const seeded = [];
-  for (const id of interestIds) {
-    const cat = getInterestById(id);
-    if (!cat) continue;
-    const mod = await ensureModule(userId, cat.name);
-    const tags = [];
-    for (const tagName of cat.tags) {
-      const tag = await ensureTag(userId, tagName, mod.id);
-      tags.push(tag.name);
-    }
-    seeded.push({ id: cat.id, name: cat.name, moduleId: mod.id, tags });
-  }
-  return seeded;
 }
 
 /**
@@ -144,8 +83,7 @@ async function submitSurvey(userId, body) {
     }
   }
 
-  const seeded = await seedInterests(userId, interests);
-
+  // 只记录兴趣偏好，不预置归类匣 / 标签
   await pool.execute(
     `UPDATE users
      SET survey_completed_at = CURRENT_TIMESTAMP(3),
@@ -168,7 +106,6 @@ async function submitSurvey(userId, body) {
     ageRange,
     source,
     interests,
-    seeded,
   };
 }
 
