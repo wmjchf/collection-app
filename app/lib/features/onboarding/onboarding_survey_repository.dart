@@ -18,19 +18,34 @@ class OnboardingSurveyRepository {
     return token;
   }
 
-  Future<({bool surveyCompleted})> fetchStatus() async {
+  Future<({bool surveyCompleted, String? organizeStyle, List<String> interests})>
+      fetchStatus() async {
     final token = await _token();
     final json = await _api.get(
       '/api/onboarding/survey',
       accessToken: token,
     );
-    return (surveyCompleted: json['surveyCompleted'] == true);
+    final style = json['organizeStyle']?.toString();
+    final rawInterests = json['interests'];
+    final interests = <String>[];
+    if (rawInterests is List) {
+      for (final e in rawInterests) {
+        final id = e?.toString().trim() ?? '';
+        if (id.isNotEmpty) interests.add(id);
+      }
+    }
+    return (
+      surveyCompleted: json['surveyCompleted'] == true,
+      organizeStyle: (style == null || style.isEmpty) ? null : style,
+      interests: interests,
+    );
   }
 
   Future<void> submit({
     required String ageRange,
     required String source,
     required List<String> interests,
+    String? organizeStyle,
   }) async {
     final token = await _token();
     await _api.post(
@@ -39,6 +54,8 @@ class OnboardingSurveyRepository {
         'ageRange': ageRange,
         'source': source,
         'interests': interests,
+        if (organizeStyle != null && organizeStyle.isNotEmpty)
+          'organizeStyle': organizeStyle,
       },
       accessToken: token,
     );
@@ -49,6 +66,15 @@ class OnboardingSurveyRepository {
     await _api.post(
       '/api/onboarding/survey',
       body: {'skipped': true},
+      accessToken: token,
+    );
+  }
+
+  Future<void> updateOrganizeStyle(String organizeStyle) async {
+    final token = await _token();
+    await _api.post(
+      '/api/onboarding/organize-style',
+      body: {'organizeStyle': organizeStyle},
       accessToken: token,
     );
   }

@@ -7,6 +7,10 @@ const {
   SOURCES,
   SOURCE_LABELS,
 } = require('../services/onboardingInterestCatalog');
+const {
+  ORGANIZE_STYLES,
+  ORGANIZE_STYLE_META,
+} = require('../services/organizeStyleCatalog');
 
 const router = express.Router();
 
@@ -27,6 +31,9 @@ router.get('/survey', async (req, res, next) => {
           label: SOURCE_LABELS[id] || id,
         })),
         interests: listInterestOptions(),
+        organizeStyles: ORGANIZE_STYLES.map((id) => ({
+          ...ORGANIZE_STYLE_META[id],
+        })),
       },
     });
   } catch (err) {
@@ -36,13 +43,30 @@ router.get('/survey', async (req, res, next) => {
 
 /**
  * POST /api/onboarding/survey
- * body: { skipped?: true } | { ageRange, source, interests: string[] }
+ * body: { skipped?: true } | { ageRange, source, interests: string[], organizeStyle?: string }
  */
 router.post('/survey', async (req, res, next) => {
   try {
     const result = await onboardingSurveyService.submitSurvey(
       req.auth.userId,
       req.body || {},
+    );
+    return res.json(result);
+  } catch (err) {
+    return next(err);
+  }
+});
+
+/**
+ * POST /api/onboarding/organize-style
+ * body: { organizeStyle: 'coarse'|'topic'|'fine' }
+ * 问卷完成后也可单独更新（归类页入口）。
+ */
+router.post('/organize-style', async (req, res, next) => {
+  try {
+    const result = await onboardingSurveyService.updateOrganizeStyle(
+      req.auth.userId,
+      req.body?.organizeStyle,
     );
     return res.json(result);
   } catch (err) {

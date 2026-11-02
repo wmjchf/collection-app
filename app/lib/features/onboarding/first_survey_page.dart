@@ -6,10 +6,11 @@ import 'package:super_collection/core/ui/app_form_width.dart';
 import 'package:super_collection/core/ui/app_toast.dart';
 import 'package:super_collection/features/onboarding/onboarding_flow.dart';
 import 'package:super_collection/features/onboarding/onboarding_survey_repository.dart';
+import 'package:super_collection/features/onboarding/organize_style_page.dart';
 import 'package:super_collection/features/onboarding/survey_catalog.dart';
 import 'package:super_collection/features/onboarding/survey_prefs.dart';
 
-/// 首次问卷：三页各一题（年龄 / 来源 / 兴趣类），可跳过
+/// 首次问卷：四页（年龄 / 来源 / 兴趣类 / 归类习惯），可跳过
 class FirstSurveyPage extends StatefulWidget {
   const FirstSurveyPage({super.key, required this.userId});
 
@@ -23,7 +24,7 @@ class _FirstSurveyPageState extends State<FirstSurveyPage> {
   static const _text = Color(0xFF1F242E);
   static const _muted = Color(0xFF737A85);
   static const _blue = Color(0xFF2F6FED);
-  static const _stepCount = 3;
+  static const _stepCount = 4;
 
   final _repo = OnboardingSurveyRepository();
   final _pageController = PageController();
@@ -32,6 +33,7 @@ class _FirstSurveyPageState extends State<FirstSurveyPage> {
   String? _ageRange;
   String? _source;
   final Set<String> _interests = {};
+  String? _organizeStyle;
   bool _busy = false;
 
   bool get _canAdvance {
@@ -42,6 +44,8 @@ class _FirstSurveyPageState extends State<FirstSurveyPage> {
         return _source != null;
       case 2:
         return _interests.isNotEmpty;
+      case 3:
+        return _organizeStyle != null;
       default:
         return false;
     }
@@ -94,12 +98,14 @@ class _FirstSurveyPageState extends State<FirstSurveyPage> {
     final age = _ageRange!;
     final source = _source!;
     final interests = _interests.toList();
+    final organizeStyle = _organizeStyle;
     setState(() => _busy = true);
     try {
       await _repo.submit(
         ageRange: age,
         source: source,
         interests: interests,
+        organizeStyle: organizeStyle,
       );
       Analytics.instance.surveySubmit(
         source: source,
@@ -212,6 +218,17 @@ class _FirstSurveyPageState extends State<FirstSurveyPage> {
                                     }),
                           ),
                       ],
+                    ),
+                  ),
+                  _SurveyStep(
+                    title: '对照三种归类，选更像你的',
+                    hint: '题目来自你的兴趣；每组点一种，答完按多数定习惯',
+                    child: OrganizeStylePage(
+                      key: ValueKey(_interests.join(',')),
+                      embedded: true,
+                      interestIds: _interests.toList(),
+                      initialStyle: _organizeStyle,
+                      onSelected: (id) => setState(() => _organizeStyle = id),
                     ),
                   ),
                 ],

@@ -510,6 +510,16 @@ async function suggestOrganize(
   const exclusiveGroups = await loadExclusiveArticleGroups(userId, targetIds);
   const exclusiveText = formatExclusiveGroupsText(exclusiveGroups, tagById);
 
+  const onboardingSurveyService = require('./onboardingSurveyService');
+  const { organizeStylePromptHint } = require('./organizeStyleCatalog');
+  let organizeStyle = null;
+  try {
+    organizeStyle = await onboardingSurveyService.getOrganizeStyle(userId);
+  } catch {
+    organizeStyle = null;
+  }
+  const styleHint = organizeStylePromptHint(organizeStyle);
+
   const moduleById = new Map(
     (modules || []).map((m) => [Number(m.id), m]),
   );
@@ -518,10 +528,11 @@ async function suggestOrganize(
   const userParts = [
     catalog,
     exclusiveText,
+    styleHint,
     hintText ? `用户补充偏好：${hintText}` : '',
     mode === 'full'
-      ? '请全量重排【可重排标签】：粒度取议题/品类级（比科技/生活细一点，比单篇热词粗很多）；同篇独有组禁止整组进同一架、禁止新建架整架只用同一组；专名进主题架；能归尽量归，未归类≤20%。【锁定标签】禁止输出、禁止挪动。看各架「已有←」再挂架。'
-      : '请只安置待安置标签；锁定标签不动。粒度同议题/品类级；同篇独有组禁止整组进同一架；优先并入已有架；能并入的尽量并入。看各架「已有←」。',
+      ? '请全量重排【可重排标签】：先遵守【用户分类习惯】；同篇独有组同一架最多 2 个；专名进主题架；能归尽量归，未归类≤20%。【锁定标签】禁止输出、禁止挪动。看各架「已有←」再挂架。'
+      : '请只安置待安置标签；锁定标签不动。先遵守【用户分类习惯】；同篇独有组同一架最多 2 个；优先并入已有架；能并入的尽量并入。看各架「已有←」。',
   ].filter(Boolean);
 
   const messages = [

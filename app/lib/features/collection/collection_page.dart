@@ -15,6 +15,7 @@ import 'package:super_collection/features/collection/tag_models.dart';
 import 'package:super_collection/features/collection/tag_module_models.dart';
 import 'package:super_collection/features/collection/tag_modules_repository.dart';
 import 'package:super_collection/features/collection/tags_repository.dart';
+import 'package:super_collection/features/onboarding/organize_style_page.dart';
 import 'package:super_collection/features/settings/usage_repository.dart';
 import 'package:super_collection/features/shell/tablet_items_split.dart';
 import 'package:super_collection/features/shell/user_avatar_button.dart';
@@ -182,6 +183,14 @@ class _CollectionPageState extends State<CollectionPage> {
     final module = await showCreateModuleSheet(context);
     if (module == null || !mounted) return;
     await _load(quiet: true);
+  }
+
+  Future<void> _openOrganizeStyle() async {
+    await Navigator.of(context).push<String>(
+      MaterialPageRoute<String>(
+        builder: (_) => const OrganizeStylePage(),
+      ),
+    );
   }
 
   Future<void> _renameModule(TagModule module) async {
@@ -577,6 +586,7 @@ class _CollectionPageState extends State<CollectionPage> {
                           onRenameModule: _renameModule,
                           onDeleteModule: _deleteModule,
                           onCreateModule: _createModule,
+                          onOrganizeStyle: _openOrganizeStyle,
                           onPlaceTag: _placeTag,
                         ),
                       ),
