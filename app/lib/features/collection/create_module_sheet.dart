@@ -23,8 +23,6 @@ Future<TagModule?> _showModuleNameSheet(
 }) {
   return showAppBottomSheet<TagModule>(
     context: context,
-    // 底部安全区由 shell 处理，避免与 sheet 内 padding 叠加
-    padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
     builder: (context) => _ModuleNameSheet(module: module),
   );
 }
@@ -108,21 +106,47 @@ class _ModuleNameSheetState extends State<_ModuleNameSheet> {
     }
   }
 
+  InputDecoration _fieldDecoration({required String hint}) {
+    return InputDecoration(
+      hintText: hint,
+      hintStyle: const TextStyle(fontSize: 15, color: _muted),
+      filled: true,
+      fillColor: _fieldBg,
+      contentPadding: const EdgeInsets.all(14),
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: BorderSide.none,
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: BorderSide.none,
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: const BorderSide(color: _blue, width: 1.5),
+      ),
+      disabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: BorderSide.none,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    // 底部安全区由 AppBottomSheetShell 处理
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-      child: Material(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(24),
-        clipBehavior: Clip.antiAlias,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
+    // 与「新建标签」同壳：白底圆角卡 + 顶栏拖条，外边距交给 AppBottomSheetShell
+    return Material(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(24),
+      clipBehavior: Clip.antiAlias,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Center(
+              child: Container(
                 width: 40,
                 height: 4,
                 decoration: BoxDecoration(
@@ -130,104 +154,75 @@ class _ModuleNameSheetState extends State<_ModuleNameSheet> {
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
-              const SizedBox(height: 12),
-              SizedBox(
-                height: 27,
-                child: Align(
-                  alignment: Alignment.centerLeft,
-                  child: Text(
-                    _isRename ? '修改名称' : '新建归类',
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w700,
-                      color: _text,
-                    ),
-                  ),
-                ),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              _isRename ? '修改名称' : '新建归类',
+              style: const TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w700,
+                color: _text,
               ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: _controller,
-                enabled: !_submitting,
-                autofocus: true,
-                textInputAction: TextInputAction.done,
-                style: const TextStyle(fontSize: 15, color: _text),
-                onChanged: (_) {
-                  if (_error != null) setState(() => _error = null);
-                },
-                onSubmitted: (_) => _onSubmit(),
-                decoration: InputDecoration(
-                  hintText: '例如：工作 / 学习',
-                  hintStyle: const TextStyle(fontSize: 15, color: _muted),
-                  filled: true,
-                  fillColor: _fieldBg,
-                  contentPadding: const EdgeInsets.all(14),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide.none,
-                  ),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide.none,
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: const BorderSide(color: _blue, width: 1.5),
-                  ),
-                  disabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide.none,
-                  ),
-                ),
-              ),
-              if (_error != null) ...[
-                const SizedBox(height: 8),
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: Text(
-                    _error!,
-                    style: const TextStyle(
-                      fontSize: 12,
-                      color: Color(0xFFE34D59),
-                    ),
-                  ),
-                ),
-              ],
-              const SizedBox(height: 12),
-              SizedBox(
-                width: double.infinity,
-                child: FilledButton(
-                  onPressed: _submitting ? null : _onSubmit,
-                  style: FilledButton.styleFrom(
-                    backgroundColor: _blue,
-                    disabledBackgroundColor: _blue.withValues(alpha: 0.6),
-                    foregroundColor: Colors.white,
-                    disabledForegroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  ),
-                  child: _submitting
-                      ? const SizedBox(
-                          width: 18,
-                          height: 18,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: Colors.white,
-                          ),
-                        )
-                      : Text(
-                          _isRename ? '保存' : '创建',
-                          style: const TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: _controller,
+              enabled: !_submitting,
+              autofocus: true,
+              textInputAction: TextInputAction.done,
+              style: const TextStyle(fontSize: 15, color: _text),
+              onChanged: (_) {
+                if (_error != null) setState(() => _error = null);
+              },
+              onSubmitted: (_) => _onSubmit(),
+              decoration: _fieldDecoration(hint: '例如：工作 / 学习'),
+            ),
+            if (_error != null) ...[
+              const SizedBox(height: 10),
+              Text(
+                _error!,
+                style: const TextStyle(
+                  fontSize: 13,
+                  color: Color(0xFFD14343),
+                  height: 1.35,
                 ),
               ),
             ],
-          ),
+            const SizedBox(height: 16),
+            SizedBox(
+              width: double.infinity,
+              height: 48,
+              child: FilledButton(
+                onPressed: _submitting ? null : _onSubmit,
+                style: FilledButton.styleFrom(
+                  backgroundColor: _blue,
+                  disabledBackgroundColor: _blue.withValues(alpha: 0.45),
+                  foregroundColor: Colors.white,
+                  disabledForegroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  elevation: 0,
+                ),
+                child: _submitting
+                    ? const SizedBox(
+                        width: 22,
+                        height: 22,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2.2,
+                          color: Colors.white,
+                        ),
+                      )
+                    : Text(
+                        _isRename ? '保存' : '创建',
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+              ),
+            ),
+          ],
         ),
       ),
     );
