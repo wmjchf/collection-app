@@ -493,8 +493,10 @@ class _CollectionPageState extends State<CollectionPage> {
       );
     }
 
+    // 新建归类等弹层自己避让键盘；避免灰底随 inset 抬起露在遮罩外
     return Scaffold(
       backgroundColor: _bg,
+      resizeToAvoidBottomInset: false,
       appBar: tablet ? null : _buildAppBar(),
       body: RefreshIndicator(
         onRefresh: _load,

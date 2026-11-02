@@ -1867,6 +1867,8 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
       },
       child: Scaffold(
       backgroundColor: Colors.white,
+      // 感想等弹层自己避让键盘，页面不随 inset 收缩
+      resizeToAvoidBottomInset: false,
       body: Stack(
         children: [
           AnimatedPadding(
