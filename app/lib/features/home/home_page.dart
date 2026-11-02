@@ -759,6 +759,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
 
     return Scaffold(
       backgroundColor: _bg,
+      resizeToAvoidBottomInset: false,
       appBar: AppBar(
         backgroundColor: Colors.white,
         surfaceTintColor: Colors.transparent,

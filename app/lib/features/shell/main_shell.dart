@@ -184,8 +184,10 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
       ],
     );
 
+    // 弹层自己处理键盘；若此处随键盘收缩，灰底会从遮罩下露出来
     return Scaffold(
       key: _scaffoldKey,
+      resizeToAvoidBottomInset: false,
       onDrawerChanged: _onDrawerChanged,
       drawer: const AccountDrawer(),
       extendBody: !tablet,
