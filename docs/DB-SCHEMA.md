@@ -78,7 +78,6 @@
 | survey_age_range | VARCHAR(32) NULL | 年龄段 |
 | survey_source | VARCHAR(32) NULL | 获客来源 id |
 | survey_interests | JSON NULL | 所选兴趣类 id 列表 |
-| survey_organize_style | VARCHAR(16) NULL | 分类习惯：`coarse`/`topic`/`fine`（迁移 `038`） |
 | tag_organize_full_at | DATETIME(3) NULL | 上次标签全量重排（迁移 `037`） |
 | tag_organize_ai_created_since | INT NOT NULL DEFAULT 0 | 距上次全量新建的 AI 标签数 |
 | created_at / updated_at | DATETIME(3) | |
