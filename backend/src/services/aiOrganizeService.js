@@ -31,12 +31,18 @@ const ORGANIZE_SYSTEM_PROMPT_FULL = `你是收藏整理助手。把用户的标�
 【输入】
 - 【锁定标签】：id、名称、所在归类。禁止挪动，输出中不得出现其 id
 - 【可重排标签】：id、名称、说明、当前归类（可能为空）
-- 【现有归类】：id、名称
+- 【现有归类】：id、名称、架内已有标签（含可重排与锁定）——判断是否保留时必须看这些，不要只看架名
+
+【默认保持（最重要）】
+- 已在某架、且说明仍贴合该架主题 → **禁止挪走**；用同一 existingModuleId，name 用原名
+- 拿不准是否更好 → **保持现状**；禁止为「看起来整齐」而大挪、大拆、大改名
+- 可重排标签总数很少（不足约 8 个）时：禁止拆架、禁止大规模改名；只允许把明显未归类/明显错架的并入已有主题
+- 优先复用【现有归类】的 existingModuleId；少新建、少改名
 
 【目标】
 - 归类 = 主题书架：按话题归拢标签
 - 全部归类合计约 6～15 个；单个归类一般 3～15 个标签，超过 15 个才考虑拆细
-- 只有明显更好才改；拿不准就保持，不要为拆而拆
+- 只有明显更好才改；不要为拆而拆
 
 【归类名 = 书架牌，不是标签复印】
 - 2～8 字，概括架内多数标签的共同主题（看说明，不看谁名字最响）
@@ -59,6 +65,23 @@ const ORGANIZE_SYSTEM_PROMPT_FULL = `你是收藏整理助手。把用户的标�
 8. ungroupedTagIds 不超过可重排的 20%；能归主题的尽量归
 
 只输出 JSON：{"modules":[{"name":"归类名","existingModuleId":null,"tagIds":[1,2]}],"ungroupedTagIds":[3]}`;
+
+/** 归类目录里每架最多展示的已有标签名数 */
+const SHELF_TAG_PREVIEW_MAX = 12;
+
+function formatShelfPreview(module) {
+  const shelfTags = (module.tags || []).filter((t) => !t.isSystem);
+  const preview = shelfTags
+    .slice(0, SHELF_TAG_PREVIEW_MAX)
+    .map((t) => String(t.name || '').trim())
+    .filter(Boolean);
+  if (!preview.length) return '（空）';
+  const more =
+    shelfTags.length > SHELF_TAG_PREVIEW_MAX
+      ? `…等${shelfTags.length}个`
+      : '';
+  return preview.join('、') + more;
+}
 
 function formatTagLine(t) {
   const name = String(t.name || '').trim();
@@ -138,12 +161,15 @@ function buildCatalogText(modules, ungrouped, { mode }) {
     for (const m of modules) {
       const mid = Number(m.id);
       const locked = lockedByModule.get(mid) || [];
+      const shelfText = formatShelfPreview(m);
       if (isFull) {
-        lines.push(`- id=${m.id}「${m.name}」`);
+        lines.push(`- id=${m.id}「${m.name}」已有← ${shelfText}`);
       } else {
         const lockedText =
-          locked.map((t) => formatTagLine(t)).join('、') || '（无锁定标签）';
-        lines.push(`- 模块 id=${m.id}「${m.name}」锁定← ${lockedText}`);
+          locked.map((t) => formatTagLine(t)).join('、') || '（无）';
+        lines.push(
+          `- 模块 id=${m.id}「${m.name}」已有← ${shelfText}；锁定← ${lockedText}`,
+        );
       }
     }
   } else {
@@ -391,8 +417,8 @@ async function suggestOrganize(
     catalog,
     hintText ? `用户补充偏好：${hintText}` : '',
     mode === 'full'
-      ? '请按目标与规则重排【可重排标签】；【锁定标签】保持不动。'
-      : '请只安置待安置标签；锁定标签保持不动。',
+      ? '请按【默认保持】与规则整理【可重排标签】：能不改就不改；【锁定标签】禁止出现在输出中。看【现有归类】的「已有←」再决定是否保留 existingModuleId。'
+      : '请只安置待安置标签；锁定标签保持不动。看各架「已有←」再决定并入哪一架。',
   ].filter(Boolean);
 
   const messages = [
@@ -588,7 +614,8 @@ async function applyOrganize(userId, body) {
 }
 
 /**
- * 自动打标后：太子+ 每次全量重排可挪 AI 标签（ORGANIZE_SYSTEM_PROMPT_FULL）。
+ * 自动打标后：太子+ 每次全量重排可挪 AI 标签。
+ * 单篇标签少、库尚浅时增量容易挂偏；全量用整库标签一起定架更稳。
  */
 async function autoOrganizeAfterTags(userId) {
   try {
