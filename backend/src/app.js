@@ -110,6 +110,7 @@ app.use('/api/tag-modules', require('./routes/tagModules'));
 app.use('/api/system-filters', systemFiltersRouter);
 app.use('/api/home', homeRouter);
 app.use('/api/usage', usageRouter);
+app.use('/api/agent', require('./routes/agent'));
 app.use('/api/billing', billingRouter);
 app.use('/api/analytics', analyticsRouter);
 app.use('/api/help', require('./routes/help'));
@@ -123,6 +124,8 @@ app.use((err, _req, res, _next) => {
   };
   if (err.code) body.code = err.code;
   if (err.quotaKind) body.quotaKind = err.quotaKind;
+  if (err.requiredPlan) body.requiredPlan = err.requiredPlan;
+  if (err.feature) body.feature = err.feature;
   res.status(status).json(body);
 });
 

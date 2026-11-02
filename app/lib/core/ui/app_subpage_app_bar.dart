@@ -5,10 +5,15 @@ class AppSubpageAppBar extends StatelessWidget implements PreferredSizeWidget {
   const AppSubpageAppBar({
     super.key,
     required this.title,
+    this.titleTrailing,
     this.actions,
   });
 
   final String title;
+
+  /// 紧跟标题的尾标（如「太子Pro」胶囊），与标题同一行居中。
+  final Widget? titleTrailing;
+
   final List<Widget>? actions;
 
   static const _text = Color(0xFF1F242E);
@@ -19,6 +24,25 @@ class AppSubpageAppBar extends StatelessWidget implements PreferredSizeWidget {
 
   @override
   Widget build(BuildContext context) {
+    final titleText = Text(
+      title,
+      style: const TextStyle(
+        fontSize: 17,
+        fontWeight: FontWeight.w700,
+        color: _text,
+      ),
+    );
+    final titleWidget = titleTrailing == null
+        ? titleText
+        : Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              titleText,
+              const SizedBox(width: 8),
+              titleTrailing!,
+            ],
+          );
+
     return AppBar(
       backgroundColor: Colors.white,
       surfaceTintColor: Colors.transparent,
@@ -38,14 +62,7 @@ class AppSubpageAppBar extends StatelessWidget implements PreferredSizeWidget {
           style: TextStyle(fontSize: 15, fontWeight: FontWeight.w400),
         ),
       ),
-      title: Text(
-        title,
-        style: const TextStyle(
-          fontSize: 17,
-          fontWeight: FontWeight.w700,
-          color: _text,
-        ),
-      ),
+      title: titleWidget,
       actions: actions ?? const [SizedBox(width: _side)],
     );
   }

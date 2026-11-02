@@ -42,7 +42,9 @@ function estimateAiTokens({ messages = [], feature = 'tags', extraChars = 0 } = 
         ? AI_COMPLETION_RESERVE.summary
         : feature === 'organize'
           ? AI_COMPLETION_RESERVE.organize
-          : AI_COMPLETION_RESERVE.tags;
+          : feature === 'agent'
+            ? AI_COMPLETION_RESERVE.summary
+            : AI_COMPLETION_RESERVE.tags;
   return Math.max(1, promptEst + reserve);
 }
 
@@ -297,7 +299,7 @@ function billableAiTokensFromUsage(usage) {
 
 /**
  * AI 标签 / 思维导图 / 归类共用 token 池。
- * @param {{ userId: number, itemId?: number|null, feature: 'tags'|'mindmap'|'summary'|'organize', tokens: number, generatedAt?: string, meta?: object }} args
+ * @param {{ userId: number, itemId?: number|null, feature: 'tags'|'mindmap'|'summary'|'organize'|'agent', tokens: number, generatedAt?: string, meta?: object }} args
  */
 async function recordAiTokenUsage({
   userId,
@@ -322,7 +324,9 @@ async function recordAiTokenUsage({
         ? 'summary'
         : feature === 'organize'
           ? 'organize'
-          : 'tags';
+          : feature === 'agent'
+            ? 'agent'
+            : 'tags';
   const key =
     itemId != null
       ? `ai:${feat}:${userId}:${itemId}:${generatedAt || Date.now()}`
@@ -509,6 +513,8 @@ function aiFeatureLabel(feature) {
       return 'AI 标签归类';
     case 'tags':
       return 'AI 标签';
+    case 'agent':
+      return '私人助手';
     default:
       return 'AI';
   }
@@ -701,6 +707,7 @@ async function getUsageSummary(userId) {
       aiSummary: planService.hasPrince(normalizedPlan),
       aiOrganize: planService.hasPrince(normalizedPlan),
       aiMindmap: planService.hasPrince(normalizedPlan),
+      aiAgent: planService.hasPrince(normalizedPlan),
       transcript: planService.hasPrince(normalizedPlan),
       unlimitedItems,
     },

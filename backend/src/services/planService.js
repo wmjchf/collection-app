@@ -20,6 +20,7 @@ const FEATURE_MIN_PLAN = {
   ai_summary: PLAN_PRINCE,
   ai_organize: PLAN_PRINCE,
   ai_mindmap: PLAN_PRINCE,
+  ai_agent: PLAN_PRINCE,
   transcript: PLAN_PRINCE,
   item_create: PLAN_BASIC,
 };
@@ -29,6 +30,7 @@ const FEATURE_MESSAGES = {
   ai_summary: '订阅太子后可使用 AI 解读',
   ai_organize: '订阅太子后可使用 AI 标签归类',
   ai_mindmap: '订阅太子后可使用 AI 思维导图',
+  ai_agent: '订阅太子后可使用私人助手',
   transcript: '订阅太子后可使用视频转写',
   item_create: '收藏已达上限，开通普通会员（一次买断）后可永久无限收藏',
 };
