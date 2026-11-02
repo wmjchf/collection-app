@@ -66,6 +66,8 @@ module.exports = {
     /** 解读 + 总结（与打标同级，默认 flash） */
     aiModelSummary:
       process.env.ALIYUN_AI_MODEL_SUMMARY || 'qwen3.8-flash',
+    /** 私人助手编排（P1 查库，默认 flash） */
+    aiModelAgent: process.env.ALIYUN_AI_MODEL_AGENT || 'qwen3.8-flash',
   },
   /**
    * 月额度：free / basic / prince / emperor；USAGE_ENFORCING 控制触顶（默认 true）

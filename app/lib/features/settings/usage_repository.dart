@@ -63,6 +63,7 @@ class UsageFeatures {
     required this.aiSummary,
     required this.aiOrganize,
     required this.aiMindmap,
+    required this.aiAgent,
     required this.transcript,
     required this.unlimitedItems,
   });
@@ -71,6 +72,7 @@ class UsageFeatures {
   final bool aiSummary;
   final bool aiOrganize;
   final bool aiMindmap;
+  final bool aiAgent;
   final bool transcript;
   final bool unlimitedItems;
 
@@ -79,6 +81,7 @@ class UsageFeatures {
     aiSummary: false,
     aiOrganize: false,
     aiMindmap: false,
+    aiAgent: false,
     transcript: false,
     unlimitedItems: false,
   );
@@ -90,6 +93,7 @@ class UsageFeatures {
       aiSummary: json['aiSummary'] as bool? ?? false,
       aiOrganize: json['aiOrganize'] as bool? ?? false,
       aiMindmap: json['aiMindmap'] as bool? ?? false,
+      aiAgent: json['aiAgent'] as bool? ?? false,
       transcript: json['transcript'] as bool? ?? false,
       unlimitedItems: json['unlimitedItems'] as bool? ?? false,
     );

@@ -11,6 +11,7 @@ import 'package:super_collection/core/ui/parse_progress_tracker.dart';
 import 'package:super_collection/core/ui/pro_copy.dart';
 import 'package:super_collection/core/utils/clipboard_utils.dart';
 import 'package:super_collection/core/utils/link_utils.dart';
+import 'package:super_collection/features/agent/agent_page.dart';
 import 'package:super_collection/features/auth/auth_repository.dart';
 import 'package:super_collection/core/ui/app_orientation.dart';
 import 'package:super_collection/features/collection/system_filter_list_page.dart';
@@ -388,6 +389,19 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         showSkip: false,
         onConfirm: () => unawaited(_finishCoach()),
       ),
+    );
+  }
+
+  Future<void> _openAgent() async {
+    final allowed = await ensurePlanFeatures(
+      context,
+      requirements: [
+        (has: (f) => f.aiAgent, tier: UsagePlan.prince),
+      ],
+    );
+    if (!allowed || !mounted) return;
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(builder: (_) => const AgentPage()),
     );
   }
 
@@ -776,6 +790,29 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
           ),
         ),
         actions: [
+          Padding(
+            padding: const EdgeInsets.only(right: 4),
+            child: TextButton(
+              onPressed: _openAgent,
+              style: TextButton.styleFrom(
+                foregroundColor: _blue,
+                backgroundColor: const Color(0xFFE8F0FF),
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                minimumSize: Size.zero,
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                shape: const StadiumBorder(
+                  side: BorderSide(color: Color(0xFFD0DFFC)),
+                ),
+              ),
+              child: const Text(
+                '✦ 助手',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ),
           Padding(
             padding: const EdgeInsets.only(right: 8),
             child: IconButton(
