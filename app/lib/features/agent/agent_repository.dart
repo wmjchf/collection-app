@@ -88,4 +88,12 @@ class AgentRepository {
     );
     return AgentTurnResult.fromJson(json);
   }
+
+  /// 归档会话（列表不再展示；等同删除当前聊天记录）
+  Future<void> archiveConversation(int id) async {
+    await _client.delete(
+      '/api/agent/conversations/$id',
+      accessToken: await _token(),
+    );
+  }
 }
