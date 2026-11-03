@@ -61,12 +61,12 @@ module.exports = {
     dashScopeApiRoot: process.env.DASHSCOPE_API_ROOT || '',
     /** 脑图等默认模型 */
     aiModel: process.env.ALIYUN_AI_MODEL || 'qwen3.8-max',
-    /** 打标 / 自动归类（调用量大，用更便宜的 flash） */
+    /** 打标 / AI 填入归类（调用量大，用更便宜的 flash） */
     aiModelTags: process.env.ALIYUN_AI_MODEL_TAGS || 'qwen3.8-flash',
     /** 解读 + 总结（与打标同级，默认 flash） */
     aiModelSummary:
       process.env.ALIYUN_AI_MODEL_SUMMARY || 'qwen3.8-flash',
-    /** 私人助手编排（P1 查库，默认 flash） */
+    /** AI助手编排（P1 查库，默认 flash） */
     aiModelAgent: process.env.ALIYUN_AI_MODEL_AGENT || 'qwen3.8-flash',
   },
   /**

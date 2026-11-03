@@ -14,8 +14,11 @@ const {
   MAX_SEARCH_QUERIES,
   MAX_EXCERPTS,
   MAX_LIST_ITEMS,
+  MAX_ANSWER_CITATIONS,
   assertCitationsAllowed,
 } = require('./agentPolicy');
+const { resolveListTimeRange } = require('./listTimeRange');
+const { resolveListLibraryFilter } = require('./listLibraryFilter');
 
 function agentModel() {
   return config.aliyun.aiModelAgent || config.aliyun.aiModelSummary || 'qwen3.8-flash';
@@ -182,13 +185,35 @@ async function runUserTurn({
       (plan.intent === 'compare' && !plan.excerptItemIds.length));
 
   if (shouldList) {
-    const obs = await executeTool('list_library', ctx, {
+    const listMore = looksLikeMoreList(text);
+    const excludeItemIds = listMore
+      ? uniqueIds(priorCitations.map((c) => c.itemId))
+      : [];
+    // 最近阅读 / 批注：对齐收藏页系统筛选；今天等时间窗其次
+    const sysFilter = resolveListLibraryFilter(text, history);
+    const timeRange = sysFilter ? null : resolveListTimeRange(text, history);
+    const listArgs = {
       limit: MAX_LIST_ITEMS,
-    });
+      ...(excludeItemIds.length ? { excludeItemIds } : {}),
+      ...(sysFilter
+        ? {
+            filter: sysFilter.filter,
+            rangeLabel: sysFilter.label,
+          }
+        : {}),
+      ...(timeRange
+        ? {
+            createdAfter: timeRange.createdAfter,
+            createdBefore: timeRange.createdBefore,
+            rangeLabel: timeRange.label,
+          }
+        : {}),
+    };
+    const obs = await executeTool('list_library', ctx, listArgs);
     toolTrace.push({
       tool: 'list_library',
       ok: Boolean(obs.ok),
-      args: { limit: MAX_LIST_ITEMS },
+      args: listArgs,
     });
     observations.push({ tool: 'list_library', ...obs });
     for (const c of obs.citations || []) {
@@ -382,7 +407,7 @@ async function runUserTurn({
         answerResult.json?.citation_item_ids ||
         [],
       allowedIds,
-    );
+    ).slice(0, MAX_ANSWER_CITATIONS);
   }
 
   if (!contentOut) {
@@ -397,8 +422,16 @@ async function runUserTurn({
     }
   }
 
-  // 流式无 citation 字段：用本轮摘录；同步路径模型漏标时同样兜底
-  let finalIds = citationIds;
+  // 优先按正文点名的标题对齐出处（避免流式无 citationItemIds 时挂错成观察前几条）
+  const fromContent = resolveCitationIdsFromContent(
+    contentOut,
+    citationMap,
+    allowedIds,
+    MAX_ANSWER_CITATIONS,
+  );
+  let finalIds = fromContent.length
+    ? fromContent
+    : citationIds;
   if (
     !finalIds.length &&
     allowedIds.length &&
@@ -409,19 +442,18 @@ async function runUserTurn({
       plan.intent === 'compare' ||
       looksReferential(text))
   ) {
-    const cap = plan.intent === 'list' ? MAX_LIST_ITEMS : 3;
     finalIds = uniqueIds(
-      plan.intent === 'list'
-        ? allowedIds
-        : excerptIds.length
-          ? excerptIds
-          : allowedIds,
-    ).slice(0, cap);
+      excerptIds.length && plan.intent !== 'list' ? excerptIds : allowedIds,
+    ).slice(0, MAX_ANSWER_CITATIONS);
   }
   // 锚定会话：出处至少带上当前篇（盘点除外）
   if (focusItem && plan.intent !== 'list') {
-    finalIds = uniqueIds([focusItem.itemId, ...finalIds]).slice(0, 3);
+    finalIds = uniqueIds([focusItem.itemId, ...finalIds]).slice(
+      0,
+      MAX_ANSWER_CITATIONS,
+    );
   }
+  finalIds = uniqueIds(finalIds).slice(0, MAX_ANSWER_CITATIONS);
   const citations = finalIds
     .map((id) => citationMap.get(Number(id)))
     .filter(Boolean);
@@ -467,14 +499,19 @@ async function runUserTurn({
   };
 }
 
-/** 去掉回复正文里泄漏的 itemId / id 编号，出处只走 citations 卡片。 */
+/** 去掉回复正文里泄漏的后端字段 / id 编号，出处只走 citations 卡片。 */
 function stripItemIdMentions(text) {
   return String(text || '')
-    .replace(/\bitemId\s*[=:：]?\s*\d+\b/gi, '')
+    .replace(/\bitem[_ ]?ids?\b/gi, '')
+    .replace(/\bcitation[_ ]?item[_ ]?ids?\b/gi, '')
+    .replace(/\bitemId\s*[=:：]?\s*\d*\b/gi, '')
     .replace(/\bid\s*[=:：]\s*\d+\b/gi, '')
+    .replace(/ID\s*映射/gi, '')
+    .replace(/出处[^。\n]{0,24}(对应|映射|挂载|漏标)/g, '')
     .replace(/[（(]\s*#?\s*\d{1,12}\s*[）)]/g, '')
     .replace(/条目\s*\d{1,12}/g, '这篇')
     .replace(/[ \t]{2,}/g, ' ')
+    .replace(/[，,]{2,}/g, '，')
     .replace(/\n{3,}/g, '\n\n')
     .trim();
 }
@@ -601,23 +638,38 @@ function fallbackAnswer({ intent, observations, citationMap, excerptIds }) {
     return '可以再说具体一点吗？比如主题、作者，或你记得的一句话。';
   }
   if (intent === 'chitchat') {
-    return '我是你的私人助手，可以帮你检索收藏、对照内容或深挖原文。想找哪类内容？';
+    return '我是你的AI助手，可以帮你检索收藏、对照内容或深挖原文。想找哪类内容？';
   }
   if (intent === 'list') {
     for (const obs of observations || []) {
       if (obs?.tool !== 'list_library' || !obs.ok || !obs.data) continue;
       const total = Number(obs.data.total) || 0;
       const hits = Array.isArray(obs.data.hits) ? obs.data.hits : [];
-      if (!total) return '你的收藏库目前是空的。';
-      const lines = hits
+      const rangeLabel = String(obs.data.rangeLabel || '').trim();
+      if (!total) {
+        if (rangeLabel === '最近阅读') return '最近 7 天还没有读过的篇目。';
+        if (rangeLabel === '批注') return '还没有批注过的篇目。';
+        return rangeLabel
+          ? `${rangeLabel}还没有新收藏。`
+          : '你的收藏库目前是空的。';
+      }
+      const shown = hits
         .map((h) => String(h.title || '').trim())
         .filter(Boolean)
-        .map((t) => `- ${t}`);
-      const head = `目前收藏库一共有 **${total}** 篇`;
-      if (!lines.length) return `${head}。`;
+        .slice(0, MAX_ANSWER_CITATIONS);
+      const head =
+        rangeLabel === '最近阅读'
+          ? `最近阅读一共 **${total}** 篇`
+          : rangeLabel === '批注'
+            ? `有批注的一共 **${total}** 篇`
+            : rangeLabel
+              ? `${rangeLabel}一共收藏了 **${total}** 篇`
+              : `目前收藏库一共有 **${total}** 篇`;
+      if (!shown.length) return `${head}。`;
+      const lines = shown.map((t) => `- ${t}`);
       const more =
-        obs.data.truncated && hits.length
-          ? `\n\n以下是最近 ${hits.length} 篇：\n`
+        total > shown.length
+          ? `\n\n先看 ${shown.length} 篇；想找某类可以说主题，或点名标题：\n`
           : '：\n\n';
       return `${head}${more}${lines.join('\n')}`;
     }
@@ -733,8 +785,34 @@ function normalizePlan(
     followUp = true;
   }
 
+  // App「选用」写入「标题」：按标题锁定篇目，不必再说第几篇
+  const titlePickIds = resolveTitlePickItemIds(
+    userContent,
+    history,
+    priorCitations,
+  );
+  if (
+    titlePickIds.length &&
+    !followUp &&
+    hasExplicitTitleRef(userContent) &&
+    !looksLikeInventory(userContent) &&
+    !looksLikeMoreList(userContent)
+  ) {
+    if (titlePickIds.length >= 2 && /对照|对比|比较/.test(String(userContent || ''))) {
+      intent = 'compare';
+      queries = [];
+      excerptItemIds = titlePickIds.slice(0, 2);
+      followUp = false;
+    } else {
+      intent = 'search';
+      queries = [];
+      excerptItemIds = titlePickIds.slice(0, MAX_EXCERPTS);
+      followUp = true;
+    }
+  }
+
   // 盘点收藏：强制 list，禁止用「文章」等空泛词搜出残缺结果
-  if (looksLikeInventory(userContent)) {
+  if (looksLikeInventory(userContent) || looksLikeMoreList(userContent)) {
     intent = 'list';
     queries = [];
     excerptItemIds = [];
@@ -754,6 +832,48 @@ function normalizePlan(
   };
 }
 
+/** App「选用」会写入「标题」；有明确书名号/引号才按标题锁定，避免普通检索误伤 */
+function hasExplicitTitleRef(text) {
+  return /「[^」]{4,}」|"[^"]{4,}"|《[^》]{4,}》/.test(String(text || ''));
+}
+
+/**
+ * 用户消息里带了上文出处标题（App「选用」写入「标题」）→ 锁定对应 itemId。
+ */
+function resolveTitlePickItemIds(userContent, history, priorCitations) {
+  const batch = latestCitationBatch(history);
+  const pool = [];
+  const seen = new Set();
+  for (const c of [...batch, ...(priorCitations || [])]) {
+    const id = Number(c?.itemId);
+    if (!Number.isFinite(id) || id <= 0 || seen.has(id)) continue;
+    seen.add(id);
+    pool.push(c);
+  }
+  if (!pool.length) return [];
+
+  const text = normalizeForTitleMatch(userContent);
+  if (text.length < 4) return [];
+
+  const scored = [];
+  for (const c of pool) {
+    const id = Number(c.itemId);
+    const title = normalizeForTitleMatch(c.title || '');
+    if (title.length < 4) continue;
+    let pos = -1;
+    for (const len of [24, 16, 12, 8]) {
+      const needle = title.slice(0, Math.min(len, title.length));
+      if (needle.length < 4) continue;
+      pos = text.indexOf(needle);
+      if (pos >= 0) break;
+    }
+    if (pos < 0) continue;
+    scored.push({ id, pos });
+  }
+  scored.sort((a, b) => a.pos - b.pos);
+  return uniqueIds(scored.map((s) => s.id)).slice(0, MAX_EXCERPTS);
+}
+
 /** 「有哪些收藏 / 收藏了什么 / 有多少篇」→ 浏览库，不是关键词检索 */
 function looksLikeInventory(text) {
   const t = String(text || '').trim();
@@ -767,8 +887,82 @@ function looksLikeInventory(text) {
     /全部收藏/.test(t) ||
     /有多少(篇|条)?(收藏|文章|内容)?/.test(t) ||
     /现在.*收藏/.test(t) ||
-    /收藏.*一共/.test(t)
+    /收藏.*一共/.test(t) ||
+    // 「今天收藏的内容有哪些 / 昨天收了什么」
+    /(今天|今日|昨天|昨日|前天|本周|这周|近一周|本月|这个月|最近).{0,16}(收藏|收了|收的)/.test(
+      t,
+    ) ||
+    /收藏的(内容|文章|东西|条目).{0,8}(有哪些|有什么|哪些|什么)/.test(t) ||
+    /(有哪些|有什么).{0,10}(今天|今日|昨天|昨日).{0,10}(收藏|收的)/.test(t) ||
+    // 收藏页瓷砖：最近阅读 / 批注
+    /(最近阅读|朕已阅|最近读过|最近看过)/.test(t) ||
+    /(最近).{0,4}(读了|看了|阅了).{0,8}(什么|哪些|啥)/.test(t) ||
+    /(有哪些|有什么|哪些|列出|看看|多少).{0,8}(批注|朱批)/.test(t) ||
+    /(批注|朱批).{0,8}(有哪些|有什么|哪些|多少|列表)/.test(t) ||
+    /^(我的)?(批注|朱批)[?？。.!！]?$/.test(t)
   );
+}
+
+/** 「再列出其他 / 还有吗 / 下一批」→ 仍走 list，并排除上文出处 */
+function looksLikeMoreList(text) {
+  const t = String(text || '').trim();
+  if (!t) return false;
+  return (
+    /再(列出|看看|来|举)/.test(t) ||
+    /其他(的)?(文章|篇|收藏|几篇)/.test(t) ||
+    /还有(哪些|别的|其他|更多)/.test(t) ||
+    /换几篇/.test(t) ||
+    /下一批/.test(t) ||
+    /更多(文章|篇|收藏)/.test(t) ||
+    /其余(的)?(文章|篇|收藏)/.test(t)
+  );
+}
+
+/** 去掉引号/标点/空白，便于正文与库标题对齐（弯引号、「家」等） */
+function normalizeForTitleMatch(s) {
+  return String(s || '')
+    .toLowerCase()
+    .replace(/[\s\u3000]/g, '')
+    .replace(
+      /[「」『』《》【】\[\]()（）"'“”‘’`|｜，,。.!！？?：:、·\-—–+/＋]/g,
+      '',
+    );
+}
+
+/**
+ * 用正文里出现的标题，从本轮可引用条目里解析出处顺序。
+ * 解决：模型点名 A/B/C，出处卡却挂成观察列表前 3 条或只挂中上的一篇。
+ */
+function resolveCitationIdsFromContent(content, citationMap, allowedIds, max) {
+  const raw = String(content || '');
+  if (!raw.trim() || !citationMap || !citationMap.size) return [];
+  const text = normalizeForTitleMatch(raw);
+  if (!text) return [];
+  const allow = new Set(
+    (allowedIds || []).map((id) => Number(id)).filter((n) => n > 0),
+  );
+  const scored = [];
+  for (const [id, c] of citationMap.entries()) {
+    const itemId = Number(id);
+    if (!Number.isFinite(itemId) || itemId <= 0) continue;
+    if (allow.size && !allow.has(itemId)) continue;
+    const title = normalizeForTitleMatch(c?.title || '');
+    if (title.length < 4) continue;
+
+    let pos = -1;
+    // 长前缀 → 短前缀；标题含引号时必须两边都 normalize 后再比
+    for (const len of [24, 16, 12, 8, 6]) {
+      if (title.length < Math.min(len, 4)) continue;
+      const needle = title.slice(0, Math.min(len, title.length));
+      if (needle.length < 4) continue;
+      pos = text.indexOf(needle);
+      if (pos >= 0) break;
+    }
+    if (pos < 0) continue;
+    scored.push({ id: itemId, pos });
+  }
+  scored.sort((a, b) => a.pos - b.pos);
+  return uniqueIds(scored.map((s) => s.id)).slice(0, max);
 }
 
 /** 需要读正文再答：观点 / 原话 / 总结 / 展开等 */

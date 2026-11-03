@@ -34,7 +34,7 @@ const DROP = new Set(['script', 'style', 'iframe', 'object', 'embed', 'link', 'm
 const PAGES = {
   ai_auto_tags: {
     title: 'AI自动标签方法',
-    body: 'Pro 用户在内容解析成功后，如果这篇还没有标签，AI 会根据正文自动打上标签。\n\n标签完成后，会显示在内容上。已经有标签的内容不会重复自动打标。',
+    body: 'Pro 用户在内容解析成功后，如果这篇还没有标签，AI 会根据正文自动打标签。\n\n标签完成后显示在内容上；已有标签的内容不会重复自动打标。归类由你新建；也可点 ✦「归类」把标签填进已有归类。',
   },
 };
 

@@ -1,4 +1,4 @@
--- 私人助手 Agent：会话与消息（P1 查库）
+-- AI助手 Agent：会话与消息（P1 查库）
 CREATE TABLE IF NOT EXISTS `agent_conversations` (
   `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
   `user_id` BIGINT UNSIGNED NOT NULL,

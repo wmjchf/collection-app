@@ -510,11 +510,11 @@ function aiFeatureLabel(feature) {
     case 'mindmap':
       return 'AI 思维导图';
     case 'organize':
-      return 'AI 标签归类';
+      return '归类';
     case 'tags':
       return 'AI 标签';
     case 'agent':
-      return '私人助手';
+      return 'AI助手';
     default:
       return 'AI';
   }

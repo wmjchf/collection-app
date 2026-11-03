@@ -179,6 +179,8 @@ class AgentRepository {
 
     var eventName = 'message';
     final dataBuf = StringBuffer();
+    // 跨 TCP chunk 拼行：长 done（整段回复 JSON）常被拆开，按 chunk 直接 split 会丢半行
+    var lineCarry = '';
 
     void flushEvent() {
       final data = dataBuf.toString().trim();
@@ -235,20 +237,31 @@ class AgentRepository {
       }
     }
 
-    await for (final chunk in streamed.stream.transform(utf8.decoder)) {
-      for (final line in chunk.split('\n')) {
-        final trimmed = line.endsWith('\r')
-            ? line.substring(0, line.length - 1)
-            : line;
-        if (trimmed.startsWith('event:')) {
-          eventName = trimmed.substring(6).trim();
-        } else if (trimmed.startsWith('data:')) {
-          if (dataBuf.isNotEmpty) dataBuf.write('\n');
-          dataBuf.write(trimmed.substring(5).trimLeft());
-        } else if (trimmed.isEmpty) {
-          flushEvent();
-        }
+    void handleLine(String line) {
+      final trimmed =
+          line.endsWith('\r') ? line.substring(0, line.length - 1) : line;
+      if (trimmed.startsWith('event:')) {
+        eventName = trimmed.substring(6).trim();
+      } else if (trimmed.startsWith('data:')) {
+        if (dataBuf.isNotEmpty) dataBuf.write('\n');
+        dataBuf.write(trimmed.substring(5).trimLeft());
+      } else if (trimmed.isEmpty) {
+        flushEvent();
       }
+    }
+
+    await for (final chunk in streamed.stream.transform(utf8.decoder)) {
+      lineCarry += chunk;
+      while (true) {
+        final i = lineCarry.indexOf('\n');
+        if (i < 0) break;
+        handleLine(lineCarry.substring(0, i));
+        lineCarry = lineCarry.substring(i + 1);
+      }
+    }
+    if (lineCarry.isNotEmpty) {
+      handleLine(lineCarry);
+      lineCarry = '';
     }
     flushEvent();
 

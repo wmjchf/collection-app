@@ -8,11 +8,11 @@ import 'package:super_collection/features/collection/ai_organize_models.dart';
 import 'package:super_collection/features/collection/tag_modules_repository.dart';
 import 'package:super_collection/features/settings/quota_gate.dart';
 
-/// 弹出 AI 标签归类：生成建议 → 预览 → 应用。成功返回 true。
+/// 弹出 AI 填入归类：生成建议 → 预览 → 应用。成功返回 true。
+/// 外壳与「新建归类」同款：白底圆角卡 + 拖条。
 Future<bool?> showAiOrganizeSheet(BuildContext context) {
   return showAppBottomSheet<bool>(
     context: context,
-    padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
     builder: (context) => const _AiOrganizeSheet(),
   );
 }
@@ -103,32 +103,33 @@ class _AiOrganizeSheetState extends State<_AiOrganizeSheet> {
   @override
   Widget build(BuildContext context) {
     final maxH = MediaQuery.sizeOf(context).height * 0.78;
+    final showConfirm = _proposal != null && !_loading;
 
-    // 底部安全区由 AppBottomSheetShell 处理
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-      child: Material(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(24),
-        clipBehavior: Clip.antiAlias,
-        child: ConstrainedBox(
-          constraints: BoxConstraints(maxHeight: maxH),
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 20),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  width: 40,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: _handle,
-                    borderRadius: BorderRadius.circular(2),
-                  ),
+    // 与「新建归类」同壳：白底圆角卡 + 拖条，外边距交给 AppBottomSheetShell
+    return Material(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(24),
+      clipBehavior: Clip.antiAlias,
+      child: ConstrainedBox(
+        constraints: BoxConstraints(maxHeight: maxH),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: _handle,
+                  borderRadius: BorderRadius.circular(2),
                 ),
-                const SizedBox(height: 12),
-                const SizedBox(
-                  height: 27,
+              ),
+              const SizedBox(height: 8),
+              const SizedBox(
+                height: 40,
+                child: Align(
+                  alignment: Alignment.centerLeft,
                   child: Row(
                     children: [
                       Icon(
@@ -138,7 +139,7 @@ class _AiOrganizeSheetState extends State<_AiOrganizeSheet> {
                       ),
                       SizedBox(width: 6),
                       Text(
-                        'AI 标签归类',
+                        '归类',
                         style: TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.w700,
@@ -148,45 +149,45 @@ class _AiOrganizeSheetState extends State<_AiOrganizeSheet> {
                     ],
                   ),
                 ),
-                const SizedBox(height: 8),
-                Flexible(child: _buildBody()),
-                if (_proposal != null && !_loading) ...[
-                  const SizedBox(height: 16),
-                  SizedBox(
-                    width: double.infinity,
-                    height: 48,
-                    child: FilledButton(
-                      onPressed: _applying ? null : _apply,
-                      style: FilledButton.styleFrom(
-                        backgroundColor: _blue,
-                        foregroundColor: Colors.white,
-                        disabledBackgroundColor: _blue.withValues(alpha: 0.45),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(14),
-                        ),
-                        elevation: 0,
+              ),
+              Flexible(child: _buildBody()),
+              if (showConfirm) ...[
+                const SizedBox(height: 16),
+                SizedBox(
+                  width: double.infinity,
+                  height: 48,
+                  child: FilledButton(
+                    onPressed: _applying ? null : _apply,
+                    style: FilledButton.styleFrom(
+                      backgroundColor: _blue,
+                      disabledBackgroundColor: _blue.withValues(alpha: 0.45),
+                      foregroundColor: Colors.white,
+                      disabledForegroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
                       ),
-                      child: _applying
-                          ? const SizedBox(
-                              width: 22,
-                              height: 22,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2.2,
-                                color: Colors.white,
-                              ),
-                            )
-                          : const Text(
-                              '应用归类',
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
+                      elevation: 0,
                     ),
+                    child: _applying
+                        ? const SizedBox(
+                            width: 22,
+                            height: 22,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2.2,
+                              color: Colors.white,
+                            ),
+                          )
+                        : const Text(
+                            '确认填入',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
                   ),
-                ],
+                ),
               ],
-            ),
+            ],
           ),
         ),
       ),
@@ -196,14 +197,14 @@ class _AiOrganizeSheetState extends State<_AiOrganizeSheet> {
   Widget _buildBody() {
     if (_loading) {
       return const Padding(
-        padding: EdgeInsets.symmetric(vertical: 48),
+        padding: EdgeInsets.symmetric(vertical: 36),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             CircularProgressIndicator(color: _blue, strokeWidth: 2.4),
             SizedBox(height: 16),
             Text(
-              '正在梳理标签结构…',
+              '正在把标签填进你的归类…',
               style: TextStyle(fontSize: 14, color: _muted),
             ),
           ],
@@ -242,6 +243,7 @@ class _AiOrganizeSheetState extends State<_AiOrganizeSheet> {
     final proposal = _proposal!;
     return ListView(
       shrinkWrap: true,
+      padding: EdgeInsets.zero,
       children: [
         if (_suggestMessage != null) ...[
           Text(
@@ -271,7 +273,7 @@ class _ModulePreview extends StatelessWidget {
   static const _text = Color(0xFF1F242E);
   static const _muted = Color(0xFF737A85);
   static const _blue = Color(0xFF2F6FED);
-  static const _blueSoft = Color(0xFFE5EDFF);
+  static const _chipBg = Color(0xFFF4F6F9);
 
   @override
   Widget build(BuildContext context) {
@@ -302,15 +304,15 @@ class _ModulePreview extends StatelessWidget {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
               decoration: BoxDecoration(
-                color: module.isNew ? _blueSoft : const Color(0xFFF4F6F9),
+                color: _chipBg,
                 borderRadius: BorderRadius.circular(8),
               ),
-              child: Text(
-                module.isNew ? '新建' : '已有',
+              child: const Text(
+                '填入',
                 style: TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.w600,
-                  color: module.isNew ? _blue : _muted,
+                  color: _muted,
                 ),
               ),
             ),
@@ -367,7 +369,7 @@ class _UngroupedPreview extends StatelessWidget {
         ),
         const SizedBox(height: 4),
         const Text(
-          '同类不足 2 个时暂放这里',
+          '暂时对不上现有归类的标签',
           style: TextStyle(fontSize: 12, height: 1.35, color: _muted),
         ),
         const SizedBox(height: 8),

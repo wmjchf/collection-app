@@ -53,8 +53,9 @@ enum ReadingShareKind {
   note,
   annotation;
 
+  /// 空串表示海报上不画类型行（摘句不再标「摘句」）。
   String get label => switch (this) {
-        ReadingShareKind.quote => '摘句',
+        ReadingShareKind.quote => '',
         ReadingShareKind.summary => 'AI 总结',
         ReadingShareKind.note => '感想',
         ReadingShareKind.annotation => '批注',
@@ -159,11 +160,17 @@ Future<Uint8List> renderReadingQuotePng({
     text: const TextSpan(text: '」', style: _markStyle),
     textDirection: TextDirection.ltr,
   )..layout();
-  final kindPainter = TextPainter(
-    text: TextSpan(text: kind.label, style: _kindStyle),
-    textDirection: TextDirection.ltr,
-  )..layout(maxWidth: _cardWidth - _quotePadX * 2);
+  final kindLabel = kind.label;
+  final showKind = kindLabel.isNotEmpty;
+  final kindPainter = showKind
+      ? (TextPainter(
+          text: TextSpan(text: kindLabel, style: _kindStyle),
+          textDirection: TextDirection.ltr,
+        )..layout(maxWidth: _cardWidth - _quotePadX * 2))
+      : null;
   const kindGap = 12.0;
+  final kindBlock =
+      showKind ? (kindPainter!.height + kindGap) : 0.0;
   final cover = await _loadCover(coverUrl, pageUrl);
   final hasTitle = title.isNotEmpty;
   final hasQr = link.isNotEmpty;
@@ -234,7 +241,7 @@ Future<Uint8List> renderReadingQuotePng({
 
   final coverBlock = cover == null ? 0.0 : _coverHeight;
   final kindTop = coverBlock + _padTop;
-  final quoteTop = kindTop + kindPainter.height + kindGap;
+  final quoteTop = kindTop + kindBlock;
   final contentW = _cardWidth;
   final contentH = quoteTop +
       quoteHeight +
@@ -262,14 +269,18 @@ Future<Uint8List> renderReadingQuotePng({
     cover.dispose();
   }
 
-  final kindGlyphTop = kindPainter
-      .getBoxesForSelection(const TextSelection(baseOffset: 0, extentOffset: 1))
-      .firstOrNull
-      ?.top;
-  kindPainter.paint(
-    canvas,
-    Offset(_quotePadX, kindTop - (kindGlyphTop ?? 0)),
-  );
+  if (kindPainter != null) {
+    final kindGlyphTop = kindPainter
+        .getBoxesForSelection(
+          const TextSelection(baseOffset: 0, extentOffset: 1),
+        )
+        .firstOrNull
+        ?.top;
+    kindPainter.paint(
+      canvas,
+      Offset(_quotePadX, kindTop - (kindGlyphTop ?? 0)),
+    );
+  }
 
   canvas.save();
   canvas.clipRect(Rect.fromLTWH(_quotePadX, quoteTop, quoteWidth, quoteHeight));
@@ -373,7 +384,7 @@ Future<Uint8List> renderReadingQuotePng({
   quotePainter.dispose();
   openMark.dispose();
   closeMark.dispose();
-  kindPainter.dispose();
+  kindPainter?.dispose();
   titlePainter?.dispose();
   watermarkPainter?.dispose();
   for (final painter in annotationPainters) {

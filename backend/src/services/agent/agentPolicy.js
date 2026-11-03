@@ -4,7 +4,10 @@ const MAX_STEPS_P1 = 4;
 const MAX_SEARCH_QUERIES = 2;
 const MAX_SEARCH_HITS = 8;
 const MAX_EXCERPTS = 3;
-const MAX_LIST_ITEMS = 20;
+/** 助手气泡挂出处卡上限；多了只报总数，引导点名/换说法 */
+const MAX_ANSWER_CITATIONS = 3;
+/** list_library 观察里最多带回几条（给模型看），展示仍受 MAX_ANSWER_CITATIONS 约束 */
+const MAX_LIST_ITEMS = 8;
 const EXCERPT_MAX_CHARS = 8000;
 const HISTORY_MESSAGE_LIMIT = 12;
 
@@ -33,6 +36,7 @@ module.exports = {
   MAX_SEARCH_QUERIES,
   MAX_SEARCH_HITS,
   MAX_EXCERPTS,
+  MAX_ANSWER_CITATIONS,
   MAX_LIST_ITEMS,
   EXCERPT_MAX_CHARS,
   HISTORY_MESSAGE_LIMIT,

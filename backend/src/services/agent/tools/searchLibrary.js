@@ -42,12 +42,16 @@ const tool = {
         matchedFields: item.matchedFields || [],
       };
     });
+    // rawTotal：库内该关键词命中规模；returned：本轮带回条数（回答仍最多挂 3 张出处）
+    const rawTotal = Number(result.total) || 0;
     return {
       ok: true,
       data: {
         query: result.query || q,
-        total: hits.length,
-        rawTotal: result.total || 0,
+        total: Math.max(rawTotal, hits.length),
+        rawTotal,
+        returned: hits.length,
+        truncated: rawTotal > hits.length || hits.length > 3,
         hits,
       },
       citations: hits.map((h) => ({

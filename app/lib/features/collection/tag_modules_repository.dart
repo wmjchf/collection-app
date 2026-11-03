@@ -85,7 +85,7 @@ class TagModulesRepository {
     );
   }
 
-  /// AI 归类建议（同步）；不落库。
+  /// AI 填入归类建议（同步）；不落库。
   Future<({AiOrganizeProposal proposal, String message})> suggestAiOrganize({
     String? hint,
   }) async {
@@ -101,11 +101,11 @@ class TagModulesRepository {
     final proposalJson = json['proposal'] as Map<String, dynamic>? ?? {};
     return (
       proposal: AiOrganizeProposal.fromJson(proposalJson),
-      message: json['message'] as String? ?? '已生成归类建议',
+      message: json['message'] as String? ?? '已生成填入建议',
     );
   }
 
-  /// 应用 AI 归类方案。
+  /// 应用 AI 填入归类方案。
   Future<({List<TagModule> modules, List<Tag> ungrouped, String message})>
       applyAiOrganize(AiOrganizeProposal proposal) async {
     final token = await _token();
@@ -125,7 +125,7 @@ class TagModulesRepository {
     return (
       modules: modules,
       ungrouped: ungrouped,
-      message: json['message'] as String? ?? '已应用归类',
+      message: json['message'] as String? ?? '已把标签填入归类',
     );
   }
 }

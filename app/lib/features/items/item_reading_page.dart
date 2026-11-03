@@ -41,7 +41,6 @@ import 'package:super_collection/features/items/reading_mindmap_sheet.dart';
 import 'package:super_collection/features/items/reading_note_sheet.dart';
 import 'package:super_collection/features/items/reading_quote_share.dart';
 import 'package:super_collection/features/items/reading_reparse_confirm_dialog.dart';
-import 'package:super_collection/features/items/reading_summary_sheet.dart';
 import 'package:super_collection/features/settings/quota_gate.dart';
 import 'package:super_collection/features/settings/usage_repository.dart';
 import 'package:super_collection/features/items/reading_tags_sheet.dart';
@@ -50,7 +49,8 @@ import 'package:super_collection/features/items/transcript_picker_sheet.dart';
 import 'package:super_collection/features/items/item_transcript_page.dart';
 import 'package:super_collection/features/items/transcript_segment_panel.dart';
 
-/// 本地阅读页：标题 + 可读正文（含标注高亮）；底栏 助手 / 标签 / AI 解读 / 更多（思维导图、感想、转写等）。
+/// 本地阅读页：标题 + 可读正文（含标注高亮）；底栏 助手 / 标签 / 感想 / 更多（思维导图、转写等）。
+/// 单篇解读改走助手「深挖原文」，不再单独挂 AI 解读入口。
 class ItemReadingPage extends StatefulWidget {
   const ItemReadingPage({
     super.key,
@@ -774,42 +774,6 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
     _scrollController.jumpTo(targetOffset);
   }
 
-  Future<void> _openSummarySheet() async {
-    final summary = _item.aiMeta.summary;
-    final needs = <PlanFeatureRequirement>[
-      (has: (f) => f.aiSummary, tier: UsagePlan.prince),
-    ];
-    if (_item.shouldAutoTranscribeBeforeMindmap) {
-      needs.add((has: (f) => f.transcript, tier: UsagePlan.prince));
-    }
-    final ok = await ensurePlanFeatures(
-      context,
-      usageRepo: _usageRepo,
-      hasResultOrPending:
-          summary.hasText || summary.isPending || summary.isFailed,
-      requirements: needs,
-    );
-    if (!ok || !mounted) return;
-
-    _summaryPollGen++;
-    await showReadingSummarySheet(
-      context,
-      itemId: _item.id,
-      initialItem: _item,
-      onItemUpdated: (item) {
-        if (mounted) setState(() => _item = item);
-      },
-    );
-    if (!mounted) return;
-    try {
-      final item = await _repo.getItem(_item.id);
-      if (mounted) setState(() => _item = item);
-    } catch (_) {}
-    if (_item.hasSummaryPending) {
-      unawaited(_pollSummary());
-    }
-  }
-
   Future<void> _pollSummary() async {
     final gen = ++_summaryPollGen;
     final awaitingTranscript = _item.aiMeta.summary.awaitTranscript;
@@ -1269,20 +1233,17 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
 
   bool get _hasNote => _item.note != null && _item.note!.trim().isNotEmpty;
 
-  /// 更多操作 sheet（思维导图 / 感想；有转写能力时另含转写文稿）。
+  /// 更多操作 sheet（思维导图；有转写能力时另含转写文稿）。
   Future<void> _onMore() async {
     final action = await showReadingMoreSheet(
       context,
       showTranscript: _hasTranscriptEntry,
-      hasNote: _hasNote,
       mindmapPending: _item.hasMindmapPending,
     );
     if (!mounted || action == null) return;
     switch (action) {
       case ReadingMoreAction.transcript:
         await _onTranscript();
-      case ReadingMoreAction.note:
-        await _onNote();
       case ReadingMoreAction.mindmap:
         await _openMindmapSheet();
     }
@@ -2109,15 +2070,10 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
                                 onTap: _openTagsSheet,
                               ),
                               _ActionItem(
-                                icon: Icons.auto_awesome_outlined,
-                                label: _item.hasSummaryPending
-                                    ? '生成中…'
-                                    : 'AI解读',
-                                iconColor: _item.canTriggerSummary &&
-                                        !_item.hasSummaryPending
-                                    ? null
-                                    : _muted,
-                                onTap: _openSummarySheet,
+                                icon: Icons.edit_note_outlined,
+                                label: '感想',
+                                iconColor: _hasNote ? _blue : null,
+                                onTap: () => unawaited(_onNote()),
                               ),
                               _ActionItem(
                                 icon: Icons.more_vert,
@@ -3586,7 +3542,7 @@ class _AgentActionItem extends StatelessWidget {
                   ),
                   SizedBox(height: 2),
                   Text(
-                    '助手',
+                    'AI助手',
                     style: TextStyle(
                       fontSize: 11,
                       height: 1.1,

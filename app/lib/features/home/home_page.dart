@@ -805,7 +805,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                 ),
               ),
               child: const Text(
-                '✦ 助手',
+                '✦ AI助手',
                 style: TextStyle(
                   fontSize: 13,
                   fontWeight: FontWeight.w600,
