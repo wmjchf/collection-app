@@ -22,6 +22,14 @@ class AgentConversation {
       preview: json['preview'] as String?,
     );
   }
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'title': title,
+        'focusItemId': focusItemId,
+        'status': status,
+        'preview': preview,
+      };
 }
 
 class AgentCitation {
@@ -58,6 +66,14 @@ class AgentCitation {
       coverImageUrl: json['coverImageUrl'] as String?,
     );
   }
+
+  Map<String, dynamic> toJson() => {
+        'itemId': itemId,
+        'title': title,
+        'snippet': snippet,
+        'tagNames': tagNames,
+        'coverImageUrl': coverImageUrl,
+      };
 }
 
 class AgentMessage {
@@ -109,6 +125,13 @@ class AgentMessage {
       citations: citations,
     );
   }
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'role': role,
+        'content': content,
+        'citations': [for (final c in citations) c.toJson()],
+      };
 }
 
 class AgentTurnResult {

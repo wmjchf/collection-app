@@ -2,12 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:super_collection/core/ui/app_bottom_sheet.dart';
 import 'package:super_collection/core/ui/app_orientation.dart';
 
-enum ReadingMoreAction { transcript, note, mindmap }
+enum ReadingMoreAction { transcript, mindmap }
 
 Future<ReadingMoreAction?> showReadingMoreSheet(
   BuildContext context, {
   bool showTranscript = false,
-  bool hasNote = false,
   bool mindmapPending = false,
 }) {
   return showAppBottomSheet<ReadingMoreAction>(
@@ -19,7 +18,6 @@ Future<ReadingMoreAction?> showReadingMoreSheet(
     isScrollControlled: false,
     builder: (context) => _ReadingMoreSheet(
       showTranscript: showTranscript,
-      hasNote: hasNote,
       mindmapPending: mindmapPending,
     ),
   );
@@ -28,17 +26,14 @@ Future<ReadingMoreAction?> showReadingMoreSheet(
 class _ReadingMoreSheet extends StatelessWidget {
   const _ReadingMoreSheet({
     required this.showTranscript,
-    required this.hasNote,
     required this.mindmapPending,
   });
 
   final bool showTranscript;
-  final bool hasNote;
   final bool mindmapPending;
 
   static const _text = Color(0xFF1F242E);
   static const _muted = Color(0xFF737A85);
-  static const _blue = Color(0xFF2F6FED);
   static const _handle = Color(0xFFD9DBE0);
   static const _iconBg = Color(0xFFF5F7FA);
 
@@ -89,13 +84,6 @@ class _ReadingMoreSheet extends StatelessWidget {
                     color: mindmapPending ? _muted : _text,
                     onTap: () =>
                         Navigator.pop(context, ReadingMoreAction.mindmap),
-                  ),
-                  _GridItem(
-                    icon: Icons.edit_note_outlined,
-                    label: '感想',
-                    color: hasNote ? _blue : _text,
-                    onTap: () =>
-                        Navigator.pop(context, ReadingMoreAction.note),
                   ),
                   if (showTranscript)
                     _GridItem(

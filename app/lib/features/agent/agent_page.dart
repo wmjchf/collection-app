@@ -1,18 +1,23 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:super_collection/core/network/api_client.dart';
+import 'package:super_collection/core/ui/app_bottom_sheet.dart';
 import 'package:super_collection/core/ui/app_confirm_dialog.dart';
 import 'package:super_collection/core/ui/app_subpage_app_bar.dart';
 import 'package:super_collection/core/ui/app_toast.dart';
+import 'package:super_collection/features/agent/agent_chat_cache.dart';
 import 'package:super_collection/features/agent/agent_markdown.dart';
 import 'package:super_collection/features/agent/agent_models.dart';
 import 'package:super_collection/features/agent/agent_repository.dart';
+import 'package:super_collection/features/auth/auth_repository.dart';
 import 'package:super_collection/features/home/home_format.dart';
 import 'package:super_collection/features/items/item_list_tile.dart';
 import 'package:super_collection/features/items/item_models.dart';
 import 'package:super_collection/features/items/item_reading_page.dart';
 import 'package:super_collection/features/items/items_repository.dart';
+import 'package:super_collection/features/items/reading_quote_share.dart';
 import 'package:super_collection/features/settings/quota_gate.dart';
 import 'package:super_collection/features/settings/usage_repository.dart';
 
@@ -41,6 +46,7 @@ class _AgentPageState extends State<AgentPage> {
   static const _brandSoft = Color(0xFFE8F0FF);
 
   final _repo = AgentRepository();
+  final _auth = AuthRepository();
   final _itemsRepo = ItemsRepository();
   final _input = TextEditingController();
   final _scroll = ScrollController();
@@ -54,6 +60,9 @@ class _AgentPageState extends State<AgentPage> {
   bool _streamLive = false;
   String? _error;
   CollectionItem? _focusItem;
+  /// 已勾选进输入区的出处（以 chip 展示，发送时拼进正文）
+  final Map<int, AgentCitation> _pickedCitations = {};
+  int? _cacheUserId;
 
   int? get _focusItemId =>
       widget.focusItemId ?? widget.focusItem?.id ?? _focusItem?.id;
@@ -86,11 +95,54 @@ class _AgentPageState extends State<AgentPage> {
     }
   }
 
+  Future<void> _persistCache() async {
+    final userId = _cacheUserId;
+    final convId = _conversationId;
+    if (userId == null || convId == null) return;
+    await AgentChatCache.write(
+      userId: userId,
+      focusItemId: _focusItemId,
+      conversationId: convId,
+      messages: _messages,
+    );
+  }
+
   Future<void> _bootstrap() async {
-    setState(() {
-      _booting = true;
-      _error = null;
-    });
+    final session = await _auth.readSession();
+    _cacheUserId = session?.userId;
+
+    // 有本地缓存先上屏，免每次全屏 loading
+    var showedCache = false;
+    if (_cacheUserId != null) {
+      final cached = await AgentChatCache.read(
+        userId: _cacheUserId!,
+        focusItemId: _focusItemId,
+      );
+      if (cached != null &&
+          cached.conversationId > 0 &&
+          mounted) {
+        setState(() {
+          _conversationId = cached.conversationId;
+          _messages
+            ..clear()
+            ..addAll(cached.messages.where((m) => m.isUser || m.isAssistant));
+          _booting = false;
+          _error = null;
+        });
+        showedCache = true;
+        if (_messages.isNotEmpty) {
+          unawaited(_scrollToEndSettled());
+        }
+      }
+    }
+
+    if (!showedCache && mounted) {
+      setState(() {
+        _booting = true;
+        _error = null;
+      });
+    }
+
     try {
       await _ensureFocusItem();
       // 阅读页：该篇专属会话；首页/收藏：全局会话（互不串）
@@ -101,30 +153,35 @@ class _AgentPageState extends State<AgentPage> {
       if (!mounted) return;
       final detail = await _repo.getConversation(conv.id);
       if (!mounted) return;
+      final next = detail.messages
+          .where((m) => m.isUser || m.isAssistant)
+          .toList(growable: false);
       setState(() {
         _conversationId = detail.conversation.id;
         _messages
           ..clear()
-          ..addAll(detail.messages.where(
-            (m) => m.isUser || m.isAssistant,
-          ));
+          ..addAll(next);
         _booting = false;
+        _error = null;
       });
+      unawaited(_persistCache());
       if (_messages.isNotEmpty) {
-        _scrollToEnd(jump: true);
+        // 出处卡/Markdown 多帧才撑开高度，单次 jump 会停在半截
+        unawaited(_scrollToEndSettled());
       }
     } on ApiException catch (e) {
       if (!mounted) return;
+      // 已有缓存可继续聊；无缓存才当错误页
       setState(() {
         _booting = false;
-        _error = e.message;
+        if (!showedCache) _error = e.message;
       });
-      await handleApiException(context, e);
+      if (!showedCache) await handleApiException(context, e);
     } catch (_) {
       if (!mounted) return;
       setState(() {
         _booting = false;
-        _error = '加载失败';
+        if (!showedCache) _error = '加载失败';
       });
     }
   }
@@ -139,7 +196,14 @@ class _AgentPageState extends State<AgentPage> {
   }
 
   Future<void> _send([String? preset]) async {
-    final text = (preset ?? _input.text).trim();
+    final typed = (preset ?? _input.text).trim();
+    final refs = _pickedCitations.values
+        .map((c) => '「${c.title.trim()}」')
+        .where((s) => s.length > 2)
+        .join(' ');
+    final text = preset != null
+        ? typed
+        : [refs, typed].where((s) => s.isNotEmpty).join(' ').trim();
     if (text.isEmpty || _sending) return;
 
     final allowed = await ensurePlanFeatures(
@@ -153,6 +217,7 @@ class _AgentPageState extends State<AgentPage> {
     setState(() {
       _sending = true;
       _streamLive = false;
+      _pickedCitations.clear();
     });
     if (preset == null) _input.clear();
 
@@ -228,6 +293,7 @@ class _AgentPageState extends State<AgentPage> {
         _sending = false;
         _streamLive = false;
       });
+      unawaited(_persistCache());
       _scrollToEnd();
     } on ApiException catch (e) {
       if (!mounted) return;
@@ -270,6 +336,33 @@ class _AgentPageState extends State<AgentPage> {
     });
   }
 
+  /// 进页/长消息：等列表高度稳定后再贴底，避免最新一条只露半截。
+  Future<void> _scrollToEndSettled({int attempts = 12}) async {
+    var lastMax = -1.0;
+    for (var i = 0; i < attempts; i++) {
+      await WidgetsBinding.instance.endOfFrame;
+      if (!mounted) return;
+      if (!_scroll.hasClients) {
+        await Future<void>.delayed(const Duration(milliseconds: 16));
+        continue;
+      }
+      final max = _scroll.position.maxScrollExtent;
+      if (max > 0) {
+        _scroll.jumpTo(max);
+      }
+      if (max > 0 && (max - lastMax).abs() < 1.0) {
+        // 再补一帧，封面图等异步布局有时会再长一点
+        await WidgetsBinding.instance.endOfFrame;
+        if (!mounted || !_scroll.hasClients) return;
+        final again = _scroll.position.maxScrollExtent;
+        if (again > 0) _scroll.jumpTo(again);
+        return;
+      }
+      lastMax = max;
+      await Future<void>.delayed(const Duration(milliseconds: 32));
+    }
+  }
+
   Future<void> _openCitation(AgentCitation c) async {
     await Navigator.of(context).push(
       MaterialPageRoute<void>(
@@ -279,6 +372,21 @@ class _AgentPageState extends State<AgentPage> {
         ),
       ),
     );
+  }
+
+  /// 左侧勾选：在输入区以 chip 展示所选篇目，避免「第二篇」含糊指代。
+  void _pickCitationIntoInput(AgentCitation c) {
+    if (_sending || _booting) return;
+    final title = c.title.trim();
+    if (title.isEmpty) return;
+    setState(() {
+      if (_pickedCitations.containsKey(c.itemId)) {
+        _pickedCitations.remove(c.itemId);
+      } else {
+        _pickedCitations[c.itemId] = c;
+      }
+    });
+    _focus.requestFocus();
   }
 
   void _openFocusItem() {
@@ -311,10 +419,18 @@ class _AgentPageState extends State<AgentPage> {
     setState(() {
       _booting = true;
       _error = null;
+      _pickedCitations.clear();
     });
     try {
       if (oldId != null) {
         await _repo.archiveConversation(oldId);
+      }
+      final userId = _cacheUserId;
+      if (userId != null) {
+        await AgentChatCache.clear(
+          userId: userId,
+          focusItemId: _focusItemId,
+        );
       }
       final conv = await _repo.ensureConversation(
         focusItemId: _focusItemId,
@@ -326,6 +442,7 @@ class _AgentPageState extends State<AgentPage> {
         _messages.clear();
         _booting = false;
       });
+      unawaited(_persistCache());
       AppToast.show(context, '已删除聊天记录');
     } on ApiException catch (e) {
       if (!mounted) return;
@@ -407,7 +524,7 @@ class _AgentPageState extends State<AgentPage> {
                         ? _EmptyState(focused: _focusItem != null)
                         : ListView.builder(
                             controller: _scroll,
-                            padding: const EdgeInsets.fromLTRB(22, 12, 22, 16),
+                            padding: const EdgeInsets.fromLTRB(22, 12, 22, 24),
                             itemCount: _messages.length +
                                 (_sending && !_streamLive ? 1 : 0),
                             itemBuilder: (context, index) {
@@ -426,11 +543,21 @@ class _AgentPageState extends State<AgentPage> {
                               return Padding(
                                 padding: const EdgeInsets.only(bottom: 14),
                                 child: m.isUser
-                                    ? _UserBubble(text: m.content)
+                                    ? _UserBubble(
+                                        text: m.content,
+                                        contextMenuBuilder:
+                                            _selectionToolbar(),
+                                      )
                                     : _AssistantBlock(
                                         text: m.content,
                                         citations: m.citations,
+                                        pickedIds: _pickedCitations.keys.toSet(),
                                         onOpen: _openCitation,
+                                        onPick: _pickCitationIntoInput,
+                                        pickEnabled: !_sending && !_booting,
+                                        contextMenuBuilder: _selectionToolbar(
+                                          m.citations,
+                                        ),
                                       ),
                               );
                             },
@@ -442,6 +569,8 @@ class _AgentPageState extends State<AgentPage> {
             enabled: !_sending && !_booting,
             bottomInset: bottom,
             hintText: _focusItemId != null ? '问问这篇…' : null,
+            picked: _pickedCitations.values.toList(growable: false),
+            onRemovePicked: _pickCitationIntoInput,
             onSend: () => _send(),
           ),
         ],
@@ -449,6 +578,152 @@ class _AgentPageState extends State<AgentPage> {
     );
   }
 
+  /// 划选工具条：复制纯文本；分享走阅读页摘句海报（先定出处篇）。
+  EditableTextContextMenuBuilder _selectionToolbar([
+    List<AgentCitation> citations = const [],
+  ]) {
+    return (context, state) {
+      final value = state.textEditingValue;
+      final sel = value.selection;
+      if (!sel.isValid || sel.isCollapsed) {
+        return const SizedBox.shrink();
+      }
+      final selected = value.text.substring(sel.start, sel.end);
+      if (selected.trim().isEmpty) {
+        return const SizedBox.shrink();
+      }
+      final anchors = state.contextMenuAnchors;
+
+      void clearToolbar() {
+        ContextMenuController.removeAny();
+        state.hideToolbar();
+        state.userUpdateTextEditingValue(
+          value.copyWith(selection: TextSelection.collapsed(offset: sel.end)),
+          SelectionChangedCause.toolbar,
+        );
+      }
+
+      return TextSelectionToolbar(
+        anchorAbove: anchors.primaryAnchor,
+        anchorBelow: anchors.secondaryAnchor ?? anchors.primaryAnchor,
+        toolbarBuilder: (context, child) {
+          return Material(
+            color: const Color(0xFF1F242E),
+            elevation: 6,
+            shadowColor: Colors.black26,
+            borderRadius: BorderRadius.circular(8),
+            child: child,
+          );
+        },
+        children: [
+          _AgentToolbarAction(
+            label: '复制',
+            onTap: () async {
+              await Clipboard.setData(ClipboardData(text: selected));
+              clearToolbar();
+              if (mounted) AppToast.show(context, '已复制');
+            },
+          ),
+          _AgentToolbarAction(
+            label: '分享',
+            onTapWithOrigin: (origin) {
+              clearToolbar();
+              unawaited(
+                _shareQuotePoster(
+                  quote: selected,
+                  citations: citations,
+                  shareOrigin: origin,
+                ),
+              );
+            },
+          ),
+        ],
+      );
+    };
+  }
+
+  /// 海报需要篇目封面/链接：单篇直接用；多篇先选；阅读锚定优先当前篇。
+  Future<void> _shareQuotePoster({
+    required String quote,
+    required List<AgentCitation> citations,
+    Rect? shareOrigin,
+  }) async {
+    if (!mounted) return;
+    final body = quote.trim();
+    if (body.isEmpty) return;
+
+    final cite = await _resolveShareCitation(citations);
+    if (!mounted) return;
+    if (cite == null) {
+      AppToast.show(context, '请先选一篇出处再分享海报');
+      return;
+    }
+
+    try {
+      final item = await _itemsRepo.getItem(cite.itemId);
+      if (!mounted) return;
+      final pageUrl = (item.canonicalUrl?.trim().isNotEmpty == true)
+          ? item.canonicalUrl!
+          : item.url;
+      await shareReadingQuote(
+        context: context,
+        quote: body,
+        title: (item.title ?? cite.title).trim(),
+        link: pageUrl,
+        coverUrl: item.shareCoverUrl ?? cite.coverImageUrl,
+        pageUrl: item.sourcePageUrl,
+        sharePositionOrigin: shareOrigin,
+        screenSize: MediaQuery.sizeOf(context),
+      );
+    } catch (error, stack) {
+      debugPrint('agent quote share failed: $error\n$stack');
+      if (mounted) AppToast.show(context, '分享失败，请稍后重试');
+    }
+  }
+
+  Future<AgentCitation?> _resolveShareCitation(
+    List<AgentCitation> citations,
+  ) async {
+    final focus = _focusItem;
+    if (focus != null) {
+      final inCite = citations.where((c) => c.itemId == focus.id).toList();
+      if (inCite.isNotEmpty || citations.isEmpty) {
+        return AgentCitation(
+          itemId: focus.id,
+          title: focus.title?.trim().isNotEmpty == true
+              ? focus.title!
+              : focus.url,
+          coverImageUrl: focus.coverImageUrl,
+          tagNames: [for (final t in focus.tags) t.name],
+        );
+      }
+    }
+    if (citations.length == 1) return citations.first;
+    if (citations.length > 1) {
+      return showAppBottomSheet<AgentCitation>(
+        context: context,
+        barrierColor: kAppBottomSheetBarrierColor,
+        padding: EdgeInsets.zero,
+        includeSafeArea: false,
+        isScrollControlled: false,
+        builder: (ctx) => _ShareCitationPickerSheet(citations: citations),
+      );
+    }
+    // 无出处时：若输入区已勾选篇目，用勾选的
+    if (_pickedCitations.isNotEmpty) {
+      final picked = _pickedCitations.values.toList(growable: false);
+      if (picked.length == 1) return picked.first;
+      return showAppBottomSheet<AgentCitation>(
+        context: context,
+        barrierColor: kAppBottomSheetBarrierColor,
+        padding: EdgeInsets.zero,
+        includeSafeArea: false,
+        isScrollControlled: false,
+        builder: (ctx) => _ShareCitationPickerSheet(citations: picked),
+      );
+    }
+    return null;
+  }
 }
 
 /// 阅读锚定：顶栏下方固定展示当前篇（与出处同款 ItemListTile）。
@@ -746,10 +1021,127 @@ class _Dot extends StatelessWidget {
   }
 }
 
+
+
+class _AgentToolbarAction extends StatelessWidget {
+  const _AgentToolbarAction({
+    required this.label,
+    this.onTap,
+    this.onTapWithOrigin,
+  }) : assert(onTap != null || onTapWithOrigin != null);
+
+  final String label;
+  final VoidCallback? onTap;
+  final void Function(Rect? origin)? onTapWithOrigin;
+
+  Rect? _origin(BuildContext context) {
+    final box = context.findRenderObject() as RenderBox?;
+    if (box == null || !box.hasSize || box.size.isEmpty) return null;
+    return box.localToGlobal(Offset.zero) & box.size;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: () {
+        final report = onTapWithOrigin;
+        if (report != null) {
+          report(_origin(context));
+          return;
+        }
+        onTap?.call();
+      },
+      borderRadius: BorderRadius.circular(6),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        child: Text(
+          label,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 13,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ShareCitationPickerSheet extends StatelessWidget {
+  const _ShareCitationPickerSheet({required this.citations});
+
+  final List<AgentCitation> citations;
+
+  static const _text = Color(0xFF1F242E);
+  static const _muted = Color(0xFF737A85);
+  static const _handle = Color(0xFFD9DBE0);
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.white,
+      borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+      clipBehavior: Clip.antiAlias,
+      child: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: _handle,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const SizedBox(height: 12),
+              const Text(
+                '海报用哪一篇？',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                  color: _text,
+                ),
+              ),
+              const SizedBox(height: 4),
+              const Text(
+                '分享图需要封面和链接，请选一篇出处',
+                style: TextStyle(fontSize: 13, color: _muted, height: 1.35),
+              ),
+              const SizedBox(height: 12),
+              for (final c in citations) ...[
+                ItemListTile(
+                  title: c.title,
+                  subtitle: c.snippet.isNotEmpty ? c.snippet : '用作海报出处',
+                  coverUrl: c.coverImageUrl,
+                  coverKey: ValueKey('share-pick-${c.itemId}'),
+                  tags: [
+                    for (var i = 0; i < c.tagNames.length; i++)
+                      ItemTagBrief(id: i + 1, name: c.tagNames[i]),
+                  ],
+                  onTap: () => Navigator.pop(context, c),
+                ),
+                const SizedBox(height: 8),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _UserBubble extends StatelessWidget {
-  const _UserBubble({required this.text});
+  const _UserBubble({
+    required this.text,
+    required this.contextMenuBuilder,
+  });
 
   final String text;
+  final EditableTextContextMenuBuilder contextMenuBuilder;
 
   @override
   Widget build(BuildContext context) {
@@ -762,12 +1154,18 @@ class _UserBubble extends StatelessWidget {
           color: const Color(0xFFE8F0FF),
           borderRadius: BorderRadius.circular(16),
         ),
-        child: Text(
-          text,
-          style: const TextStyle(
-            fontSize: 16,
-            color: Color(0xFF1F242E),
-            height: 1.45,
+        child: TextSelectionTheme(
+          data: const TextSelectionThemeData(
+            selectionColor: Color(0x662F6FED),
+          ),
+          child: SelectableText(
+            text,
+            style: const TextStyle(
+              fontSize: 16,
+              color: Color(0xFF1F242E),
+              height: 1.45,
+            ),
+            contextMenuBuilder: contextMenuBuilder,
           ),
         ),
       ),
@@ -779,19 +1177,37 @@ class _AssistantBlock extends StatelessWidget {
   const _AssistantBlock({
     required this.text,
     required this.citations,
+    required this.pickedIds,
     required this.onOpen,
+    required this.onPick,
+    required this.contextMenuBuilder,
+    this.pickEnabled = true,
   });
 
   final String text;
   final List<AgentCitation> citations;
+  final Set<int> pickedIds;
   final ValueChanged<AgentCitation> onOpen;
+  final ValueChanged<AgentCitation> onPick;
+  final EditableTextContextMenuBuilder contextMenuBuilder;
+  final bool pickEnabled;
+
+  static const _brand = Color(0xFF2F6FED);
 
   @override
   Widget build(BuildContext context) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        AgentMarkdown(text),
+        TextSelectionTheme(
+          data: const TextSelectionThemeData(
+            selectionColor: Color(0x662F6FED),
+          ),
+          child: AgentMarkdown(
+            text,
+            contextMenuBuilder: contextMenuBuilder,
+          ),
+        ),
         if (citations.isNotEmpty) ...[
           const SizedBox(height: 12),
           const Text(
@@ -804,16 +1220,44 @@ class _AssistantBlock extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           for (final c in citations) ...[
-            ItemListTile(
-              title: c.title,
-              subtitle: c.snippet.isNotEmpty ? c.snippet : '打开阅读',
-              coverUrl: c.coverImageUrl,
-              coverKey: ValueKey('agent-cite-${c.itemId}'),
-              tags: [
-                for (var i = 0; i < c.tagNames.length; i++)
-                  ItemTagBrief(id: i + 1, name: c.tagNames[i]),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    onTap: pickEnabled ? () => onPick(c) : null,
+                    customBorder: const CircleBorder(),
+                    child: Padding(
+                      padding: const EdgeInsets.only(right: 10, top: 8, bottom: 8),
+                      child: Icon(
+                        pickedIds.contains(c.itemId)
+                            ? Icons.check_circle_rounded
+                            : Icons.circle_outlined,
+                        size: 24,
+                        color: !pickEnabled
+                            ? const Color(0xFFD0D5DD)
+                            : pickedIds.contains(c.itemId)
+                                ? _brand
+                                : const Color(0xFFC5CAD3),
+                      ),
+                    ),
+                  ),
+                ),
+                Expanded(
+                  child: ItemListTile(
+                    title: c.title,
+                    subtitle: c.snippet.isNotEmpty ? c.snippet : '打开阅读',
+                    coverUrl: c.coverImageUrl,
+                    coverKey: ValueKey('agent-cite-${c.itemId}'),
+                    tags: [
+                      for (var i = 0; i < c.tagNames.length; i++)
+                        ItemTagBrief(id: i + 1, name: c.tagNames[i]),
+                    ],
+                    onTap: () => onOpen(c),
+                  ),
+                ),
               ],
-              onTap: () => onOpen(c),
             ),
             const SizedBox(height: 8),
           ],
@@ -830,6 +1274,8 @@ class _Composer extends StatelessWidget {
     required this.enabled,
     required this.bottomInset,
     required this.onSend,
+    this.picked = const [],
+    this.onRemovePicked,
     this.hintText,
   });
 
@@ -838,7 +1284,11 @@ class _Composer extends StatelessWidget {
   final bool enabled;
   final double bottomInset;
   final VoidCallback onSend;
+  final List<AgentCitation> picked;
+  final ValueChanged<AgentCitation>? onRemovePicked;
   final String? hintText;
+
+  static const _brand = Color(0xFF2F6FED);
 
   @override
   Widget build(BuildContext context) {
@@ -847,7 +1297,7 @@ class _Composer extends StatelessWidget {
       child: Padding(
         padding: EdgeInsets.fromLTRB(14, 8, 14, 8 + bottomInset.clamp(0, 28)),
         child: Container(
-          padding: const EdgeInsets.fromLTRB(16, 8, 8, 8),
+          padding: const EdgeInsets.fromLTRB(14, 8, 8, 8),
           decoration: BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.circular(28),
@@ -865,59 +1315,140 @@ class _Composer extends StatelessWidget {
               ),
             ],
           ),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.end,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            mainAxisSize: MainAxisSize.min,
             children: [
-              Expanded(
-                child: TextField(
-                  controller: controller,
-                  focusNode: focusNode,
-                  enabled: enabled,
-                  minLines: 1,
-                  maxLines: 4,
-                  textInputAction: TextInputAction.send,
-                  onSubmitted: (_) => onSend(),
-                  style: const TextStyle(
-                    fontSize: 16,
-                    color: Color(0xFF1F242E),
-                    height: 1.35,
-                  ),
-                  decoration: InputDecoration(
-                    hintText: hintText ?? '跟助手说点什么…',
-                    hintStyle: const TextStyle(
-                      color: Color(0xFF9AA1AB),
-                      fontSize: 16,
-                      height: 1.35,
-                    ),
-                    border: InputBorder.none,
-                    isDense: true,
-                    contentPadding:
-                        const EdgeInsets.symmetric(vertical: 10),
+              if (picked.isNotEmpty) ...[
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(2, 4, 4, 6),
+                  child: Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    children: [
+                      for (final c in picked)
+                        _ComposerCitationChip(
+                          title: c.title,
+                          enabled: enabled,
+                          onRemove: onRemovePicked == null
+                              ? null
+                              : () => onRemovePicked!(c),
+                        ),
+                    ],
                   ),
                 ),
-              ),
-              const SizedBox(width: 6),
-              Padding(
-                padding: const EdgeInsets.only(bottom: 2),
-                child: Material(
-                  color: enabled
-                      ? const Color(0xFF2F6FED)
-                      : const Color(0xFFD7E2F5),
-                  shape: const CircleBorder(),
-                  child: InkWell(
-                    customBorder: const CircleBorder(),
-                    onTap: enabled ? onSend : null,
-                    child: const SizedBox(
-                      width: 36,
-                      height: 36,
-                      child: Icon(
-                        Icons.arrow_upward_rounded,
-                        size: 20,
-                        color: Colors.white,
+              ],
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: controller,
+                      focusNode: focusNode,
+                      enabled: enabled,
+                      minLines: 1,
+                      maxLines: 4,
+                      textInputAction: TextInputAction.send,
+                      onSubmitted: (_) => onSend(),
+                      style: const TextStyle(
+                        fontSize: 16,
+                        color: Color(0xFF1F242E),
+                        height: 1.35,
+                      ),
+                      decoration: InputDecoration(
+                        hintText: picked.isNotEmpty
+                            ? '补充想问的…'
+                            : (hintText ?? '跟助手说点什么…'),
+                        hintStyle: const TextStyle(
+                          color: Color(0xFF9AA1AB),
+                          fontSize: 16,
+                          height: 1.35,
+                        ),
+                        border: InputBorder.none,
+                        isDense: true,
+                        contentPadding:
+                            const EdgeInsets.symmetric(vertical: 10),
                       ),
                     ),
                   ),
+                  const SizedBox(width: 6),
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 2),
+                    child: Material(
+                      color: enabled ? _brand : const Color(0xFFD7E2F5),
+                      shape: const CircleBorder(),
+                      child: InkWell(
+                        customBorder: const CircleBorder(),
+                        onTap: enabled ? onSend : null,
+                        child: const SizedBox(
+                          width: 36,
+                          height: 36,
+                          child: Icon(
+                            Icons.arrow_upward_rounded,
+                            size: 20,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ComposerCitationChip extends StatelessWidget {
+  const _ComposerCitationChip({
+    required this.title,
+    required this.enabled,
+    this.onRemove,
+  });
+
+  final String title;
+  final bool enabled;
+  final VoidCallback? onRemove;
+
+  static const _brand = Color(0xFF2F6FED);
+  static const _brandSoft = Color(0xFFE8F0FF);
+
+  @override
+  Widget build(BuildContext context) {
+    final label = title.trim().isEmpty ? '未命名' : title.trim();
+    return Material(
+      color: _brandSoft,
+      borderRadius: BorderRadius.circular(999),
+      child: InkWell(
+        onTap: enabled ? onRemove : null,
+        borderRadius: BorderRadius.circular(999),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(10, 5, 6, 5),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 168),
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500,
+                    color: _brand,
+                    height: 1.2,
+                  ),
                 ),
+              ),
+              const SizedBox(width: 2),
+              Icon(
+                Icons.close_rounded,
+                size: 16,
+                color: enabled ? _brand : const Color(0xFFB0B7C3),
               ),
             ],
           ),

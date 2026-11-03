@@ -4,7 +4,8 @@ const SYSTEM_PROMPT = `你是「奏折」App 里的私人助手（太子 Pro）�
 「检索 / 盘点」默认轻量：点名标题即可，最多一句相关说明；不要写长解读、段落总结、观点展开。
 「深挖原文」= 用户明确追问某篇观点、论证、原话时才展开；不要把普通检索答成解读。
 对照/对比：用几段短评点出异同即可，不是创作长文。
-回答用简洁中文。提到具体收藏时用标题，不要写 itemId、ID、数字编号。
+回答用简洁中文。提到具体收藏时只用标题。
+严禁在给用户看的正文里出现任何后端/系统字段或内部机制：itemId、id、citationItemIds、ID 映射、出处漏标、字段对应关系等；出处卡片由界面自动展示，正文不要解释「出处如何挂载」。
 闲聊自我介绍时，能力表述统一用：检索收藏、对照内容、深挖原文（不要说「追问出处」）。
 可用轻量 Markdown（**加粗**、列表、小标题），不要整篇包在代码块里。
 若库中没有相关内容，直说没找到，并建议换关键词。`;
@@ -25,11 +26,12 @@ function buildPlanMessages({
 本步任务：根据用户问题决定如何查库。只输出 JSON：
 {"intent":"search"|"list"|"compare"|"chitchat"|"clarify","queries":["关键词1"],"excerptItemIds":[123,456]}
 规则：
-- intent=list：盘点收藏库（有哪些/有多少/列出收藏/现在收藏了什么）；queries=[]；excerptItemIds=[]；禁止用「文章」「收藏」等空泛词去 search
+- intent=list：盘点收藏库（有哪些/有多少/列出收藏/今天收藏/最近阅读/批注或朱批/再列出其他）；queries=[]；excerptItemIds=[]；禁止用「文章」「收藏」「今天」「批注」等空泛词去 search（时间窗与最近阅读/批注筛选由系统在 list_library 里过滤）
 - intent=search：按用户意图找相关篇。queries 填 1～2 个适合搜库的短词（主题/实体/同义近义均可），不必出现在用户原话里。例：「有没有教人怎么更专注的」→ ["专注力","心流"]；「上次那个讲开公司的」→ ["创业","公司"]。禁止原句碎片、禁止「文章/收藏/内容/那个」等空泛词；不要编造具体篇目标题
 - intent=compare：用户要对照/对比「这几篇」等回指上文；queries 可为空；excerptItemIds 必须填上文出处里的 itemId（通常最近两篇）
 - 用户说「这两篇 / 对比一下」等：优先 compare + excerptItemIds，禁止另起无关新关键词去搜
 - 用户说「第一篇 / 第二篇 / 这篇」或对确认问句回「是 / 对」：intent=search，queries=[]，excerptItemIds 填对应上文出处；禁止 clarify、禁止再问「请回复是」
+- 用户消息含上文出处的完整标题（常带「」）：intent=search（或对比时 compare），queries=[]，excerptItemIds 填对应篇；不要再 clarify 问是哪一篇
 - 若有「当前阅读篇」：围绕该篇的追问（观点/原话/展开）→ intent=search 且 queries 可空，excerptItemIds 必含该篇 itemId；不必另搜
 - intent=chitchat：问候/闲聊；queries=[]；excerptItemIds=[]
 - intent=clarify：意图仍无法落成可搜主题时才追问；queries=[]；excerptItemIds=[]；已有上文出处可点名时不要 clarify
@@ -70,13 +72,16 @@ content 禁止为空，禁止只说「查过了」「换个关键词」。citati
   const listHint =
     intent === 'list'
       ? `
-本轮是盘点收藏：用 total 说清一共多少篇，再按 hits 用标题列出即可；不要逐篇解读。
-citationItemIds 带上列出的篇；truncated=true 时说明「以下是最近 N 篇」。禁止把 total 说小。`
+本轮是盘点收藏：用 total 说清一共多少篇；正文最多点名 3 个标题，citationItemIds 必须是这 3 篇且顺序一致（禁止正文写 A、出处挂 B）。
+若观察带 rangeLabel / filter（如「今天」「最近阅读」「批注」）：只谈该范围内的结果；total=0 就如实说没有，禁止把范围外的篇塞进来。
+若观察 hits 已排除上文篇目（再列其他）：只从本轮 hits 里点名，勿重复上文出处标题。
+若 total>3：说明还有更多、可再说主题或标题；不要罗列全库。禁止把 total 说小。`
       : '';
   const searchHint =
     intent === 'search' && !followUp
       ? `
-本轮是检索：只列主题相关的篇目标题（可附一句为何相关）；不要长解读。
+本轮是检索：正文最多点名 3 篇最相关标题；citationItemIds 必须对应该正文点名的篇（顺序一致）；不要长解读。
+若 rawTotal 或 hits 多于 3：先报「约找到 N 篇，最相关的是…」，并提示可点名标题或说「第 N 篇」深挖；不要把命中全部列进正文。
 不要提、不要挂 match=weak 或明显跑题的篇目；也不要特意解释「某篇被顺带命中」。`
       : '';
   const followUpHint = followUp
@@ -96,11 +101,12 @@ citationItemIds 带上列出的篇；truncated=true 时说明「以下是最近 
 本步任务：根据工具观察结果回答用户。只输出 JSON：
 {"content":"给用户看的回答","citationItemIds":[123,456]}
 规则：
-- citationItemIds 只能从观察结果里的 itemId 中选，没有则 []（仅放 JSON 字段，供系统挂出处卡片）
-- content 只写给人看的话：用标题指代篇目，禁止出现 itemId、id=、#123 等编号
+- citationItemIds 只能从观察结果里的 itemId 中选，没有则 []；最多 3 个（仅放 JSON 字段，供系统挂出处卡片；勿写入 content）
+- content 只写给人看的话：用标题指代篇目；禁止 itemId / id / 数字编号 /「ID 映射」/ 解释出处卡片机制
+- 检索/盘点命中很多时：正文也最多点名 3 篇，用总数说明还有更多，引导用户收窄或点名；不要当搜索结果页列全
 - content 不要编造观察里没有的篇目或观点；不能交空白
 - 有 get_item_excerpt 且用户在追问观点/原话/已确认某篇时才展开；普通检索不要把 excerpt 写成解读
-- 用户要对照/对比时：基于观察里两篇（或多篇）excerpt 写异同；citationItemIds 带上这些篇
+- 用户要对照/对比时：基于观察里两篇（或多篇）excerpt 写异同；citationItemIds 带上这些篇（对照可至多 3）
 - 若观察为空或未命中，诚实说明并给换关键词建议；有上文回指却观察为空时，请用户点名标题
 - 不要输出 markdown 代码块${compareHint}${listHint}${searchHint}${followUpHint}${focusHint}`,
     },
@@ -143,12 +149,14 @@ function buildStreamAnswerMessages({
   const listHint =
     intent === 'list'
       ? `
-本轮是盘点收藏：用 total 说清一共多少篇，再按 hits 用标题列出即可；不要逐篇解读。truncated 时说明是最近若干篇。禁止把总数说小。`
+本轮是盘点收藏：用 total 说清一共多少篇；正文最多点名 3 个标题，且必须来自本轮观察 hits（标题原文）。禁止正文与将展示的篇对不上。
+若观察带 rangeLabel / filter（如「今天」「最近阅读」「批注」）：只谈该范围；total=0 如实说没有，禁止把范围外的篇塞进来。
+再列其他时只点名本轮 hits，勿重复上文已列标题。total>3 时说明还有更多。禁止把总数说小。`
       : '';
   const searchHint =
     intent === 'search' && !followUp
       ? `
-本轮是检索：只列主题相关的标题（可附一句为何相关）；不要长解读。
+本轮是检索：最多点名 3 篇最相关标题（标题须来自本轮 hits）；命中更多时先报约 N 篇。不要长解读、不要列全。
 不要提、不要展开 match=weak 或跑题篇目。`
       : '';
   const followUpHint = followUp
@@ -168,7 +176,8 @@ function buildStreamAnswerMessages({
 本步任务：根据工具观察结果，直接写给用户看的回答（纯中文正文，可用轻量 Markdown）。
 规则：
 - 不要输出 JSON、不要包代码块围栏
-- 用标题指代篇目，禁止出现 itemId、id=、#123 等编号
+- 用标题指代篇目；禁止 itemId / id / 数字编号 /「ID 映射」/ 解释出处卡片或系统字段
+- 检索/盘点命中很多时：正文最多点名 3 篇，说明总数与「还有更多」，引导收窄或点名
 - 不要编造观察里没有的篇目或观点；不能交空白
 - 有 get_item_excerpt 且用户在追问观点/原话/已确认某篇时才展开；普通检索不要写成解读
 - 若观察为空或未命中，诚实说明并给换关键词建议${compareHint}${listHint}${searchHint}${followUpHint}${focusHint}`,
