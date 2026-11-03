@@ -73,6 +73,20 @@ class AgentMessage {
   bool get isUser => role == 'user';
   bool get isAssistant => role == 'assistant';
 
+  AgentMessage copyWith({
+    int? id,
+    String? role,
+    String? content,
+    List<AgentCitation>? citations,
+  }) {
+    return AgentMessage(
+      id: id ?? this.id,
+      role: role ?? this.role,
+      content: content ?? this.content,
+      citations: citations ?? this.citations,
+    );
+  }
+
   factory AgentMessage.fromJson(Map<String, dynamic> json) {
     final citations = <AgentCitation>[];
     final raw = json['citations'];

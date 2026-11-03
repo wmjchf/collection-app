@@ -23,7 +23,7 @@ class AgentPage extends StatefulWidget {
 }
 
 class _AgentPageState extends State<AgentPage> {
-  static const _bg = Color(0xFFF7F7FA);
+  static const _bg = Colors.white;
   static const _text = Color(0xFF1F242E);
   static const _muted = Color(0xFF737A85);
   static const _brand = Color(0xFF2F6FED);
@@ -38,6 +38,8 @@ class _AgentPageState extends State<AgentPage> {
   final List<AgentMessage> _messages = [];
   bool _booting = true;
   bool _sending = false;
+  /// 已有流式 token 时隐藏「思考中」
+  bool _streamLive = false;
   String? _error;
 
   @override
@@ -119,47 +121,102 @@ class _AgentPageState extends State<AgentPage> {
     );
     if (!allowed || !mounted) return;
 
-    setState(() => _sending = true);
+    setState(() {
+      _sending = true;
+      _streamLive = false;
+    });
     if (preset == null) _input.clear();
 
-    // 乐观展示用户消息
-    final optimistic = AgentMessage(
+    // 乐观展示用户消息 + 流式助手占位
+    final optimisticUser = AgentMessage(
       id: -DateTime.now().millisecondsSinceEpoch,
       role: 'user',
       content: text,
     );
-    setState(() => _messages.add(optimistic));
+    final streamAssistantId = -DateTime.now().millisecondsSinceEpoch - 1;
+    setState(() => _messages.add(optimisticUser));
     _scrollToEnd();
 
     try {
       await _ensureConversation();
       final id = _conversationId!;
-      final result = await _repo.sendMessage(
+      final result = await _repo.sendMessageStream(
         conversationId: id,
         content: text,
+        onUser: (user) {
+          if (!mounted) return;
+          setState(() {
+            final idx =
+                _messages.indexWhere((m) => m.id == optimisticUser.id);
+            if (idx >= 0) _messages[idx] = user;
+          });
+        },
+        onToken: (delta) {
+          if (!mounted) return;
+          setState(() {
+            if (!_streamLive) {
+              _streamLive = true;
+              _messages.add(
+                AgentMessage(
+                  id: streamAssistantId,
+                  role: 'assistant',
+                  content: delta,
+                ),
+              );
+            } else {
+              final idx =
+                  _messages.indexWhere((m) => m.id == streamAssistantId);
+              if (idx >= 0) {
+                _messages[idx] = _messages[idx].copyWith(
+                  content: _messages[idx].content + delta,
+                );
+              }
+            }
+          });
+          _scrollToEnd();
+        },
       );
       if (!mounted) return;
       setState(() {
-        final idx = _messages.indexWhere((m) => m.id == optimistic.id);
-        if (idx >= 0) {
-          _messages[idx] = result.userMessage;
+        final uIdx =
+            _messages.indexWhere((m) => m.id == optimisticUser.id);
+        if (uIdx >= 0) {
+          _messages[uIdx] = result.userMessage;
+        } else {
+          final lastUser = _messages.lastIndexWhere((m) => m.isUser);
+          if (lastUser >= 0) {
+            _messages[lastUser] = result.userMessage;
+          }
         }
-        _messages.add(result.assistantMessage);
+        final aIdx =
+            _messages.indexWhere((m) => m.id == streamAssistantId);
+        if (aIdx >= 0) {
+          _messages[aIdx] = result.assistantMessage;
+        } else {
+          _messages.add(result.assistantMessage);
+        }
         _sending = false;
+        _streamLive = false;
       });
       _scrollToEnd();
     } on ApiException catch (e) {
       if (!mounted) return;
       setState(() {
-        _messages.removeWhere((m) => m.id == optimistic.id);
+        _messages.removeWhere(
+          (m) => m.id == optimisticUser.id || m.id == streamAssistantId,
+        );
         _sending = false;
+        _streamLive = false;
       });
       await handleApiException(context, e);
     } catch (_) {
       if (!mounted) return;
       setState(() {
-        _messages.removeWhere((m) => m.id == optimistic.id);
+        _messages.removeWhere(
+          (m) => m.id == optimisticUser.id || m.id == streamAssistantId,
+        );
         _sending = false;
+        _streamLive = false;
       });
       AppToast.show(context, '发送失败，请重试');
     }
@@ -266,6 +323,7 @@ class _AgentPageState extends State<AgentPage> {
                 onPressed: canClear ? _clearChat : null,
                 icon: Icon(
                   Icons.cleaning_services_outlined,
+                  size: 20,
                   color: canClear ? _text : const Color(0xFFC5CAD3),
                 ),
               ),
@@ -296,9 +354,12 @@ class _AgentPageState extends State<AgentPage> {
                         : ListView.builder(
                             controller: _scroll,
                             padding: const EdgeInsets.fromLTRB(22, 12, 22, 16),
-                            itemCount: _messages.length + (_sending ? 1 : 0),
+                            itemCount: _messages.length +
+                                (_sending && !_streamLive ? 1 : 0),
                             itemBuilder: (context, index) {
-                              if (_sending && index == _messages.length) {
+                              if (_sending &&
+                                  !_streamLive &&
+                                  index == _messages.length) {
                                 return const Padding(
                                   padding: EdgeInsets.only(top: 2, bottom: 14),
                                   child: Align(
@@ -335,38 +396,14 @@ class _AgentPageState extends State<AgentPage> {
 
 }
 
-/// 空态：品牌气场的暗绿光核 + 薄荷 ✦，居中标题/副文（避免浅蓝「后台」感）。
-class _EmptyState extends StatefulWidget {
+/// 空态：主题色 ✦ 圆标（无光晕）+ 居中标题/副文/能力标。
+class _EmptyState extends StatelessWidget {
   const _EmptyState();
 
-  @override
-  State<_EmptyState> createState() => _EmptyStateState();
-}
-
-class _EmptyStateState extends State<_EmptyState>
-    with SingleTickerProviderStateMixin {
-  static const _ink = Color(0xFF101612);
-  static const _moss = Color(0xFF1C2A22);
-  static const _mint = Color(0xFFB7E0C6);
-  static const _title = Color(0xFF161C18);
-  static const _sub = Color(0xFF6B746E);
-
-  late final AnimationController _breath;
-
-  @override
-  void initState() {
-    super.initState();
-    _breath = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 2600),
-    )..repeat(reverse: true);
-  }
-
-  @override
-  void dispose() {
-    _breath.dispose();
-    super.dispose();
-  }
+  static const _brand = Color(0xFF2F6FED);
+  static const _brandSoft = Color(0xFFE8F0FF);
+  static const _title = Color(0xFF1F242E);
+  static const _sub = Color(0xFF737A85);
 
   @override
   Widget build(BuildContext context) {
@@ -376,100 +413,24 @@ class _EmptyStateState extends State<_EmptyState>
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            AnimatedBuilder(
-              animation: _breath,
-              builder: (context, _) {
-                final t = Curves.easeInOut.transform(_breath.value);
-                final glow = 0.22 + 0.18 * t;
-                final ring = 1.0 + 0.04 * t;
-                return SizedBox(
-                  width: 128,
-                  height: 128,
-                  child: Stack(
-                    alignment: Alignment.center,
-                    children: [
-                      // 外层弥散光
-                      Transform.scale(
-                        scale: ring,
-                        child: Container(
-                          width: 128,
-                          height: 128,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            gradient: RadialGradient(
-                              colors: [
-                                _mint.withValues(alpha: glow * 0.55),
-                                _mint.withValues(alpha: glow * 0.12),
-                                Colors.transparent,
-                              ],
-                              stops: const [0.0, 0.45, 1.0],
-                            ),
-                          ),
-                        ),
-                      ),
-                      // 细轨道环
-                      Container(
-                        width: 96,
-                        height: 96,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          border: Border.all(
-                            color: _mint.withValues(alpha: 0.28 + 0.12 * t),
-                            width: 1,
-                          ),
-                        ),
-                      ),
-                      // 暗绿核
-                      Container(
-                        width: 76,
-                        height: 76,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          gradient: const RadialGradient(
-                            center: Alignment(-0.35, -0.4),
-                            radius: 1.05,
-                            colors: [
-                              Color(0xFF2A3D32),
-                              _moss,
-                              _ink,
-                            ],
-                            stops: [0.0, 0.45, 1.0],
-                          ),
-                          boxShadow: [
-                            BoxShadow(
-                              color: _mint.withValues(alpha: 0.22 + 0.1 * t),
-                              blurRadius: 28,
-                              spreadRadius: 1,
-                            ),
-                            BoxShadow(
-                              color: _ink.withValues(alpha: 0.35),
-                              blurRadius: 16,
-                              offset: const Offset(0, 10),
-                            ),
-                          ],
-                        ),
-                        alignment: Alignment.center,
-                        child: Text(
-                          '✦',
-                          style: TextStyle(
-                            fontSize: 28,
-                            height: 1,
-                            color: _mint.withValues(alpha: 0.92 + 0.08 * t),
-                            shadows: [
-                              Shadow(
-                                color: _mint.withValues(alpha: 0.55),
-                                blurRadius: 12,
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                );
-              },
+            Container(
+              width: 72,
+              height: 72,
+              decoration: const BoxDecoration(
+                shape: BoxShape.circle,
+                color: _brandSoft,
+              ),
+              alignment: Alignment.center,
+              child: const Text(
+                '✦',
+                style: TextStyle(
+                  fontSize: 28,
+                  height: 1,
+                  color: _brand,
+                ),
+              ),
             ),
-            const SizedBox(height: 28),
+            const SizedBox(height: 24),
             const Text(
               '你的私人助手',
               textAlign: TextAlign.center,
@@ -520,10 +481,10 @@ class _CapabilityMark extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
       decoration: BoxDecoration(
-        color: const Color(0xFF161C18).withValues(alpha: 0.04),
+        color: const Color(0xFF2F6FED).withValues(alpha: 0.06),
         borderRadius: BorderRadius.circular(999),
         border: Border.all(
-          color: const Color(0xFF1C2A22).withValues(alpha: 0.14),
+          color: const Color(0xFF2F6FED).withValues(alpha: 0.14),
         ),
       ),
       child: Text(
@@ -532,7 +493,7 @@ class _CapabilityMark extends StatelessWidget {
           fontSize: 12,
           fontWeight: FontWeight.w500,
           letterSpacing: 0.4,
-          color: Color(0xFF3D4A42),
+          color: Color(0xFF2F6FED),
           height: 1.2,
         ),
       ),
@@ -653,7 +614,7 @@ class _UserBubble extends StatelessWidget {
         child: Text(
           text,
           style: const TextStyle(
-            fontSize: 15,
+            fontSize: 16,
             color: Color(0xFF1F242E),
             height: 1.45,
           ),
@@ -728,55 +689,84 @@ class _Composer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: EdgeInsets.fromLTRB(16, 10, 16, 10 + bottomInset.clamp(0, 28)),
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        border: Border(top: BorderSide(color: Color(0xFFE8EBF0))),
-      ),
-      child: Container(
-        padding: const EdgeInsets.fromLTRB(14, 6, 6, 6),
-        decoration: BoxDecoration(
-          color: const Color(0xFFF5F7FA),
-          borderRadius: BorderRadius.circular(22),
-          border: Border.all(color: const Color(0xFFE6E8EB)),
-        ),
-        child: Row(
-          children: [
-            Expanded(
-              child: TextField(
-                controller: controller,
-                focusNode: focusNode,
-                enabled: enabled,
-                minLines: 1,
-                maxLines: 4,
-                textInputAction: TextInputAction.send,
-                onSubmitted: (_) => onSend(),
-                style: const TextStyle(fontSize: 15, color: Color(0xFF1F242E)),
-                decoration: const InputDecoration(
-                  hintText: '跟助手说点什么…',
-                  hintStyle: TextStyle(color: Color(0xFF737A85), fontSize: 15),
-                  border: InputBorder.none,
-                  isDense: true,
-                  contentPadding: EdgeInsets.symmetric(vertical: 8),
+    return ColoredBox(
+      color: Colors.white,
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(14, 8, 14, 8 + bottomInset.clamp(0, 28)),
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(16, 8, 8, 8),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(28),
+            border: Border.all(color: const Color(0xFFE8EBF0)),
+            boxShadow: const [
+              BoxShadow(
+                color: Color(0x1A000000),
+                blurRadius: 16,
+                offset: Offset(0, 4),
+              ),
+              BoxShadow(
+                color: Color(0x0D000000),
+                blurRadius: 4,
+                offset: Offset(0, 1),
+              ),
+            ],
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: controller,
+                  focusNode: focusNode,
+                  enabled: enabled,
+                  minLines: 1,
+                  maxLines: 4,
+                  textInputAction: TextInputAction.send,
+                  onSubmitted: (_) => onSend(),
+                  style: const TextStyle(
+                    fontSize: 16,
+                    color: Color(0xFF1F242E),
+                    height: 1.35,
+                  ),
+                  decoration: const InputDecoration(
+                    hintText: '跟助手说点什么…',
+                    hintStyle: TextStyle(
+                      color: Color(0xFF9AA1AB),
+                      fontSize: 16,
+                      height: 1.35,
+                    ),
+                    border: InputBorder.none,
+                    isDense: true,
+                    contentPadding: EdgeInsets.symmetric(vertical: 10),
+                  ),
                 ),
               ),
-            ),
-            const SizedBox(width: 8),
-            Material(
-              color: enabled ? const Color(0xFF2F6FED) : const Color(0xFFB8CCFA),
-              shape: const CircleBorder(),
-              child: InkWell(
-                customBorder: const CircleBorder(),
-                onTap: enabled ? onSend : null,
-                child: const SizedBox(
-                  width: 32,
-                  height: 32,
-                  child: Icon(Icons.arrow_upward, size: 18, color: Colors.white),
+              const SizedBox(width: 6),
+              Padding(
+                padding: const EdgeInsets.only(bottom: 2),
+                child: Material(
+                  color: enabled
+                      ? const Color(0xFF2F6FED)
+                      : const Color(0xFFD7E2F5),
+                  shape: const CircleBorder(),
+                  child: InkWell(
+                    customBorder: const CircleBorder(),
+                    onTap: enabled ? onSend : null,
+                    child: const SizedBox(
+                      width: 36,
+                      height: 36,
+                      child: Icon(
+                        Icons.arrow_upward_rounded,
+                        size: 20,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ),
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

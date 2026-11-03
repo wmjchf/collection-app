@@ -117,125 +117,39 @@ class CollectionTagModulesSection extends StatelessWidget {
               border: Border.all(color: hairline),
             ),
             padding: const EdgeInsets.fromLTRB(14, 14, 12, 14),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              mainAxisSize:
-                  noModules ? MainAxisSize.max : MainAxisSize.min,
-              children: [
-                _CollapsingSectionHeader(
-                  collapse: headerCollapse,
-                  onCreateModule: onCreateModule,
-                  onAiOrganize: onAiOrganize,
-                  showCreate: !noModules,
-                ),
-                ...blocks,
-                if (noModules)
-                  Expanded(
-                    child: _TagsEmptyGuide(onCreateModule: onCreateModule),
+            child: noModules
+                ? Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      _CollapsingSectionHeader(
+                        collapse: headerCollapse,
+                        onCreateModule: onCreateModule,
+                        onAiOrganize: onAiOrganize,
+                      ),
+                      Expanded(
+                        child: ListView(
+                          physics: const ClampingScrollPhysics(),
+                          padding: EdgeInsets.zero,
+                          children: blocks,
+                        ),
+                      ),
+                    ],
+                  )
+                : Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      _CollapsingSectionHeader(
+                        collapse: headerCollapse,
+                        onCreateModule: onCreateModule,
+                        onAiOrganize: onAiOrganize,
+                      ),
+                      ...blocks,
+                    ],
                   ),
-              ],
-            ),
           );
         },
       ),
-    );
-  }
-}
-
-/// 无归类匣时：说明 + 新建归类（高度不够时可滚动，避免溢出）。
-class _TagsEmptyGuide extends StatelessWidget {
-  const _TagsEmptyGuide({required this.onCreateModule});
-
-  final VoidCallback onCreateModule;
-
-  @override
-  Widget build(BuildContext context) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final compact = constraints.maxHeight < 240;
-        final body = Padding(
-          padding: EdgeInsets.fromLTRB(8, compact ? 12 : 28, 8, 12),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (!compact) ...[
-                Container(
-                  width: 56,
-                  height: 56,
-                  decoration: const BoxDecoration(
-                    color: CollectionTagModulesSection.chipFill,
-                    shape: BoxShape.circle,
-                  ),
-                  child: Icon(
-                    Icons.folder_special_outlined,
-                    size: 28,
-                    color: CollectionTagModulesSection.muted
-                        .withValues(alpha: 0.9),
-                  ),
-                ),
-                const SizedBox(height: 16),
-              ],
-              const Text(
-                '先建一个归类',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                  color: CollectionTagModulesSection.ink,
-                  height: 1.3,
-                ),
-              ),
-              SizedBox(height: compact ? 6 : 8),
-              Text(
-                compact
-                    ? '长按标签拖进去整理'
-                    : '收藏打上标签后会进未归类；\n长按标签拖进去整理',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 13,
-                  height: 1.45,
-                  color: CollectionTagModulesSection.muted
-                      .withValues(alpha: 0.95),
-                ),
-              ),
-              SizedBox(height: compact ? 12 : 20),
-              TextButton(
-                onPressed: () {
-                  HapticFeedback.selectionClick();
-                  onCreateModule();
-                },
-                style: TextButton.styleFrom(
-                  foregroundColor: CollectionTagModulesSection.brand,
-                  backgroundColor: CollectionTagModulesSection.brandSoft,
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 18,
-                    vertical: 10,
-                  ),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                ),
-                child: const Text(
-                  '新建归类',
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        );
-
-        return SingleChildScrollView(
-          physics: const ClampingScrollPhysics(),
-          child: ConstrainedBox(
-            constraints: BoxConstraints(minHeight: constraints.maxHeight),
-            child: body,
-          ),
-        );
-      },
     );
   }
 }
@@ -245,13 +159,11 @@ class _CollapsingSectionHeader extends StatelessWidget {
     required this.onCreateModule,
     this.onAiOrganize,
     this.collapse,
-    this.showCreate = true,
   });
 
   final ValueListenable<double>? collapse;
   final VoidCallback onCreateModule;
   final VoidCallback? onAiOrganize;
-  final bool showCreate;
 
   @override
   Widget build(BuildContext context) {
@@ -261,7 +173,6 @@ class _CollapsingSectionHeader extends StatelessWidget {
         _SectionHeader(
           onCreateModule: onCreateModule,
           onAiOrganize: onAiOrganize,
-          showCreate: showCreate,
         ),
         const SizedBox(height: 12),
       ],
@@ -297,17 +208,16 @@ class _SectionHeader extends StatelessWidget {
   const _SectionHeader({
     required this.onCreateModule,
     this.onAiOrganize,
-    this.showCreate = true,
   });
 
   final VoidCallback onCreateModule;
   final VoidCallback? onAiOrganize;
-  final bool showCreate;
 
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.only(left: 2, right: 4),
+      // 右侧贴齐下方匣缘（外层已有 12 右内边距）
+      padding: const EdgeInsets.only(left: 2),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -344,8 +254,11 @@ class _SectionHeader extends StatelessWidget {
                     ),
                   ),
                 ),
-              if (showCreate)
-                CollectionCreateModuleButton(onPressed: onCreateModule),
+              CollectionCreateModuleButton(
+                onPressed: onCreateModule,
+                iconPadding: EdgeInsets.zero,
+                alignEnd: true,
+              ),
             ],
           ),
           const SizedBox(height: 4),
@@ -372,10 +285,13 @@ class CollectionCreateModuleButton extends StatelessWidget {
     super.key,
     required this.onPressed,
     this.iconPadding = const EdgeInsets.symmetric(horizontal: 4),
+    this.alignEnd = false,
   });
 
   final VoidCallback onPressed;
   final EdgeInsetsGeometry iconPadding;
+  /// 图标贴右，与下方匣右缘对齐。
+  final bool alignEnd;
 
   @override
   Widget build(BuildContext context) {
@@ -386,7 +302,11 @@ class CollectionCreateModuleButton extends StatelessWidget {
         onPressed: onPressed,
         visualDensity: VisualDensity.compact,
         padding: EdgeInsets.zero,
-        constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+        alignment: alignEnd ? Alignment.centerRight : Alignment.center,
+        constraints: BoxConstraints(
+          minWidth: alignEnd ? 24 : 36,
+          minHeight: 36,
+        ),
         icon: const Icon(
           Icons.add_circle_outline_rounded,
           size: 24,

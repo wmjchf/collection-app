@@ -7,7 +7,7 @@ class AgentMarkdown extends StatelessWidget {
     this.source, {
     super.key,
     this.style = const TextStyle(
-      fontSize: 15,
+      fontSize: 16,
       color: Color(0xFF1F242E),
       height: 1.55,
     ),
