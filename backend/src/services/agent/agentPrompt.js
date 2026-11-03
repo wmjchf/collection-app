@@ -8,8 +8,14 @@ const SYSTEM_PROMPT = `你是「奏折」App 里的私人助手（太子 Pro）�
 可用轻量 Markdown（**加粗**、列表、小标题），不要整篇包在代码块里。
 若库中没有相关内容，直说没找到，并建议换关键词。`;
 
-function buildPlanMessages({ history, userContent, priorCitations }) {
+function buildPlanMessages({
+  history,
+  userContent,
+  priorCitations,
+  focusItem,
+}) {
   const priorBlock = formatPriorCitations(priorCitations);
+  const focusBlock = formatFocusItem(focusItem);
   return [
     {
       role: 'system',
@@ -21,11 +27,13 @@ function buildPlanMessages({ history, userContent, priorCitations }) {
 - intent=search：需要关键词检索；queries 1～2 个短关键词（从用户原话抽取，勿臆造主题）
 - intent=compare：用户要对照/对比「这几篇」等回指上文；queries 可为空；excerptItemIds 必须填上文出处里的 itemId（通常最近两篇）
 - 用户说「这两篇 / 刚才那篇 / 对比一下」等：优先 compare + excerptItemIds，禁止另起无关新关键词去搜
+- 若有「当前阅读篇」：围绕该篇的追问（观点/原话/展开）→ intent=search 且 queries 可空，excerptItemIds 必含该篇 itemId；不必另搜
 - intent=chitchat：问候/闲聊；queries=[]；excerptItemIds=[]
 - intent=clarify：太含糊需追问；queries=[]；excerptItemIds=[]
-- excerptItemIds 只能选自「上文已讨论出处」，没有则 []
+- excerptItemIds 只能选自「上文已讨论出处」或「当前阅读篇」，没有则 []
 - 不要输出其它字段或 markdown
 
+${focusBlock}
 ${priorBlock}`,
     },
     ...historyToChat(history),
@@ -33,12 +41,32 @@ ${priorBlock}`,
   ];
 }
 
-function buildAnswerMessages({ history, userContent, observations, intent }) {
+function formatFocusItem(focusItem) {
+  if (!focusItem || focusItem.itemId == null) {
+    return '当前阅读篇：无（全局查库）。';
+  }
+  const id = Number(focusItem.itemId);
+  const title = String(focusItem.title || '').trim() || `条目${id}`;
+  return `当前阅读篇（追问默认围绕它）：itemId=${id} 「${title}」`;
+}
+
+function buildAnswerMessages({
+  history,
+  userContent,
+  observations,
+  intent,
+  focusItem,
+}) {
   const compareHint =
     intent === 'compare'
       ? `
 本轮是对照：必须基于观察里的 get_item_excerpt 写一段可读对照（各用标题点名；异同 / 各自侧重点；2～6 句即可）。
 content 禁止为空，禁止只说「查过了」「换个关键词」。citationItemIds 填这些篇的 itemId。`
+      : '';
+  const focusHint =
+    focusItem && focusItem.itemId
+      ? `
+用户正从阅读页打开助手，默认围绕「${String(focusItem.title || '').trim() || '当前这篇'}」回答；除非用户明确要找别的收藏。`
       : '';
   return [
     {
@@ -48,12 +76,12 @@ content 禁止为空，禁止只说「查过了」「换个关键词」。citati
 本步任务：根据工具观察结果回答用户。只输出 JSON：
 {"content":"给用户看的回答","citationItemIds":[123,456]}
 规则：
-- citationItemIds 只能从观察结果里的 itemId 中选，没有就 []（仅放 JSON 字段，供系统挂出处卡片）
+- citationItemIds 只能从观察结果里的 itemId 中选，没有则 []（仅放 JSON 字段，供系统挂出处卡片）
 - content 只写给人看的话：用标题指代篇目，禁止出现 itemId、id=、#123 等编号
 - content 不要编造观察里没有的篇目或观点；有 excerpt 时必须写出实质回答，不能交空白
 - 用户要对照/对比时：基于观察里两篇（或多篇）excerpt 写异同；citationItemIds 带上这些篇
 - 若观察为空或未命中，诚实说明并给换关键词建议；有上文回指却观察为空时，请用户点名标题
-- 不要输出 markdown 代码块${compareHint}`,
+- 不要输出 markdown 代码块${compareHint}${focusHint}`,
     },
     ...historyToChat(history),
     {
@@ -77,12 +105,18 @@ function buildStreamAnswerMessages({
   userContent,
   observations,
   intent,
+  focusItem,
 }) {
   const compareHint =
     intent === 'compare'
       ? `
 本轮是对照：必须基于观察里的 get_item_excerpt 写一段可读对照（各用标题点名；异同 / 各自侧重点；2～6 句即可）。
 禁止只说「查过了」「换个关键词」。`
+      : '';
+  const focusHint =
+    focusItem && focusItem.itemId
+      ? `
+用户正从阅读页打开助手，默认围绕「${String(focusItem.title || '').trim() || '当前这篇'}」回答；除非用户明确要找别的收藏。`
       : '';
   return [
     {
@@ -94,7 +128,7 @@ function buildStreamAnswerMessages({
 - 不要输出 JSON、不要包代码块围栏
 - 用标题指代篇目，禁止出现 itemId、id=、#123 等编号
 - 不要编造观察里没有的篇目或观点；有 excerpt 时必须写出实质回答
-- 若观察为空或未命中，诚实说明并给换关键词建议${compareHint}`,
+- 若观察为空或未命中，诚实说明并给换关键词建议${compareHint}${focusHint}`,
     },
     ...historyToChat(history),
     {

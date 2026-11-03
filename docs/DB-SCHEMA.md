@@ -61,7 +61,7 @@
 | `analytics_events` | 产品行为埋点（P0：入库/阅读/搜索/Pro） |
 | `subscriptions` | 订阅（Pro；支付前可有 `source=dev`） |
 | `home_roam_cache` | 首页漫游缓存 |
-| `agent_conversations` | 私人助手会话（迁移 `039`） |
+| `agent_conversations` | 私人助手会话（迁移 `039`/`040`；`focus_item_id` 按篇隔离） |
 | `agent_messages` | 私人助手消息 / 出处 / tool trace（迁移 `039`） |
 
 ---
@@ -286,7 +286,7 @@ API：`GET …/transcript-targets`、`POST …/transcript`（body.segmentKey）�
 
 | 表 | 要点 |
 | --- | --- |
-| `agent_conversations` | `user_id`、`title`、`status`=`active`/`archived` |
+| `agent_conversations` | `user_id`、`title`、`focus_item_id`（NULL=全局）、`status`=`active`/`archived` |
 | `agent_messages` | `role`=`user`/`assistant`/`tool`/`system`；`citations_json`；`tool_calls_json`（trace） |
 
 删除用户时 CASCADE。
@@ -299,4 +299,4 @@ API：`GET …/transcript-targets`、`POST …/transcript`（body.segmentKey）�
 
 ## DDL
 
-见 [`backend/sql/001_schema.sql`](../backend/sql/001_schema.sql) 与增量 `backend/sql/015_subscriptions.sql`、`039_agent_conversations.sql`
+见 [`backend/sql/001_schema.sql`](../backend/sql/001_schema.sql) 与增量 `backend/sql/015_subscriptions.sql`、`039_agent_conversations.sql`、`040_agent_conversation_focus_item.sql`

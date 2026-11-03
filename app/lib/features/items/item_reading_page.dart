@@ -15,6 +15,7 @@ import 'package:super_collection/core/ui/app_side_drawer.dart';
 import 'package:super_collection/core/ui/app_toast.dart';
 import 'package:super_collection/core/ui/parse_progress_tracker.dart';
 import 'package:super_collection/core/ui/pro_copy.dart';
+import 'package:super_collection/features/agent/agent_page.dart';
 import 'package:super_collection/features/collection/items_browse_page.dart';
 import 'package:super_collection/features/collection/tag_models.dart';
 import 'package:super_collection/features/collection/tags_repository.dart';
@@ -49,7 +50,7 @@ import 'package:super_collection/features/items/transcript_picker_sheet.dart';
 import 'package:super_collection/features/items/item_transcript_page.dart';
 import 'package:super_collection/features/items/transcript_segment_panel.dart';
 
-/// 本地阅读页：标题 + 可读正文（含标注高亮）；顶栏更多；底栏 标签 / AI 解读 / 思维导图 / 感想（或转写条目下的「更多」）；解读与思维导图为底部弹层。
+/// 本地阅读页：标题 + 可读正文（含标注高亮）；底栏 助手 / 标签 / AI 解读 / 更多（思维导图、感想、转写等）。
 class ItemReadingPage extends StatefulWidget {
   const ItemReadingPage({
     super.key,
@@ -193,6 +194,24 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
     if (next == _bodyFontSize) return;
     setState(() => _bodyFontSize = next);
     unawaited(ReadingFontPrefs.save(next));
+  }
+
+  Future<void> _openAgent() async {
+    final allowed = await ensurePlanFeatures(
+      context,
+      requirements: [
+        (has: (f) => f.aiAgent, tier: UsagePlan.prince),
+      ],
+    );
+    if (!allowed || !mounted) return;
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => AgentPage(
+          focusItemId: _item.id,
+          focusItem: _item,
+        ),
+      ),
+    );
   }
 
   Future<void> _openFontSizeSheet() {
@@ -1250,12 +1269,13 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
 
   bool get _hasNote => _item.note != null && _item.note!.trim().isNotEmpty;
 
-  /// 更多操作 sheet（转写 / 感想）。有转写能力时底栏显示「更多」；否则直接「感想」。
+  /// 更多操作 sheet（思维导图 / 感想；有转写能力时另含转写文稿）。
   Future<void> _onMore() async {
     final action = await showReadingMoreSheet(
       context,
       showTranscript: _hasTranscriptEntry,
       hasNote: _hasNote,
+      mindmapPending: _item.hasMindmapPending,
     );
     if (!mounted || action == null) return;
     switch (action) {
@@ -1263,6 +1283,8 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
         await _onTranscript();
       case ReadingMoreAction.note:
         await _onNote();
+      case ReadingMoreAction.mindmap:
+        await _openMindmapSheet();
     }
   }
 
@@ -2078,6 +2100,9 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
                           height: _bottomBarHeight,
                           child: Row(
                             children: [
+                              _AgentActionItem(
+                                onTap: () => unawaited(_openAgent()),
+                              ),
                               _ActionItem(
                                 icon: Icons.tag_outlined,
                                 label: '标签',
@@ -2095,29 +2120,10 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
                                 onTap: _openSummarySheet,
                               ),
                               _ActionItem(
-                                icon: Icons.account_tree_outlined,
-                                iconSize: 20,
-                                label: _item.hasMindmapPending
-                                    ? '生成中…'
-                                    : '思维导图',
-                                iconColor: _item.canTriggerMindmap &&
-                                        !_item.hasMindmapPending
-                                    ? null
-                                    : _muted,
-                                onTap: _openMindmapSheet,
+                                icon: Icons.more_vert,
+                                label: '更多',
+                                onTap: _onMore,
                               ),
-                              if (_hasTranscriptEntry)
-                                _ActionItem(
-                                  icon: Icons.more_vert,
-                                  label: '更多',
-                                  onTap: _onMore,
-                                )
-                              else
-                                _ActionItem(
-                                  icon: Icons.edit_note_outlined,
-                                  label: '感想',
-                                  onTap: _onNote,
-                                ),
                             ],
                           ),
                         ),
@@ -3540,16 +3546,76 @@ class _ReadingFailedCard extends StatelessWidget {
   }
 }
 
+/// 底栏助手入口：品牌蓝软底圆标 + 蓝色字，与其它灰图标操作区分。
+class _AgentActionItem extends StatelessWidget {
+  const _AgentActionItem({required this.onTap});
+
+  final VoidCallback onTap;
+
+  static const _brand = Color(0xFF2F6FED);
+  static const _brandSoft = Color(0xFFE8F0FF);
+  static const _brandRing = Color(0xFFD0DFFC);
+
+  @override
+  Widget build(BuildContext context) {
+    return Expanded(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
+        child: Material(
+          color: _brandSoft,
+          borderRadius: BorderRadius.circular(12),
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(
+            onTap: onTap,
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: _brandRing),
+              ),
+              child: const Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(
+                    '✦',
+                    style: TextStyle(
+                      fontSize: 15,
+                      height: 1,
+                      color: _brand,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  SizedBox(height: 2),
+                  Text(
+                    '助手',
+                    style: TextStyle(
+                      fontSize: 11,
+                      height: 1.1,
+                      color: _brand,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _ActionItem extends StatelessWidget {
   const _ActionItem({
-    required this.icon,
+    this.icon,
+    this.iconWidget,
     required this.label,
     required this.onTap,
     this.iconColor,
     this.iconSize = 24,
-  });
+  }) : assert(icon != null || iconWidget != null);
 
-  final IconData icon;
+  final IconData? icon;
+  final Widget? iconWidget;
   final String label;
   final VoidCallback onTap;
   final Color? iconColor;
@@ -3570,11 +3636,12 @@ class _ActionItem extends StatelessWidget {
               width: 24,
               height: 24,
               child: Center(
-                child: Icon(
-                  icon,
-                  size: iconSize,
-                  color: iconColor ?? _text,
-                ),
+                child: iconWidget ??
+                    Icon(
+                      icon,
+                      size: iconSize,
+                      color: iconColor ?? _text,
+                    ),
               ),
             ),
             const SizedBox(height: 4),

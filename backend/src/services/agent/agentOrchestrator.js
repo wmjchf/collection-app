@@ -43,6 +43,7 @@ async function runUserTurn({
   conversationId,
   content,
   clientMessageId,
+  focusItemId = null,
   stream = false,
   onEvent,
 }) {
@@ -105,6 +106,31 @@ async function runUserTurn({
   let usageTotal = null;
   const ctx = { userId, conversationId, messageId: userMessage.id };
 
+  // 阅读页锚定：先校验归属并记下标题，供 plan / 强制摘录
+  let focusItem = null;
+  const focusIdRaw = Number(focusItemId);
+  if (Number.isFinite(focusIdRaw) && focusIdRaw > 0) {
+    const focusObs = await executeTool('get_item_excerpt', ctx, {
+      itemId: focusIdRaw,
+    });
+    toolTrace.push({
+      tool: 'get_item_excerpt',
+      ok: Boolean(focusObs.ok),
+      args: { itemId: focusIdRaw, focus: true },
+    });
+    if (focusObs.ok && focusObs.data) {
+      focusItem = {
+        itemId: focusObs.data.itemId,
+        title: focusObs.data.title,
+      };
+      for (const c of focusObs.citations || []) {
+        rememberCitation(citationMap, c);
+      }
+      // 暂存完整观察，后面 excerpt 循环可复用
+      ctx._focusExcerptObs = focusObs;
+    }
+  }
+
   // —— Thought/Action plan ——
   if (emit) emit({ type: 'user', message: userMessage });
   if (emit) emit({ type: 'phase', phase: 'planning' });
@@ -112,6 +138,7 @@ async function runUserTurn({
     history,
     userContent: text,
     priorCitations,
+    focusItem,
   });
   await usageService.assertAiQuota(userId, {
     estimatedTokens: usageService.estimateAiTokens({
@@ -167,7 +194,10 @@ async function runUserTurn({
 
   // 回指上文 / 对照：优先拉 excerptItemIds；否则取检索 Top
   let excerptIds = plan.excerptItemIds.filter(
-    (id) => priorIdSet.has(id) || allowedIds.includes(id),
+    (id) =>
+      priorIdSet.has(id) ||
+      allowedIds.includes(id) ||
+      (focusItem && id === focusItem.itemId),
   );
   if (
     !excerptIds.length &&
@@ -183,6 +213,10 @@ async function runUserTurn({
   }
   if (!excerptIds.length && allowedIds.length) {
     excerptIds = uniqueIds(allowedIds).slice(0, MAX_EXCERPTS);
+  }
+  // 阅读页锚定：强制带上当前篇
+  if (focusItem) {
+    excerptIds = uniqueIds([focusItem.itemId, ...excerptIds]);
   }
   // 对照至少两篇：若只解析出 1 个，补上最近另一篇上文出处
   if (
@@ -200,12 +234,21 @@ async function runUserTurn({
 
   if (excerptIds.length) {
     for (const itemId of excerptIds) {
-      const obs = await executeTool('get_item_excerpt', ctx, { itemId });
-      toolTrace.push({
-        tool: 'get_item_excerpt',
-        ok: Boolean(obs.ok),
-        args: { itemId },
-      });
+      let obs;
+      if (
+        focusItem &&
+        itemId === focusItem.itemId &&
+        ctx._focusExcerptObs
+      ) {
+        obs = ctx._focusExcerptObs;
+      } else {
+        obs = await executeTool('get_item_excerpt', ctx, { itemId });
+        toolTrace.push({
+          tool: 'get_item_excerpt',
+          ok: Boolean(obs.ok),
+          args: { itemId },
+        });
+      }
       observations.push({
         tool: 'get_item_excerpt',
         ok: obs.ok,
@@ -216,6 +259,7 @@ async function runUserTurn({
               tagNames: obs.data.tagNames,
               excerpt: String(obs.data.excerpt || '').slice(0, 4000),
               empty: obs.data.empty || false,
+              focus: Boolean(focusItem && itemId === focusItem.itemId),
             }
           : { error: obs.error },
       });
@@ -248,6 +292,7 @@ async function runUserTurn({
       userContent: text,
       observations,
       intent: plan.intent,
+      focusItem,
     });
     await usageService.assertAiQuota(userId, {
       estimatedTokens: usageService.estimateAiTokens({
@@ -276,6 +321,7 @@ async function runUserTurn({
       userContent: text,
       observations,
       intent: plan.intent,
+      focusItem,
     });
     await usageService.assertAiQuota(userId, {
       estimatedTokens: usageService.estimateAiTokens({
@@ -318,6 +364,7 @@ async function runUserTurn({
     !finalIds.length &&
     allowedIds.length &&
     (stream ||
+      focusItem ||
       plan.intent === 'search' ||
       plan.intent === 'compare' ||
       looksReferential(text))
@@ -325,6 +372,10 @@ async function runUserTurn({
     finalIds = uniqueIds(
       excerptIds.length ? excerptIds : allowedIds,
     ).slice(0, 3);
+  }
+  // 锚定会话：出处至少带上当前篇
+  if (focusItem) {
+    finalIds = uniqueIds([focusItem.itemId, ...finalIds]).slice(0, 3);
   }
   const citations = finalIds
     .map((id) => citationMap.get(Number(id)))

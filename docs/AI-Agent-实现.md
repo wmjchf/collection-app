@@ -6,7 +6,7 @@
 
 ## 0. 一句话
 
-**助手是用户级私人 Agent**：对话入口在阅读页右上角。能力顺序固定为 **查 → 整理 → 轻创作 → 中创作**（重创作更后）；创作必须能点回出处。现网解读 / 脑图 / 归类等收成 **Agent Tools**，阅读页独立 AI 入口逐步降级为「打开助手并预填任务」。
+**助手是用户级私人 Agent**：对话入口在阅读页底栏首位「助手」。能力顺序固定为 **查 → 整理 → 轻创作 → 中创作**（重创作更后）；创作必须能点回出处。现网解读 / 脑图 / 归类等收成 **Agent Tools**，阅读页独立 AI 入口逐步降级为「打开助手并预填任务」。
 
 ## 1. 产品定位
 
@@ -190,6 +190,7 @@ agentOrchestrator（ReAct loop）
 | `id` | BIGINT PK | |
 | `user_id` | BIGINT | 索引 |
 | `title` | VARCHAR(128) NULL | 可由首条用户消息截断生成 |
+| `focus_item_id` | BIGINT NULL | NULL=全局助手；非空=阅读页该篇专属会话 |
 | `status` | ENUM/`active`/`archived` | 默认 active |
 | `created_at` / `updated_at` | DATETIME | |
 
@@ -227,10 +228,15 @@ Phase 1 若只做同步检索 + 一次合成，可先不建此表，tool 结果�
 
 ```
 POST /api/agent/conversations
-→ { id, title }
+Body: { title?, focusItemId? }
+→ { id, title, focusItemId }
 
-GET /api/agent/conversations?limit&cursor
-→ { items: [{ id, title, updatedAt, preview }] }
+POST /api/agent/conversations/ensure
+Body: { focusItemId?, title? }   // 无 focus → 全局；有 → 该篇专属（没有则建）
+→ { id, title, focusItemId }
+
+GET /api/agent/conversations?limit&cursor&focusItemId&global=1
+→ { items: [{ id, title, focusItemId, updatedAt, preview }] }
 
 GET /api/agent/conversations/:id
 → { id, title, messages: [...] }
@@ -245,7 +251,8 @@ DELETE /api/agent/conversations/:id
 POST /api/agent/conversations/:id/messages
 Body: {
   content: string,          // 用户话
-  clientMessageId?: string  // 幂等
+  clientMessageId?: string, // 幂等
+  focusItemId?: number      // 阅读页锚定：强制 get_item_excerpt 该篇
 }
 
 → 202 + { assistantMessageId, status: 'running' }   // 若走队列
@@ -385,6 +392,7 @@ Body: { actionId, approve: true|false, params? }
 
 - 本地：当前 `conversationId`、消息列表、sending/streaming
 - 出处点击 → `ItemReadingPage(openEntry: 'agent')`
+- 阅读页底栏首位「助手」→ `AgentPage(focusItemId)` + `ensure(focusItemId)` 篇专属会话；首页/收藏 `ensure()` 全局会话
 - 错误：额度 / 网络 / 空库；空库引导去添加链接
 
 ### 9.3 与阅读页 AI 的关系（演进）

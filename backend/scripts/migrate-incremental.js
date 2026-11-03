@@ -47,6 +47,7 @@ const MIGRATION_FILES = [
   '037_tag_origin_organize.sql',
   '038_survey_organize_style.sql',
   '039_agent_conversations.sql',
+  '040_agent_conversation_focus_item.sql',
 ];
 
 async function getConnection() {

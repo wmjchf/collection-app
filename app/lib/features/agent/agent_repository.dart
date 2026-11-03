@@ -26,20 +26,49 @@ class AgentRepository {
     return token;
   }
 
-  Future<AgentConversation> createConversation({String? title}) async {
+  Future<AgentConversation> createConversation({
+    String? title,
+    int? focusItemId,
+  }) async {
     final json = await _client.post(
       '/api/agent/conversations',
       accessToken: await _token(),
       body: {
+        if (title != null && title.trim().isNotEmpty) 'title': title.trim(),
+        'focusItemId': ?focusItemId,
+      },
+    );
+    return AgentConversation.fromJson(json);
+  }
+
+  /// 全局会话（[focusItemId] 空）或某篇专属会话；没有则创建。
+  Future<AgentConversation> ensureConversation({
+    int? focusItemId,
+    String? title,
+  }) async {
+    final json = await _client.post(
+      '/api/agent/conversations/ensure',
+      accessToken: await _token(),
+      body: {
+        'focusItemId': ?focusItemId,
         if (title != null && title.trim().isNotEmpty) 'title': title.trim(),
       },
     );
     return AgentConversation.fromJson(json);
   }
 
-  Future<List<AgentConversation>> listConversations() async {
+  Future<List<AgentConversation>> listConversations({
+    int? focusItemId,
+    bool globalOnly = false,
+  }) async {
+    final qs = <String>[];
+    if (focusItemId != null) qs.add('focusItemId=$focusItemId');
+    if (globalOnly) qs.add('global=1');
+    final path = qs.isEmpty
+        ? '/api/agent/conversations'
+        : '/api/agent/conversations?${qs.join('&')}';
     final json = await _client.get(
-      '/api/agent/conversations',
+      path,
       accessToken: await _token(),
     );
     final items = json['items'];
@@ -83,6 +112,7 @@ class AgentRepository {
     required int conversationId,
     required String content,
     String? clientMessageId,
+    int? focusItemId,
   }) async {
     final json = await _client.post(
       '/api/agent/conversations/$conversationId/messages',
@@ -91,6 +121,7 @@ class AgentRepository {
         'content': content,
         if (clientMessageId != null && clientMessageId.isNotEmpty)
           'clientMessageId': clientMessageId,
+        'focusItemId': ?focusItemId,
       },
     );
     return AgentTurnResult.fromJson(json);
@@ -101,6 +132,7 @@ class AgentRepository {
     required int conversationId,
     required String content,
     String? clientMessageId,
+    int? focusItemId,
     void Function(String phase)? onPhase,
     void Function(String text)? onToken,
     void Function(AgentMessage user)? onUser,
@@ -119,6 +151,7 @@ class AgentRepository {
         'content': content,
         if (clientMessageId != null && clientMessageId.isNotEmpty)
           'clientMessageId': clientMessageId,
+        'focusItemId': ?focusItemId,
       });
 
     final streamed = await _http.send(req).timeout(
