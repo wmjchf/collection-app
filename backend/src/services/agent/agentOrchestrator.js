@@ -13,6 +13,7 @@ const {
 const {
   MAX_SEARCH_QUERIES,
   MAX_EXCERPTS,
+  MAX_LIST_ITEMS,
   assertCitationsAllowed,
 } = require('./agentPolicy');
 
@@ -155,6 +156,8 @@ async function runUserTurn({
   const plan = normalizePlan(planResult.json, {
     userContent: text,
     priorIds: priorCitations.map((c) => c.itemId),
+    history,
+    priorCitations,
   });
   toolTrace.push({ tool: 'plan', ok: true, args: plan });
   if (emit) {
@@ -171,10 +174,28 @@ async function runUserTurn({
   const allowedIds = [];
   const priorIdSet = new Set(priorCitations.map((c) => c.itemId));
 
+  const shouldList = plan.intent === 'list';
   const shouldSearch =
+    !shouldList &&
     plan.queries.length > 0 &&
     (plan.intent === 'search' ||
       (plan.intent === 'compare' && !plan.excerptItemIds.length));
+
+  if (shouldList) {
+    const obs = await executeTool('list_library', ctx, {
+      limit: MAX_LIST_ITEMS,
+    });
+    toolTrace.push({
+      tool: 'list_library',
+      ok: Boolean(obs.ok),
+      args: { limit: MAX_LIST_ITEMS },
+    });
+    observations.push({ tool: 'list_library', ...obs });
+    for (const c of obs.citations || []) {
+      rememberCitation(citationMap, c);
+      allowedIds.push(c.itemId);
+    }
+  }
 
   if (shouldSearch) {
     for (const q of plan.queries.slice(0, MAX_SEARCH_QUERIES)) {
@@ -192,45 +213,61 @@ async function runUserTurn({
     }
   }
 
-  // 回指上文 / 对照：优先拉 excerptItemIds；否则取检索 Top
-  let excerptIds = plan.excerptItemIds.filter(
-    (id) =>
-      priorIdSet.has(id) ||
-      allowedIds.includes(id) ||
-      (focusItem && id === focusItem.itemId),
-  );
-  if (
-    !excerptIds.length &&
-    (plan.intent === 'compare' || looksReferential(text)) &&
-    priorCitations.length
-  ) {
-    // 模型漏填 id：默认取最近两篇上文出处
-    excerptIds = [...priorCitations]
-      .map((c) => c.itemId)
-      .reverse()
-      .slice(0, Math.min(2, MAX_EXCERPTS))
-      .reverse();
+  // 普通检索只靠 search hits；对照 / 深挖 / 点名第N篇 / 确认「是」→ 拉摘录
+  const needsExcerpt =
+    !shouldList &&
+    (plan.intent === 'compare' ||
+      plan.followUp ||
+      looksDeepDive(text) ||
+      plan.excerptItemIds.length > 0 ||
+      (Boolean(focusItem) && plan.intent === 'search'));
+
+  let excerptIds = [];
+  if (needsExcerpt) {
+    excerptIds = plan.excerptItemIds.filter(
+      (id) =>
+        priorIdSet.has(id) ||
+        allowedIds.includes(id) ||
+        (focusItem && id === focusItem.itemId),
+    );
+    // follow-up 解析出的 id 可能只在 prior 里
+    if (plan.followUp && plan.excerptItemIds.length) {
+      excerptIds = uniqueIds([...plan.excerptItemIds, ...excerptIds]);
+    }
+    if (
+      !excerptIds.length &&
+      (plan.intent === 'compare' || looksReferential(text)) &&
+      priorCitations.length
+    ) {
+      // 模型漏填 id：默认取最近两篇上文出处
+      excerptIds = [...priorCitations]
+        .map((c) => c.itemId)
+        .reverse()
+        .slice(0, Math.min(2, MAX_EXCERPTS))
+        .reverse();
+    }
+    if (!excerptIds.length && allowedIds.length) {
+      excerptIds = uniqueIds(allowedIds).slice(0, MAX_EXCERPTS);
+    }
+    // 阅读页锚定：强制带上当前篇（点名 follow-up 已指定篇则不抢）
+    if (focusItem && !plan.followUp) {
+      excerptIds = uniqueIds([focusItem.itemId, ...excerptIds]);
+    }
+    // 对照至少两篇：若只解析出 1 个，补上最近另一篇上文出处
+    if (
+      (plan.intent === 'compare' || looksReferential(text)) &&
+      !plan.followUp &&
+      excerptIds.length === 1 &&
+      priorCitations.length >= 2
+    ) {
+      const extra = [...priorCitations]
+        .reverse()
+        .map((c) => c.itemId)
+        .find((id) => id !== excerptIds[0]);
+      if (extra) excerptIds.push(extra);
+    }
+    excerptIds = uniqueIds(excerptIds).slice(0, MAX_EXCERPTS);
   }
-  if (!excerptIds.length && allowedIds.length) {
-    excerptIds = uniqueIds(allowedIds).slice(0, MAX_EXCERPTS);
-  }
-  // 阅读页锚定：强制带上当前篇
-  if (focusItem) {
-    excerptIds = uniqueIds([focusItem.itemId, ...excerptIds]);
-  }
-  // 对照至少两篇：若只解析出 1 个，补上最近另一篇上文出处
-  if (
-    (plan.intent === 'compare' || looksReferential(text)) &&
-    excerptIds.length === 1 &&
-    priorCitations.length >= 2
-  ) {
-    const extra = [...priorCitations]
-      .reverse()
-      .map((c) => c.itemId)
-      .find((id) => id !== excerptIds[0]);
-    if (extra) excerptIds.push(extra);
-  }
-  excerptIds = uniqueIds(excerptIds).slice(0, MAX_EXCERPTS);
 
   if (excerptIds.length) {
     for (const itemId of excerptIds) {
@@ -293,6 +330,7 @@ async function runUserTurn({
       observations,
       intent: plan.intent,
       focusItem,
+      followUp: Boolean(plan.followUp),
     });
     await usageService.assertAiQuota(userId, {
       estimatedTokens: usageService.estimateAiTokens({
@@ -322,6 +360,7 @@ async function runUserTurn({
       observations,
       intent: plan.intent,
       focusItem,
+      followUp: Boolean(plan.followUp),
     });
     await usageService.assertAiQuota(userId, {
       estimatedTokens: usageService.estimateAiTokens({
@@ -366,15 +405,21 @@ async function runUserTurn({
     (stream ||
       focusItem ||
       plan.intent === 'search' ||
+      plan.intent === 'list' ||
       plan.intent === 'compare' ||
       looksReferential(text))
   ) {
+    const cap = plan.intent === 'list' ? MAX_LIST_ITEMS : 3;
     finalIds = uniqueIds(
-      excerptIds.length ? excerptIds : allowedIds,
-    ).slice(0, 3);
+      plan.intent === 'list'
+        ? allowedIds
+        : excerptIds.length
+          ? excerptIds
+          : allowedIds,
+    ).slice(0, cap);
   }
-  // 锚定会话：出处至少带上当前篇
-  if (focusItem) {
+  // 锚定会话：出处至少带上当前篇（盘点除外）
+  if (focusItem && plan.intent !== 'list') {
     finalIds = uniqueIds([focusItem.itemId, ...finalIds]).slice(0, 3);
   }
   const citations = finalIds
@@ -436,9 +481,118 @@ function stripItemIdMentions(text) {
 
 function looksReferential(text) {
   const t = String(text || '');
-  return /对照|对比|比较|这[两几多]篇|刚才|上一[轮篇]|前述|上面那|两篇|那两篇/.test(
+  // 不含「第二篇」等单篇点名（那是 follow-up，不是对照）
+  return /对照|对比|比较|这[两几多]篇|刚才那?[两几]篇|上一轮|前述|那两篇|两篇都|都对比/.test(
     t,
   );
+}
+
+/** 最近一轮带出处的助手消息里的 citations（用户说「第二篇」时按此序） */
+function latestCitationBatch(history) {
+  for (let i = (history || []).length - 1; i >= 0; i -= 1) {
+    const m = history[i];
+    if (m?.role !== 'assistant' || !Array.isArray(m.citations)) continue;
+    const batch = [];
+    const seen = new Set();
+    for (const c of m.citations) {
+      const id = Number(c?.itemId);
+      if (!Number.isFinite(id) || id <= 0 || seen.has(id)) continue;
+      seen.add(id);
+      batch.push({
+        itemId: id,
+        title: c.title || `条目 ${id}`,
+        snippet: c.snippet || '',
+        tagNames: Array.isArray(c.tagNames) ? c.tagNames : [],
+        coverImageUrl: c.coverImageUrl || null,
+      });
+    }
+    if (batch.length) return batch;
+  }
+  return [];
+}
+
+function parseOrdinal(raw) {
+  const s = String(raw || '').trim();
+  if (/^\d+$/.test(s)) return Number(s);
+  const map = {
+    一: 1,
+    二: 2,
+    两: 2,
+    三: 3,
+    四: 4,
+    五: 5,
+    六: 6,
+    七: 7,
+    八: 8,
+    九: 9,
+    十: 10,
+  };
+  if (map[s] != null) return map[s];
+  return 0;
+}
+
+function looksAffirmative(text) {
+  return /^(是|对|嗯+|好的?|可以|要|确认|没错|就是|行)([。.!！]?)$/.test(
+    String(text || '').trim(),
+  );
+}
+
+function looksOrdinalPick(text) {
+  const t = String(text || '').trim();
+  return (
+    /^第[一二两三四五六七八九十\d]+[篇个条]?$/.test(t) ||
+    /^(这篇|那篇|刚才那篇|上面那篇|前者|后者)$/.test(t)
+  );
+}
+
+/**
+ * 「第二篇」/「是」→ 解析到上文出处 itemId；无法解析则 []
+ */
+function resolveFollowUpItemIds(userContent, history, priorCitations) {
+  const batch =
+    latestCitationBatch(history).length > 0
+      ? latestCitationBatch(history)
+      : priorCitations || [];
+  if (!batch.length) return [];
+
+  const t = String(userContent || '').trim();
+
+  const ord = t.match(/^第([一二两三四五六七八九十\d]+)[篇个条]?$/);
+  if (ord) {
+    const n = parseOrdinal(ord[1]);
+    if (n >= 1 && n <= batch.length) return [batch[n - 1].itemId];
+  }
+  if (/^(这篇|那篇|刚才那篇|上面那篇)$/.test(t)) {
+    return [batch[batch.length - 1].itemId];
+  }
+  if (/^前者$/.test(t)) return [batch[0].itemId];
+  if (/^后者$/.test(t)) return [batch[batch.length - 1].itemId];
+
+  if (looksAffirmative(t)) {
+    // 从上一条助手话里《标题》或正文提到的出处标题对齐
+    const lastAsst = [...(history || [])]
+      .reverse()
+      .find((m) => m.role === 'assistant');
+    const content = String(lastAsst?.content || '');
+    const quoted = content.match(/《([^》]+)》/);
+    if (quoted) {
+      const q = quoted[1].trim();
+      const hit = batch.find((c) => {
+        const title = String(c.title || '');
+        return title.includes(q.slice(0, 12)) || q.includes(title.slice(0, 12));
+      });
+      if (hit) return [hit.itemId];
+    }
+    for (const c of batch) {
+      const title = String(c.title || '').trim();
+      if (title.length >= 6 && content.includes(title.slice(0, 10))) {
+        return [c.itemId];
+      }
+    }
+    return [batch[batch.length - 1].itemId];
+  }
+
+  return [];
 }
 
 /** 模型没写出正文时的兜底：有摘录则用标题+snippet 拼一段可读对照。 */
@@ -448,6 +602,25 @@ function fallbackAnswer({ intent, observations, citationMap, excerptIds }) {
   }
   if (intent === 'chitchat') {
     return '我是你的私人助手，可以帮你检索收藏、对照内容或深挖原文。想找哪类内容？';
+  }
+  if (intent === 'list') {
+    for (const obs of observations || []) {
+      if (obs?.tool !== 'list_library' || !obs.ok || !obs.data) continue;
+      const total = Number(obs.data.total) || 0;
+      const hits = Array.isArray(obs.data.hits) ? obs.data.hits : [];
+      if (!total) return '你的收藏库目前是空的。';
+      const lines = hits
+        .map((h) => String(h.title || '').trim())
+        .filter(Boolean)
+        .map((t) => `- ${t}`);
+      const head = `目前收藏库一共有 **${total}** 篇`;
+      if (!lines.length) return `${head}。`;
+      const more =
+        obs.data.truncated && hits.length
+          ? `\n\n以下是最近 ${hits.length} 篇：\n`
+          : '：\n\n';
+      return `${head}${more}${lines.join('\n')}`;
+    }
   }
 
   const fromObs = [];
@@ -494,9 +667,18 @@ function fallbackAnswer({ intent, observations, citationMap, excerptIds }) {
   return '我查过了，但暂时整理不出合适回答。你可以换个关键词再试。';
 }
 
-function normalizePlan(json, { userContent, priorIds } = {}) {
+function normalizePlan(
+  json,
+  { userContent, priorIds, history, priorCitations } = {},
+) {
   const intentRaw = String(json?.intent || 'search').toLowerCase();
-  let intent = ['search', 'compare', 'chitchat', 'clarify'].includes(intentRaw)
+  let intent = [
+    'search',
+    'list',
+    'compare',
+    'chitchat',
+    'clarify',
+  ].includes(intentRaw)
     ? intentRaw
     : 'search';
   let queries = Array.isArray(json?.queries)
@@ -505,6 +687,7 @@ function normalizePlan(json, { userContent, priorIds } = {}) {
   if (intent === 'search' && !queries.length && json?.q) {
     queries = [String(json.q).trim()].filter(Boolean);
   }
+  let followUp = false;
 
   const priorSet = new Set(
     (priorIds || []).map((id) => Number(id)).filter((n) => n > 0),
@@ -534,11 +717,67 @@ function normalizePlan(json, { userContent, priorIds } = {}) {
     queries = [];
   }
 
+  // 「第二篇」/「是」：锁定上文出处，直接深挖，禁止 clarify 确认循环
+  const followIds = resolveFollowUpItemIds(
+    userContent,
+    history,
+    priorCitations,
+  );
+  if (
+    followIds.length &&
+    (looksOrdinalPick(userContent) || looksAffirmative(userContent))
+  ) {
+    intent = 'search';
+    queries = [];
+    excerptItemIds = followIds;
+    followUp = true;
+  }
+
+  // 盘点收藏：强制 list，禁止用「文章」等空泛词搜出残缺结果
+  if (looksLikeInventory(userContent)) {
+    intent = 'list';
+    queries = [];
+    excerptItemIds = [];
+    followUp = false;
+  }
+
+  if (intent === 'list') {
+    queries = [];
+    excerptItemIds = [];
+  }
+
   return {
     intent,
     queries: queries.slice(0, MAX_SEARCH_QUERIES),
     excerptItemIds: excerptItemIds.slice(0, MAX_EXCERPTS),
+    followUp,
   };
+}
+
+/** 「有哪些收藏 / 收藏了什么 / 有多少篇」→ 浏览库，不是关键词检索 */
+function looksLikeInventory(text) {
+  const t = String(text || '').trim();
+  if (!t) return false;
+  return (
+    /收藏了(哪些|什么|啥)/.test(t) ||
+    /有哪些收藏/.test(t) ||
+    /我的收藏(里|库)?(有|都)/.test(t) ||
+    /收藏库(里|中)?(有|都)/.test(t) ||
+    /列出.*(收藏|文章|内容)/.test(t) ||
+    /全部收藏/.test(t) ||
+    /有多少(篇|条)?(收藏|文章|内容)?/.test(t) ||
+    /现在.*收藏/.test(t) ||
+    /收藏.*一共/.test(t)
+  );
+}
+
+/** 需要读正文再答：观点 / 原话 / 总结 / 展开等 */
+function looksDeepDive(text) {
+  const t = String(text || '').trim();
+  if (!t) return false;
+  return /观点|原话|论证|总结|解读|讲了什么|说了什么|主要内容|展开|深挖|详细讲|详细说|提炼|核心论点/.test(
+    t,
+  );
 }
 
 function rememberCitation(map, c) {

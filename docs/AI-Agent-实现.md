@@ -393,6 +393,7 @@ Body: { actionId, approve: true|false, params? }
 - 本地：当前 `conversationId`、消息列表、sending/streaming
 - 出处点击 → `ItemReadingPage(openEntry: 'agent')`
 - 阅读页底栏首位「助手」→ `AgentPage(focusItemId)` + `ensure(focusItemId)` 篇专属会话；首页/收藏 `ensure()` 全局会话
+- 盘点类问题（有哪些/有多少收藏）→ `list_library`，勿用空泛词 `search_library`
 - 错误：额度 / 网络 / 空库；空库引导去添加链接
 
 ### 9.3 与阅读页 AI 的关系（演进）
@@ -405,10 +406,11 @@ Body: { actionId, approve: true|false, params? }
 
 ## 10. 检索质量（Phase 1 关键）
 
-1. **先关键词 / 标签检索**（现网），再把 TopK 篇 `get_item_excerpt` 交给模型合成  
-2. 用户问「对照 A 和 B」：识别两篇 → 两篇 excerpt → 对比段落  
-3. 后续可加：embedding 表（`item_embeddings`）做语义召回；**不要** Phase 1 就上向量，除非关键词明显不够  
-4. snippet：优先返回含 query 的句子；禁止把整篇正文塞进 citations UI  
+1. **plan 按意图改写检索词**：`queries` 不是从用户原话抠词，而是理解要找什么后产出 1～2 个短主题/同义词，再走现网关键词 / 标签 LIKE；回答仍只能基于命中，不得编库外篇目  
+2. 有强命中（标题/摘要等）时丢掉仅正文顺带提到的弱命中；盘点类走 `list_library`  
+3. 用户问「对照 A 和 B」：识别两篇 → 两篇 excerpt → 对比段落  
+4. 后续可加：embedding 表（`item_embeddings`）做语义召回；**不要** Phase 1 就上向量，除非意图改写仍明显不够  
+5. snippet：优先返回含 query 的句子；禁止把整篇正文塞进 citations UI  
 
 ## 11. 安全与隐私
 

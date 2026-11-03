@@ -23,11 +23,13 @@ const tool = {
       return { ok: true, data: { query: '', total: 0, hits: [] } };
     }
     const limit = clampSearchLimit(args?.limit);
+    // 多取一些再筛：正文顺带提到关键词的弱命中会被丢掉
     const result = await itemService.searchItems(ctx.userId, q, {
-      limit,
+      limit: Math.min(limit * 3, 20),
       offset: 0,
     });
-    const hits = (result.items || []).map((item) => {
+    const ranked = rankAndFilterHits(result.items || [], limit);
+    const hits = ranked.map((item) => {
       const tags = Array.isArray(item.tags) ? item.tags : [];
       const snippet = pickSnippet(item, q);
       return {
@@ -36,11 +38,18 @@ const tool = {
         snippet,
         tagNames: tags.map((t) => t.name).filter(Boolean).slice(0, 6),
         coverImageUrl: item.coverImageUrl || null,
+        match: item._match || 'strong',
+        matchedFields: item.matchedFields || [],
       };
     });
     return {
       ok: true,
-      data: { query: result.query || q, total: result.total || 0, hits },
+      data: {
+        query: result.query || q,
+        total: hits.length,
+        rawTotal: result.total || 0,
+        hits,
+      },
       citations: hits.map((h) => ({
         itemId: h.itemId,
         title: h.title,
@@ -51,6 +60,34 @@ const tool = {
     };
   },
 };
+
+/** 标题/摘要/标签等强命中优先；有强命中时丢掉「仅正文顺带提到」的弱命中 */
+const STRONG_FIELDS = new Set([
+  'title',
+  'summary',
+  'tag',
+  'aiSummary',
+  'platform',
+]);
+
+function isStrongMatch(fields) {
+  return (fields || []).some((f) => STRONG_FIELDS.has(f));
+}
+
+function rankAndFilterHits(items, limit) {
+  const strong = [];
+  const weak = [];
+  for (const item of items) {
+    const fields = item.matchedFields || [];
+    if (isStrongMatch(fields)) {
+      strong.push({ ...item, _match: 'strong' });
+    } else {
+      weak.push({ ...item, _match: 'weak' });
+    }
+  }
+  const picked = strong.length ? strong : weak;
+  return picked.slice(0, limit);
+}
 
 function pickSnippet(item, q) {
   const needle = String(q || '').trim().toLowerCase();
