@@ -26,13 +26,13 @@ function buildPlanMessages({
 {"intent":"search"|"list"|"compare"|"chitchat"|"clarify","queries":["关键词1"],"excerptItemIds":[123,456]}
 规则：
 - intent=list：盘点收藏库（有哪些/有多少/列出收藏/现在收藏了什么）；queries=[]；excerptItemIds=[]；禁止用「文章」「收藏」等空泛词去 search
-- intent=search：按主题/关键词找相关篇；queries 1～2 个短关键词（从用户原话抽取，勿臆造主题）
+- intent=search：按用户意图找相关篇。queries 填 1～2 个适合搜库的短词（主题/实体/同义近义均可），不必出现在用户原话里。例：「有没有教人怎么更专注的」→ ["专注力","心流"]；「上次那个讲开公司的」→ ["创业","公司"]。禁止原句碎片、禁止「文章/收藏/内容/那个」等空泛词；不要编造具体篇目标题
 - intent=compare：用户要对照/对比「这几篇」等回指上文；queries 可为空；excerptItemIds 必须填上文出处里的 itemId（通常最近两篇）
 - 用户说「这两篇 / 对比一下」等：优先 compare + excerptItemIds，禁止另起无关新关键词去搜
 - 用户说「第一篇 / 第二篇 / 这篇」或对确认问句回「是 / 对」：intent=search，queries=[]，excerptItemIds 填对应上文出处；禁止 clarify、禁止再问「请回复是」
 - 若有「当前阅读篇」：围绕该篇的追问（观点/原话/展开）→ intent=search 且 queries 可空，excerptItemIds 必含该篇 itemId；不必另搜
 - intent=chitchat：问候/闲聊；queries=[]；excerptItemIds=[]
-- intent=clarify：太含糊需追问；queries=[]；excerptItemIds=[]；已有上文出处可点名时不要 clarify
+- intent=clarify：意图仍无法落成可搜主题时才追问；queries=[]；excerptItemIds=[]；已有上文出处可点名时不要 clarify
 - excerptItemIds 只能选自「上文已讨论出处」或「当前阅读篇」，没有则 []
 - 不要输出其它字段或 markdown
 
