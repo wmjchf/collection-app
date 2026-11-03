@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:super_collection/core/network/api_client.dart';
+import 'package:super_collection/core/ui/app_confirm_dialog.dart';
 import 'package:super_collection/core/ui/app_subpage_app_bar.dart';
 import 'package:super_collection/core/ui/app_toast.dart';
 import 'package:super_collection/features/agent/agent_markdown.dart';
@@ -39,12 +40,6 @@ class _AgentPageState extends State<AgentPage> {
   bool _sending = false;
   String? _error;
 
-  static const _prompts = [
-    '我存过哪些讲「长期主义」的？',
-    '这篇里「注意力」是怎么讲的？',
-    '把这两篇关于写作的对照一下',
-  ];
-
   @override
   void initState() {
     super.initState();
@@ -79,6 +74,8 @@ class _AgentPageState extends State<AgentPage> {
             ));
           _booting = false;
         });
+        // 长会话贴底看最新；短会话 max≈0，自然从顶部起
+        _scrollToEnd(jump: true);
         return;
       }
       final conv = await _repo.createConversation();
@@ -132,6 +129,7 @@ class _AgentPageState extends State<AgentPage> {
       content: text,
     );
     setState(() => _messages.add(optimistic));
+    _scrollToEnd();
 
     try {
       await _ensureConversation();
@@ -149,6 +147,7 @@ class _AgentPageState extends State<AgentPage> {
         _messages.add(result.assistantMessage);
         _sending = false;
       });
+      _scrollToEnd();
     } on ApiException catch (e) {
       if (!mounted) return;
       setState(() {
@@ -166,6 +165,24 @@ class _AgentPageState extends State<AgentPage> {
     }
   }
 
+  /// 正序列表：内容少时从顶部起；溢出后滚到最新。
+  void _scrollToEnd({bool jump = false}) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_scroll.hasClients) return;
+      final max = _scroll.position.maxScrollExtent;
+      if (max <= 0) return;
+      if (jump) {
+        _scroll.jumpTo(max);
+      } else {
+        _scroll.animateTo(
+          max,
+          duration: const Duration(milliseconds: 280),
+          curve: Curves.easeOutCubic,
+        );
+      }
+    });
+  }
+
   Future<void> _openCitation(AgentCitation c) async {
     await Navigator.of(context).push(
       MaterialPageRoute<void>(
@@ -177,9 +194,48 @@ class _AgentPageState extends State<AgentPage> {
     );
   }
 
+  Future<void> _clearChat() async {
+    if (_sending || _booting || _messages.isEmpty) return;
+    final ok = await showAppConfirmDialog(
+      context,
+      title: '删除聊天记录？',
+      message: '当前对话将被清空，无法恢复。',
+      confirmLabel: '删除',
+    );
+    if (ok != true || !mounted) return;
+
+    final oldId = _conversationId;
+    setState(() {
+      _booting = true;
+      _error = null;
+    });
+    try {
+      if (oldId != null) {
+        await _repo.archiveConversation(oldId);
+      }
+      final conv = await _repo.createConversation();
+      if (!mounted) return;
+      setState(() {
+        _conversationId = conv.id;
+        _messages.clear();
+        _booting = false;
+      });
+      AppToast.show(context, '已删除聊天记录');
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() => _booting = false);
+      await handleApiException(context, e);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _booting = false);
+      AppToast.show(context, '删除失败，请重试');
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final bottom = MediaQuery.paddingOf(context).bottom;
+    final canClear = !_booting && !_sending && _messages.isNotEmpty;
     return Scaffold(
       backgroundColor: _bg,
       resizeToAvoidBottomInset: true,
@@ -200,6 +256,22 @@ class _AgentPageState extends State<AgentPage> {
             ),
           ),
         ),
+        actions: [
+          SizedBox(
+            width: 88,
+            child: Align(
+              alignment: Alignment.centerRight,
+              child: IconButton(
+                tooltip: '清空聊天',
+                onPressed: canClear ? _clearChat : null,
+                icon: Icon(
+                  Icons.cleaning_services_outlined,
+                  color: canClear ? _text : const Color(0xFFC5CAD3),
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
       body: Column(
         children: [
@@ -220,29 +292,22 @@ class _AgentPageState extends State<AgentPage> {
                         ),
                       )
                     : _messages.isEmpty
-                        ? ListView(
-                            padding: const EdgeInsets.fromLTRB(22, 16, 22, 24),
-                            children: _buildEmpty(),
-                          )
+                        ? const _EmptyState()
                         : ListView.builder(
-                            // reverse：默认贴在底部，进页无需动画滚动
                             controller: _scroll,
-                            reverse: true,
                             padding: const EdgeInsets.fromLTRB(22, 12, 22, 16),
                             itemCount: _messages.length + (_sending ? 1 : 0),
                             itemBuilder: (context, index) {
-                              if (_sending && index == 0) {
+                              if (_sending && index == _messages.length) {
                                 return const Padding(
-                                  padding: EdgeInsets.only(bottom: 14, top: 2),
+                                  padding: EdgeInsets.only(top: 2, bottom: 14),
                                   child: Align(
                                     alignment: Alignment.centerLeft,
                                     child: _ThinkingIndicator(),
                                   ),
                                 );
                               }
-                              final msgIndex = _sending ? index - 1 : index;
-                              final m =
-                                  _messages[_messages.length - 1 - msgIndex];
+                              final m = _messages[index];
                               return Padding(
                                 padding: const EdgeInsets.only(bottom: 14),
                                 child: m.isUser
@@ -268,44 +333,210 @@ class _AgentPageState extends State<AgentPage> {
     );
   }
 
-  List<Widget> _buildEmpty() {
-    return [
-      const Text(
-        '你的私人助手。',
-        style: TextStyle(
-          fontSize: 26,
-          fontWeight: FontWeight.w600,
-          color: _text,
-          height: 1.3,
+}
+
+/// 空态：品牌气场的暗绿光核 + 薄荷 ✦，居中标题/副文（避免浅蓝「后台」感）。
+class _EmptyState extends StatefulWidget {
+  const _EmptyState();
+
+  @override
+  State<_EmptyState> createState() => _EmptyStateState();
+}
+
+class _EmptyStateState extends State<_EmptyState>
+    with SingleTickerProviderStateMixin {
+  static const _ink = Color(0xFF101612);
+  static const _moss = Color(0xFF1C2A22);
+  static const _mint = Color(0xFFB7E0C6);
+  static const _title = Color(0xFF161C18);
+  static const _sub = Color(0xFF6B746E);
+
+  late final AnimationController _breath;
+
+  @override
+  void initState() {
+    super.initState();
+    _breath = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 2600),
+    )..repeat(reverse: true);
+  }
+
+  @override
+  void dispose() {
+    _breath.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(36, 24, 36, 48),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            AnimatedBuilder(
+              animation: _breath,
+              builder: (context, _) {
+                final t = Curves.easeInOut.transform(_breath.value);
+                final glow = 0.22 + 0.18 * t;
+                final ring = 1.0 + 0.04 * t;
+                return SizedBox(
+                  width: 128,
+                  height: 128,
+                  child: Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      // 外层弥散光
+                      Transform.scale(
+                        scale: ring,
+                        child: Container(
+                          width: 128,
+                          height: 128,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            gradient: RadialGradient(
+                              colors: [
+                                _mint.withValues(alpha: glow * 0.55),
+                                _mint.withValues(alpha: glow * 0.12),
+                                Colors.transparent,
+                              ],
+                              stops: const [0.0, 0.45, 1.0],
+                            ),
+                          ),
+                        ),
+                      ),
+                      // 细轨道环
+                      Container(
+                        width: 96,
+                        height: 96,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            color: _mint.withValues(alpha: 0.28 + 0.12 * t),
+                            width: 1,
+                          ),
+                        ),
+                      ),
+                      // 暗绿核
+                      Container(
+                        width: 76,
+                        height: 76,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          gradient: const RadialGradient(
+                            center: Alignment(-0.35, -0.4),
+                            radius: 1.05,
+                            colors: [
+                              Color(0xFF2A3D32),
+                              _moss,
+                              _ink,
+                            ],
+                            stops: [0.0, 0.45, 1.0],
+                          ),
+                          boxShadow: [
+                            BoxShadow(
+                              color: _mint.withValues(alpha: 0.22 + 0.1 * t),
+                              blurRadius: 28,
+                              spreadRadius: 1,
+                            ),
+                            BoxShadow(
+                              color: _ink.withValues(alpha: 0.35),
+                              blurRadius: 16,
+                              offset: const Offset(0, 10),
+                            ),
+                          ],
+                        ),
+                        alignment: Alignment.center,
+                        child: Text(
+                          '✦',
+                          style: TextStyle(
+                            fontSize: 28,
+                            height: 1,
+                            color: _mint.withValues(alpha: 0.92 + 0.08 * t),
+                            shadows: [
+                              Shadow(
+                                color: _mint.withValues(alpha: 0.55),
+                                blurRadius: 12,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              },
+            ),
+            const SizedBox(height: 28),
+            const Text(
+              '你的私人助手',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 26,
+                fontWeight: FontWeight.w600,
+                color: _title,
+                height: 1.25,
+                letterSpacing: 1.2,
+              ),
+            ),
+            const SizedBox(height: 12),
+            const Text(
+              '帮你在收藏里更快找到内容，也能深挖原文。',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 15,
+                color: _sub,
+                height: 1.55,
+                letterSpacing: 0.15,
+              ),
+            ),
+            const SizedBox(height: 22),
+            Wrap(
+              alignment: WrapAlignment.center,
+              spacing: 8,
+              runSpacing: 8,
+              children: const [
+                _CapabilityMark(label: '检索内容'),
+                _CapabilityMark(label: '对照内容'),
+                _CapabilityMark(label: '深挖原文'),
+              ],
+            ),
+          ],
         ),
       ),
-      const SizedBox(height: 10),
-      const Text(
-        '先帮你查库、找出处；之后还能一起整理、创作。',
-        style: TextStyle(fontSize: 15, color: _muted, height: 1.45),
+    );
+  }
+}
+
+class _CapabilityMark extends StatelessWidget {
+  const _CapabilityMark({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+      decoration: BoxDecoration(
+        color: const Color(0xFF161C18).withValues(alpha: 0.04),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(
+          color: const Color(0xFF1C2A22).withValues(alpha: 0.14),
+        ),
       ),
-      const SizedBox(height: 16),
-      Wrap(
-        spacing: 8,
-        runSpacing: 8,
-        children: const [
-          _CapChip(label: '查收藏', active: true),
-          _CapChip(label: '整理 · 即将', active: false),
-          _CapChip(label: '创作 · 即将', active: false),
-        ],
+      child: Text(
+        label,
+        style: const TextStyle(
+          fontSize: 12,
+          fontWeight: FontWeight.w500,
+          letterSpacing: 0.4,
+          color: Color(0xFF3D4A42),
+          height: 1.2,
+        ),
       ),
-      const SizedBox(height: 22),
-      const Text(
-        '现在可以这样用',
-        style: TextStyle(fontSize: 13, color: _muted, fontWeight: FontWeight.w500),
-      ),
-      const SizedBox(height: 10),
-      for (final p in _prompts) ...[
-        _PromptCard(label: p, onTap: () => _send(p)),
-        const SizedBox(height: 10),
-      ],
-      const SizedBox(height: 24),
-    ];
+    );
   }
 }
 
@@ -397,70 +628,6 @@ class _Dot extends StatelessWidget {
         decoration: BoxDecoration(
           color: const Color(0xFF2F6FED).withValues(alpha: opacity),
           shape: BoxShape.circle,
-        ),
-      ),
-    );
-  }
-}
-
-class _CapChip extends StatelessWidget {
-  const _CapChip({required this.label, required this.active});
-
-  final String label;
-  final bool active;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        color: active ? const Color(0xFFE8F0FF) : const Color(0xFFF5F7FA),
-        borderRadius: BorderRadius.circular(999),
-        border: active
-            ? null
-            : Border.all(color: const Color(0xFFE6E8EB)),
-      ),
-      child: Text(
-        label,
-        style: TextStyle(
-          fontSize: 12,
-          fontWeight: FontWeight.w500,
-          color: active ? const Color(0xFF2F6FED) : const Color(0xFF9AA1AB),
-        ),
-      ),
-    );
-  }
-}
-
-class _PromptCard extends StatelessWidget {
-  const _PromptCard({required this.label, required this.onTap});
-
-  final String label;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: Colors.white,
-      borderRadius: BorderRadius.circular(14),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(14),
-        child: Container(
-          width: double.infinity,
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: const Color(0xFFE8EBF0)),
-          ),
-          child: Text(
-            label,
-            style: const TextStyle(
-              fontSize: 14,
-              color: Color(0xFF1F242E),
-              height: 1.4,
-            ),
-          ),
         ),
       ),
     );
