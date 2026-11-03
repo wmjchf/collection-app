@@ -2,12 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:super_collection/core/ui/app_bottom_sheet.dart';
 import 'package:super_collection/core/ui/app_orientation.dart';
 
-enum ReadingMoreAction { transcript, note }
+enum ReadingMoreAction { transcript, note, mindmap }
 
 Future<ReadingMoreAction?> showReadingMoreSheet(
   BuildContext context, {
   bool showTranscript = false,
   bool hasNote = false,
+  bool mindmapPending = false,
 }) {
   return showAppBottomSheet<ReadingMoreAction>(
     context: context,
@@ -19,6 +20,7 @@ Future<ReadingMoreAction?> showReadingMoreSheet(
     builder: (context) => _ReadingMoreSheet(
       showTranscript: showTranscript,
       hasNote: hasNote,
+      mindmapPending: mindmapPending,
     ),
   );
 }
@@ -27,10 +29,12 @@ class _ReadingMoreSheet extends StatelessWidget {
   const _ReadingMoreSheet({
     required this.showTranscript,
     required this.hasNote,
+    required this.mindmapPending,
   });
 
   final bool showTranscript;
   final bool hasNote;
+  final bool mindmapPending;
 
   static const _text = Color(0xFF1F242E);
   static const _muted = Color(0xFF737A85);
@@ -79,13 +83,13 @@ class _ReadingMoreSheet extends StatelessWidget {
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                  if (showTranscript)
-                    _GridItem(
-                      icon: Icons.subtitles_outlined,
-                      label: '转写文稿',
-                      onTap: () =>
-                          Navigator.pop(context, ReadingMoreAction.transcript),
-                    ),
+                  _GridItem(
+                    icon: Icons.account_tree_outlined,
+                    label: mindmapPending ? '生成中…' : '思维导图',
+                    color: mindmapPending ? _muted : _text,
+                    onTap: () =>
+                        Navigator.pop(context, ReadingMoreAction.mindmap),
+                  ),
                   _GridItem(
                     icon: Icons.edit_note_outlined,
                     label: '感想',
@@ -93,6 +97,13 @@ class _ReadingMoreSheet extends StatelessWidget {
                     onTap: () =>
                         Navigator.pop(context, ReadingMoreAction.note),
                   ),
+                  if (showTranscript)
+                    _GridItem(
+                      icon: Icons.subtitles_outlined,
+                      label: '转写文稿',
+                      onTap: () =>
+                          Navigator.pop(context, ReadingMoreAction.transcript),
+                    ),
                   ],
                 ),
               ),

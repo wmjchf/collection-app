@@ -6,10 +6,19 @@ function mapConversation(row) {
   return {
     id: Number(row.id),
     title: row.title || null,
+    focusItemId:
+      row.focus_item_id != null ? Number(row.focus_item_id) : null,
     status: row.status,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
+}
+
+function normalizeFocusItemId(raw) {
+  if (raw == null || raw === '') return null;
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  return n;
 }
 
 function mapMessage(row) {
@@ -35,14 +44,66 @@ function parseJson(raw, fallback) {
   }
 }
 
-async function createConversation(userId, { title } = {}) {
+async function createConversation(userId, { title, focusItemId } = {}) {
   const t = title ? String(title).trim().slice(0, 128) : null;
+  const focusId = normalizeFocusItemId(focusItemId);
   const [result] = await pool.execute(
-    `INSERT INTO agent_conversations (user_id, title, status)
-     VALUES (:userId, :title, 'active')`,
-    { userId, title: t },
+    `INSERT INTO agent_conversations (user_id, title, focus_item_id, status)
+     VALUES (:userId, :title, :focusItemId, 'active')`,
+    { userId, title: t, focusItemId: focusId },
   );
   return getConversationForUser(userId, result.insertId);
+}
+
+/**
+ * 全局助手：focus_item_id IS NULL 的最新 active
+ * 阅读页：该篇专属 active；没有则新建
+ */
+async function ensureConversation(userId, { focusItemId, title } = {}) {
+  const focusId = normalizeFocusItemId(focusItemId);
+
+  if (focusId != null) {
+    const [items] = await pool.execute(
+      `SELECT id, title FROM items
+       WHERE id = :id AND user_id = :userId
+       LIMIT 1`,
+      { id: focusId, userId },
+    );
+    if (!items[0]) {
+      throw Object.assign(new Error('条目不存在'), { status: 404 });
+    }
+    const [rows] = await pool.execute(
+      `SELECT *
+       FROM agent_conversations
+       WHERE user_id = :userId
+         AND status = 'active'
+         AND focus_item_id = :focusId
+       ORDER BY updated_at DESC, id DESC
+       LIMIT 1`,
+      { userId, focusId },
+    );
+    if (rows[0]) return mapConversation(rows[0]);
+    const seed =
+      title ||
+      (items[0].title ? String(items[0].title).trim().slice(0, 128) : null);
+    return createConversation(userId, {
+      title: seed,
+      focusItemId: focusId,
+    });
+  }
+
+  const [rows] = await pool.execute(
+    `SELECT *
+     FROM agent_conversations
+     WHERE user_id = :userId
+       AND status = 'active'
+       AND focus_item_id IS NULL
+     ORDER BY updated_at DESC, id DESC
+     LIMIT 1`,
+    { userId },
+  );
+  if (rows[0]) return mapConversation(rows[0]);
+  return createConversation(userId, { title, focusItemId: null });
 }
 
 async function getConversationForUser(userId, conversationId) {
@@ -56,13 +117,24 @@ async function getConversationForUser(userId, conversationId) {
   return mapConversation(rows[0] || null);
 }
 
-async function listConversations(userId, { limit = 30, cursor } = {}) {
+async function listConversations(
+  userId,
+  { limit = 30, cursor, focusItemId, globalOnly = false } = {},
+) {
   const safeLimit = Math.min(Math.max(Number(limit) || 30, 1), 50);
   const params = { userId, lim: safeLimit };
   let cursorClause = '';
   if (cursor) {
-    cursorClause = 'AND updated_at < :cursor';
+    cursorClause = 'AND c.updated_at < :cursor';
     params.cursor = cursor;
+  }
+  let focusClause = '';
+  const focusId = normalizeFocusItemId(focusItemId);
+  if (focusId != null) {
+    focusClause = 'AND c.focus_item_id = :focusId';
+    params.focusId = focusId;
+  } else if (globalOnly) {
+    focusClause = 'AND c.focus_item_id IS NULL';
   }
   const [rows] = await pool.execute(
     `SELECT c.*,
@@ -74,6 +146,7 @@ async function listConversations(userId, { limit = 30, cursor } = {}) {
      FROM agent_conversations c
      WHERE c.user_id = :userId
        AND c.status = 'active'
+       ${focusClause}
        ${cursorClause}
      ORDER BY c.updated_at DESC, c.id DESC
      LIMIT ${safeLimit}`,
@@ -190,6 +263,7 @@ async function touchTitleIfEmpty(userId, conversationId, seed) {
 
 module.exports = {
   createConversation,
+  ensureConversation,
   getConversationForUser,
   listConversations,
   archiveConversation,

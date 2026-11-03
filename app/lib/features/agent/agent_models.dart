@@ -2,12 +2,14 @@ class AgentConversation {
   const AgentConversation({
     required this.id,
     this.title,
+    this.focusItemId,
     this.status = 'active',
     this.preview,
   });
 
   final int id;
   final String? title;
+  final int? focusItemId;
   final String status;
   final String? preview;
 
@@ -15,6 +17,7 @@ class AgentConversation {
     return AgentConversation(
       id: (json['id'] as num).toInt(),
       title: json['title'] as String?,
+      focusItemId: (json['focusItemId'] as num?)?.toInt(),
       status: json['status'] as String? ?? 'active',
       preview: json['preview'] as String?,
     );

@@ -11,8 +11,25 @@ router.post('/conversations', async (req, res, next) => {
   try {
     const conv = await conversationService.createConversation(req.auth.userId, {
       title: req.body?.title,
+      focusItemId: req.body?.focusItemId,
     });
     return res.status(201).json(conv);
+  } catch (err) {
+    return next(err);
+  }
+});
+
+/**
+ * POST /api/agent/conversations/ensure
+ * body: { focusItemId?: number } — 无则全局会话；有则该篇专属会话
+ */
+router.post('/conversations/ensure', async (req, res, next) => {
+  try {
+    const conv = await conversationService.ensureConversation(req.auth.userId, {
+      focusItemId: req.body?.focusItemId,
+      title: req.body?.title,
+    });
+    return res.json(conv);
   } catch (err) {
     return next(err);
   }
@@ -21,9 +38,15 @@ router.post('/conversations', async (req, res, next) => {
 /** GET /api/agent/conversations */
 router.get('/conversations', async (req, res, next) => {
   try {
+    const globalOnly =
+      req.query.global === '1' ||
+      req.query.global === 'true' ||
+      req.query.scope === 'global';
     const result = await conversationService.listConversations(req.auth.userId, {
       limit: req.query.limit,
       cursor: req.query.cursor,
+      focusItemId: req.query.focusItemId,
+      globalOnly,
     });
     return res.json(result);
   } catch (err) {
@@ -58,7 +81,7 @@ router.delete('/conversations/:id', async (req, res, next) => {
 
 /**
  * POST /api/agent/conversations/:id/messages
- * body: { content, clientMessageId? }
+ * body: { content, clientMessageId?, focusItemId? }
  * Accept: text/event-stream → SSE（phase / token / done / error）
  */
 router.post('/conversations/:id/messages', async (req, res, next) => {
@@ -66,6 +89,8 @@ router.post('/conversations/:id/messages', async (req, res, next) => {
   const wantStream = String(req.headers.accept || '').includes(
     'text/event-stream',
   );
+  const focusItemId =
+    req.body?.focusItemId != null ? Number(req.body.focusItemId) : null;
 
   if (!wantStream) {
     try {
@@ -74,6 +99,7 @@ router.post('/conversations/:id/messages', async (req, res, next) => {
         conversationId: id,
         content: req.body?.content,
         clientMessageId: req.body?.clientMessageId,
+        focusItemId,
       });
       return res.json(result);
     } catch (err) {
@@ -99,6 +125,7 @@ router.post('/conversations/:id/messages', async (req, res, next) => {
       conversationId: id,
       content: req.body?.content,
       clientMessageId: req.body?.clientMessageId,
+      focusItemId,
       stream: true,
       onEvent: (ev) => {
         if (!ev || !ev.type) return;
