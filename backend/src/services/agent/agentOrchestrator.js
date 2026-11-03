@@ -638,7 +638,7 @@ function fallbackAnswer({ intent, observations, citationMap, excerptIds }) {
     return '可以再说具体一点吗？比如主题、作者，或你记得的一句话。';
   }
   if (intent === 'chitchat') {
-    return '我是你的AI助手，可以帮你检索收藏、对照内容或深挖原文。想找哪类内容？';
+    return '我是你的AI助手，可以帮你检索收藏、对照内容或深挖原文；收藏说不全时，会标明后再补充公开常识。想找哪类内容？';
   }
   if (intent === 'list') {
     for (const obs of observations || []) {
