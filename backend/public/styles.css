@@ -575,6 +575,41 @@ img { max-width: 100%; height: auto; }
   border-radius: 0 2px 2px 0;
 }
 
+/* —— AI助手 —— */
+.agent-stage {
+  max-width: var(--max);
+  margin: 0 auto;
+}
+
+.agent-caps {
+  list-style: none;
+  margin: 22px 0 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 18px;
+  color: var(--brand-soft);
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.agent-caps li {
+  position: relative;
+}
+
+.agent-caps li:not(:last-child)::after {
+  content: '';
+  position: absolute;
+  right: -10px;
+  top: 50%;
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: rgba(155, 184, 245, 0.55);
+  transform: translateY(-50%);
+}
+
 /* —— Values —— */
 .values {
   background: transparent;
@@ -926,6 +961,10 @@ img { max-width: 100%; height: auto; }
   .copy p {
     margin-left: auto;
     margin-right: auto;
+  }
+
+  .agent-caps {
+    justify-content: center;
   }
 
   .phone {
