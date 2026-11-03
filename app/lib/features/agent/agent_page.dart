@@ -674,6 +674,7 @@ class _AgentPageState extends State<AgentPage> {
         pageUrl: item.sourcePageUrl,
         sharePositionOrigin: shareOrigin,
         screenSize: MediaQuery.sizeOf(context),
+        watermark: false,
       );
     } catch (error, stack) {
       debugPrint('agent quote share failed: $error\n$stack');

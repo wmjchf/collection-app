@@ -94,23 +94,29 @@ Future<void> shareReadingQuote({
   ReadingShareKind kind = ReadingShareKind.quote,
   Rect? sharePositionOrigin,
   Size? screenSize,
+  /// 为 null 时：感想不带水印；其它按会员档（免费带水印）。可强制覆盖。
+  bool? watermark,
 }) async {
   if (_quoteShareInFlight) return;
   _quoteShareInFlight = true;
   final loading = _QuoteShareLoading.show(context);
   try {
     final annotation = note?.trim() ?? '';
+    final shareKind = annotation.isNotEmpty && kind == ReadingShareKind.quote
+        ? ReadingShareKind.annotation
+        : kind;
     final bytes = await renderReadingQuotePng(
       quote: quote.trim(),
       title: title?.trim() ?? '',
       link: link?.trim() ?? '',
       coverUrl: coverUrl,
       pageUrl: pageUrl,
-      kind: annotation.isNotEmpty && kind == ReadingShareKind.quote
-          ? ReadingShareKind.annotation
-          : kind,
+      kind: shareKind,
       note: annotation,
-      watermark: await _shareWatermark(),
+      watermark: watermark ??
+          (shareKind == ReadingShareKind.note
+              ? false
+              : await _shareWatermark()),
     );
     loading.dismiss();
     final origin = _effectiveShareOrigin(sharePositionOrigin, screenSize);
