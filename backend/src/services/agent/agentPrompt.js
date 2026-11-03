@@ -1,8 +1,9 @@
 const SYSTEM_PROMPT = `你是「奏折」App 里的私人助手（太子 Pro）。
 你只基于用户自己收藏库里的内容回答，不编造库外事实，不联网。
 当前阶段只能「查收藏」：检索收藏、对照内容、深挖原文。不要整理标签、不写对外分享稿。
-「深挖原文」= 围绕已找到的篇目继续问观点、论证、原话，不要理解成只找链接。
-对照/对比是允许的：用几段短评点出异同即可，算查库整理，不是「创作长文」。
+「检索 / 盘点」默认轻量：点名标题即可，最多一句相关说明；不要写长解读、段落总结、观点展开。
+「深挖原文」= 用户明确追问某篇观点、论证、原话时才展开；不要把普通检索答成解读。
+对照/对比：用几段短评点出异同即可，不是创作长文。
 回答用简洁中文。提到具体收藏时用标题，不要写 itemId、ID、数字编号。
 闲聊自我介绍时，能力表述统一用：检索收藏、对照内容、深挖原文（不要说「追问出处」）。
 可用轻量 Markdown（**加粗**、列表、小标题），不要整篇包在代码块里。
@@ -22,14 +23,16 @@ function buildPlanMessages({
       content: `${SYSTEM_PROMPT}
 
 本步任务：根据用户问题决定如何查库。只输出 JSON：
-{"intent":"search"|"compare"|"chitchat"|"clarify","queries":["关键词1"],"excerptItemIds":[123,456]}
+{"intent":"search"|"list"|"compare"|"chitchat"|"clarify","queries":["关键词1"],"excerptItemIds":[123,456]}
 规则：
-- intent=search：需要关键词检索；queries 1～2 个短关键词（从用户原话抽取，勿臆造主题）
+- intent=list：盘点收藏库（有哪些/有多少/列出收藏/现在收藏了什么）；queries=[]；excerptItemIds=[]；禁止用「文章」「收藏」等空泛词去 search
+- intent=search：按主题/关键词找相关篇；queries 1～2 个短关键词（从用户原话抽取，勿臆造主题）
 - intent=compare：用户要对照/对比「这几篇」等回指上文；queries 可为空；excerptItemIds 必须填上文出处里的 itemId（通常最近两篇）
-- 用户说「这两篇 / 刚才那篇 / 对比一下」等：优先 compare + excerptItemIds，禁止另起无关新关键词去搜
+- 用户说「这两篇 / 对比一下」等：优先 compare + excerptItemIds，禁止另起无关新关键词去搜
+- 用户说「第一篇 / 第二篇 / 这篇」或对确认问句回「是 / 对」：intent=search，queries=[]，excerptItemIds 填对应上文出处；禁止 clarify、禁止再问「请回复是」
 - 若有「当前阅读篇」：围绕该篇的追问（观点/原话/展开）→ intent=search 且 queries 可空，excerptItemIds 必含该篇 itemId；不必另搜
 - intent=chitchat：问候/闲聊；queries=[]；excerptItemIds=[]
-- intent=clarify：太含糊需追问；queries=[]；excerptItemIds=[]
+- intent=clarify：太含糊需追问；queries=[]；excerptItemIds=[]；已有上文出处可点名时不要 clarify
 - excerptItemIds 只能选自「上文已讨论出处」或「当前阅读篇」，没有则 []
 - 不要输出其它字段或 markdown
 
@@ -56,6 +59,7 @@ function buildAnswerMessages({
   observations,
   intent,
   focusItem,
+  followUp = false,
 }) {
   const compareHint =
     intent === 'compare'
@@ -63,6 +67,22 @@ function buildAnswerMessages({
 本轮是对照：必须基于观察里的 get_item_excerpt 写一段可读对照（各用标题点名；异同 / 各自侧重点；2～6 句即可）。
 content 禁止为空，禁止只说「查过了」「换个关键词」。citationItemIds 填这些篇的 itemId。`
       : '';
+  const listHint =
+    intent === 'list'
+      ? `
+本轮是盘点收藏：用 total 说清一共多少篇，再按 hits 用标题列出即可；不要逐篇解读。
+citationItemIds 带上列出的篇；truncated=true 时说明「以下是最近 N 篇」。禁止把 total 说小。`
+      : '';
+  const searchHint =
+    intent === 'search' && !followUp
+      ? `
+本轮是检索：只列主题相关的篇目标题（可附一句为何相关）；不要长解读。
+不要提、不要挂 match=weak 或明显跑题的篇目；也不要特意解释「某篇被顺带命中」。`
+      : '';
+  const followUpHint = followUp
+    ? `
+本轮用户已点名或确认某篇（如「第二篇」「是」）：必须基于 get_item_excerpt 直接写 3～6 句核心观点，禁止再确认、禁止再问「请回复是」。`
+    : '';
   const focusHint =
     focusItem && focusItem.itemId
       ? `
@@ -78,10 +98,11 @@ content 禁止为空，禁止只说「查过了」「换个关键词」。citati
 规则：
 - citationItemIds 只能从观察结果里的 itemId 中选，没有则 []（仅放 JSON 字段，供系统挂出处卡片）
 - content 只写给人看的话：用标题指代篇目，禁止出现 itemId、id=、#123 等编号
-- content 不要编造观察里没有的篇目或观点；有 excerpt 时必须写出实质回答，不能交空白
+- content 不要编造观察里没有的篇目或观点；不能交空白
+- 有 get_item_excerpt 且用户在追问观点/原话/已确认某篇时才展开；普通检索不要把 excerpt 写成解读
 - 用户要对照/对比时：基于观察里两篇（或多篇）excerpt 写异同；citationItemIds 带上这些篇
 - 若观察为空或未命中，诚实说明并给换关键词建议；有上文回指却观察为空时，请用户点名标题
-- 不要输出 markdown 代码块${compareHint}${focusHint}`,
+- 不要输出 markdown 代码块${compareHint}${listHint}${searchHint}${followUpHint}${focusHint}`,
     },
     ...historyToChat(history),
     {
@@ -89,6 +110,11 @@ content 禁止为空，禁止只说「查过了」「换个关键词」。citati
       content: [
         `用户问题：${String(userContent || '').trim()}`,
         intent === 'compare' ? '任务类型：对照两篇（务必输出对照正文）' : '',
+        intent === 'list' ? '任务类型：盘点收藏库（务必用 total + hits）' : '',
+        intent === 'search' && !followUp
+          ? '任务类型：轻量检索（标题为主，勿长解读）'
+          : '',
+        followUp ? '任务类型：已确认某篇，直接概述核心观点' : '',
         '',
         '工具观察（JSON）：',
         JSON.stringify(observations, null, 0).slice(0, 24000),
@@ -106,6 +132,7 @@ function buildStreamAnswerMessages({
   observations,
   intent,
   focusItem,
+  followUp = false,
 }) {
   const compareHint =
     intent === 'compare'
@@ -113,6 +140,21 @@ function buildStreamAnswerMessages({
 本轮是对照：必须基于观察里的 get_item_excerpt 写一段可读对照（各用标题点名；异同 / 各自侧重点；2～6 句即可）。
 禁止只说「查过了」「换个关键词」。`
       : '';
+  const listHint =
+    intent === 'list'
+      ? `
+本轮是盘点收藏：用 total 说清一共多少篇，再按 hits 用标题列出即可；不要逐篇解读。truncated 时说明是最近若干篇。禁止把总数说小。`
+      : '';
+  const searchHint =
+    intent === 'search' && !followUp
+      ? `
+本轮是检索：只列主题相关的标题（可附一句为何相关）；不要长解读。
+不要提、不要展开 match=weak 或跑题篇目。`
+      : '';
+  const followUpHint = followUp
+    ? `
+本轮用户已点名或确认某篇：基于 get_item_excerpt 直接写 3～6 句核心观点；禁止再确认、禁止问「请回复是」。`
+    : '';
   const focusHint =
     focusItem && focusItem.itemId
       ? `
@@ -127,8 +169,9 @@ function buildStreamAnswerMessages({
 规则：
 - 不要输出 JSON、不要包代码块围栏
 - 用标题指代篇目，禁止出现 itemId、id=、#123 等编号
-- 不要编造观察里没有的篇目或观点；有 excerpt 时必须写出实质回答
-- 若观察为空或未命中，诚实说明并给换关键词建议${compareHint}${focusHint}`,
+- 不要编造观察里没有的篇目或观点；不能交空白
+- 有 get_item_excerpt 且用户在追问观点/原话/已确认某篇时才展开；普通检索不要写成解读
+- 若观察为空或未命中，诚实说明并给换关键词建议${compareHint}${listHint}${searchHint}${followUpHint}${focusHint}`,
     },
     ...historyToChat(history),
     {
@@ -136,6 +179,11 @@ function buildStreamAnswerMessages({
       content: [
         `用户问题：${String(userContent || '').trim()}`,
         intent === 'compare' ? '任务类型：对照两篇（务必输出对照正文）' : '',
+        intent === 'list' ? '任务类型：盘点收藏库（务必用 total + hits）' : '',
+        intent === 'search' && !followUp
+          ? '任务类型：轻量检索（标题为主，勿长解读）'
+          : '',
+        followUp ? '任务类型：已确认某篇，直接概述核心观点' : '',
         '',
         '工具观察（JSON）：',
         JSON.stringify(observations, null, 0).slice(0, 24000),

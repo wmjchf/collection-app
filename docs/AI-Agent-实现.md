@@ -393,6 +393,7 @@ Body: { actionId, approve: true|false, params? }
 - 本地：当前 `conversationId`、消息列表、sending/streaming
 - 出处点击 → `ItemReadingPage(openEntry: 'agent')`
 - 阅读页底栏首位「助手」→ `AgentPage(focusItemId)` + `ensure(focusItemId)` 篇专属会话；首页/收藏 `ensure()` 全局会话
+- 盘点类问题（有哪些/有多少收藏）→ `list_library`，勿用空泛词 `search_library`
 - 错误：额度 / 网络 / 空库；空库引导去添加链接
 
 ### 9.3 与阅读页 AI 的关系（演进）

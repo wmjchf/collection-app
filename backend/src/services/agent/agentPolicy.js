@@ -4,6 +4,7 @@ const MAX_STEPS_P1 = 4;
 const MAX_SEARCH_QUERIES = 2;
 const MAX_SEARCH_HITS = 8;
 const MAX_EXCERPTS = 3;
+const MAX_LIST_ITEMS = 20;
 const EXCERPT_MAX_CHARS = 8000;
 const HISTORY_MESSAGE_LIMIT = 12;
 
@@ -32,6 +33,7 @@ module.exports = {
   MAX_SEARCH_QUERIES,
   MAX_SEARCH_HITS,
   MAX_EXCERPTS,
+  MAX_LIST_ITEMS,
   EXCERPT_MAX_CHARS,
   HISTORY_MESSAGE_LIMIT,
   assertCitationsAllowed,
