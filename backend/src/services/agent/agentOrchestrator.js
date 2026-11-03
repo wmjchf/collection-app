@@ -6,6 +6,7 @@ const { executeTool } = require('./agentRegistry');
 const {
   buildPlanMessages,
   buildAnswerMessages,
+  buildStreamAnswerMessages,
   collectPriorCitations,
   extractAnswerContent,
 } = require('./agentPrompt');
@@ -34,8 +35,27 @@ function mergeUsage(a, b) {
 
 /**
  * P1 浅 ReAct：plan(search) → tools → answer
+ * @param {{ onEvent?: (ev: object) => void, stream?: boolean }} [opts]
+ * stream=true 时 answer 走纯文本流，并通过 onEvent 推 phase/token/done
  */
-async function runUserTurn({ userId, conversationId, content, clientMessageId }) {
+async function runUserTurn({
+  userId,
+  conversationId,
+  content,
+  clientMessageId,
+  stream = false,
+  onEvent,
+}) {
+  const emit =
+    typeof onEvent === 'function'
+      ? (ev) => {
+          try {
+            onEvent(ev);
+          } catch (_) {
+            /* ignore listener errors */
+          }
+        }
+      : null;
   const text = String(content || '').trim();
   if (!text) {
     throw Object.assign(new Error('请输入内容'), { status: 400 });
@@ -86,6 +106,8 @@ async function runUserTurn({ userId, conversationId, content, clientMessageId })
   const ctx = { userId, conversationId, messageId: userMessage.id };
 
   // —— Thought/Action plan ——
+  if (emit) emit({ type: 'user', message: userMessage });
+  if (emit) emit({ type: 'phase', phase: 'planning' });
   const planMessages = buildPlanMessages({
     history,
     userContent: text,
@@ -108,6 +130,15 @@ async function runUserTurn({ userId, conversationId, content, clientMessageId })
     priorIds: priorCitations.map((c) => c.itemId),
   });
   toolTrace.push({ tool: 'plan', ok: true, args: plan });
+  if (emit) {
+    emit({
+      type: 'phase',
+      phase:
+        plan.intent === 'chitchat' || plan.intent === 'clarify'
+          ? 'answering'
+          : 'searching',
+    });
+  }
 
   const observations = [];
   const allowedIds = [];
@@ -206,28 +237,69 @@ async function runUserTurn({ userId, conversationId, content, clientMessageId })
   }
 
   // —— Final Answer ——
-  const answerMessages = buildAnswerMessages({
-    history: [...history, { role: 'user', content: text }],
-    userContent: text,
-    observations,
-    intent: plan.intent,
-  });
-  await usageService.assertAiQuota(userId, {
-    estimatedTokens: usageService.estimateAiTokens({
-      messages: answerMessages,
-      feature: 'agent',
-    }),
-  });
-  const answerResult = await aliyunDashScope.chatJson({
-    messages: answerMessages,
-    model: agentModel(),
-    temperature: 0.4,
-  });
-  usageTotal = mergeUsage(usageTotal, answerResult.usage);
+  if (emit) emit({ type: 'phase', phase: 'answering' });
 
-  let contentOut = stripItemIdMentions(
-    extractAnswerContent(answerResult.json),
-  );
+  let contentOut = '';
+  let citationIds = [];
+
+  if (stream) {
+    const streamMessages = buildStreamAnswerMessages({
+      history: [...history, { role: 'user', content: text }],
+      userContent: text,
+      observations,
+      intent: plan.intent,
+    });
+    await usageService.assertAiQuota(userId, {
+      estimatedTokens: usageService.estimateAiTokens({
+        messages: streamMessages,
+        feature: 'agent',
+      }),
+    });
+    let raw = '';
+    for await (const chunk of aliyunDashScope.chatTextStream({
+      messages: streamMessages,
+      model: agentModel(),
+      temperature: 0.4,
+    })) {
+      if (chunk.delta) {
+        raw += chunk.delta;
+        if (emit) emit({ type: 'token', text: chunk.delta });
+      }
+      if (chunk.usage) {
+        usageTotal = mergeUsage(usageTotal, chunk.usage);
+      }
+    }
+    contentOut = stripItemIdMentions(raw);
+  } else {
+    const answerMessages = buildAnswerMessages({
+      history: [...history, { role: 'user', content: text }],
+      userContent: text,
+      observations,
+      intent: plan.intent,
+    });
+    await usageService.assertAiQuota(userId, {
+      estimatedTokens: usageService.estimateAiTokens({
+        messages: answerMessages,
+        feature: 'agent',
+      }),
+    });
+    const answerResult = await aliyunDashScope.chatJson({
+      messages: answerMessages,
+      model: agentModel(),
+      temperature: 0.4,
+    });
+    usageTotal = mergeUsage(usageTotal, answerResult.usage);
+    contentOut = stripItemIdMentions(
+      extractAnswerContent(answerResult.json),
+    );
+    citationIds = assertCitationsAllowed(
+      answerResult.json?.citationItemIds ||
+        answerResult.json?.citation_item_ids ||
+        [],
+      allowedIds,
+    );
+  }
+
   if (!contentOut) {
     contentOut = fallbackAnswer({
       intent: plan.intent,
@@ -235,20 +307,18 @@ async function runUserTurn({ userId, conversationId, content, clientMessageId })
       citationMap,
       excerptIds,
     });
+    if (stream && emit && contentOut) {
+      emit({ type: 'token', text: contentOut });
+    }
   }
 
-  const citationIds = assertCitationsAllowed(
-    answerResult.json?.citationItemIds ||
-      answerResult.json?.citation_item_ids ||
-      [],
-    allowedIds,
-  );
-  // 若模型漏标但已有观察结果，自动带上本轮摘录 / 检索命中
+  // 流式无 citation 字段：用本轮摘录；同步路径模型漏标时同样兜底
   let finalIds = citationIds;
   if (
     !finalIds.length &&
     allowedIds.length &&
-    (plan.intent === 'search' ||
+    (stream ||
+      plan.intent === 'search' ||
       plan.intent === 'compare' ||
       looksReferential(text))
   ) {
@@ -278,15 +348,26 @@ async function runUserTurn({ userId, conversationId, content, clientMessageId })
     toolTrace,
   });
 
+  const usage = {
+    tokensBilled:
+      usageService.billableAiTokensFromUsage(usageTotal) ||
+      usageTotal?.totalTokens ||
+      0,
+  };
+
+  if (emit) {
+    emit({
+      type: 'done',
+      userMessage,
+      assistantMessage,
+      usage,
+    });
+  }
+
   return {
     userMessage,
     assistantMessage,
-    usage: {
-      tokensBilled:
-        usageService.billableAiTokensFromUsage(usageTotal) ||
-        usageTotal?.totalTokens ||
-        0,
-    },
+    usage,
   };
 }
 

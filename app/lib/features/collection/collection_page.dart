@@ -1,9 +1,12 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:super_collection/core/network/api_client.dart';
 import 'package:super_collection/core/ui/app_confirm_dialog.dart';
 import 'package:super_collection/core/ui/app_orientation.dart';
 import 'package:super_collection/core/ui/app_toast.dart';
 import 'package:super_collection/core/ui/pro_copy.dart';
+import 'package:super_collection/features/agent/agent_page.dart';
 import 'package:super_collection/features/collection/collection_tag_modules_section.dart';
 import 'package:super_collection/features/collection/create_module_sheet.dart';
 import 'package:super_collection/features/collection/create_tag_sheet.dart';
@@ -15,6 +18,7 @@ import 'package:super_collection/features/collection/tag_models.dart';
 import 'package:super_collection/features/collection/tag_module_models.dart';
 import 'package:super_collection/features/collection/tag_modules_repository.dart';
 import 'package:super_collection/features/collection/tags_repository.dart';
+import 'package:super_collection/features/settings/quota_gate.dart';
 import 'package:super_collection/features/settings/usage_repository.dart';
 import 'package:super_collection/features/shell/tablet_items_split.dart';
 import 'package:super_collection/features/shell/user_avatar_button.dart';
@@ -44,6 +48,7 @@ class CollectionPage extends StatefulWidget {
 class _CollectionPageState extends State<CollectionPage> {
   static const _bg = Color(0xFFF7F7FA);
   static const _text = Color(0xFF1F242E);
+  static const _blue = Color(0xFF2F6FED);
 
   final _tagsRepo = TagsRepository();
   final _tagModulesRepo = TagModulesRepository();
@@ -383,6 +388,19 @@ class _CollectionPageState extends State<CollectionPage> {
     _load(quiet: true);
   }
 
+  Future<void> _openAgent() async {
+    final allowed = await ensurePlanFeatures(
+      context,
+      requirements: [
+        (has: (f) => f.aiAgent, tier: UsagePlan.prince),
+      ],
+    );
+    if (!allowed || !mounted) return;
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(builder: (_) => const AgentPage()),
+    );
+  }
+
   PreferredSizeWidget _buildAppBar() {
     // 头像放 leading，与阅读页同槽位，避免 Tab 切换时左右错位
     return AppBar(
@@ -461,15 +479,53 @@ class _CollectionPageState extends State<CollectionPage> {
           animation: _tagsFocusT,
           builder: (context, _) {
             final t = Curves.easeInOutCubic.transform(_tagsFocusT.value);
-            return IgnorePointer(
-              ignoring: t < 0.45,
-              child: Opacity(
-                opacity: t,
-                child: CollectionCreateModuleButton(
-                  onPressed: _createModule,
-                  iconPadding: const EdgeInsets.symmetric(horizontal: 12),
+            // 聚焦归类时：顶栏右侧出「+」；平时：助手
+            return Stack(
+              alignment: Alignment.centerRight,
+              children: [
+                IgnorePointer(
+                  ignoring: t > 0.45,
+                  child: Opacity(
+                    opacity: (1 - t).clamp(0.0, 1.0),
+                    child: Padding(
+                      padding: const EdgeInsets.only(right: 12),
+                      child: TextButton(
+                        onPressed: () => unawaited(_openAgent()),
+                        style: TextButton.styleFrom(
+                          foregroundColor: _blue,
+                          backgroundColor: const Color(0xFFE8F0FF),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 6,
+                          ),
+                          minimumSize: Size.zero,
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          shape: const StadiumBorder(
+                            side: BorderSide(color: Color(0xFFD0DFFC)),
+                          ),
+                        ),
+                        child: const Text(
+                          '✦ 助手',
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
                 ),
-              ),
+                IgnorePointer(
+                  ignoring: t < 0.45,
+                  child: Opacity(
+                    opacity: t,
+                    child: CollectionCreateModuleButton(
+                      onPressed: _createModule,
+                      iconPadding: const EdgeInsets.symmetric(horizontal: 12),
+                    ),
+                  ),
+                ),
+              ],
             );
           },
         ),

@@ -194,7 +194,7 @@ class _FirstSurveyPageState extends State<FirstSurveyPage> {
                   ),
                   _SurveyStep(
                     title: '感兴趣的内容方向（可多选）',
-                    hint: '可多选，只记录偏好，不会自动建归类或标签',
+                    hint: '可多选；提交后会按兴趣预置归类与标签',
                     child: _wrapChips(
                       children: [
                         for (final c in SurveyCatalog.interests)

@@ -131,7 +131,111 @@ async function chatJson({ messages, model, temperature }) {
   };
 }
 
+/**
+ * 流式纯文本补全（OpenAI 兼容 SSE）。
+ * yield: { delta?: string, usage?: object }
+ */
+async function* chatTextStream({ messages, model, temperature }) {
+  const apiKey = config.aliyun.dashScopeApiKey;
+  if (!apiKey) {
+    throw Object.assign(new Error('AI 未配置：请设置 DASHSCOPE_API_KEY'), {
+      status: 503,
+    });
+  }
+
+  const baseUrl = (config.aliyun.dashScopeBaseUrl || '').replace(/\/$/, '');
+  const modelId = model || config.aliyun.aiModel || 'qwen3.8-max';
+
+  const payload = {
+    model: modelId,
+    messages,
+    stream: true,
+    enable_thinking: false,
+    stream_options: { include_usage: true },
+  };
+  if (temperature != null && Number.isFinite(Number(temperature))) {
+    payload.temperature = Number(temperature);
+  }
+
+  const res = await fetch(`${baseUrl}/chat/completions`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+      Accept: 'text/event-stream',
+    },
+    body: JSON.stringify(payload),
+  });
+
+  if (!res.ok) {
+    const errText = await res.text();
+    let msg = `AI 请求失败 (${res.status})`;
+    try {
+      const body = JSON.parse(errText);
+      msg = body?.error?.message || body?.message || msg;
+    } catch {
+      if (errText) msg = errText.slice(0, 200);
+    }
+    throw Object.assign(new Error(msg), { status: 502 });
+  }
+
+  if (!res.body) {
+    throw Object.assign(new Error('AI 未返回流'), { status: 502 });
+  }
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder('utf-8');
+  let buffer = '';
+  let usage = null;
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const parts = buffer.split('\n');
+    buffer = parts.pop() || '';
+    for (const rawLine of parts) {
+      const line = rawLine.trim();
+      if (!line || line.startsWith(':')) continue;
+      if (!line.startsWith('data:')) continue;
+      const data = line.slice(5).trim();
+      if (data === '[DONE]') continue;
+      let json;
+      try {
+        json = JSON.parse(data);
+      } catch {
+        continue;
+      }
+      const delta = json?.choices?.[0]?.delta?.content;
+      if (typeof delta === 'string' && delta) {
+        yield { delta };
+      }
+      if (json?.usage) {
+        usage = json.usage;
+      }
+    }
+  }
+
+  if (usage) {
+    const promptTokens = Number(usage.prompt_tokens) || 0;
+    const completionTokens = Number(usage.completion_tokens) || 0;
+    let totalTokens = Number(usage.total_tokens) || 0;
+    if (totalTokens <= 0) totalTokens = promptTokens + completionTokens;
+    yield {
+      usage: {
+        promptTokens,
+        completionTokens,
+        totalTokens,
+        cachedTokens: parseCachedTokens(usage),
+        cacheCreationTokens: parseCacheCreationTokens(usage),
+        model: modelId,
+      },
+    };
+  }
+}
+
 module.exports = {
   isConfigured,
   chatJson,
+  chatTextStream,
 };

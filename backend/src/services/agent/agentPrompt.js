@@ -71,6 +71,47 @@ content 禁止为空，禁止只说「查过了」「换个关键词」。citati
   ];
 }
 
+/** 流式回答：直接输出给人看的正文（非 JSON），便于 SSE 逐字推送。 */
+function buildStreamAnswerMessages({
+  history,
+  userContent,
+  observations,
+  intent,
+}) {
+  const compareHint =
+    intent === 'compare'
+      ? `
+本轮是对照：必须基于观察里的 get_item_excerpt 写一段可读对照（各用标题点名；异同 / 各自侧重点；2～6 句即可）。
+禁止只说「查过了」「换个关键词」。`
+      : '';
+  return [
+    {
+      role: 'system',
+      content: `${SYSTEM_PROMPT}
+
+本步任务：根据工具观察结果，直接写给用户看的回答（纯中文正文，可用轻量 Markdown）。
+规则：
+- 不要输出 JSON、不要包代码块围栏
+- 用标题指代篇目，禁止出现 itemId、id=、#123 等编号
+- 不要编造观察里没有的篇目或观点；有 excerpt 时必须写出实质回答
+- 若观察为空或未命中，诚实说明并给换关键词建议${compareHint}`,
+    },
+    ...historyToChat(history),
+    {
+      role: 'user',
+      content: [
+        `用户问题：${String(userContent || '').trim()}`,
+        intent === 'compare' ? '任务类型：对照两篇（务必输出对照正文）' : '',
+        '',
+        '工具观察（JSON）：',
+        JSON.stringify(observations, null, 0).slice(0, 24000),
+      ]
+        .filter(Boolean)
+        .join('\n'),
+    },
+  ];
+}
+
 /** 从 answer JSON 里尽量取出正文（兼容别名 / 嵌套）。 */
 function extractAnswerContent(json) {
   if (!json || typeof json !== 'object') return '';
@@ -153,6 +194,7 @@ module.exports = {
   SYSTEM_PROMPT,
   buildPlanMessages,
   buildAnswerMessages,
+  buildStreamAnswerMessages,
   collectPriorCitations,
   extractAnswerContent,
   historyToChat,

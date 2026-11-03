@@ -19,13 +19,13 @@
 
 **入口（已定稿）**
 
-- 主入口：阅读页 AppBar 右上角 `✦ 助手`（与「添加」并列）
+- 主入口：首页 / 收藏页 AppBar `✦ 助手`（与首页「添加」并列；收藏页归类聚焦时让位给新建归类）
 - 不进底栏、不进搜索
 - 门控：太子+；非会员点入 → 升级页（`from=agent`）
 
 **空态文案口径**
 
-- 构图：居中；暗绿光核 ✦ + 标题「你的私人助手」+ 副文 + 能力标（检索内容 / 对照内容 / 深挖原文）
+- 构图：居中；主题色 ✦ 圆标（无光晕）+ 标题「你的私人助手」+ 副文 + 能力标（检索内容 / 对照内容 / 深挖原文）
 - 副文：帮你在收藏里更快找到内容，也能深挖原文
 - 不展示示例提示卡；输入占位：跟助手说点什么…
 
@@ -282,7 +282,7 @@ GET /api/agent/messages/:id
 → { status, message? , error? }
 ```
 
-Stream（可选 Phase 1.5）：`Accept: text/event-stream`，事件 `token` / `citation` / `done` / `error`。
+Stream（已落地）：`Accept: text/event-stream`，事件 `user` / `phase`（planning|searching|answering）/ `token` / `done`（含完整 assistant + citations）/ `error`。plan+工具仍同步；仅 answer 纯文本流式。
 
 ### 5.3 Phase 2：确认类写操作
 
@@ -450,7 +450,7 @@ routes/agent.js              # /api/agent
 - `features/agent/agent_page.dart`
 - `features/agent/agent_repository.dart`
 - `features/agent/widgets/citation_card.dart`
-- `home_page.dart` 入口
+- `home_page.dart` / `collection_page.dart` 入口
 
 ## 14. 开放问题
 
