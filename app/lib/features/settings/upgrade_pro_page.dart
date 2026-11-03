@@ -614,7 +614,7 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
               const SizedBox(height: 10),
               _TierPlanCard(
                 title: '太子Pro',
-                tagline: '智能整理：订阅期内无限收藏，解锁自动打标、解读、脑图与转写',
+                tagline: '智能整理：订阅期内无限收藏，解锁打标与归类、AI助手、脑图与转写',
                 owned: _isTierOwned(UsagePlan.prince),
                 priceWidget: _cardPriceWidget(
                   UsagePlan.prince,
@@ -796,7 +796,7 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
                       Expanded(
                         child: _TabletPlanCard(
                           title: '太子Pro',
-                          tagline: '智能整理：订阅期内无限收藏，解锁自动打标、解读、脑图与转写',
+                          tagline: '智能整理：订阅期内无限收藏，解锁打标与归类、AI助手、脑图与转写',
                           badge: '推荐',
                           owned: _isTierOwned(UsagePlan.prince),
                           featured: true,
@@ -869,8 +869,8 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
     return const [
       _PlanFeature('一次买断，永久收藏不限条数', included: true),
       _PlanFeature('永久解析', included: true),
-      _PlanFeature('自动打标', included: false),
-      _PlanFeature('AI 解读', included: false),
+      _PlanFeature('打标与归类', included: false),
+      _PlanFeature('AI助手', included: false),
       _PlanFeature('AI 思维导图', included: false),
       _PlanFeature('视频 / 音频转写', included: false),
     ];
@@ -879,8 +879,8 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
   List<_PlanFeature> _princeFeatures(PlanQuotasTable quotas) {
     return [
       const _PlanFeature('订阅期内收藏不限条数', included: true),
-      const _PlanFeature('自动打标', included: true),
-      const _PlanFeature('AI 解读', included: true),
+      const _PlanFeature('打标与归类', included: true),
+      const _PlanFeature('AI助手', included: true),
       const _PlanFeature('AI 思维导图', included: true),
       const _PlanFeature('视频 / 音频转写', included: true),
       _PlanFeature(

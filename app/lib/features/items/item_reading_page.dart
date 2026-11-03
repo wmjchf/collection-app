@@ -3542,7 +3542,7 @@ class _AgentActionItem extends StatelessWidget {
                   ),
                   SizedBox(height: 2),
                   Text(
-                    '助手',
+                    'AI助手',
                     style: TextStyle(
                       fontSize: 11,
                       height: 1.1,

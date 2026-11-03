@@ -49,25 +49,27 @@ class AiAutoTagsHelpPage extends StatelessWidget {
             _GuideStepCard(
               urls: urls,
               figureIndex: 0,
-              title: '标签与类别一览',
+              title: '标签与归类一览',
               desc:
                   '在「我的收藏」进入归类标签：顶部是未归类的标签，'
-                  '下方按大类分组；点右上角 + 可新建类别，点类别或标签可查看对应内容。',
+                  '下方是你建好的归类；点右上角 + 新建归类，点归类或标签可查看对应内容。',
             ),
             const SizedBox(height: 12),
             _GuideStepCard(
               urls: urls,
               figureIndex: 1,
-              title: '管理归类',
+              title: '你建归类',
               desc:
-                  '类别旁的 ··· 菜单可改名、往类别里加标签，或删除整个归类。',
+                  '归类名由你来定。归类旁的 ··· 可改名、往归类里加标签，或删除整个归类。',
             ),
             const SizedBox(height: 12),
             _GuideStepCard(
               urls: urls,
               figureIndex: 2,
-              title: '长按拖动归类',
-              desc: '长按任意标签拖到目标类别，类别蓝色高亮时松手即可快速归类。',
+              title: '拖动或归类',
+              desc:
+                  '长按标签拖到目标归类；也可点标题旁 ✦「归类」，'
+                  '让 AI 把未归类标签填进已有归类（不会新建归类名）。',
             ),
             const SizedBox(height: 24),
             const _SectionHeading('解析后自动打标签'),
@@ -76,7 +78,8 @@ class AiAutoTagsHelpPage extends StatelessWidget {
               child: Text(
                 '太子Pro / 帝王Pro：粘贴链接解析完成后，文章会自动打标签；'
                 '视频在转写成功后同样自动打标；图集不自动打标。'
-                '归类由你在「归类标签」里手动整理。点进去可在内容上方看到标签。',
+                '打标后不会自动归类——你先建归类，再用拖动或 ✦「归类」整理。'
+                '点进内容可在上方看到标签。',
                 style: TextStyle(
                   fontSize: 15,
                   color: Colors.white,
@@ -167,9 +170,9 @@ class _IntroCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            '一篇好内容可能同时包含不同类别的突出点，无法用简单的分类模式来收藏。'
-            '我们开发了一套全新的标签内容分类模式：用标签表示内容的分类，'
-            '再用标签归属大类的方式帮助你管理内容。',
+            '一篇好内容常有多个突出点，不宜只塞进一个死文件夹。'
+            '奏折用「标签」标记内容，再用你自建的「归类」把标签分格摆放；'
+            'AI 负责打标签，并可在你建好归类后帮你填入。',
             style: TextStyle(fontSize: 15, color: AiAutoTagsHelpPage._text, height: 1.55),
           ),
           SizedBox(height: 16),
@@ -205,31 +208,26 @@ class _ExampleBlock extends StatelessWidget {
         children: [
           const TextSpan(
             text:
-                '夏天去海边游玩赶海的游记，内容里有赶海攻略、夏日美景，'
-                '以及旅途中遇到的美食、金黄色的日落，可以打标签为',
+                '夏天去青岛赶海的游记，内容里有海边与美食，可以打标签为',
           ),
-          AiAutoTagsHelpPage._tag('旅游攻略'),
-          const TextSpan(text: '、'),
-          AiAutoTagsHelpPage._tag('夏日美景'),
+          AiAutoTagsHelpPage._tag('青岛'),
           const TextSpan(text: '、'),
           AiAutoTagsHelpPage._tag('海边'),
           const TextSpan(text: '、'),
           AiAutoTagsHelpPage._tag('赶海'),
           const TextSpan(text: '、'),
           AiAutoTagsHelpPage._tag('美食'),
-          const TextSpan(text: '。\n\n再把标签归入不同大类，比如'),
-          AiAutoTagsHelpPage._tag('旅游攻略'),
-          const TextSpan(text: '、'),
-          AiAutoTagsHelpPage._tag('夏日美景'),
+          const TextSpan(text: '。\n\n你先建归类「旅游」「生活」，再把'),
+          AiAutoTagsHelpPage._tag('青岛'),
           const TextSpan(text: '、'),
           AiAutoTagsHelpPage._tag('海边'),
           const TextSpan(text: '、'),
           AiAutoTagsHelpPage._tag('赶海'),
-          const TextSpan(text: '属于旅游类，'),
+          const TextSpan(text: '放进旅游，'),
           AiAutoTagsHelpPage._tag('美食'),
-          const TextSpan(text: '属于生活类，从而实现整体管理。\n\n'),
+          const TextSpan(text: '放进生活；也可点 ✦「归类」让 AI 帮你填。\n\n'),
           const TextSpan(
-            text: '新建标签和 AI 自动打的标签若尚未归类，会显示在「未归类」里。',
+            text: '尚未归类的标签会留在上方未归类区，对不上的可先放着。',
           ),
         ],
       ),

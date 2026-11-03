@@ -1,4 +1,4 @@
-# 奏折私人助手（AI Agent）实现细节
+# 奏折AI助手（AI Agent）实现细节
 
 > 状态：P1.0 已落地（查库 + 出处 + 首页入口）；本文继续作为演进规格  
 > 更新日期：2026-11-03  
@@ -6,26 +6,26 @@
 
 ## 0. 一句话
 
-**助手是用户级私人 Agent**：对话入口在阅读页底栏首位「助手」。能力顺序固定为 **查 → 整理 → 轻创作 → 中创作**（重创作更后）；创作必须能点回出处。现网解读 / 脑图 / 归类等收成 **Agent Tools**，阅读页独立 AI 入口逐步降级为「打开助手并预填任务」。
+**AI助手是用户级私人 Agent**：对话入口在阅读页底栏首位「AI助手」。能力顺序固定为 **查 → 整理 → 轻创作 → 中创作**（重创作更后）；创作必须能点回出处。现网解读 / 脑图 / 归类等收成 **Agent Tools**，阅读页独立 AI 入口逐步降级为「打开助手并预填任务」。
 
 ## 1. 产品定位
 
 | 是 | 不是 |
 | --- | --- |
-| 私人助手 / Agent（多轮、可工具调用） | 搜索页的增强模式 |
+| AI助手 / Agent（多轮、可工具调用） | 搜索页的增强模式 |
 | 先查库，后整理 / 创作 | 通用联网聊天机器人 |
 | 答案默认带出处卡片（可点进阅读） | 无出处的玄学总结 |
 | 太子 Pro 卖点能力 | 免费全开 |
 
 **入口（已定稿）**
 
-- 主入口：首页 / 收藏页 AppBar `✦ 助手`（与首页「添加」并列；收藏页归类聚焦时让位给新建归类）
+- 主入口：首页 / 收藏页 AppBar `✦ AI助手`（与首页「添加」并列；收藏页归类聚焦时让位给新建归类）
 - 不进底栏、不进搜索
 - 门控：太子+；非会员点入 → 升级页（`from=agent`）
 
 **空态文案口径**
 
-- 构图：居中；主题色 ✦ 圆标（无光晕）+ 标题「你的私人助手」+ 副文 + 能力标（检索内容 / 对照内容 / 深挖原文）
+- 构图：居中；主题色 ✦ 圆标（无光晕）+ 标题「你的AI助手」+ 副文 + 能力标（检索内容 / 对照内容 / 深挖原文）
 - 副文：帮你在收藏里更快找到内容，也能深挖原文
 - 不展示示例提示卡；输入占位：跟助手说点什么…
 
@@ -361,7 +361,7 @@ Body: { actionId, approve: true|false, params? }
 | 实现形态 | 优先 **原生 tool-calling**（Thought 隐式/显式均可）；无可靠 tool-call 时再退回文本 ReAct 解析 |
 | 单篇重活 | 继续用现网 `ALIYUN_AI_MODEL_SUMMARY` / `TAGS` / 脑图 `ALIYUN_AI_MODEL` |
 | Context | 近期 N 轮消息 + 本轮 Thought/Action/Observation；单篇正文仍走 `aiInput` cache_control，避免全文进历史 |
-| System prompt | 身份=奏折私人助手；ReAct 规则；能力边界；禁止越权写库；中文；必须 citations |
+| System prompt | 身份=奏折AI助手；ReAct 规则；能力边界；禁止越权写库；中文；必须 citations |
 
 ### 7.3 Phase 1 可先「浅 ReAct」
 
@@ -378,7 +378,7 @@ Body: { actionId, approve: true|false, params? }
 | 触顶 | 402 + 升级引导；助手页展示本月剩余与现网 usage 一致 |
 | 配置 | `USAGE_ENFORCING`；`features.aiAgent` |
 
-`usageService` / App `UsagePlan` 增加 `aiAgent: hasPrince`；升级页权益文案加「私人助手」。
+`usageService` / App `UsagePlan` 增加 `aiAgent: hasPrince`；升级页权益文案加「AI助手」。
 
 ## 9. App 实现要点
 
@@ -392,7 +392,7 @@ Body: { actionId, approve: true|false, params? }
 
 - 本地：当前 `conversationId`、消息列表、sending/streaming；**会话消息 SharedPreferences 缓存**（按用户 + 全局/篇），进页先渲染缓存再 `ensure`+拉网同步
 - 出处点击 → `ItemReadingPage(openEntry: 'agent')`；左侧勾选 → 输入胶囊内蓝底标题 chip（可 × 取消），发送时拼「标题」锁定篇目
-- 阅读页底栏首位「助手」→ `AgentPage(focusItemId)` + `ensure(focusItemId)` 篇专属会话；首页/收藏 `ensure()` 全局会话
+- 阅读页底栏首位「AI助手」→ `AgentPage(focusItemId)` + `ensure(focusItemId)` 篇专属会话；首页/收藏 `ensure()` 全局会话
 - 盘点类问题（有哪些/有多少收藏）→ `list_library`，勿用空泛词 `search_library`
 - 带时间的盘点（今天/昨天/本周/本月/最近收藏）→ 仍走 `list_library`，由编排层解析 Asia/Shanghai 时间窗写入 `createdAfter`/`createdBefore`；「还有吗」继承上一问时间窗；回答不得把窗外旧篇说成该时段的
 - 「最近阅读 / 朕已阅」「批注 / 朱批」盘点 → `list_library` + `filter=recent_read|annotated`（与收藏页瓷砖同一套 `systemFilterService` 规则：近 7 天已读 / 有标注）
@@ -474,8 +474,8 @@ routes/agent.js              # /api/agent
 
 ## 15. 与现网文档同步清单（实现时勾）
 
-- [ ] `docs/技术实现.md` 新增 §2.6.x 私人助手  
-- [ ] `docs/付费规划.md` 权益表加「私人助手」  
-- [ ] `docs/DB-SCHEMA.md` 表结构  
-- [ ] App Store / 升级页 / 协议文案（上线前）  
+- [x] `docs/技术实现.md` 新增 §2.6.x AI助手  
+- [x] `docs/付费规划.md` 权益表加「AI助手」  
+- [x] `docs/DB-SCHEMA.md` 表结构  
+- [x] App Store / 升级页 / 协议文案（上线前）  
 - [ ] 埋点白名单 `agent_*`  

@@ -7,6 +7,7 @@ import 'package:super_collection/core/ui/app_orientation.dart';
 import 'package:super_collection/core/ui/app_toast.dart';
 import 'package:super_collection/core/ui/pro_copy.dart';
 import 'package:super_collection/features/agent/agent_page.dart';
+import 'package:super_collection/features/collection/ai_organize_sheet.dart';
 import 'package:super_collection/features/collection/collection_tag_modules_section.dart';
 import 'package:super_collection/features/collection/create_module_sheet.dart';
 import 'package:super_collection/features/collection/create_tag_sheet.dart';
@@ -187,6 +188,24 @@ class _CollectionPageState extends State<CollectionPage> {
     final module = await showCreateModuleSheet(context);
     if (module == null || !mounted) return;
     await _load(quiet: true);
+  }
+
+  Future<void> _aiOrganize() async {
+    if (_modules.isEmpty) {
+      AppToast.show(context, '请先新建归类，再让 AI 把标签填进去');
+      return;
+    }
+    final allowed = await ensurePlanFeatures(
+      context,
+      requirements: [
+        (has: (f) => f.aiOrganize, tier: UsagePlan.prince),
+      ],
+    );
+    if (!allowed || !mounted) return;
+    final applied = await showAiOrganizeSheet(context);
+    if (applied == true && mounted) {
+      await _load(quiet: true);
+    }
   }
 
   Future<void> _renameModule(TagModule module) async {
@@ -505,7 +524,7 @@ class _CollectionPageState extends State<CollectionPage> {
                           ),
                         ),
                         child: const Text(
-                          '✦ 助手',
+                          '✦ AI助手',
                           style: TextStyle(
                             fontSize: 13,
                             fontWeight: FontWeight.w600,
@@ -633,6 +652,7 @@ class _CollectionPageState extends State<CollectionPage> {
                           onRenameModule: _renameModule,
                           onDeleteModule: _deleteModule,
                           onCreateModule: _createModule,
+                          onAiOrganize: _aiOrganize,
                           onPlaceTag: _placeTag,
                         ),
                       ),

@@ -239,7 +239,7 @@ class _SectionHeader extends StatelessWidget {
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 2),
                   child: IconButton(
-                    tooltip: 'AI 分类',
+                    tooltip: '归类',
                     onPressed: onAiOrganize,
                     visualDensity: VisualDensity.compact,
                     padding: EdgeInsets.zero,
@@ -263,7 +263,7 @@ class _SectionHeader extends StatelessWidget {
           ),
           const SizedBox(height: 4),
           Text(
-            '分格摆放 · 长按拖动归类',
+            '你建归类 · AI 可填入 · 长按拖动',
             style: TextStyle(
               fontSize: 12,
               height: 1.35,

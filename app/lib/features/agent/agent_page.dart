@@ -21,7 +21,7 @@ import 'package:super_collection/features/items/reading_quote_share.dart';
 import 'package:super_collection/features/settings/quota_gate.dart';
 import 'package:super_collection/features/settings/usage_repository.dart';
 
-/// 私人助手（P1：查收藏 + 出处）
+/// AI助手（P1：查收藏 + 出处）
 ///
 /// [focusItemId] / [focusItem]：从阅读页带入时展示当前篇，并每轮锚定摘录。
 class AgentPage extends StatefulWidget {
@@ -463,7 +463,7 @@ class _AgentPageState extends State<AgentPage> {
       backgroundColor: _bg,
       resizeToAvoidBottomInset: true,
       appBar: AppSubpageAppBar(
-        title: '助手',
+        title: 'AI助手',
         titleTrailing: Container(
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
           decoration: BoxDecoration(
@@ -858,7 +858,7 @@ class _EmptyState extends StatelessWidget {
             ),
             const SizedBox(height: 24),
             const Text(
-              '你的私人助手',
+              '你的AI助手',
               textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: 26,

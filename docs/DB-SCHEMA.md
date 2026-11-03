@@ -61,8 +61,8 @@
 | `analytics_events` | 产品行为埋点（P0：入库/阅读/搜索/Pro） |
 | `subscriptions` | 订阅（Pro；支付前可有 `source=dev`） |
 | `home_roam_cache` | 首页漫游缓存 |
-| `agent_conversations` | 私人助手会话（迁移 `039`/`040`；`focus_item_id` 按篇隔离） |
-| `agent_messages` | 私人助手消息 / 出处 / tool trace（迁移 `039`） |
+| `agent_conversations` | AI助手会话（迁移 `039`/`040`；`focus_item_id` 按篇隔离） |
+| `agent_messages` | AI助手消息 / 出处 / tool trace（迁移 `039`） |
 
 ---
 
@@ -243,7 +243,7 @@ API：`GET …/transcript-targets`、`POST …/transcript`（body.segmentKey）�
 | `POST /api/tag-modules` | body `{ name }` 新建模块（仅标题） |
 | `PATCH /api/tag-modules/:id` | body `{ name }` 重命名 |
 | `DELETE /api/tag-modules/:id` | 删除模块；组内标签回未归类 |
-| `POST /api/tag-modules/ai-organize` | AI 标签归类建议（同步，不落库）；太子+；共享 AI token；body 可选 `{ hint }` |
+| `POST /api/tag-modules/ai-organize` | AI 填入归类建议（同步，不落库；只填已有架子、禁止新建归类）；太子+；共享 AI token；body 可选 `{ hint, mode }` |
 | `POST /api/tag-modules/ai-organize/apply` | 应用方案：新建模块 + `placeTag`；body `{ modules:[{ name, existingModuleId?, tagIds[] }], ungroupedTagIds[] }` |
 
 ## 系统筛选 API（约定）
@@ -282,7 +282,7 @@ API：`GET …/transcript-targets`、`POST …/transcript`（body.segmentKey）�
 
 ## `agent_conversations` / `agent_messages`（迁移 `039`）
 
-私人助手会话。详见 `docs/AI-Agent-实现.md`。
+AI助手会话。详见 `docs/AI-Agent-实现.md`。
 
 | 表 | 要点 |
 | --- | --- |
