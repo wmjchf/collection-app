@@ -56,6 +56,8 @@ class _AgentPageState extends State<AgentPage> {
   final List<AgentMessage> _messages = [];
   bool _booting = true;
   bool _sending = false;
+  /// 确认改标签进行中
+  bool _confirmingAction = false;
   /// 已有流式 token 时隐藏「思考中」
   bool _streamLive = false;
   String? _error;
@@ -389,6 +391,53 @@ class _AgentPageState extends State<AgentPage> {
     _focus.requestFocus();
   }
 
+  Future<void> _confirmPendingAction(AgentMessage message, bool approve) async {
+    final convId = _conversationId;
+    if (convId == null ||
+        _confirmingAction ||
+        _sending ||
+        message.pendingAction?.isPending != true) {
+      return;
+    }
+    setState(() => _confirmingAction = true);
+    try {
+      final result = await _repo.confirmAction(
+        conversationId: convId,
+        messageId: message.id,
+        approve: approve,
+      );
+      if (!mounted) return;
+      setState(() {
+        final idx = _messages.indexWhere((m) => m.id == message.id);
+        if (idx >= 0) {
+          final settled = result.pendingAction ??
+              message.pendingAction?.copyWith(
+                status: approve ? 'approved' : 'cancelled',
+              );
+          _messages[idx] = message.copyWith(
+            pendingAction: settled,
+            clearPendingAction: settled == null,
+          );
+        }
+        final next = result.assistantMessage;
+        if (next != null && !_messages.any((m) => m.id == next.id)) {
+          _messages.add(next);
+        }
+        _confirmingAction = false;
+      });
+      unawaited(_persistCache());
+      _scrollToEnd();
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() => _confirmingAction = false);
+      await handleApiException(context, e);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _confirmingAction = false);
+      AppToast.show(context, '操作失败，请重试');
+    }
+  }
+
   void _openFocusItem() {
     final item = _focusItem;
     if (item == null) return;
@@ -551,10 +600,24 @@ class _AgentPageState extends State<AgentPage> {
                                     : _AssistantBlock(
                                         text: m.content,
                                         citations: m.citations,
+                                        pendingAction: m.pendingAction,
                                         pickedIds: _pickedCitations.keys.toSet(),
                                         onOpen: _openCitation,
                                         onPick: _pickCitationIntoInput,
                                         pickEnabled: !_sending && !_booting,
+                                        confirmEnabled:
+                                            !_sending &&
+                                            !_booting &&
+                                            !_confirmingAction,
+                                        onConfirmAction: m.pendingAction
+                                                    ?.isPending ==
+                                                true
+                                            ? (approve) =>
+                                                _confirmPendingAction(
+                                                  m,
+                                                  approve,
+                                                )
+                                            : null,
                                         contextMenuBuilder: _selectionToolbar(
                                           m.citations,
                                         ),
@@ -826,6 +889,7 @@ class _EmptyState extends StatelessWidget {
                 children: [
                   _CapabilityMark(label: '深挖原文'),
                   _CapabilityMark(label: '对照内容'),
+                  _CapabilityMark(label: '改标签'),
                   _CapabilityMark(label: '检索其它'),
                 ],
               ),
@@ -889,6 +953,7 @@ class _EmptyState extends StatelessWidget {
                 _CapabilityMark(label: '检索内容'),
                 _CapabilityMark(label: '对照内容'),
                 _CapabilityMark(label: '深挖原文'),
+                _CapabilityMark(label: '改标签'),
               ],
             ),
           ],
@@ -1182,21 +1247,28 @@ class _AssistantBlock extends StatelessWidget {
     required this.onOpen,
     required this.onPick,
     required this.contextMenuBuilder,
+    this.pendingAction,
     this.pickEnabled = true,
+    this.confirmEnabled = true,
+    this.onConfirmAction,
   });
 
   final String text;
   final List<AgentCitation> citations;
+  final AgentPendingAction? pendingAction;
   final Set<int> pickedIds;
   final ValueChanged<AgentCitation> onOpen;
   final ValueChanged<AgentCitation> onPick;
   final EditableTextContextMenuBuilder contextMenuBuilder;
   final bool pickEnabled;
+  final bool confirmEnabled;
+  final ValueChanged<bool>? onConfirmAction;
 
   static const _brand = Color(0xFF2F6FED);
 
   @override
   Widget build(BuildContext context) {
+    final showConfirm = pendingAction?.isPending == true && onConfirmAction != null;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1262,6 +1334,45 @@ class _AssistantBlock extends StatelessWidget {
             ),
             const SizedBox(height: 8),
           ],
+        ],
+        if (showConfirm) ...[
+          const SizedBox(height: 8),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              TextButton(
+                onPressed:
+                    confirmEnabled ? () => onConfirmAction!(false) : null,
+                style: TextButton.styleFrom(
+                  foregroundColor: const Color(0xFF737A85),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  minimumSize: Size.zero,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+                child: const Text(
+                  '取消',
+                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
+                ),
+              ),
+              const SizedBox(width: 4),
+              TextButton(
+                onPressed:
+                    confirmEnabled ? () => onConfirmAction!(true) : null,
+                style: TextButton.styleFrom(
+                  foregroundColor: _brand,
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  minimumSize: Size.zero,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+                child: const Text(
+                  '确认调整',
+                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+                ),
+              ),
+            ],
+          ),
         ],
       ],
     );

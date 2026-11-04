@@ -2,6 +2,7 @@ const express = require('express');
 const { requireAuth } = require('../middleware/auth');
 const conversationService = require('../services/agent/agentConversationService');
 const orchestrator = require('../services/agent/agentOrchestrator');
+const confirmActionService = require('../services/agent/agentConfirmAction');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -158,6 +159,33 @@ router.post('/conversations/:id/messages', async (req, res, next) => {
       code: err?.code,
     });
     if (!res.writableEnded) res.end();
+  }
+});
+
+/**
+ * POST /api/agent/actions/confirm
+ * body: { conversationId, messageId, approve: boolean }
+ */
+router.post('/actions/confirm', async (req, res, next) => {
+  try {
+    const conversationId = Number(req.body?.conversationId);
+    const messageId = Number(req.body?.messageId);
+    const approve = Boolean(req.body?.approve);
+    if (!Number.isFinite(conversationId) || conversationId <= 0) {
+      return res.status(400).json({ message: '无效的会话' });
+    }
+    if (!Number.isFinite(messageId) || messageId <= 0) {
+      return res.status(400).json({ message: '无效的消息' });
+    }
+    const result = await confirmActionService.confirmAction({
+      userId: req.auth.userId,
+      conversationId,
+      messageId,
+      approve,
+    });
+    return res.json(result);
+  } catch (err) {
+    return next(err);
   }
 });
 

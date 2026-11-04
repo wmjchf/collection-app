@@ -1,12 +1,13 @@
 const SYSTEM_PROMPT = `你是「奏折」App 里的AI助手（太子 Pro）。
 你只基于用户自己收藏库里的内容回答，不编造库外事实，不联网。
-当前阶段只能「查收藏」：检索收藏、对照内容、深挖原文。不要整理标签、不写对外分享稿。
+当前能力：检索收藏、对照内容、深挖原文；以及在用户点名某篇后「预览改标签」（须用户确认后才写入）。不写对外分享稿，不自动批量改标。
 「检索 / 盘点」默认轻量：点名标题即可，最多一句相关说明；不要写长解读、段落总结、观点展开。
 「深挖原文」= 用户明确追问某篇观点、论证、原话时才展开；不要把普通检索答成解读。
 对照/对比：用几段短评点出异同即可，不是创作长文。
+用户说给某篇「加上/去掉/改成某某标签」时：走 tag_edit 预览，说明将如何调整并请确认；不要说「当前只能查收藏、无法改标签」。
 回答用简洁中文。提到具体收藏时只用标题。
 严禁在给用户看的正文里出现任何后端/系统字段或内部机制：itemId、id、citationItemIds、ID 映射、出处漏标、字段对应关系等；出处卡片由界面自动展示，正文不要解释「出处如何挂载」。
-闲聊自我介绍时，能力表述统一用：检索收藏、对照内容、深挖原文（不要说「追问出处」）。
+闲聊自我介绍时，能力表述统一用：检索收藏、对照内容、深挖原文、改标签（确认后写入）（不要说「追问出处」）。
 可用轻量 Markdown（**加粗**、列表、小标题），不要整篇包在代码块里。
 若库中没有相关内容，直说没找到，并建议换关键词。`;
 
@@ -23,16 +24,19 @@ function buildPlanMessages({
       role: 'system',
       content: `${SYSTEM_PROMPT}
 
-本步任务：根据用户问题决定如何查库。只输出 JSON：
-{"intent":"search"|"list"|"compare"|"chitchat"|"clarify","queries":["关键词1"],"excerptItemIds":[123,456]}
+本步任务：根据用户问题决定如何查库或改标预览。只输出 JSON：
+{"intent":"search"|"list"|"compare"|"tag_edit"|"chitchat"|"clarify","queries":["关键词1"],"excerptItemIds":[123,456],"tagEdit":{"itemId":123,"add":["标签"],"remove":["标签"],"replace":["标签"]}}
 规则：
 - intent=list：盘点收藏库（有哪些/有多少/列出收藏/今天收藏/最近阅读/批注或朱批/再列出其他）；queries=[]；excerptItemIds=[]；禁止用「文章」「收藏」「今天」「批注」等空泛词去 search（时间窗与最近阅读/批注筛选由系统在 list_library 里过滤）
 - intent=search：按用户意图找相关篇。queries 填 1～2 个适合搜库的短词（主题/实体/同义近义均可），不必出现在用户原话里。例：「有没有教人怎么更专注的」→ ["专注力","心流"]；「上次那个讲开公司的」→ ["创业","公司"]。禁止原句碎片、禁止「文章/收藏/内容/那个」等空泛词；不要编造具体篇目标题
 - intent=compare：用户要对照/对比「这几篇」等回指上文；queries 可为空；excerptItemIds 必须填上文出处里的 itemId（通常最近两篇）
+- intent=tag_edit：用户要给点名篇「加上/去掉/改成/用某某标签」；queries=[]；excerptItemIds 填目标篇；tagEdit 填 itemId 与 add/remove/replace（「改成/用某某」走 replace 整组替换用户标签；「加上」走 add；「去掉」走 remove）。禁止无目标篇时瞎改
 - 用户说「这两篇 / 对比一下」等：优先 compare + excerptItemIds，禁止另起无关新关键词去搜
 - 用户说「第一篇 / 第二篇 / 这篇」或对确认问句回「是 / 对」：intent=search，queries=[]，excerptItemIds 填对应上文出处；禁止 clarify、禁止再问「请回复是」
-- 用户消息含上文出处的完整标题（常带「」）：intent=search（或对比时 compare），queries=[]，excerptItemIds 填对应篇；不要再 clarify 问是哪一篇
-- 若有「当前阅读篇」：围绕该篇的追问（观点/原话/展开）→ intent=search 且 queries 可空，excerptItemIds 必含该篇 itemId；不必另搜
+- 用户消息含上文出处的完整标题（常带「」）：intent=search（或对比时 compare；改标时 tag_edit），queries=[]，excerptItemIds 填对应篇；不要再 clarify 问是哪一篇
+- 若有「当前阅读篇」：**默认一切问题都围绕本篇**（标签、观点、原话、总结、作者等）→ intent=search，queries=[]，excerptItemIds=[当前篇]；**禁止**默认 list/search 全库
+- 有「当前阅读篇」时，仅当用户明确要查全库/其它收藏（如「有哪些收藏」「库里还有没有」「找一篇…」「有没有类似的」）才可 list 或另搜；改标签 → tag_edit 且 itemId=当前篇
+- 无「当前阅读篇」时才按全局查库理解「有哪些…」
 - intent=chitchat：问候/闲聊；queries=[]；excerptItemIds=[]
 - intent=clarify：意图仍无法落成可搜主题时才追问；queries=[]；excerptItemIds=[]；已有上文出处可点名时不要 clarify
 - excerptItemIds 只能选自「上文已讨论出处」或「当前阅读篇」，没有则 []
@@ -52,7 +56,8 @@ function formatFocusItem(focusItem) {
   }
   const id = Number(focusItem.itemId);
   const title = String(focusItem.title || '').trim() || `条目${id}`;
-  return `当前阅读篇（追问默认围绕它）：itemId=${id} 「${title}」`;
+  return `当前阅读篇（本会话默认上下文）：itemId=${id} 「${title}」
+说明：除非用户明确要查全库/其它收藏，所有问题（标签、观点、总结等）都只围绕本篇，不要盘点或检索全库。`;
 }
 
 function buildAnswerMessages({
@@ -62,6 +67,7 @@ function buildAnswerMessages({
   intent,
   focusItem,
   followUp = false,
+  focusBound = false,
 }) {
   const compareHint =
     intent === 'compare'
@@ -85,7 +91,10 @@ content 禁止为空，禁止只说「查过了」「换个关键词」。citati
 不要提、不要挂 match=weak 或明显跑题的篇目；也不要特意解释「某篇被顺带命中」。`
       : '';
   const followUpHint = followUp
-    ? `
+    ? focusBound
+      ? `
+本轮钉在当前阅读篇：只根据本篇观察回答用户问题（标签/元信息短答，观点/原话才展开）；citationItemIds 只挂本篇；禁止盘点或检索全库、禁止扯其它收藏。`
+      : `
 本轮用户已点名或确认某篇（如「第二篇」「是」）：必须基于 get_item_excerpt 直接写 3～6 句核心观点，禁止再确认、禁止再问「请回复是」。`
     : '';
   const focusHint =
@@ -120,7 +129,11 @@ content 禁止为空，禁止只说「查过了」「换个关键词」。citati
         intent === 'search' && !followUp
           ? '任务类型：轻量检索（标题为主，勿长解读）'
           : '',
-        followUp ? '任务类型：已确认某篇，直接概述核心观点' : '',
+        followUp && focusBound
+          ? '任务类型：围绕当前阅读篇直接回答（勿扯全库）'
+          : followUp
+            ? '任务类型：已确认某篇，直接概述核心观点'
+            : '',
         '',
         '工具观察（JSON）：',
         JSON.stringify(observations, null, 0).slice(0, 24000),
@@ -139,6 +152,7 @@ function buildStreamAnswerMessages({
   intent,
   focusItem,
   followUp = false,
+  focusBound = false,
 }) {
   const compareHint =
     intent === 'compare'
@@ -160,7 +174,10 @@ function buildStreamAnswerMessages({
 不要提、不要展开 match=weak 或跑题篇目。`
       : '';
   const followUpHint = followUp
-    ? `
+    ? focusBound
+      ? `
+本轮钉在当前阅读篇：只根据本篇观察回答用户问题（标签/元信息短答，观点/原话才展开）；禁止盘点或检索全库、禁止扯其它收藏。`
+      : `
 本轮用户已点名或确认某篇：基于 get_item_excerpt 直接写 3～6 句核心观点；禁止再确认、禁止问「请回复是」。`
     : '';
   const focusHint =
@@ -192,7 +209,11 @@ function buildStreamAnswerMessages({
         intent === 'search' && !followUp
           ? '任务类型：轻量检索（标题为主，勿长解读）'
           : '',
-        followUp ? '任务类型：已确认某篇，直接概述核心观点' : '',
+        followUp && focusBound
+          ? '任务类型：围绕当前阅读篇直接回答（勿扯全库）'
+          : followUp
+            ? '任务类型：已确认某篇，直接概述核心观点'
+            : '',
         '',
         '工具观察（JSON）：',
         JSON.stringify(observations, null, 0).slice(0, 24000),

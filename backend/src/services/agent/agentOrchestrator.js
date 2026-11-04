@@ -161,15 +161,38 @@ async function runUserTurn({
     priorIds: priorCitations.map((c) => c.itemId),
     history,
     priorCitations,
+    focusItem,
   });
   toolTrace.push({ tool: 'plan', ok: true, args: plan });
   if (emit) {
     emit({
       type: 'phase',
       phase:
-        plan.intent === 'chitchat' || plan.intent === 'clarify'
+        plan.intent === 'chitchat' ||
+        plan.intent === 'clarify' ||
+        plan.intent === 'tag_edit'
           ? 'answering'
           : 'searching',
+    });
+  }
+
+  // —— 改标签预览（确认前不写库）——
+  if (plan.intent === 'tag_edit') {
+    return finishTagEditTurn({
+      userId,
+      conversationId,
+      userMessage,
+      text,
+      plan,
+      focusItem,
+      priorCitations,
+      history,
+      toolTrace,
+      citationMap,
+      usageTotal,
+      ctx,
+      emit,
+      stream,
     });
   }
 
@@ -356,6 +379,7 @@ async function runUserTurn({
       intent: plan.intent,
       focusItem,
       followUp: Boolean(plan.followUp),
+      focusBound: Boolean(plan.focusBound),
     });
     await usageService.assertAiQuota(userId, {
       estimatedTokens: usageService.estimateAiTokens({
@@ -386,6 +410,7 @@ async function runUserTurn({
       intent: plan.intent,
       focusItem,
       followUp: Boolean(plan.followUp),
+      focusBound: Boolean(plan.focusBound),
     });
     await usageService.assertAiQuota(userId, {
       estimatedTokens: usageService.estimateAiTokens({
@@ -446,8 +471,11 @@ async function runUserTurn({
       excerptIds.length && plan.intent !== 'list' ? excerptIds : allowedIds,
     ).slice(0, MAX_ANSWER_CITATIONS);
   }
-  // 锚定会话：出处至少带上当前篇（盘点除外）
-  if (focusItem && plan.intent !== 'list') {
+  // 阅读锚定且未明确查库：出处只挂当前篇
+  if (plan.focusBound && focusItem?.itemId) {
+    finalIds = [focusItem.itemId];
+  } else if (focusItem && plan.intent !== 'list') {
+    // 锚定会话：出处至少带上当前篇（盘点除外）
     finalIds = uniqueIds([focusItem.itemId, ...finalIds]).slice(
       0,
       MAX_ANSWER_CITATIONS,
@@ -458,6 +486,178 @@ async function runUserTurn({
     .map((id) => citationMap.get(Number(id)))
     .filter(Boolean);
 
+  const assistantMessage = await conversationService.insertMessage({
+    conversationId,
+    role: 'assistant',
+    content: contentOut,
+    citations,
+    toolTrace,
+  });
+
+  return emitDone({
+    userId,
+    userMessage,
+    assistantMessage,
+    usageTotal,
+    emit,
+  });
+}
+
+async function finishTagEditTurn({
+  userId,
+  conversationId,
+  userMessage,
+  text,
+  plan,
+  focusItem,
+  priorCitations,
+  history,
+  toolTrace,
+  citationMap,
+  usageTotal,
+  ctx,
+  emit,
+  stream,
+}) {
+  let itemId = Number(plan.tagEdit?.itemId);
+  if (!Number.isFinite(itemId) || itemId <= 0) {
+    itemId = resolveTagEditItemId({
+      text,
+      plan,
+      focusItem,
+      priorCitations,
+      history,
+    });
+  }
+
+  if (!itemId) {
+    const contentOut =
+      '要改哪一篇的标签？请点名标题，或先从出处选用一篇再说「加上/去掉某某标签」。';
+    if (stream && emit) emit({ type: 'token', text: contentOut });
+    const assistantMessage = await conversationService.insertMessage({
+      conversationId,
+      role: 'assistant',
+      content: contentOut,
+      citations: null,
+      toolTrace,
+    });
+    return emitDone({
+      userId,
+      userMessage,
+      assistantMessage,
+      usageTotal,
+      emit,
+    });
+  }
+
+  const args = {
+    itemId,
+    add: plan.tagEdit?.add || [],
+    remove: plan.tagEdit?.remove || [],
+    replace: plan.tagEdit?.replace || [],
+  };
+  const obs = await executeTool('propose_item_tag_edit', ctx, args);
+  toolTrace.push({
+    tool: 'propose_item_tag_edit',
+    ok: Boolean(obs.ok),
+    args,
+  });
+
+  if (!obs.ok || !obs.data) {
+    const contentOut = '没能读取这篇的标签，请换一篇再试，或稍后再说。';
+    if (stream && emit) emit({ type: 'token', text: contentOut });
+    const assistantMessage = await conversationService.insertMessage({
+      conversationId,
+      role: 'assistant',
+      content: contentOut,
+      citations: null,
+      toolTrace,
+    });
+    return emitDone({
+      userId,
+      userMessage,
+      assistantMessage,
+      usageTotal,
+      emit,
+    });
+  }
+
+  const data = obs.data;
+  for (const c of obs.citations || []) {
+    rememberCitation(citationMap, c);
+  }
+
+  let contentOut;
+  let pendingAction = null;
+  if (data.noop) {
+    contentOut =
+      data.after.length > 0
+        ? `「${data.title}」现在已经是这些标签：${data.after.join('、')}，无需调整。`
+        : `「${data.title}」当前没有用户标签，无需调整。`;
+  } else {
+    const lines = [`准备调整「${data.title}」的标签：`];
+    if (data.remove?.length) {
+      lines.push(`- 去掉：${data.remove.join('、')}`);
+    }
+    if (data.add?.length) {
+      lines.push(`- 加上：${data.add.join('、')}`);
+    }
+    if (data.willCreate?.length) {
+      lines.push(`（确认后将新建：${data.willCreate.join('、')}）`);
+    }
+    lines.push('');
+    lines.push(
+      data.after.length
+        ? `调整后：${data.after.join('、')}`
+        : '调整后：清空用户标签',
+    );
+    lines.push('请确认后才会写入。');
+    contentOut = lines.join('\n');
+    pendingAction = {
+      type: 'item_tag_edit',
+      status: 'pending',
+      itemId: data.itemId,
+      title: data.title,
+      before: data.before || [],
+      after: data.after || [],
+      add: data.add || [],
+      remove: data.remove || [],
+      willCreate: data.willCreate || [],
+      coverImageUrl: data.coverImageUrl || null,
+    };
+  }
+
+  if (stream && emit && contentOut) {
+    emit({ type: 'token', text: contentOut });
+  }
+
+  const citations = (obs.citations || []).slice(0, MAX_ANSWER_CITATIONS);
+  const assistantMessage = await conversationService.insertMessage({
+    conversationId,
+    role: 'assistant',
+    content: contentOut,
+    citations,
+    toolTrace: pendingAction
+      ? { steps: toolTrace, pendingAction }
+      : toolTrace,
+  });
+
+  return emitDone({
+    userId,
+    userMessage,
+    assistantMessage,
+    usageTotal,
+    emit,
+  });
+}
+
+async function emitDone({
+  userId,
+  userMessage,
+  assistantMessage,
+  usageTotal,
+  emit,
+}) {
   const generatedAt = new Date().toISOString();
   await usageService.recordAiTokenUsage({
     userId,
@@ -466,14 +666,6 @@ async function runUserTurn({
     tokens: usageTotal?.totalTokens || 0,
     generatedAt,
     meta: usageTotal,
-  });
-
-  const assistantMessage = await conversationService.insertMessage({
-    conversationId,
-    role: 'assistant',
-    content: contentOut,
-    citations,
-    toolTrace,
   });
 
   const usage = {
@@ -497,6 +689,38 @@ async function runUserTurn({
     assistantMessage,
     usage,
   };
+}
+
+function resolveTagEditItemId({
+  text,
+  plan,
+  focusItem,
+  priorCitations,
+  history,
+}) {
+  const fromPlan = Number(plan?.excerptItemIds?.[0]);
+  if (Number.isFinite(fromPlan) && fromPlan > 0) return fromPlan;
+
+  const titleIds = resolveTitlePickItemIds(text, history, priorCitations);
+  if (titleIds.length === 1) return titleIds[0];
+
+  const followIds = resolveFollowUpItemIds(text, history, priorCitations);
+  if (followIds.length === 1) return followIds[0];
+
+  if (focusItem?.itemId) return Number(focusItem.itemId);
+
+  if (
+    /这篇|本篇|当前/.test(String(text || '')) &&
+    priorCitations?.length === 1
+  ) {
+    return Number(priorCitations[0].itemId);
+  }
+
+  if (priorCitations?.length === 1) {
+    return Number(priorCitations[0].itemId);
+  }
+
+  return null;
 }
 
 /** 去掉回复正文里泄漏的后端字段 / id 编号，出处只走 citations 卡片。 */
@@ -721,13 +945,14 @@ function fallbackAnswer({ intent, observations, citationMap, excerptIds }) {
 
 function normalizePlan(
   json,
-  { userContent, priorIds, history, priorCitations } = {},
+  { userContent, priorIds, history, priorCitations, focusItem } = {},
 ) {
   const intentRaw = String(json?.intent || 'search').toLowerCase();
   let intent = [
     'search',
     'list',
     'compare',
+    'tag_edit',
     'chitchat',
     'clarify',
   ].includes(intentRaw)
@@ -740,6 +965,7 @@ function normalizePlan(
     queries = [String(json.q).trim()].filter(Boolean);
   }
   let followUp = false;
+  let tagEdit = normalizeTagEdit(json?.tagEdit || json?.tag_edit);
 
   const priorSet = new Set(
     (priorIds || []).map((id) => Number(id)).filter((n) => n > 0),
@@ -777,7 +1003,8 @@ function normalizePlan(
   );
   if (
     followIds.length &&
-    (looksOrdinalPick(userContent) || looksAffirmative(userContent))
+    (looksOrdinalPick(userContent) || looksAffirmative(userContent)) &&
+    !looksLikeTagEdit(userContent)
   ) {
     intent = 'search';
     queries = [];
@@ -796,7 +1023,8 @@ function normalizePlan(
     !followUp &&
     hasExplicitTitleRef(userContent) &&
     !looksLikeInventory(userContent) &&
-    !looksLikeMoreList(userContent)
+    !looksLikeMoreList(userContent) &&
+    !looksLikeTagEdit(userContent)
   ) {
     if (titlePickIds.length >= 2 && /对照|对比|比较/.test(String(userContent || ''))) {
       intent = 'compare';
@@ -811,12 +1039,68 @@ function normalizePlan(
     }
   }
 
+  // 点名改标签：启发式优先，避免模型仍答「无法改标签」
+  if (looksLikeTagEdit(userContent)) {
+    intent = 'tag_edit';
+    queries = [];
+    followUp = false;
+    if (!tagEdit) tagEdit = { itemId: null, add: [], remove: [], replace: [] };
+    const heur = heuristicTagEdit(userContent);
+    if (heur) {
+      if (!tagEdit.add?.length && heur.add?.length) tagEdit.add = heur.add;
+      if (!tagEdit.remove?.length && heur.remove?.length) {
+        tagEdit.remove = heur.remove;
+      }
+      if (!tagEdit.replace?.length && heur.replace?.length) {
+        tagEdit.replace = heur.replace;
+      }
+    }
+    if (!tagEdit.itemId) {
+      if (titlePickIds.length === 1) tagEdit.itemId = titlePickIds[0];
+      else if (followIds.length === 1) tagEdit.itemId = followIds[0];
+      else if (excerptItemIds.length === 1) tagEdit.itemId = excerptItemIds[0];
+    }
+    if (tagEdit.itemId && !excerptItemIds.includes(tagEdit.itemId)) {
+      excerptItemIds = [tagEdit.itemId];
+    }
+  }
+
   // 盘点收藏：强制 list，禁止用「文章」等空泛词搜出残缺结果
   if (looksLikeInventory(userContent) || looksLikeMoreList(userContent)) {
     intent = 'list';
     queries = [];
     excerptItemIds = [];
     followUp = false;
+    tagEdit = null;
+  }
+
+  // 阅读锚定：默认钉在当前篇；仅明确要查库/盘点/找别的时才放开
+  let focusBound = false;
+  if (
+    focusItem?.itemId &&
+    !wantsLibraryScope(userContent) &&
+    intent !== 'tag_edit' &&
+    intent !== 'chitchat' &&
+    intent !== 'clarify' &&
+    intent !== 'compare'
+  ) {
+    const fid = Number(focusItem.itemId);
+    intent = 'search';
+    queries = [];
+    excerptItemIds = [fid];
+    followUp = true;
+    tagEdit = null;
+    focusBound = true;
+  } else if (
+    focusItem?.itemId &&
+    intent === 'tag_edit' &&
+    !tagEdit?.itemId
+  ) {
+    tagEdit = {
+      ...(tagEdit || { add: [], remove: [], replace: [] }),
+      itemId: Number(focusItem.itemId),
+    };
+    excerptItemIds = [Number(focusItem.itemId)];
   }
 
   if (intent === 'list') {
@@ -824,12 +1108,99 @@ function normalizePlan(
     excerptItemIds = [];
   }
 
+  if (intent === 'tag_edit') {
+    queries = [];
+  }
+
   return {
     intent,
     queries: queries.slice(0, MAX_SEARCH_QUERIES),
     excerptItemIds: excerptItemIds.slice(0, MAX_EXCERPTS),
     followUp,
+    tagEdit,
+    focusBound,
   };
+}
+
+/**
+ * 用户是否明确要离开「当前篇」、去查全库 / 其它收藏。
+ * 阅读锚定下默认 false；有这些说法才 list/search。
+ */
+function wantsLibraryScope(text) {
+  const t = String(text || '').trim();
+  if (!t) return false;
+  if (looksLikeInventory(t) || looksLikeMoreList(t)) return true;
+  return (
+    /全库|所有收藏|全部收藏|其它收藏|其他收藏|别的收藏|整个收藏/.test(t) ||
+    /库里|收藏里|收藏中|收藏库/.test(t) ||
+    /我存过|有没有存|找一篇|找几篇|找找|搜一下|搜索一下|帮我找/.test(t) ||
+    /还有没有|有没有类似|类似的|相关的收藏|其它篇|其他篇|别的篇|换一篇|另一篇/.test(
+      t,
+    ) ||
+    /对照.*(其它|其他|另外)|和其他|和别的|跟其他|跟别的/.test(t) ||
+    /(有没有|有哪些|还有).{0,12}(别的|其他|其它).{0,8}(文章|篇|收藏)/.test(t)
+  );
+}
+
+function normalizeTagEdit(raw) {
+  if (!raw || typeof raw !== 'object') return null;
+  const itemIdRaw = Number(raw.itemId ?? raw.item_id);
+  const itemId =
+    Number.isFinite(itemIdRaw) && itemIdRaw > 0 ? itemIdRaw : null;
+  const asNames = (v) =>
+    Array.isArray(v)
+      ? v.map((s) => String(s || '').trim()).filter(Boolean)
+      : [];
+  return {
+    itemId,
+    add: asNames(raw.add),
+    remove: asNames(raw.remove),
+    replace: asNames(raw.replace),
+  };
+}
+
+function looksLikeTagEdit(text) {
+  const t = String(text || '');
+  return (
+    /标签/.test(t) &&
+      /(加上|加个|添加|去掉|移除|删除|改成|换成|改用|调整)/.test(t)
+  ) ||
+    /给.{0,40}(加上|加个|添加|去掉|移除)/.test(t) ||
+    /(加上|加个|添加|去掉|移除|删除)\s*[「"'][^」"']+[」"']/.test(t) ||
+    /(改成|换成|改用)\s*[「"']?[^」"'\s，。]{1,24}/.test(t) ||
+    /^(用|改成|换成)\s*[「"'].+[」"']\s*$/.test(t.trim()) ||
+    /^(用|改成|换成).{1,24}$/.test(t.trim());
+}
+
+/** 从短指令里抠标签名（模型漏填时兜底） */
+function heuristicTagEdit(text) {
+  const t = String(text || '').trim();
+  if (!t) return null;
+  const quoted = [];
+  const re = /[「"']([^」"']{1,32})[」"']/g;
+  let m;
+  while ((m = re.exec(t))) quoted.push(m[1].trim());
+
+  const bare = (() => {
+    const m1 = t.match(
+      /(?:加上|加个|添加|去掉|移除|删除|改成|换成|改用|用)\s*([^\s，。！？、]{1,24})(?:\s*标签)?$/,
+    );
+    return m1 ? [m1[1].replace(/标签$/, '').trim()].filter(Boolean) : [];
+  })();
+
+  const names = quoted.length ? quoted : bare;
+  if (!names.length) return null;
+
+  if (/(去掉|移除|删除)/.test(t)) {
+    return { add: [], remove: names, replace: [] };
+  }
+  if (/(改成|换成|改用)|^用/.test(t)) {
+    return { add: [], remove: [], replace: names };
+  }
+  if (/(加上|加个|添加)/.test(t)) {
+    return { add: names, remove: [], replace: [] };
+  }
+  return { add: names, remove: [], replace: [] };
 }
 
 /** App「选用」会写入「标题」；有明确书名号/引号才按标题锁定，避免普通检索误伤 */

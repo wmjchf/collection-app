@@ -23,13 +23,26 @@ function normalizeFocusItemId(raw) {
 
 function mapMessage(row) {
   if (!row) return null;
+  const rawTrace = parseJson(row.tool_calls_json, null);
+  let toolTrace = rawTrace;
+  let pendingAction = null;
+  if (rawTrace && !Array.isArray(rawTrace) && typeof rawTrace === 'object') {
+    pendingAction = rawTrace.pendingAction || null;
+    toolTrace =
+      rawTrace.steps != null
+        ? rawTrace.steps
+        : Object.prototype.hasOwnProperty.call(rawTrace, 'pendingAction')
+          ? rawTrace.steps || null
+          : rawTrace;
+  }
   return {
     id: Number(row.id),
     conversationId: Number(row.conversation_id),
     role: row.role,
     content: row.content || '',
     citations: parseJson(row.citations_json, null),
-    toolTrace: parseJson(row.tool_calls_json, null),
+    toolTrace,
+    pendingAction,
     createdAt: row.created_at,
   };
 }
@@ -245,6 +258,56 @@ async function insertMessage({
   return mapMessage(rows[0]);
 }
 
+async function getMessageForUser(userId, conversationId, messageId) {
+  const conv = await getConversationForUser(userId, conversationId);
+  if (!conv) return null;
+  const [rows] = await pool.execute(
+    `SELECT *
+     FROM agent_messages
+     WHERE id = :messageId AND conversation_id = :conversationId
+     LIMIT 1`,
+    { messageId, conversationId },
+  );
+  return mapMessage(rows[0] || null);
+}
+
+/**
+ * 合并更新 tool_calls_json（保留 steps，覆盖/写入 pendingAction 等字段）。
+ */
+async function patchMessageToolPayload(messageId, patch = {}) {
+  const [rows] = await pool.execute(
+    `SELECT tool_calls_json FROM agent_messages WHERE id = :id LIMIT 1`,
+    { id: messageId },
+  );
+  if (!rows[0]) {
+    throw Object.assign(new Error('消息不存在'), { status: 404 });
+  }
+  const raw = parseJson(rows[0].tool_calls_json, null);
+  let next;
+  if (Array.isArray(raw)) {
+    next = { steps: raw, ...patch };
+  } else if (raw && typeof raw === 'object') {
+    next = { ...raw, ...patch };
+  } else {
+    next = { steps: raw, ...patch };
+  }
+  await pool.execute(
+    `UPDATE agent_messages SET tool_calls_json = :json WHERE id = :id`,
+    { id: messageId, json: JSON.stringify(next) },
+  );
+  return next;
+}
+
+async function updateMessageCitations(messageId, citations) {
+  await pool.execute(
+    `UPDATE agent_messages SET citations_json = :json WHERE id = :id`,
+    {
+      id: messageId,
+      json: citations != null ? JSON.stringify(citations) : null,
+    },
+  );
+}
+
 async function touchTitleIfEmpty(userId, conversationId, seed) {
   const conv = await getConversationForUser(userId, conversationId);
   if (!conv || conv.title) return conv;
@@ -270,6 +333,9 @@ module.exports = {
   listMessages,
   listRecentHistory,
   insertMessage,
+  getMessageForUser,
+  patchMessageToolPayload,
+  updateMessageCitations,
   touchTitleIfEmpty,
   mapMessage,
 };
