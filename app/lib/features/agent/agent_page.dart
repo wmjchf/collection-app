@@ -1466,7 +1466,7 @@ class _AgentPresetRules {
       final title = _firstBookTitle(content);
       return [
         '整理归类',
-        '继续列出其余标签',
+        '还有哪些？',
         if (title != null) '调整《$title》的标签',
         '查找关于…',
       ];
@@ -1477,7 +1477,7 @@ class _AgentPresetRules {
       return [
         if (short.isNotEmpty) '深入解读《$short》',
         '对照这几篇',
-        '调整标签',
+        '还有其它吗？',
         '整理归类',
       ];
     }
@@ -1502,11 +1502,15 @@ class _AgentPresetRules {
         content.contains('你更希望怎么分');
   }
 
+  /// 仅认 list_tags 口吻；避免「按主题或标签筛选」+《标题》误判。
   static bool _looksLikeTagInventory(String content) {
-    if (!content.contains('标签')) return false;
-    return content.contains('《') ||
-        content.contains('没有文章') ||
-        content.contains('有标签的文章');
+    if (RegExp(r'现在共\s*\d+\s*个标签').hasMatch(content)) return true;
+    if (content.contains('有标签的文章')) return true;
+    if (content.contains('没有文章') &&
+        RegExp(r'\*\*[^*]{1,40}\*\*：').hasMatch(content)) {
+      return true;
+    }
+    return false;
   }
 
   static String? _firstBookTitle(String content) {

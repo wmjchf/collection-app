@@ -6,6 +6,14 @@ const tagService = require('../tagService');
 const tagModuleService = require('../tagModuleService');
 const conversationService = require('./agentConversationService');
 const confirmActionService = require('./agentConfirmAction');
+const {
+  AWAITING,
+  resolveAwaiting,
+  looksLikeTopicSwitch,
+  looksLikeAwaitingAnswer,
+  shouldContinueAwaiting,
+  toolPayload,
+} = require('./agentAwaiting');
 const { executeTool } = require('./agentRegistry');
 const {
   buildPlanMessages,
@@ -115,7 +123,7 @@ async function runUserTurn({
   let usageTotal = null;
   const ctx = { userId, conversationId, messageId: userMessage.id };
 
-  // 短回复「可以 / 确认」：真正执行待确认写库，禁止模型口头说「已执行」却不写
+  // 短回复「可以 / 确认 / 就按这个来」：真正走确认条写库，禁止模型手写假预览
   if (looksWriteAffirmative(text)) {
     const pendingMsg = findLatestPendingActionMessage(history);
     if (
@@ -160,6 +168,55 @@ async function runUserTurn({
         toolTrace,
         usageTotal,
         ctx,
+        emit,
+        stream,
+      });
+    }
+
+    // 上文模型手写了改标预览（无 pendingAction）→ 解析后挂真正确认条
+    const verbalTag = parseVerbalTagEditProposal(history);
+    if (verbalTag?.itemId && verbalTag.replace?.length) {
+      if (emit) emit({ type: 'user', message: userMessage });
+      if (emit) emit({ type: 'phase', phase: 'answering' });
+      return finishTagEditTurn({
+        userId,
+        conversationId,
+        userMessage,
+        text,
+        plan: {
+          intent: 'tag_edit',
+          tagEdit: {
+            itemId: verbalTag.itemId,
+            add: [],
+            remove: [],
+            replace: verbalTag.replace,
+          },
+        },
+        focusItem: null,
+        priorCitations,
+        history,
+        toolTrace,
+        citationMap,
+        usageTotal,
+        ctx,
+        emit,
+        stream,
+      });
+    }
+
+    // 正在问怎么改标签，用户只表态未给加删 → 请说明具体标签
+    const awaitingNow = resolveAwaiting(history);
+    if (awaitingNow?.kind === AWAITING.TAG_EDIT_PREFERENCE) {
+      if (emit) emit({ type: 'user', message: userMessage });
+      if (emit) emit({ type: 'phase', phase: 'answering' });
+      return finishTagEditNeedOpsTurn({
+        userId,
+        conversationId,
+        userMessage,
+        itemId: Number(awaitingNow.meta?.itemId) || null,
+        title: awaitingNow.meta?.title || '',
+        toolTrace,
+        usageTotal,
         emit,
         stream,
       });
@@ -298,6 +355,31 @@ async function runUserTurn({
     });
   }
 
+  // —— 对照：未选定两篇时固定提示勾选，不硬凑上文、不另挂 awaiting ——
+  if (plan.intent === 'compare') {
+    const compareIds = resolveCompareSelection({
+      text,
+      history,
+      priorCitations,
+      plan,
+      focusItem,
+    });
+    if (compareIds.length < 2) {
+      return finishCompareNeedPickTurn({
+        userId,
+        conversationId,
+        userMessage,
+        selectedCount: compareIds.length,
+        toolTrace,
+        usageTotal,
+        emit,
+        stream,
+      });
+    }
+    plan.excerptItemIds = compareIds.slice(0, 2);
+    plan.queries = [];
+  }
+
   const observations = [];
   const allowedIds = [];
   const priorIdSet = new Set(priorCitations.map((c) => c.itemId));
@@ -306,8 +388,7 @@ async function runUserTurn({
   const shouldSearch =
     !shouldList &&
     plan.queries.length > 0 &&
-    (plan.intent === 'search' ||
-      (plan.intent === 'compare' && !plan.excerptItemIds.length));
+    plan.intent === 'search';
 
   if (shouldList) {
     const listMore = looksLikeMoreList(text);
@@ -374,47 +455,39 @@ async function runUserTurn({
 
   let excerptIds = [];
   if (needsExcerpt) {
-    excerptIds = plan.excerptItemIds.filter(
-      (id) =>
-        priorIdSet.has(id) ||
-        allowedIds.includes(id) ||
-        (focusItem && id === focusItem.itemId),
-    );
-    // follow-up 解析出的 id 可能只在 prior 里
-    if (plan.followUp && plan.excerptItemIds.length) {
-      excerptIds = uniqueIds([...plan.excerptItemIds, ...excerptIds]);
-    }
-    if (
-      !excerptIds.length &&
-      (plan.intent === 'compare' || looksReferential(text)) &&
-      priorCitations.length
-    ) {
-      // 模型漏填 id：默认取最近两篇上文出处
-      excerptIds = [...priorCitations]
-        .map((c) => c.itemId)
-        .reverse()
-        .slice(0, Math.min(2, MAX_EXCERPTS))
-        .reverse();
-    }
-    if (!excerptIds.length && allowedIds.length) {
-      excerptIds = uniqueIds(allowedIds).slice(0, MAX_EXCERPTS);
-    }
-    // 阅读页锚定：强制带上当前篇（点名 follow-up 已指定篇则不抢）
-    if (focusItem && !plan.followUp) {
-      excerptIds = uniqueIds([focusItem.itemId, ...excerptIds]);
-    }
-    // 对照至少两篇：若只解析出 1 个，补上最近另一篇上文出处
-    if (
-      (plan.intent === 'compare' || looksReferential(text)) &&
-      !plan.followUp &&
-      excerptIds.length === 1 &&
-      priorCitations.length >= 2
-    ) {
-      const extra = [...priorCitations]
-        .reverse()
-        .map((c) => c.itemId)
-        .find((id) => id !== excerptIds[0]);
-      if (extra) excerptIds.push(extra);
+    // 对照入口已校验满两篇，直接采用（不再用上文出处硬凑）
+    if (plan.intent === 'compare' && plan.excerptItemIds.length >= 2) {
+      excerptIds = uniqueIds(plan.excerptItemIds).slice(0, 2);
+    } else {
+      excerptIds = plan.excerptItemIds.filter(
+        (id) =>
+          priorIdSet.has(id) ||
+          allowedIds.includes(id) ||
+          (focusItem && id === focusItem.itemId),
+      );
+      // follow-up 解析出的 id 可能只在 prior 里
+      if (plan.followUp && plan.excerptItemIds.length) {
+        excerptIds = uniqueIds([...plan.excerptItemIds, ...excerptIds]);
+      }
+      if (
+        !excerptIds.length &&
+        looksReferential(text) &&
+        looksExplicitPriorCompare(text) &&
+        priorCitations.length
+      ) {
+        excerptIds = [...priorCitations]
+          .map((c) => c.itemId)
+          .reverse()
+          .slice(0, Math.min(2, MAX_EXCERPTS))
+          .reverse();
+      }
+      if (!excerptIds.length && allowedIds.length) {
+        excerptIds = uniqueIds(allowedIds).slice(0, MAX_EXCERPTS);
+      }
+      // 阅读页锚定：强制带上当前篇（点名 follow-up 已指定篇则不抢）
+      if (focusItem && !plan.followUp) {
+        excerptIds = uniqueIds([focusItem.itemId, ...excerptIds]);
+      }
     }
     excerptIds = uniqueIds(excerptIds).slice(0, MAX_EXCERPTS);
   }
@@ -945,7 +1018,9 @@ async function finishOrganizeAskTurn({
     role: 'assistant',
     content: contentOut,
     citations: null,
-    toolTrace,
+    toolTrace: toolPayload(toolTrace, {
+      awaiting: AWAITING.ORGANIZE_PREFERENCE,
+    }),
   });
   return emitDone({
     userId,
@@ -1210,7 +1285,97 @@ async function finishOrganizeTurn({
     role: 'assistant',
     content: contentOut,
     citations: null,
-    toolTrace: { steps: toolTrace, pendingAction },
+    toolTrace: toolPayload(toolTrace, {
+      pendingAction,
+      awaiting: AWAITING.ORGANIZE_CONFIRM,
+    }),
+  });
+
+  return emitDone({
+    userId,
+    userMessage,
+    assistantMessage,
+    usageTotal,
+    emit,
+  });
+}
+
+async function finishTagEditAskTurn({
+  userId,
+  conversationId,
+  userMessage,
+  itemId,
+  toolTrace,
+  citationMap,
+  usageTotal,
+  ctx,
+  emit,
+  stream,
+}) {
+  const obs = await executeTool('propose_item_tag_edit', ctx, {
+    itemId,
+    add: [],
+    remove: [],
+    replace: [],
+  });
+  toolTrace.push({
+    tool: 'propose_item_tag_edit',
+    ok: Boolean(obs.ok),
+    args: { itemId, via: 'ask' },
+  });
+
+  if (!obs.ok || !obs.data) {
+    const contentOut = '没能读取这篇的标签，请换一篇再试，或稍后再说。';
+    if (stream && emit) emit({ type: 'token', text: contentOut });
+    const assistantMessage = await conversationService.insertMessage({
+      conversationId,
+      role: 'assistant',
+      content: contentOut,
+      citations: null,
+      toolTrace,
+    });
+    return emitDone({
+      userId,
+      userMessage,
+      assistantMessage,
+      usageTotal,
+      emit,
+    });
+  }
+
+  const data = obs.data;
+  for (const c of obs.citations || []) {
+    rememberCitation(citationMap, c);
+  }
+  // 询问态出处文案：当前标签，不是「将调整为」
+  const citations = (obs.citations || []).slice(0, MAX_ANSWER_CITATIONS).map(
+    (c) => ({
+      ...c,
+      snippet: data.before.length
+        ? `当前标签：${data.before.join('、')}`
+        : '当前没有用户标签',
+    }),
+  );
+
+  const tagLine = data.before.length
+    ? `当前标签：${data.before.join('、')}`
+    : '当前还没有用户标签';
+  const contentOut = [
+    `「${data.title}」${tagLine}。`,
+    '',
+    '想怎么改？可以说「加上某某」「去掉某某」，或直接说调整后的标签。',
+  ].join('\n');
+
+  if (stream && emit) emit({ type: 'token', text: contentOut });
+  const assistantMessage = await conversationService.insertMessage({
+    conversationId,
+    role: 'assistant',
+    content: contentOut,
+    citations,
+    toolTrace: toolPayload(toolTrace, {
+      awaiting: AWAITING.TAG_EDIT_PREFERENCE,
+      awaitingMeta: { itemId: data.itemId, title: data.title },
+    }),
   });
 
   return emitDone({
@@ -1275,6 +1440,27 @@ async function finishTagEditTurn({
     remove: plan.tagEdit?.remove || [],
     replace: plan.tagEdit?.replace || [],
   };
+  const hasOps =
+    (args.add && args.add.length > 0) ||
+    (args.remove && args.remove.length > 0) ||
+    (args.replace && args.replace.length > 0);
+
+  // 只说「改标签」、未说明加删 → 先列出现有，再问怎么改
+  if (!hasOps) {
+    return finishTagEditAskTurn({
+      userId,
+      conversationId,
+      userMessage,
+      itemId,
+      toolTrace,
+      citationMap,
+      usageTotal,
+      ctx,
+      emit,
+      stream,
+    });
+  }
+
   const obs = await executeTool('propose_item_tag_edit', ctx, args);
   toolTrace.push({
     tool: 'propose_item_tag_edit',
@@ -1311,8 +1497,8 @@ async function finishTagEditTurn({
   if (data.noop) {
     contentOut =
       data.after.length > 0
-        ? `「${data.title}」现在已经是这些标签：${data.after.join('、')}，无需调整。`
-        : `「${data.title}」当前没有用户标签，无需调整。`;
+        ? `按你说的调整后标签不变，仍是：${data.after.join('、')}。若要改，可以说「加上/去掉某某」。`
+        : `按你说的调整后仍没有用户标签。若要改，可以说「加上某某」。`;
   } else {
     const lines = [`准备调整「${data.title}」的标签：`];
     if (data.remove?.length) {
@@ -1357,7 +1543,10 @@ async function finishTagEditTurn({
     content: contentOut,
     citations,
     toolTrace: pendingAction
-      ? { steps: toolTrace, pendingAction }
+      ? toolPayload(toolTrace, {
+          pendingAction,
+          awaiting: AWAITING.TAG_EDIT_CONFIRM,
+        })
       : toolTrace,
   });
 
@@ -1467,6 +1656,106 @@ function looksReferential(text) {
   );
 }
 
+/**
+ * 明确回指上文已列出的篇（须更具体，避免「对照这几篇」未勾选就静默拿出处）。
+ * 勾选「标题」走 titlePick，不依赖本函数。
+ */
+function looksExplicitPriorCompare(text) {
+  return /刚才那?[两几]篇|上面那?[两几]篇|上一轮|前述|那两篇|两篇都|都对比/.test(
+    String(text || ''),
+  );
+}
+
+/**
+ * 对照目标篇：须用户勾选「标题」、或明确回指上文两篇。
+ * 不满 2 篇则由入口提示选择，禁止静默凑数。
+ */
+function resolveCompareSelection({
+  text,
+  history,
+  priorCitations,
+  plan,
+  focusItem,
+}) {
+  const titleIds = resolveTitlePickItemIds(text, history, priorCitations);
+  if (titleIds.length >= 2) return uniqueIds(titleIds).slice(0, 2);
+
+  if (looksExplicitPriorCompare(text) && priorCitations.length >= 2) {
+    return uniqueIds(
+      [...priorCitations]
+        .reverse()
+        .map((c) => c.itemId)
+        .slice(0, 2)
+        .reverse(),
+    );
+  }
+
+  const fromPlan = uniqueIds(
+    (plan?.excerptItemIds || [])
+      .map((id) => Number(id))
+      .filter((n) => Number.isFinite(n) && n > 0),
+  );
+  if (
+    fromPlan.length >= 2 &&
+    hasExplicitTitleRef(text) &&
+    /对照|对比|比较/.test(String(text || ''))
+  ) {
+    return fromPlan.slice(0, 2);
+  }
+
+  // 已勾选一篇：可读锚定凑不成两篇，仍返回已选数量供提示
+  if (titleIds.length === 1) return titleIds;
+  if (focusItem?.itemId && /对照|对比|比较/.test(String(text || ''))) {
+    // 仅当前篇，仍缺一篇
+    return [Number(focusItem.itemId)];
+  }
+  return [];
+}
+
+async function finishCompareNeedPickTurn({
+  userId,
+  conversationId,
+  userMessage,
+  selectedCount = 0,
+  toolTrace,
+  usageTotal,
+  emit,
+  stream,
+}) {
+  const contentOut =
+    selectedCount === 1
+      ? [
+          '对照需要两篇。你已选 1 篇，请再选一篇。',
+          '',
+          '在出处卡片左侧勾选，或输入「标题」后再说「比较这两篇」。',
+        ].join('\n')
+      : [
+          '对照需要先选定两篇。',
+          '',
+          '请在出处卡片左侧勾选两篇，或输入两篇的「标题」后再说「比较这两篇」。',
+        ].join('\n');
+  toolTrace.push({
+    tool: 'compare_need_pick',
+    ok: true,
+    args: { selectedCount: Number(selectedCount) || 0 },
+  });
+  if (stream && emit) emit({ type: 'token', text: contentOut });
+  const assistantMessage = await conversationService.insertMessage({
+    conversationId,
+    role: 'assistant',
+    content: contentOut,
+    citations: null,
+    toolTrace,
+  });
+  return emitDone({
+    userId,
+    userMessage,
+    assistantMessage,
+    usageTotal,
+    emit,
+  });
+}
+
 /** 最近一轮带出处的助手消息里的 citations（用户说「第二篇」时按此序） */
 function latestCitationBatch(history) {
   for (let i = (history || []).length - 1; i >= 0; i -= 1) {
@@ -1523,10 +1812,94 @@ function looksWriteAffirmative(text) {
   if (!t || t.length > 24) return false;
   return (
     looksAffirmative(t) ||
-    /^(确认整理|确认调整|就这样|按这个|按这个来|按方案|执行|同意)[。.!！]?$/.test(
+    /^(确认整理|确认调整|就这样|按这个|按这个来|就按这个|就按这个来|照这个|就用这个|按方案|执行|同意)[。.!！]?$/.test(
       t,
     )
   );
+}
+
+/**
+ * 上文助手正文手写了改标预览（无 pendingAction）。
+ * 解析「调整为：A、B、C」+ 出处 itemId，供口头确认后挂真正确认条。
+ */
+function parseVerbalTagEditProposal(history) {
+  const list = Array.isArray(history) ? history : [];
+  for (let i = list.length - 1; i >= 0; i -= 1) {
+    const m = list[i];
+    if (m?.role !== 'assistant') continue;
+    if (m.pendingAction?.status === 'pending') return null;
+    const c = String(m.content || '');
+    if (!c) return null;
+    const looksPreview =
+      /标签调整预览|请确认是否写入|准备调整.{0,40}标签|调整为[：:]/.test(c) &&
+      /标签/.test(c);
+    if (!looksPreview) return null;
+
+    let replace = [];
+    const m1 = c.match(/调整为[：:]\s*([^\n]+)/);
+    const m2 = c.match(/调整后[：:]\s*([^\n]+)/);
+    const raw = (m1 || m2)?.[1] || '';
+    replace = String(raw)
+      .split(/[、,，]/)
+      .map((s) => s.replace(/[。.!！]/g, '').trim())
+      .filter((s) => s && s.length <= 32 && !/确认|写入|篇目|当前/.test(s));
+
+    let itemId = 0;
+    if (Array.isArray(m.citations) && m.citations[0]?.itemId) {
+      itemId = Number(m.citations[0].itemId);
+    }
+    if (!itemId && m.awaitingMeta?.itemId) {
+      itemId = Number(m.awaitingMeta.itemId);
+    }
+    if (!Number.isFinite(itemId) || itemId <= 0 || !replace.length) return null;
+    return { itemId, replace };
+  }
+  return null;
+}
+
+async function finishTagEditNeedOpsTurn({
+  userId,
+  conversationId,
+  userMessage,
+  itemId,
+  title,
+  toolTrace,
+  usageTotal,
+  emit,
+  stream,
+}) {
+  const name = String(title || '').trim();
+  const contentOut = [
+    name ? `要改「${name}」的标签，还需要你说具体怎么改。` : '还需要你说具体怎么改标签。',
+    '',
+    '例如：「加上乔氏超市」「去掉实体零售」，或「改成 A、B、C」。说清后我会出带确认按钮的预览。',
+  ].join('\n');
+  toolTrace.push({
+    tool: 'tag_edit_need_ops',
+    ok: true,
+    args: { itemId: itemId || null },
+  });
+  if (stream && emit) emit({ type: 'token', text: contentOut });
+  const assistantMessage = await conversationService.insertMessage({
+    conversationId,
+    role: 'assistant',
+    content: contentOut,
+    citations: null,
+    toolTrace: toolPayload(toolTrace, {
+      awaiting: AWAITING.TAG_EDIT_PREFERENCE,
+      awaitingMeta:
+        itemId || name
+          ? { itemId: itemId || null, title: name || '' }
+          : null,
+    }),
+  });
+  return emitDone({
+    userId,
+    userMessage,
+    assistantMessage,
+    usageTotal,
+    emit,
+  });
 }
 
 function findLatestPendingActionMessage(history) {
@@ -1805,6 +2178,33 @@ function normalizePlan(
     }
   }
 
+  // 上文在问「标签怎么改」：答中则钉回 tag_edit，带上 awaiting 的篇目
+  const awaitingEarly = resolveAwaiting(history);
+  if (
+    awaitingEarly?.kind === AWAITING.TAG_EDIT_PREFERENCE &&
+    shouldContinueAwaiting(userContent, awaitingEarly)
+  ) {
+    intent = 'tag_edit';
+    queries = [];
+    followUp = false;
+    organize = null;
+    if (!tagEdit) tagEdit = { itemId: null, add: [], remove: [], replace: [] };
+    const metaId = Number(awaitingEarly.meta?.itemId);
+    if (Number.isFinite(metaId) && metaId > 0) tagEdit.itemId = metaId;
+    const heurAwait = heuristicTagEdit(userContent);
+    if (heurAwait) {
+      if (!tagEdit.add?.length && heurAwait.add?.length) {
+        tagEdit.add = heurAwait.add;
+      }
+      if (!tagEdit.remove?.length && heurAwait.remove?.length) {
+        tagEdit.remove = heurAwait.remove;
+      }
+      if (!tagEdit.replace?.length && heurAwait.replace?.length) {
+        tagEdit.replace = heurAwait.replace;
+      }
+    }
+  }
+
   // 点名改标签：启发式优先，避免模型仍答「无法改标签」
   if (looksLikeTagEdit(userContent) && !looksLikeOrganize(userContent)) {
     intent = 'tag_edit';
@@ -1847,16 +2247,24 @@ function normalizePlan(
 
   // 建架 / 填入归类 / 重排：必须走 propose_organize + pendingAction（才有确认按钮）
   // 「漏掉了 / 补上」等修正上文方案：同样强制预览，禁止模型正文手写无按钮
-  if (
-    intent !== 'list_tags' &&
-    (looksLikeOrganize(userContent) ||
-      looksLikeOrganizeFollowUp(userContent, history) ||
-      looksLikeOrganizeAfterTagList(userContent, history) ||
-      looksLikeOrganizeRevision(userContent, history) ||
-      (intent === 'organize' &&
-        !looksLikeTagInventory(userContent) &&
-        !looksLikeInventory(userContent)))
-  ) {
+  // 通用 awaiting：换题时不得把对照/检索等盖回 organize
+  const awaiting = resolveAwaiting(history);
+  const continueAwait = shouldContinueAwaiting(userContent, awaiting);
+  const topicSwitch =
+    looksLikeTopicSwitch(userContent) &&
+    !looksLikeAwaitingAnswer(userContent, awaiting) &&
+    !looksLikeOrganize(userContent);
+  const wantOrganize =
+    looksLikeOrganize(userContent) ||
+    looksLikeOrganizeFollowUp(userContent, history) ||
+    looksLikeOrganizeAfterTagList(userContent, history) ||
+    looksLikeOrganizeRevision(userContent, history) ||
+    continueAwait ||
+    (intent === 'organize' &&
+      !looksLikeTagInventory(userContent) &&
+      !looksLikeInventory(userContent) &&
+      !topicSwitch);
+  if (intent !== 'list_tags' && wantOrganize && !topicSwitch) {
     intent = 'organize';
     queries = [];
     excerptItemIds = [];
@@ -1866,7 +2274,8 @@ function normalizePlan(
     if (
       looksLikeFullOrganize(userContent) ||
       looksLikeOrganizePreference(userContent) ||
-      looksLikeOrganizeRevision(userContent, history)
+      looksLikeOrganizeRevision(userContent, history) ||
+      continueAwait
     ) {
       organize.mode = 'full';
     }
@@ -1878,7 +2287,7 @@ function normalizePlan(
     // 用户已表态（含「你看着分」）时：加稳定架名约束，减少同库每次乱跳
     if (
       hasOrganizePreferenceInText(userContent) ||
-      priorWasOrganizePreferenceAsk(history)
+      (priorWasOrganizePreferenceAsk(history) && continueAwait)
     ) {
       const stable =
         '按用户意见划分；一层归类；优先简洁稳定架名（如汽车与新能源、科技与影像、潮玩消费、职场效率、财经分析），可按实际增减；标签尽量分全、勿遗漏。';
@@ -1888,17 +2297,31 @@ function normalizePlan(
       if (organize.mode !== 'full') {
         organize.mode =
           looksLikeFullOrganize(userContent) ||
-          priorWasOrganizePreferenceAsk(history)
+          (priorWasOrganizePreferenceAsk(history) && continueAwait)
             ? 'full'
             : organize.mode;
       }
       if (
-        priorWasOrganizePreferenceAsk(history) ||
+        (priorWasOrganizePreferenceAsk(history) && continueAwait) ||
         /你看着|你来分|你定|随便|自动分/.test(userContent)
       ) {
         organize.mode = 'full';
       }
     }
+  } else if (topicSwitch && intent === 'organize') {
+    // 模型因上文归类语境误判 organize：交给已识别的对照/检索等
+    if (
+      /对照|对比|比较/.test(String(userContent || '')) ||
+      excerptItemIds.length >= 2
+    ) {
+      intent = 'compare';
+    } else if (excerptItemIds.length) {
+      intent = 'search';
+      followUp = true;
+    } else {
+      intent = 'search';
+    }
+    organize = null;
   }
 
   // 盘点收藏：强制 list，禁止用「文章」等空泛词搜出残缺结果
@@ -2093,11 +2516,16 @@ function latestAssistantContent(history) {
 function looksLikeOrganizeFollowUp(text, history) {
   const t = String(text || '').trim();
   if (!t) return false;
-  // 上文在问分类意见：用户短回偏好 → 进入预览
-  if (priorWasOrganizePreferenceAsk(history)) {
-    if (t.length > 80) return false;
-    if (/^(取消|不做了|算了|不用了)[。.!！]?$/.test(t)) return false;
-    return true;
+  const awaiting = resolveAwaiting(history);
+  // 上文在问分类意见：仅明确答中才进预览（换题走 topicSwitch，不再吞任意短句）
+  if (
+    awaiting?.kind === AWAITING.ORGANIZE_PREFERENCE ||
+    priorWasOrganizePreferenceAsk(history)
+  ) {
+    return shouldContinueAwaiting(
+      t,
+      awaiting || { kind: AWAITING.ORGANIZE_PREFERENCE },
+    );
   }
   // 上文已有归类预览：用户指出遗漏/微调 → 重新出带确认条的预览
   if (looksLikeOrganizeRevision(t, history)) return true;
@@ -2133,6 +2561,8 @@ function looksLikeOrganizeRevision(text, history) {
 }
 
 function priorWasOrganizePreferenceAsk(history) {
+  const awaiting = resolveAwaiting(history);
+  if (awaiting?.kind === AWAITING.ORGANIZE_PREFERENCE) return true;
   const prior = latestAssistantContent(history);
   return (
     /听听你的分类意见|你更希望怎么分|分类意见/.test(prior) &&
@@ -2160,8 +2590,14 @@ function hasOrganizePreferenceInText(text) {
  * 未明确分法 → 先问；已明确意见 / 正在回答追问 / 修正预览 → 直接出确认预览。
  */
 function shouldAskOrganizePreference(text, history) {
-  // 正在回答「怎么分」→ 出预览
-  if (priorWasOrganizePreferenceAsk(history)) return false;
+  // 正在明确回答「怎么分」→ 出预览；换题由 awaiting 总闸改 intent，不在此硬出预览
+  if (priorWasOrganizePreferenceAsk(history)) {
+    const awaiting =
+      resolveAwaiting(history) || { kind: AWAITING.ORGANIZE_PREFERENCE };
+    if (shouldContinueAwaiting(text, awaiting)) return false;
+    // 含糊短句：再问一次分法，不误出预览
+    return true;
+  }
   // 补漏/微调已有预览 → 出预览
   if (looksLikeOrganizeRevision(text, history)) return false;
   // 本轮已明确意见 → 不问，直接预览

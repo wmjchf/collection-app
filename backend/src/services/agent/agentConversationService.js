@@ -26,12 +26,20 @@ function mapMessage(row) {
   const rawTrace = parseJson(row.tool_calls_json, null);
   let toolTrace = rawTrace;
   let pendingAction = null;
+  let awaiting = null;
+  let awaitingMeta = null;
   if (rawTrace && !Array.isArray(rawTrace) && typeof rawTrace === 'object') {
     pendingAction = rawTrace.pendingAction || null;
+    awaiting = rawTrace.awaiting || null;
+    awaitingMeta =
+      rawTrace.awaitingMeta && typeof rawTrace.awaitingMeta === 'object'
+        ? rawTrace.awaitingMeta
+        : null;
     toolTrace =
       rawTrace.steps != null
         ? rawTrace.steps
-        : Object.prototype.hasOwnProperty.call(rawTrace, 'pendingAction')
+        : Object.prototype.hasOwnProperty.call(rawTrace, 'pendingAction') ||
+            Object.prototype.hasOwnProperty.call(rawTrace, 'awaiting')
           ? rawTrace.steps || null
           : rawTrace;
   }
@@ -43,6 +51,8 @@ function mapMessage(row) {
     citations: parseJson(row.citations_json, null),
     toolTrace,
     pendingAction,
+    awaiting,
+    awaitingMeta,
     createdAt: row.created_at,
   };
 }
