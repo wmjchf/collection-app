@@ -28,8 +28,8 @@ const FEATURE_MIN_PLAN = {
 const FEATURE_MESSAGES = {
   ai_tags: '订阅太子后可使用 AI 标签',
   ai_summary: '订阅太子后可通过AI助手深挖原文',
-  ai_organize: '订阅太子后可使用打标与归类',
-  ai_mindmap: '订阅太子后可使用 AI 思维导图',
+  ai_organize: '订阅太子后可在AI助手里整理归类',
+  ai_mindmap: '订阅太子后可使用该能力',
   ai_agent: '订阅太子后可使用AI助手',
   transcript: '订阅太子后可使用视频转写',
   item_create: '收藏已达上限，开通普通会员（一次买断）后可永久无限收藏',

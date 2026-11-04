@@ -958,7 +958,7 @@ class _EmptyState extends StatelessWidget {
             ),
             const SizedBox(height: 12),
             const Text(
-              '帮你在收藏里更快找到内容，也能深挖原文。',
+              '检索、对照、深挖；也可改标签与归类。',
               textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: 15,

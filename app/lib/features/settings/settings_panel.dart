@@ -5,6 +5,7 @@ import 'package:super_collection/features/auth/login_page.dart';
 import 'package:super_collection/features/onboarding/shortcuts_help_page.dart';
 import 'package:super_collection/features/settings/account_page.dart';
 import 'package:super_collection/features/settings/account_security_page.dart';
+import 'package:super_collection/features/settings/ai_agent_help_page.dart';
 import 'package:super_collection/features/settings/ai_auto_tags_help_page.dart';
 import 'package:super_collection/features/settings/feedback_page.dart';
 import 'package:super_collection/features/settings/how_to_add_link_page.dart';
@@ -75,14 +76,19 @@ class _SettingsPanelState extends State<SettingsPanel> {
                     onTap: () => _open(const HowToAddLinkPage()),
                   ),
                   _InfoRow(
-                    title: 'iOS 快捷指令说明',
+                    title: 'AI助手',
                     showChevron: true,
-                    onTap: () => _open(const ShortcutsHelpPage()),
+                    onTap: () => _open(const AiAgentHelpPage()),
                   ),
                   _InfoRow(
                     title: 'AI自动标签方法',
                     showChevron: true,
                     onTap: () => _open(const AiAutoTagsHelpPage()),
+                  ),
+                  _InfoRow(
+                    title: 'iOS 快捷指令说明',
+                    showChevron: true,
+                    onTap: () => _open(const ShortcutsHelpPage()),
                   ),
                 ],
               ),

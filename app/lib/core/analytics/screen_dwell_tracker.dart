@@ -20,6 +20,7 @@ abstract final class AnalyticsScreens {
   static const usageAiEvents = 'usage_ai_events';
   static const usageTranscriptEvents = 'usage_transcript_events';
   static const howToAddLink = 'how_to_add_link';
+  static const aiAgentHelp = 'ai_agent_help';
   static const aiAutoTagsHelp = 'ai_auto_tags_help';
   static const shortcutsHelp = 'shortcuts_help';
   static const feedback = 'feedback';
