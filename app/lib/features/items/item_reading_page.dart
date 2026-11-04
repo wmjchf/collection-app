@@ -15,7 +15,7 @@ import 'package:super_collection/core/ui/app_side_drawer.dart';
 import 'package:super_collection/core/ui/app_toast.dart';
 import 'package:super_collection/core/ui/parse_progress_tracker.dart';
 import 'package:super_collection/core/ui/pro_copy.dart';
-import 'package:super_collection/features/agent/agent_page.dart';
+import 'package:super_collection/features/agent/agent_host.dart';
 import 'package:super_collection/features/collection/items_browse_page.dart';
 import 'package:super_collection/features/collection/tag_models.dart';
 import 'package:super_collection/features/collection/tags_repository.dart';
@@ -196,23 +196,11 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
     unawaited(ReadingFontPrefs.save(next));
   }
 
-  Future<void> _openAgent() async {
-    final allowed = await ensurePlanFeatures(
-      context,
-      requirements: [
-        (has: (f) => f.aiAgent, tier: UsagePlan.prince),
-      ],
-    );
-    if (!allowed || !mounted) return;
-    await Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => AgentPage(
-          focusItemId: _item.id,
-          focusItem: _item,
-        ),
-      ),
-    );
-  }
+  Future<void> _openAgent() => openAgent(
+        context,
+        focusItemId: _item.id,
+        focusItem: _item,
+      );
 
   Future<void> _openFontSizeSheet() {
     return showReadingFontSizeSheet(

@@ -6,6 +6,7 @@ import 'package:super_collection/core/analytics/screen_dwell_tracker.dart';
 import 'package:super_collection/core/network/api_client.dart';
 import 'package:super_collection/core/ui/app_bottom_sheet.dart';
 import 'package:super_collection/core/ui/paged_list.dart';
+import 'package:super_collection/features/agent/agent_split_inset.dart';
 import 'package:super_collection/features/collection/tag_models.dart';
 import 'package:super_collection/features/collection/tags_repository.dart';
 import 'package:super_collection/features/home/home_format.dart';
@@ -647,26 +648,20 @@ class _SearchPageState extends State<SearchPage> with ScreenDwellMixin {
     if (widget.embedded) {
       return ColoredBox(
         color: _bg,
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            SizedBox(
-              width: _tabletListWidth,
-              child: DecoratedBox(
-                decoration: const BoxDecoration(
-                  color: _bg,
-                  border: Border(
-                    right: BorderSide(color: Color(0xFFE9EBEF)),
-                  ),
-                ),
-                child: SafeArea(
-                  right: false,
-                  child: _buildResultsColumn(showCancel: false),
-                ),
-              ),
+        child: AgentSplitInset(
+          listWidth: _tabletListWidth,
+          active: widget.isActive,
+          listDecoration: const BoxDecoration(
+            color: _bg,
+            border: Border(
+              right: BorderSide(color: Color(0xFFE9EBEF)),
             ),
-            Expanded(child: _buildEmbeddedReading()),
-          ],
+          ),
+          list: SafeArea(
+            right: false,
+            child: _buildResultsColumn(showCancel: false),
+          ),
+          detail: _buildEmbeddedReading(),
         ),
       );
     }

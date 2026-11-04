@@ -73,8 +73,9 @@ class AiAgentHelpPage extends StatelessWidget {
               const SizedBox(height: 10),
               const _WhiteCard(
                 child: Text(
-                  '首页、收藏顶栏或阅读页底栏均可打开「AI助手」。'
-                  '它只基于你自己的收藏库回答，不联网搜库外网页。',
+                  '手机：首页、收藏顶栏或阅读页底栏全屏打开；'
+                  'iPad：列表|阅读时从列表右缘顶入；收藏枢纽则把主区压一半。'
+                  '只基于你自己的收藏库回答，不联网搜库外网页。',
                   style: TextStyle(fontSize: 15, color: _text, height: 1.55),
                 ),
               ),

@@ -8,6 +8,7 @@ import 'package:super_collection/core/ui/app_confirm_dialog.dart';
 import 'package:super_collection/core/ui/app_subpage_app_bar.dart';
 import 'package:super_collection/core/ui/app_toast.dart';
 import 'package:super_collection/features/agent/agent_chat_cache.dart';
+import 'package:super_collection/features/agent/agent_host.dart';
 import 'package:super_collection/features/agent/agent_markdown.dart';
 import 'package:super_collection/features/agent/agent_models.dart';
 import 'package:super_collection/features/agent/agent_repository.dart';
@@ -24,15 +25,18 @@ import 'package:super_collection/features/settings/usage_repository.dart';
 /// AI助手（P1：查收藏 + 出处）
 ///
 /// [focusItemId] / [focusItem]：从阅读页带入时展示当前篇，并每轮锚定摘录。
+/// [asPanel]：iPad 右侧抽屉内嵌；关闭用「关闭」而非「返回」。
 class AgentPage extends StatefulWidget {
   const AgentPage({
     super.key,
     this.focusItemId,
     this.focusItem,
+    this.asPanel = false,
   });
 
   final int? focusItemId;
   final CollectionItem? focusItem;
+  final bool asPanel;
 
   @override
   State<AgentPage> createState() => _AgentPageState();
@@ -504,6 +508,100 @@ class _AgentPageState extends State<AgentPage> {
     }
   }
 
+  void _closePanel() {
+    final host = AgentHost.maybeOf(context);
+    if (host != null) {
+      host.closePanel();
+      return;
+    }
+    Navigator.of(context).maybePop();
+  }
+
+  PreferredSizeWidget _buildAppBar({required bool canClear}) {
+    final proBadge = Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: _brandSoft,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: const Text(
+        '太子Pro',
+        style: TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.w500,
+          color: _brand,
+        ),
+      ),
+    );
+    final clearBtn = IconButton(
+      tooltip: '清空聊天',
+      onPressed: canClear ? _clearChat : null,
+      icon: Icon(
+        Icons.cleaning_services_outlined,
+        size: 20,
+        color: canClear ? _text : const Color(0xFFC5CAD3),
+      ),
+    );
+
+    if (widget.asPanel) {
+      return AppBar(
+        backgroundColor: Colors.white,
+        surfaceTintColor: Colors.transparent,
+        elevation: 0,
+        scrolledUnderElevation: 0,
+        centerTitle: true,
+        automaticallyImplyLeading: false,
+        leadingWidth: 84,
+        leading: Padding(
+          padding: const EdgeInsets.only(left: 12),
+          child: TextButton(
+            onPressed: _closePanel,
+            style: TextButton.styleFrom(
+              foregroundColor: _text,
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              minimumSize: Size.zero,
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
+            child: const Text(
+              '关闭',
+              style: TextStyle(fontSize: 15, fontWeight: FontWeight.w400),
+            ),
+          ),
+        ),
+        title: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text(
+              'AI助手',
+              style: TextStyle(
+                fontSize: 17,
+                fontWeight: FontWeight.w700,
+                color: _text,
+              ),
+            ),
+            const SizedBox(width: 8),
+            proBadge,
+          ],
+        ),
+        actions: [clearBtn],
+      );
+    }
+
+    return AppSubpageAppBar(
+      title: 'AI助手',
+      titleTrailing: proBadge,
+      actions: [
+        SizedBox(
+          width: 88,
+          child: Align(
+            alignment: Alignment.centerRight,
+            child: clearBtn,
+          ),
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final bottom = MediaQuery.paddingOf(context).bottom;
@@ -511,41 +609,7 @@ class _AgentPageState extends State<AgentPage> {
     return Scaffold(
       backgroundColor: _bg,
       resizeToAvoidBottomInset: true,
-      appBar: AppSubpageAppBar(
-        title: 'AI助手',
-        titleTrailing: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-          decoration: BoxDecoration(
-            color: _brandSoft,
-            borderRadius: BorderRadius.circular(999),
-          ),
-          child: const Text(
-            '太子Pro',
-            style: TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.w500,
-              color: _brand,
-            ),
-          ),
-        ),
-        actions: [
-          SizedBox(
-            width: 88,
-            child: Align(
-              alignment: Alignment.centerRight,
-              child: IconButton(
-                tooltip: '清空聊天',
-                onPressed: canClear ? _clearChat : null,
-                icon: Icon(
-                  Icons.cleaning_services_outlined,
-                  size: 20,
-                  color: canClear ? _text : const Color(0xFFC5CAD3),
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
+      appBar: _buildAppBar(canClear: canClear),
       body: Column(
         children: [
           if (_focusItem != null)
