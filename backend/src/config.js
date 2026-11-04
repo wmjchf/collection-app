@@ -172,6 +172,30 @@ module.exports = {
     /** auto | production | sandbox */
     env: process.env.APPLE_IAP_ENV || 'auto',
   },
+  /**
+   * 微信支付 APP（Android）
+   * 商户未开通时 WECHAT_PAY_ENABLED=false / 密钥不全 → configured=false
+   */
+  wechatPay: {
+    enabled: process.env.WECHAT_PAY_ENABLED === 'true',
+    appId: process.env.WECHAT_PAY_APP_ID || '',
+    mchId: process.env.WECHAT_PAY_MCH_ID || '',
+    apiV3Key: process.env.WECHAT_PAY_API_V3_KEY || '',
+    serialNo: process.env.WECHAT_PAY_SERIAL_NO || '',
+    privateKey: (process.env.WECHAT_PAY_PRIVATE_KEY || '').replace(/\\n/g, '\n'),
+    privateKeyPath: process.env.WECHAT_PAY_PRIVATE_KEY_PATH || '',
+    notifyUrl: process.env.WECHAT_PAY_NOTIFY_URL || '',
+    /** 价格（分）；0 表示未定价不可购 */
+    pricesFen: {
+      basicLifetime: Number(process.env.WECHAT_PAY_PRICE_BASIC_LIFETIME_FEN) || 0,
+      princeMonthly: Number(process.env.WECHAT_PAY_PRICE_PRINCE_MONTHLY_FEN) || 0,
+      princeYearly: Number(process.env.WECHAT_PAY_PRICE_PRINCE_YEARLY_FEN) || 0,
+      emperorMonthly:
+        Number(process.env.WECHAT_PAY_PRICE_EMPEROR_MONTHLY_FEN) || 0,
+      emperorYearly:
+        Number(process.env.WECHAT_PAY_PRICE_EMPEROR_YEARLY_FEN) || 0,
+    },
+  },
   /** 内部埋点看板；未配置则 summary API / 页面拒绝访问 */
   analyticsDashboardToken: process.env.ANALYTICS_DASHBOARD_TOKEN || '',
 };
