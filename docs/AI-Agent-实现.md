@@ -25,7 +25,7 @@
 
 **空态文案口径**
 
-- 构图：居中；主题色 ✦ 圆标（无光晕）+ 标题「你的AI助手」+ 副文 + 能力标（检索内容 / 对照内容 / 深挖原文）
+- 构图：居中；主题色 ✦ 圆标（无光晕）+ 标题「你的AI助手」+ 副文（无能力标 chips）
 - 副文：帮你在收藏里更快找到内容，也能深挖原文
 - 不展示示例提示卡；输入占位：跟助手说点什么…
 
@@ -44,8 +44,8 @@
 
 | 阶段 | 能力条 | 做什么 | 不做什么 |
 | --- | --- | --- | --- |
-| **P1 查** | `查收藏` 点亮 | 检索收藏、对照内容、深挖原文（围绕已找到篇目追问观点/原话）；点名篇目「加上/去掉/改用标签」仅预览，确认后写入 | 不静默写库、不批量全库改标、不生成分享稿 |
-| **P2 整理** | `整理` 点亮 | 收拢现网 AI 为 Tools：解读 / 脑图 / 打标建议 / 归类预览（确认后写入） | 不写对外长文、不发帖 |
+| **P1 查** | `查收藏` 点亮 | 检索收藏、对照内容、深挖原文；点名改标签预览确认；**助手内建架/填入归类预览确认** | 不静默写库、不批量全库改标、不生成分享稿 |
+| **P2 整理** | `整理` 点亮 | 收拢现网 AI 为 Tools：解读 / 脑图 / 打标建议；归类已部分前移至 P1 助手 | 不写对外长文、不发帖 |
 | **P3a 轻创作** | `创作` 点亮（轻） | 基于出处的分享文案、对照短评、一句话推荐、摘句润色 | 不写无出处的自由长文 |
 | **P3b 中创作** | `创作` 加深 | 多篇综合备忘、主题导读、读书笔记草稿（可编辑再导出） | 不承诺自动发布 |
 | **更后 重创作** | — | 大纲 / 脚本 / 对外发布稿 / 自动发帖 | Phase 1～3 明确非目标；质检与版权风险高 |
@@ -61,7 +61,7 @@
 | `summarize_item` | `aiSummaryService` | 解读 / brief |
 | `mindmap_item` | `aiMindmapService` | 导图树 |
 | `suggest_tags` | `aiSuggestService` | 建议标签（可 `autoApply=false` 给用户确认） |
-| `organize_tags` | `aiOrganizeService` | 归类预览；**必须确认后 apply** |
+| `propose_organize`（已落地） | `aiOrganizeService` | 可建议新建架子 + 填入；**确认后** `createModule` / `placeTag` |
 | `get_item` / `search_library` | items / search | 查库（Phase 1 核心，P2 继续用） |
 
 阅读页「AI解读」已下线；思维导图暂留「更多」。后续整理 Tools 时可用 `bootstrapTool` 从助手唤起。
@@ -80,7 +80,8 @@
 
 ### 2.5 非目标（Phase 1）
 
-- ~~不自动改标签~~ → **已支持点名改标签（预览 + 确认后写入）**；仍不做：无确认静默改标、整篇 AI 重打标流水线、无点名目标的批量全库改标、改归类架子、删条目
+- ~~不自动改标签~~ → **已支持点名改标签（预览 + 确认后写入）**；仍不做：无确认静默改标、整篇 AI 重打标流水线、无点名目标的批量全库改标、删条目
+- ~~不改归类架子~~ → **已支持助手内建架/填入归类（预览 + 确认后写入）**；收藏页不再挂 AI 入口；仍不做静默后台归类
 - 不接外部网页搜索、不读用户未收藏的 URL
 - 不做语音输入、不做流式 UI 动画规范以外的花活
 - 不在 Phase 1 做跨用户知识、推荐他人内容
@@ -291,14 +292,19 @@ GET /api/agent/messages/:id
 
 Stream（已落地）：`Accept: text/event-stream`，事件 `user` / `phase`（planning|searching|answering）/ `token` / `done`（含完整 assistant + citations）/ `error`。plan+工具仍同步；仅 answer 纯文本流式。
 
-### 5.3 确认类写操作（P1.2 改标签已落地）
+### 5.3 确认类写操作（改标签 / 归类已落地）
 
 ```
 POST /api/agent/actions/confirm
 Body: { conversationId, messageId, approve: true|false }
 ```
 
-从该助手消息的 `pendingAction`（写入 `tool_calls_json`）读取预览；`approve=true` 后 `setItemTags`（find-or-create 用户标签）；`approve=false` 标记取消。已确认/已取消幂等。后续 organize 等可复用同一接口形状。
+从该助手消息的 `pendingAction`（写入 `tool_calls_json`）读取预览：
+
+- `item_tag_edit`：`approve` → `setItemTags`
+- `organize_tags`：`approve` → `applyOrganize`（可 `createModule` + `placeTag`）
+
+`approve=false` 标记取消。已确认/已取消幂等。
 
 ## 6. Tools 规格
 
@@ -330,6 +336,19 @@ Body: { conversationId, messageId, approve: true|false }
 | 返回 | `{ title, before, after, add, remove, willCreate, noop }` + citations |
 | 写入 | 用户点确认 → `POST /api/agent/actions/confirm` → find-or-create + `setItemTags` |
 
+#### `propose_organize`（只读预览）
+
+| 项 | 说明 |
+| --- | --- |
+| Args | `{ hint?: string, mode?: 'ungrouped'\|'full' }` |
+| 实现 | `suggestOrganize`（可建议新建归类）；**不写库**；hint 上限 700 |
+| 返回 | `modules`（含 `create`）/`willCreateModules`/`ungroupedTagIds` |
+| 写入 | 确认 → `applyOrganize` |
+| 短回复 | 「新建一个」等：编排层 `buildOrganizeHint` 把上文助手建议拼进 hint，避免丢掉点名标签 |
+| 口头确认 | 「可以/确认」→ 执行 pending 或按上文方案 `applyOrganize`；禁止只回「已确认执行」不写库 |
+| 归类三步 | 查标签 → 未带分法才问意见 → 有明确意见或表态后 `propose_organize` 确认条写入 |
+| 盘点标签 | 「现在有哪些标签」→ `list_tags`：按文章「**标签**：《标题》」（不展示归类/出处）；每轮约 15 篇，可「还有哪些」续翻；阅读锚定无「现在/库里」时仍问本篇 |
+
 #### `answer`（内部，非 LLM tool）
 
 编排层根据 tool 结果生成对用户短答；prompt 约束：
@@ -348,7 +367,7 @@ Body: { conversationId, messageId, approve: true|false }
 3. 若异步：写入 `agent_tool_runs`，助手消息先回「正在生成解读…」，完成后补一条 assistant 或 patch 原消息
 4. 计量：仍走各 service 现有 `usage_events`；Agent 编排本身的规划 token **另计或合并进同池**（建议合并，事件类型 `ai_agent`）
 
-**`organize_preview`**：只返回预览 JSON，与现网 organize sheet 同源；`confirm` 后调 `applyOrganize`。
+**`propose_organize`**：只返回预览 JSON；`confirm` 后调 `applyOrganize`（可新建架子）。
 
 ## 7. 编排与模型（ReAct）
 
@@ -367,9 +386,9 @@ Body: { conversationId, messageId, approve: true|false }
 
 | 项 | 建议 |
 | --- | --- |
-| 规划模型 | `ALIYUN_AI_MODEL_AGENT`（默认可用 `qwen3.8-flash`；复杂规划再升 max） |
+| 规划模型 | `ALIYUN_AI_MODEL_AGENT`（与自动打标 `ALIYUN_AI_MODEL_TAGS` **独立**；默认 `qwen3.8-flash`，可单独升 27b/max） |
 | 实现形态 | 优先 **原生 tool-calling**（Thought 隐式/显式均可）；无可靠 tool-call 时再退回文本 ReAct 解析 |
-| 单篇重活 | 继续用现网 `ALIYUN_AI_MODEL_SUMMARY` / `TAGS` / 脑图 `ALIYUN_AI_MODEL` |
+| 单篇重活 | 打标/收藏页归类用 `ALIYUN_AI_MODEL_TAGS`；脑图用 `ALIYUN_AI_MODEL`；深挖解读走助手同一 `ALIYUN_AI_MODEL_AGENT` |
 | Context | 近期 N 轮消息 + 本轮 Thought/Action/Observation；单篇正文仍走 `aiInput` cache_control，避免全文进历史 |
 | System prompt | 身份=奏折AI助手；ReAct 规则；能力边界；禁止越权写库；中文；必须 citations |
 
@@ -440,6 +459,7 @@ Body: { conversationId, messageId, approve: true|false }
 | **P1.0 查** | 会话 API + `search_library` + 短答出处 + 首页入口 + 门控 | 太子可问「我存过哪些…」并点进阅读；免费被拦；能力条仅「查收藏」亮 |
 | **P1.1 查** | 多轮上下文（上文 citations → `excerptItemIds`）、历史列表、可选 SSE | 追问「第二篇呢 / 对比这两篇」不丢语境、不另起无关检索 |
 | **P1.2 改标** | `propose_item_tag_edit` + `POST /api/agent/actions/confirm`；App 确认条 | 点名/当前篇「用某某标签」出预览，确认后 `setItemTags`；取消不写库 |
+| **P1.3 归类** | `propose_organize`（可新建架子）+ confirm；收藏页去掉 AI 入口 | 「帮我建归类/填入」出预览，确认后 `createModule`/`placeTag` |
 | **P2.0 整理** | Tools：summary / mindmap；阅读页可跳转助手 | 助手内生成解读并写入 `ai_meta`；能力条「整理」亮 |
 | **P2.1 整理** | Tools：suggest_tags / organize（确认条） | 无静默改库；点名改标已在 P1.2 |
 | **P3a 轻创作** | `draft_share_copy` / `polish_quote` / `compare_notes` | 输出必带 citations；能力条「创作」亮 |

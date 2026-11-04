@@ -12,24 +12,23 @@ const FULL_REORG_MIN_INTERVAL_MS = 24 * 60 * 60 * 1000;
 const FULL_REORG_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 
 /**
- * 归类口径：用户先建归类名；AI 只把可挪标签填进已有架子。
- * 禁止新建归类、禁止改名。
+ * 归类口径（AI 助手）：单层架子（无多级树）；可填已有架或建议新建；确认后才写入。
  */
 const ORGANIZE_SYSTEM_PROMPT_UNGROUPED =
-  '你是收藏整理助手。用户已建好归类架子；你只把待安置标签填进最合适的已有归类，凑不齐的放未归类。' +
-  '禁止新建归类；禁止改归类名；existingModuleId 必须来自「已有归类」且必填；name 用该架原名。' +
-  '锁定标签禁止改动，输出中不要出现它们。' +
-  'tagIds 只写本次新加入的待安置 id。' +
-  '只用输入里的待安置 tagId，禁止编造；每个待安置标签恰好出现一次（modules 或 ungroupedTagIds）。' +
-  '只输出 JSON：{"modules":[{"name":"归类原名","existingModuleId":12,"tagIds":[1,2]}],"ungroupedTagIds":[3]}';
+  '你是收藏整理助手。归类只有一层：把标签放进归类名下，禁止多级/父子分类。' +
+  '可把待安置标签填进已有归类，也可建议新建归类名（create:true）。' +
+  '已有架：existingModuleId 必填且来自「已有归类」，name 用原名，create 可省略或 false。' +
+  '新架：create:true，existingModuleId 为 null，name 为简洁归类名（2～12 字），不要与已有架同名。' +
+  '锁定标签禁止改动；tagIds 只用待安置 id；每个待安置标签恰好出现一次。' +
+  '只输出 JSON：{"modules":[{"name":"归类名","existingModuleId":12,"create":false,"tagIds":[1]},{"name":"新架名","existingModuleId":null,"create":true,"tagIds":[2]}],"ungroupedTagIds":[3]}';
 
 const ORGANIZE_SYSTEM_PROMPT_FULL =
-  '你是收藏整理助手。用户已建好归类架子；你只把可重排标签填进最合适的已有归类，凑不齐的放未归类。' +
-  '【锁定标签】禁止挪动，输出中不得出现其 id。' +
-  '【可重排标签】只能放入已有归类；禁止新建归类；禁止改归类名。' +
-  'existingModuleId 必须来自「现有归类」且必填；name 用该架原名；tagIds 只写可重排标签。' +
-  '只用输入里的可重排 tagId，禁止编造；每个可重排标签恰好出现一次（modules 或 ungroupedTagIds）。' +
-  '只输出 JSON：{"modules":[{"name":"归类原名","existingModuleId":12,"tagIds":[1,2]}],"ungroupedTagIds":[3]}';
+  '你是收藏整理助手。归类只有一层：把标签放进归类名下，禁止多级/父子分类。' +
+  '可把可重排标签填进已有归类，也可建议新建归类名（create:true）。' +
+  '【锁定标签】禁止挪动。【可重排标签】可入已有架或新架。' +
+  '已有架：existingModuleId 必填；新架：create:true 且 name 新、existingModuleId null。' +
+  '只用可重排 tagId；每个恰好出现一次。' +
+  '只输出 JSON：{"modules":[{"name":"归类名","existingModuleId":12,"create":false,"tagIds":[1]},{"name":"新架名","existingModuleId":null,"create":true,"tagIds":[2]}],"ungroupedTagIds":[3]}';
 
 /** 归类目录里每架最多展示的已有标签名数 */
 const SHELF_TAG_PREVIEW_MAX = 12;
@@ -72,10 +71,13 @@ function collectUserTags(modules, ungrouped) {
   return byId;
 }
 
-function partitionTags(modules, ungrouped) {
+function partitionTags(modules, ungrouped, { allUserTags = false } = {}) {
   const lockedByModule = new Map(); // moduleId -> tags
   const lockedUngrouped = [];
   const movable = []; // { tag, currentModuleId|null }
+
+  const canMove = (t) =>
+    allUserTags ? !t.isSystem : tagService.isTagAiMovable(t);
 
   const pushLocked = (mid, t) => {
     if (mid == null) {
@@ -88,7 +90,7 @@ function partitionTags(modules, ungrouped) {
 
   for (const t of ungrouped || []) {
     if (t.isSystem) continue;
-    if (tagService.isTagAiMovable(t)) {
+    if (canMove(t)) {
       movable.push({ tag: t, currentModuleId: null });
     } else {
       pushLocked(null, t);
@@ -98,7 +100,7 @@ function partitionTags(modules, ungrouped) {
     const mid = Number(m.id);
     for (const t of m.tags || []) {
       if (t.isSystem) continue;
-      if (tagService.isTagAiMovable(t)) {
+      if (canMove(t)) {
         movable.push({ tag: t, currentModuleId: mid });
       } else {
         pushLocked(mid, t);
@@ -109,10 +111,11 @@ function partitionTags(modules, ungrouped) {
   return { lockedByModule, lockedUngrouped, movable };
 }
 
-function buildCatalogText(modules, ungrouped, { mode }) {
+function buildCatalogText(modules, ungrouped, { mode, allUserTags = false }) {
   const { lockedByModule, lockedUngrouped, movable } = partitionTags(
     modules,
     ungrouped,
+    { allUserTags },
   );
   const lines = [];
   const isFull = mode === 'full';
@@ -292,7 +295,7 @@ function enforceNoArticlePack(tagIds, _existingId, exclusiveGroups) {
 
 /**
  * 只采纳对「可挪动集合」内标签的安置；锁定标签一律忽略。
- * 禁止新建归类：没有 existingModuleId（且无法按同名落到已有架）的提案，标签回未归类。
+ * 可输出 create:true 的新架建议；已有架用 existingModuleId。
  */
 function normalizeProposal(raw, tagById, moduleById, movableIds, opts = {}) {
   const modulesIn = Array.isArray(raw?.modules) ? raw.modules : [];
@@ -304,25 +307,32 @@ function normalizeProposal(raw, tagById, moduleById, movableIds, opts = {}) {
   const used = new Set();
   const modules = [];
   const ungroupedTagIds = [];
-  const maxModules = Math.max(12, moduleById.size || 0, movableIds.size);
+  const willCreateModules = [];
+  const maxModules = Math.max(16, moduleById.size || 0, movableIds.size);
+  const pendingCreateNames = new Set();
 
-  const pushModule = (name, existingId, tagIds) => {
-    if (existingId == null || tagIds.length < 1 || modules.length >= maxModules) {
+  const pushModule = (name, existingId, tagIds, create) => {
+    if (tagIds.length < 1 || modules.length >= maxModules) {
       return false;
     }
+    if (!create && existingId == null) return false;
+    if (create && !name) return false;
     modules.push({
       name,
-      existingModuleId: existingId,
+      existingModuleId: create ? null : existingId,
+      create: Boolean(create),
       tagIds,
+      tagNames: tagIds.map((id) => tagById.get(id).name),
       tags: tagIds.map((id) => ({
         id,
         name: tagById.get(id).name,
       })),
     });
+    if (create) willCreateModules.push(name);
     return true;
   };
 
-  /** 只认已有架子：id 优先，其次同名；不可新建、不可改名。 */
+  /** 已有架子：id 优先，其次同名。 */
   const resolveExistingShelf = (name, existingId) => {
     if (existingId != null && moduleById.has(existingId)) {
       const m = moduleById.get(existingId);
@@ -336,7 +346,7 @@ function normalizeProposal(raw, tagById, moduleById, movableIds, opts = {}) {
         }
       }
     }
-    return { existingId: null, name: '' };
+    return { existingId: null, name: String(name || '').trim() };
   };
 
   for (const row of modulesIn) {
@@ -351,7 +361,22 @@ function normalizeProposal(raw, tagById, moduleById, movableIds, opts = {}) {
       }
     }
 
+    const wantCreate =
+      row?.create === true ||
+      row?.create === 1 ||
+      row?.create === 'true' ||
+      (existingId == null && Boolean(name));
+
     ({ existingId, name } = resolveExistingShelf(name, existingId));
+
+    // 同名已有架 → 不当新建；否则可新建（同名待建架后面合并）
+    let create = false;
+    if (existingId != null) {
+      create = false;
+    } else if (wantCreate && name) {
+      create = true;
+      pendingCreateNames.add(name.toLowerCase());
+    }
 
     const tagIds = [];
     const rawIds = Array.isArray(row?.tagIds) ? row.tagIds : [];
@@ -366,20 +391,46 @@ function normalizeProposal(raw, tagById, moduleById, movableIds, opts = {}) {
     }
     const { kept, ejected } = enforceNoArticlePack(
       tagIds,
-      existingId,
+      create ? null : existingId,
       exclusiveGroups,
     );
     for (const tid of ejected) {
       ungroupedTagIds.push(tid);
     }
-    // 无匹配架子 → 不新建，标签留未归类
+
+    if (create && name && kept.length) {
+      // 合并进已有同名待建模块
+      const existingNew = modules.find(
+        (m) =>
+          m.create &&
+          String(m.name).trim().toLowerCase() === name.toLowerCase(),
+      );
+      if (existingNew) {
+        for (const tid of kept) {
+          if (!existingNew.tagIds.includes(tid)) {
+            existingNew.tagIds.push(tid);
+            existingNew.tagNames.push(tagById.get(tid).name);
+            existingNew.tags.push({
+              id: tid,
+              name: tagById.get(tid).name,
+            });
+          }
+        }
+        continue;
+      }
+      if (!pushModule(name, null, kept, true)) {
+        for (const tid of kept) ungroupedTagIds.push(tid);
+      }
+      continue;
+    }
+
     if (existingId == null || !name) {
       for (const tid of kept) {
         ungroupedTagIds.push(tid);
       }
       continue;
     }
-    if (!pushModule(name, existingId, kept)) {
+    if (!pushModule(name, existingId, kept, false)) {
       for (const tid of kept) {
         ungroupedTagIds.push(tid);
       }
@@ -408,6 +459,7 @@ function normalizeProposal(raw, tagById, moduleById, movableIds, opts = {}) {
       id,
       name: tagById.get(id).name,
     })),
+    willCreateModules: [...new Set(willCreateModules)],
   };
 }
 
@@ -425,12 +477,13 @@ async function shouldFullReorg(userId, hasMovable) {
 }
 
 /**
- * 同步生成归类建议（不落库）。
- * @param {{ hint?: string, skipQuota?: boolean, mode?: 'ungrouped'|'full' }} [opts]
+ * 同步生成归类建议（不落库）；可建议新建架子。
+ * @param {{ hint?: string, skipQuota?: boolean, mode?: 'ungrouped'|'full', scope?: 'ai_movable'|'all_user_tags' }} [opts]
+ * scope=all_user_tags：助手确认归类用，覆盖全部非系统用户标签（含自建/手拖过的），避免预览缺标
  */
 async function suggestOrganize(
   userId,
-  { hint, skipQuota = false, mode: rawMode } = {},
+  { hint, skipQuota = false, mode: rawMode, scope: rawScope } = {},
 ) {
   if (!skipQuota) {
     await usageService.assertPlanFeatureForUser(userId, 'ai_organize');
@@ -438,16 +491,12 @@ async function suggestOrganize(
   }
 
   const mode = rawMode === 'full' ? 'full' : 'ungrouped';
+  const allUserTags = rawScope === 'all_user_tags';
   const { modules, ungrouped } = await tagModuleService.listModules(userId);
-  if (!modules.length) {
-    throw Object.assign(
-      new Error('请先新建归类，再让 AI 把标签填进去'),
-      { status: 400 },
-    );
-  }
   const tagById = collectUserTags(modules, ungrouped);
   const { text: catalog, movableIds } = buildCatalogText(modules, ungrouped, {
     mode,
+    allUserTags,
   });
 
   let targetIds = movableIds;
@@ -465,8 +514,12 @@ async function suggestOrganize(
     throw Object.assign(
       new Error(
         mode === 'full'
-          ? '没有可重排的 AI 标签'
-          : '当前没有待安置的 AI 标签，无需归类',
+          ? allUserTags
+            ? '没有可整理的标签'
+            : '没有可重排的 AI 标签'
+          : allUserTags
+            ? '当前没有未归类标签，无需归类'
+            : '当前没有待安置的 AI 标签，无需归类',
       ),
       { status: 400 },
     );
@@ -479,13 +532,20 @@ async function suggestOrganize(
     (modules || []).map((m) => [Number(m.id), m]),
   );
 
-  const hintText = String(hint || '').trim().slice(0, 200);
+  const hintText = String(hint || '').trim().slice(0, 700);
   const userParts = [
     catalog,
-    hintText ? `用户补充偏好：${hintText}` : '',
+    modules.length
+      ? ''
+      : '当前尚无归类架子；请为待安置标签建议合适的新归类名（create:true）。',
+    hintText ? `用户偏好与约束（必须遵守）：\n${hintText}` : '',
     mode === 'full'
-      ? '请把【可重排标签】填进语义最合适的已有归类。【锁定标签】禁止输出、禁止挪动。禁止新建归类、禁止改名。看各架「已有←」与架名再挂架；对不上的进 ungroupedTagIds。'
-      : '请只把待安置标签填进语义最合适的已有归类（例如「比亚迪」→「汽车品牌」）；锁定标签不动。禁止新建归类、禁止改名。看各架「已有←」与架名；对不上的进 ungroupedTagIds。',
+      ? allUserTags
+        ? '请把下列【可重排标签】全部填进已有归类或新建归类；每个 tagId 必须恰好出现一次，禁止遗漏。可 create:true 建新架；已有架填 existingModuleId。'
+        : '请把【可重排标签】填进已有归类或建议新建归类。【锁定标签】禁止挪动。可 create:true 建新架；已有架填 existingModuleId。若约束里已有架名与标签归属，必须沿用，禁止另起一套分类；上文/约束点名的标签禁止遗漏。'
+      : allUserTags
+        ? '请把待安置标签全部填进已有归类或新建归类；每个 tagId 必须恰好出现一次，禁止遗漏。'
+        : '请把待安置标签填进已有归类，或建议新建归类（create:true）。锁定标签不动。已有架填 existingModuleId；新架给简洁 name。若约束里已有方案，必须沿用架名与归属，禁止另起一套；点名标签禁止遗漏。',
   ].filter(Boolean);
 
   const messages = [
@@ -515,6 +575,8 @@ async function suggestOrganize(
   const { json: result, usage: modelUsage } = await aliyunDashScope.chatJson({
     messages,
     model: tagsModel,
+    // 归类预览要稳定：低随机，减少同库每次架子名大变
+    temperature: 0,
   });
 
   const proposal = normalizeProposal(
@@ -554,14 +616,15 @@ async function suggestOrganize(
     },
     message:
       creditsUsed > 0
-        ? `已生成填入建议，消耗 ${creditsUsed} 积分`
-        : '已生成填入建议',
+        ? `已生成归类建议，消耗 ${creditsUsed} 积分`
+        : '已生成归类建议',
   };
 }
 
 /**
- * 应用归类方案：只移动 AI 可挪标签；source=ai。
- * @param {{ modules?: any[], ungroupedTagIds?: any[], mode?: 'ungrouped'|'full' }} body
+ * 应用归类方案：可新建架子。
+ * 默认只移动 AI 可挪标签（source=ai）；scope=all_user_tags 时移动全部非系统标签（用户已确认，source=user）。
+ * @param {{ modules?: any[], ungroupedTagIds?: any[], mode?: 'ungrouped'|'full', scope?: 'ai_movable'|'all_user_tags' }} body
  */
 async function applyOrganize(userId, body) {
   const modulesIn = Array.isArray(body?.modules) ? body.modules : [];
@@ -569,6 +632,8 @@ async function applyOrganize(userId, body) {
     ? body.ungroupedTagIds
     : [];
   const mode = body?.mode === 'full' ? 'full' : 'ungrouped';
+  const allUserTags = body?.scope === 'all_user_tags';
+  const placeSource = allUserTags ? 'user' : 'ai';
 
   const { modules: currentModules, ungrouped } =
     await tagModuleService.listModules(userId);
@@ -579,7 +644,7 @@ async function applyOrganize(userId, body) {
 
   const movableIds = new Set(
     [...tagById.values()]
-      .filter((t) => tagService.isTagAiMovable(t))
+      .filter((t) => (allUserTags ? !t.isSystem : tagService.isTagAiMovable(t)))
       .map((t) => Number(t.id)),
   );
 
@@ -597,20 +662,17 @@ async function applyOrganize(userId, body) {
     throw Object.assign(new Error('没有可应用的归类方案'), { status: 400 });
   }
 
-  if (!currentModules.length) {
-    throw Object.assign(
-      new Error('请先新建归类，再让 AI 把标签填进去'),
-      { status: 400 },
-    );
-  }
-
   const used = new Set();
+  const createdModules = [];
 
   for (const row of modulesIn) {
     let name = String(row?.name || '').trim();
     if (name.length > 64) name = name.slice(0, 64);
 
     let moduleId = null;
+    const rowCreate =
+      row?.create === true || row?.create === 1 || row?.create === 'true';
+
     if (row?.existingModuleId != null && row.existingModuleId !== '') {
       const mid = Number(row.existingModuleId);
       if (!Number.isFinite(mid) || !moduleById.has(mid)) {
@@ -627,7 +689,36 @@ async function applyOrganize(userId, body) {
         }
       }
     }
-    // 禁止 AI 新建归类：对不上已有架的标签改走未归类
+
+    if (moduleId == null && (rowCreate || name)) {
+      if (!name) {
+        throw Object.assign(new Error('新建归类缺少名称'), { status: 400 });
+      }
+      try {
+        const created = await tagModuleService.createModule(userId, name, {
+          origin: 'ai',
+        });
+        moduleId = created.id;
+        moduleById.set(moduleId, created);
+        createdModules.push({ id: created.id, name: created.name });
+      } catch (err) {
+        if (err?.status === 409) {
+          // 同名已存在：落到现有架
+          const { modules: fresh } = await tagModuleService.listModules(userId);
+          for (const m of fresh || []) {
+            if (String(m.name).trim().toLowerCase() === name.toLowerCase()) {
+              moduleId = m.id;
+              moduleById.set(moduleId, m);
+              break;
+            }
+          }
+        } else {
+          throw err;
+        }
+      }
+    }
+
+    // 仍无架子：标签回未归类
     if (moduleId == null) {
       const rawIds = Array.isArray(row?.tagIds) ? row.tagIds : [];
       for (const rawId of rawIds) {
@@ -637,7 +728,7 @@ async function applyOrganize(userId, body) {
         used.add(tid);
         await tagService.placeTag(userId, tid, {
           moduleId: null,
-          source: 'ai',
+          source: placeSource,
         });
       }
       continue;
@@ -652,7 +743,10 @@ async function applyOrganize(userId, body) {
       if (!allowedIds.has(tid)) continue;
       if (used.has(tid)) continue;
       used.add(tid);
-      await tagService.placeTag(userId, tid, { moduleId, source: 'ai' });
+      await tagService.placeTag(userId, tid, {
+        moduleId,
+        source: placeSource,
+      });
     }
   }
 
@@ -664,16 +758,21 @@ async function applyOrganize(userId, body) {
     if (!allowedIds.has(tid)) continue;
     if (used.has(tid)) continue;
     used.add(tid);
-    await tagService.placeTag(userId, tid, { moduleId: null, source: 'ai' });
+    await tagService.placeTag(userId, tid, {
+      moduleId: null,
+      source: placeSource,
+    });
   }
 
-  // 不再因 AI 归类产生空架；用户架子保留
-
   const result = await tagModuleService.listModules(userId);
+  const placedCount = used.size;
+  const createMsg = createdModules.length
+    ? `新建 ${createdModules.length} 个归类，`
+    : '';
   return {
     ...result,
-    createdModules: [],
-    message: '已把标签填入归类',
+    createdModules,
+    message: `${createMsg}已整理 ${placedCount} 个标签`,
   };
 }
 

@@ -1,7 +1,11 @@
 const config = require('../../config');
 const aliyunDashScope = require('../aliyunDashScope');
 const usageService = require('../usageService');
+const aiOrganizeService = require('../aiOrganizeService');
+const tagService = require('../tagService');
+const tagModuleService = require('../tagModuleService');
 const conversationService = require('./agentConversationService');
+const confirmActionService = require('./agentConfirmAction');
 const { executeTool } = require('./agentRegistry');
 const {
   buildPlanMessages,
@@ -21,7 +25,8 @@ const { resolveListTimeRange } = require('./listTimeRange');
 const { resolveListLibraryFilter } = require('./listLibraryFilter');
 
 function agentModel() {
-  return config.aliyun.aiModelAgent || config.aliyun.aiModelSummary || 'qwen3.8-flash';
+  // 仅用助手专用配置，不回落到打标/总结模型
+  return config.aliyun.aiModelAgent || 'qwen3.8-flash';
 }
 
 function mergeUsage(a, b) {
@@ -110,6 +115,57 @@ async function runUserTurn({
   let usageTotal = null;
   const ctx = { userId, conversationId, messageId: userMessage.id };
 
+  // 短回复「可以 / 确认」：真正执行待确认写库，禁止模型口头说「已执行」却不写
+  if (looksWriteAffirmative(text)) {
+    const pendingMsg = findLatestPendingActionMessage(history);
+    if (
+      pendingMsg?.pendingAction?.status === 'pending' &&
+      (pendingMsg.pendingAction.type === 'organize_tags' ||
+        pendingMsg.pendingAction.type === 'item_tag_edit')
+    ) {
+      if (emit) emit({ type: 'user', message: userMessage });
+      if (emit) emit({ type: 'phase', phase: 'answering' });
+      const result = await confirmActionService.confirmAction({
+        userId,
+        conversationId,
+        messageId: pendingMsg.id,
+        approve: true,
+      });
+      toolTrace.push({
+        tool: 'confirm_action',
+        ok: true,
+        args: {
+          approve: true,
+          type: pendingMsg.pendingAction.type,
+          via: 'chat_affirm',
+        },
+      });
+      return emitDone({
+        userId,
+        userMessage,
+        assistantMessage: result.assistantMessage,
+        usageTotal,
+        emit,
+      });
+    }
+
+    if (priorWasVerbalOrganizeProposal(history)) {
+      if (emit) emit({ type: 'user', message: userMessage });
+      if (emit) emit({ type: 'phase', phase: 'answering' });
+      return finishOrganizeAffirmTurn({
+        userId,
+        conversationId,
+        userMessage,
+        history,
+        toolTrace,
+        usageTotal,
+        ctx,
+        emit,
+        stream,
+      });
+    }
+  }
+
   // 阅读页锚定：先校验归属并记下标题，供 plan / 强制摘录
   let focusItem = null;
   const focusIdRaw = Number(focusItemId);
@@ -170,7 +226,9 @@ async function runUserTurn({
       phase:
         plan.intent === 'chitchat' ||
         plan.intent === 'clarify' ||
-        plan.intent === 'tag_edit'
+        plan.intent === 'tag_edit' ||
+        plan.intent === 'organize' ||
+        plan.intent === 'list_tags'
           ? 'answering'
           : 'searching',
     });
@@ -189,6 +247,50 @@ async function runUserTurn({
       history,
       toolTrace,
       citationMap,
+      usageTotal,
+      ctx,
+      emit,
+      stream,
+    });
+  }
+
+  // —— 盘点库内标签（非归类）——
+  if (plan.intent === 'list_tags') {
+    return finishTagInventoryTurn({
+      userId,
+      conversationId,
+      userMessage,
+      text,
+      history,
+      toolTrace,
+      usageTotal,
+      ctx,
+      emit,
+      stream,
+    });
+  }
+
+  // —— 建架/归类：先问分类意见，再出带确认条的预览 ——
+  if (plan.intent === 'organize') {
+    if (shouldAskOrganizePreference(text, history)) {
+      return finishOrganizeAskTurn({
+        userId,
+        conversationId,
+        userMessage,
+        toolTrace,
+        usageTotal,
+        emit,
+        stream,
+      });
+    }
+    return finishOrganizeTurn({
+      userId,
+      conversationId,
+      userMessage,
+      text,
+      plan,
+      history,
+      toolTrace,
       usageTotal,
       ctx,
       emit,
@@ -503,6 +605,623 @@ async function runUserTurn({
   });
 }
 
+async function finishTagInventoryTurn({
+  userId,
+  conversationId,
+  userMessage,
+  text,
+  history,
+  toolTrace,
+  usageTotal,
+  ctx,
+  emit,
+  stream,
+}) {
+  const more =
+    looksLikeMoreList(text) ||
+    (looksLikeTagInventory(text) &&
+      collectPriorShownItemIds(history).length > 0);
+  const excludeItemIds = more ? collectPriorShownItemIds(history) : [];
+  const args = {
+    limit: 15,
+    ...(excludeItemIds.length ? { excludeItemIds } : {}),
+  };
+  const obs = await executeTool('list_tags', ctx, args);
+  toolTrace.push({
+    tool: 'list_tags',
+    ok: Boolean(obs.ok),
+    args: {
+      ...args,
+      shownItemIds: obs.data?.shownItemIds || [],
+    },
+  });
+
+  let contentOut = '库里暂时还没有标签。';
+  let citations = null;
+  if (!obs.ok || !obs.data) {
+    contentOut = '没能读取标签列表，请稍后再试。';
+  } else {
+    const data = obs.data;
+    const hits = Array.isArray(data.hits) ? data.hits : [];
+    const orphans = Array.isArray(data.orphanTagNames)
+      ? data.orphanTagNames.filter(Boolean)
+      : [];
+    if (!hits.length && data.excluded > 0) {
+      contentOut = '已经列完了，没有更多了。';
+    } else if (!hits.length && !orphans.length) {
+      contentOut = '库里暂时还没有标签。';
+    } else {
+      const lines = [];
+      if (data.excluded > 0) {
+        lines.push(
+          `接着再列 ${hits.length} 篇（共 ${data.totalItems} 篇有标签）：`,
+          '',
+        );
+      } else {
+        lines.push(
+          `现在共 ${data.totalTags} 个标签、${data.totalItems} 篇有标签的文章：`,
+          '',
+        );
+      }
+
+      for (const hit of hits) {
+        const tags = (hit.tagNames || []).filter(Boolean);
+        const tagPart = tags.length
+          ? tags.map((n) => `**${n}**`).join('、')
+          : '（无标签）';
+        const title = String(hit.title || '').trim() || '未命名';
+        lines.push(`${tagPart}：《${title}》`);
+      }
+
+      // 无文章的标签：同一行式「**标签**：没有文章」
+      if (orphans.length && !data.excluded) {
+        for (const name of orphans) {
+          lines.push(`**${name}**：没有文章`);
+        }
+      }
+
+      if (data.truncated && data.remaining > 0) {
+        lines.push('');
+        lines.push(
+          `还有 ${data.remaining} 篇未列，可以说「还有哪些」继续。`,
+        );
+      }
+      contentOut = lines.join('\n');
+      // 盘点标签不挂出处卡，避免和下方引用列表重复抢视线
+      citations = null;
+    }
+  }
+
+  if (stream && emit) emit({ type: 'token', text: contentOut });
+  const assistantMessage = await conversationService.insertMessage({
+    conversationId,
+    role: 'assistant',
+    content: contentOut,
+    citations,
+    toolTrace,
+  });
+  return emitDone({
+    userId,
+    userMessage,
+    assistantMessage,
+    usageTotal,
+    emit,
+  });
+}
+
+/** 上文 list_tags 已展示过的 itemId（用于「还有哪些」续翻） */
+function collectPriorShownItemIds(history) {
+  const out = [];
+  const seen = new Set();
+  const list = Array.isArray(history) ? history : [];
+  for (const m of list) {
+    if (m?.role !== 'assistant') continue;
+    const steps = Array.isArray(m.toolTrace)
+      ? m.toolTrace
+      : Array.isArray(m.toolTrace?.steps)
+        ? m.toolTrace.steps
+        : [];
+    for (const step of steps) {
+      if (step?.tool !== 'list_tags') continue;
+      const ids = step?.args?.shownItemIds || step?.data?.shownItemIds || [];
+      for (const raw of ids) {
+        const id = Number(raw);
+        if (!Number.isFinite(id) || id <= 0 || seen.has(id)) continue;
+        seen.add(id);
+        out.push(id);
+      }
+    }
+  }
+  return out;
+}
+
+function priorWasTagInventory(history) {
+  const list = Array.isArray(history) ? history : [];
+  for (let i = list.length - 1; i >= 0; i -= 1) {
+    const m = list[i];
+    if (m?.role !== 'assistant') continue;
+    const steps = Array.isArray(m.toolTrace)
+      ? m.toolTrace
+      : Array.isArray(m.toolTrace?.steps)
+        ? m.toolTrace.steps
+        : [];
+    if (steps.some((s) => s?.tool === 'list_tags')) return true;
+    const c = String(m.content || '');
+    if (
+      /篇有标签的文章|未挂文的标签|接着再列\s*\d+\s*篇|还有\s*\d+\s*篇未列/.test(
+        c,
+      )
+    ) {
+      return true;
+    }
+    return false;
+  }
+  return false;
+}
+
+/**
+ * 从上文预览正文解析架名→标签，再补上库里被漏掉的标签，生成可确认的 proposal。
+ * 解析失败返回 null（回退 AI propose）。
+ */
+async function buildRevisionOrganizeProposal(userId, userText, history) {
+  const prior = latestAssistantContent(history);
+  const parsed = parseOrganizeModulesFromContent(prior);
+  if (!parsed.length) return null;
+
+  const allTags = await tagService.listTags(userId);
+  const byName = new Map(
+    allTags.map((t) => [String(t.name || '').trim().toLowerCase(), t]),
+  );
+  const { modules: existingShelves } = await tagModuleService.listModules(
+    userId,
+  );
+  const shelfByName = new Map(
+    (existingShelves || []).map((m) => [
+      String(m.name || '').trim().toLowerCase(),
+      m,
+    ]),
+  );
+
+  const usedIds = new Set();
+  const modules = [];
+  const willCreateModules = [];
+
+  for (const row of parsed) {
+    const tagIds = [];
+    const tagNames = [];
+    const tags = [];
+    for (const raw of row.tagNames || []) {
+      const tag = byName.get(String(raw || '').trim().toLowerCase());
+      if (!tag || usedIds.has(tag.id)) continue;
+      usedIds.add(tag.id);
+      tagIds.push(tag.id);
+      tagNames.push(tag.name);
+      tags.push({ id: tag.id, name: tag.name });
+    }
+    if (!tagIds.length) continue;
+    const shelf = shelfByName.get(row.name.toLowerCase());
+    const create = !shelf;
+    if (create) willCreateModules.push(row.name);
+    modules.push({
+      name: row.name,
+      existingModuleId: shelf ? shelf.id : null,
+      create,
+      tagIds,
+      tagNames,
+      tags,
+    });
+  }
+
+  const mentioned = allTags.filter((t) =>
+    String(userText || '').includes(String(t.name || '').trim()),
+  );
+  const missing = allTags.filter((t) => !usedIds.has(t.id));
+  let toAdd = mentioned.filter((t) => !usedIds.has(t.id));
+  if (!toAdd.length && /忘|漏|少|缺|还有/.test(String(userText || ''))) {
+    // 未点名时：优先上文会话里出现过、且当前方案未收录的标签
+    const histText = (Array.isArray(history) ? history : [])
+      .map((m) => String(m?.content || ''))
+      .join('\n');
+    const fromHist = missing.filter((t) => histText.includes(t.name));
+    toAdd = fromHist.length ? fromHist : missing;
+    // 「两个」等数量提示：只取对应个数，避免把无关未归类标签全塞进来
+    const n = parseForgotCount(userText);
+    if (n > 0 && toAdd.length > n) toAdd = toAdd.slice(0, n);
+  }
+
+  if (toAdd.length) {
+    const shelfName = pickShelfForMissingTags(toAdd, parsed, prior);
+    let target = modules.find(
+      (m) => m.name.toLowerCase() === shelfName.toLowerCase(),
+    );
+    if (!target) {
+      const shelf = shelfByName.get(shelfName.toLowerCase());
+      target = {
+        name: shelfName,
+        existingModuleId: shelf ? shelf.id : null,
+        create: !shelf,
+        tagIds: [],
+        tagNames: [],
+        tags: [],
+      };
+      modules.push(target);
+      if (target.create) willCreateModules.push(shelfName);
+    }
+    for (const tag of toAdd) {
+      if (usedIds.has(tag.id)) continue;
+      usedIds.add(tag.id);
+      target.tagIds.push(tag.id);
+      target.tagNames.push(tag.name);
+      target.tags.push({ id: tag.id, name: tag.name });
+    }
+  }
+
+  if (!modules.length) return null;
+  return {
+    mode: 'full',
+    scope: 'all_user_tags',
+    modules,
+    ungroupedTagIds: [],
+    ungroupedTags: [],
+    willCreateModules: [...new Set(willCreateModules)],
+    hint: String(userText || '').trim() || null,
+  };
+}
+
+function parseOrganizeModulesFromContent(content) {
+  const modules = [];
+  let current = null;
+  for (const line of String(content || '').split(/\n/)) {
+    const title = line.match(/^\*\*([^*]+)\*\*(.*)$/);
+    if (title) {
+      const name = title[1].trim();
+      if (!name || name === '仍未归类') {
+        current = null;
+        continue;
+      }
+      current = { name, tagNames: [] };
+      modules.push(current);
+      continue;
+    }
+    const tags = line.match(/^·\s*(.+)$/);
+    if (tags && current) {
+      current.tagNames = String(tags[1])
+        .split(/[、,，]/)
+        .map((s) => s.trim())
+        .filter((s) => s && s !== '（暂无标签）' && s !== '...');
+    }
+  }
+  return modules.filter((m) => m.name);
+}
+
+function pickShelfForMissingTags(missingTags, parsed, prior) {
+  const blob = `${missingTags.map((t) => t.name).join(' ')} ${prior}`;
+  if (/影石|全景|相机|影像|硬件|Insta/i.test(blob)) {
+    const hit = parsed.find((m) =>
+      /影像|硬件|消费电子|科技/.test(m.name),
+    );
+    if (hit) return hit.name;
+    return '智能硬件';
+  }
+  if (parsed[0]?.name) return parsed[0].name;
+  return '其他';
+}
+
+function parseForgotCount(text) {
+  const t = String(text || '');
+  const m = t.match(/(\d+)\s*个/);
+  if (m) return Math.min(20, Number(m[1]) || 0);
+  if (/两个|俩/.test(t)) return 2;
+  if (/三个/.test(t)) return 3;
+  if (/四个/.test(t)) return 4;
+  if (/五个/.test(t)) return 5;
+  return 0;
+}
+
+/** 归类第一步：先问分法，不出预览/确认条 */
+async function finishOrganizeAskTurn({
+  userId,
+  conversationId,
+  userMessage,
+  toolTrace,
+  usageTotal,
+  emit,
+  stream,
+}) {
+  const contentOut = [
+    '可以先听听你的分类意见。你更希望怎么分？',
+    '',
+    '- **按行业**：按标签所属赛道/业态来归，同一产业链的放一起',
+    '- **按主题**：按内容在讲什么来归，话题相近的放一起，不强调行业边界',
+    '- **自定义**：你指定分法或归类名，我按你的口径来排',
+    '- **你看着分**：不指定角度，由我综合相近关系给出一版预览供你改',
+    '',
+    '回复其中一个角度即可。定下后我会出整理预览，点确认后才会写入。',
+  ].join('\n');
+  toolTrace.push({ tool: 'organize_ask', ok: true, args: {} });
+  if (stream && emit) emit({ type: 'token', text: contentOut });
+  const assistantMessage = await conversationService.insertMessage({
+    conversationId,
+    role: 'assistant',
+    content: contentOut,
+    citations: null,
+    toolTrace,
+  });
+  return emitDone({
+    userId,
+    userMessage,
+    assistantMessage,
+    usageTotal,
+    emit,
+  });
+}
+
+/**
+ * 上文用正文手写了归类方案（无 pendingAction），用户回「可以」→ 按方案 propose 后立刻 apply。
+ */
+async function finishOrganizeAffirmTurn({
+  userId,
+  conversationId,
+  userMessage,
+  history,
+  toolTrace,
+  usageTotal,
+  ctx,
+  emit,
+  stream,
+}) {
+  const prior = latestAssistantContent(history);
+  const hint =
+    `用户已确认下列归类方案，必须严格按架名与标签归属生成（可新建架子）：\n${prior.slice(0, 600)}`.slice(
+      0,
+      700,
+    );
+  const args = { mode: 'full', hint };
+  const obs = await executeTool('propose_organize', ctx, args);
+  toolTrace.push({
+    tool: 'propose_organize',
+    ok: Boolean(obs.ok),
+    args,
+  });
+
+  if (!obs.ok || !obs.data) {
+    const contentOut =
+      obs.error && String(obs.error).length < 80
+        ? String(obs.error)
+        : '没能按刚才的方案执行归类，请再说一次「帮我归类」生成确认条后再确认。';
+    if (stream && emit) emit({ type: 'token', text: contentOut });
+    const assistantMessage = await conversationService.insertMessage({
+      conversationId,
+      role: 'assistant',
+      content: contentOut,
+      citations: null,
+      toolTrace,
+    });
+    return emitDone({
+      userId,
+      userMessage,
+      assistantMessage,
+      usageTotal,
+      emit,
+    });
+  }
+
+  try {
+    const result = await aiOrganizeService.applyOrganize(userId, {
+      modules: obs.data.modules || [],
+      ungroupedTagIds: obs.data.ungroupedTagIds || [],
+      mode: 'full',
+      scope: 'all_user_tags',
+    });
+    const created = Array.isArray(result.createdModules)
+      ? result.createdModules
+      : [];
+    const contentOut =
+      result.message ||
+      (created.length
+        ? `已按你的确认新建 ${created.length} 个归类并完成整理。`
+        : '已按你的确认完成归类整理。');
+    toolTrace.push({
+      tool: 'apply_organize',
+      ok: true,
+      args: { createdCount: created.length, via: 'chat_affirm' },
+    });
+    if (stream && emit) emit({ type: 'token', text: contentOut });
+    const assistantMessage = await conversationService.insertMessage({
+      conversationId,
+      role: 'assistant',
+      content: contentOut,
+      citations: null,
+      toolTrace,
+    });
+    return emitDone({
+      userId,
+      userMessage,
+      assistantMessage,
+      usageTotal,
+      emit,
+    });
+  } catch (err) {
+    const contentOut =
+      err?.message && String(err.message).length < 80
+        ? String(err.message)
+        : '归类写入失败，请稍后再试。';
+    toolTrace.push({
+      tool: 'apply_organize',
+      ok: false,
+      error: String(err?.message || err),
+    });
+    if (stream && emit) emit({ type: 'token', text: contentOut });
+    const assistantMessage = await conversationService.insertMessage({
+      conversationId,
+      role: 'assistant',
+      content: contentOut,
+      citations: null,
+      toolTrace,
+    });
+    return emitDone({
+      userId,
+      userMessage,
+      assistantMessage,
+      usageTotal,
+      emit,
+    });
+  }
+}
+
+async function finishOrganizeTurn({
+  userId,
+  conversationId,
+  userMessage,
+  text,
+  plan,
+  history,
+  toolTrace,
+  usageTotal,
+  ctx,
+  emit,
+  stream,
+}) {
+  const mode =
+    plan.organize?.mode === 'full' ||
+    looksLikeFullOrganize(text) ||
+    looksLikeOrganizePreference(text) ||
+    looksLikeOrganizeRevision(text, history)
+      ? 'full'
+      : 'ungrouped';
+
+  // 修正「忘了/漏了」：优先在上文方案上确定性补漏，避免模型另起一套又漏标
+  let data = null;
+  if (looksLikeOrganizeRevision(text, history)) {
+    data = await buildRevisionOrganizeProposal(userId, text, history);
+    toolTrace.push({
+      tool: 'propose_organize',
+      ok: Boolean(data),
+      args: { mode: 'full', via: 'revision_merge' },
+    });
+  }
+
+  if (!data) {
+    const hint = buildOrganizeHint(text, history, plan.organize?.hint);
+    const args = { mode, hint };
+    const obs = await executeTool('propose_organize', ctx, args);
+    toolTrace.push({
+      tool: 'propose_organize',
+      ok: Boolean(obs.ok),
+      args,
+    });
+    if (!obs.ok || !obs.data) {
+      const contentOut =
+        obs.error && String(obs.error).length < 80
+          ? String(obs.error)
+          : '没能生成归类建议，请稍后再试，或先确认库里是否有可整理的标签。';
+      if (stream && emit) emit({ type: 'token', text: contentOut });
+      const assistantMessage = await conversationService.insertMessage({
+        conversationId,
+        role: 'assistant',
+        content: contentOut,
+        citations: null,
+        toolTrace,
+      });
+      return emitDone({
+        userId,
+        userMessage,
+        assistantMessage,
+        usageTotal,
+        emit,
+      });
+    }
+    data = obs.data;
+  }
+  const modules = Array.isArray(data.modules) ? data.modules : [];
+  const willCreate = Array.isArray(data.willCreateModules)
+    ? data.willCreateModules
+    : [];
+  // 预览样式对齐口语方案：加粗架名 + · 标签行（确认条仍挂 pending）
+  const lines = ['按这样整理归类（确认后才会写入）：', ''];
+  for (const m of modules.slice(0, 12)) {
+    const names = Array.isArray(m.tagNames)
+      ? m.tagNames
+      : (m.tags || []).map((t) => t.name).filter(Boolean);
+    const title = String(m.name || '').trim() || '未命名';
+    const newMark = m.create ? '（新建）' : '';
+    lines.push(`**${title}**${newMark}`);
+    if (names.length) {
+      const shown = names.slice(0, 12);
+      lines.push(
+        `· ${shown.join('、')}${names.length > 12 ? '…' : ''}`,
+      );
+    } else {
+      lines.push('· （暂无标签）');
+    }
+    lines.push('');
+  }
+  if (modules.length > 12) {
+    lines.push(`…另有 ${modules.length - 12} 个归类未展开`, '');
+  }
+  const ungrouped = Array.isArray(data.ungroupedTags) ? data.ungroupedTags : [];
+  if (ungrouped.length) {
+    lines.push('**仍未归类**');
+    lines.push(
+      `· ${ungrouped
+        .slice(0, 12)
+        .map((t) => t.name)
+        .join('、')}${ungrouped.length > 12 ? '…' : ''}`,
+    );
+    lines.push('');
+  }
+  const ungroupedCount = Array.isArray(data.ungroupedTags)
+    ? data.ungroupedTags.length
+    : Array.isArray(data.ungroupedTagIds)
+      ? data.ungroupedTagIds.length
+      : 0;
+  const tagCount =
+    modules.reduce((n, m) => {
+      const names = Array.isArray(m.tagNames)
+        ? m.tagNames
+        : (m.tags || []).map((t) => t.name).filter(Boolean);
+      return n + names.length;
+    }, 0) + ungroupedCount;
+  if (willCreate.length || tagCount) {
+    lines.push(
+      ungroupedCount
+        ? `共 ${tagCount} 个标签（其中 ${ungroupedCount} 个仍未归类）。确认后才会写入。`
+        : `这样可以把 ${tagCount} 个标签都归进去。确认后才会写入。`,
+    );
+  } else {
+    lines.push('请确认后才会建架与归类。');
+  }
+  const contentOut = lines.join('\n');
+  if (stream && emit) emit({ type: 'token', text: contentOut });
+
+  const pendingAction = {
+    type: 'organize_tags',
+    status: 'pending',
+    mode: data.mode || mode,
+    scope: data.scope || 'all_user_tags',
+    modules,
+    ungroupedTagIds: data.ungroupedTagIds || [],
+    willCreateModules: willCreate,
+    hint: data.hint || null,
+  };
+
+  const assistantMessage = await conversationService.insertMessage({
+    conversationId,
+    role: 'assistant',
+    content: contentOut,
+    citations: null,
+    toolTrace: { steps: toolTrace, pendingAction },
+  });
+
+  return emitDone({
+    userId,
+    userMessage,
+    assistantMessage,
+    usageTotal,
+    emit,
+  });
+}
+
 async function finishTagEditTurn({
   userId,
   conversationId,
@@ -798,6 +1517,50 @@ function looksAffirmative(text) {
   );
 }
 
+/** 用户用聊天确认写库（点确认条或口头「可以」） */
+function looksWriteAffirmative(text) {
+  const t = String(text || '').trim();
+  if (!t || t.length > 24) return false;
+  return (
+    looksAffirmative(t) ||
+    /^(确认整理|确认调整|就这样|按这个|按这个来|按方案|执行|同意)[。.!！]?$/.test(
+      t,
+    )
+  );
+}
+
+function findLatestPendingActionMessage(history) {
+  const list = Array.isArray(history) ? history : [];
+  for (let i = list.length - 1; i >= 0; i -= 1) {
+    const m = list[i];
+    if (m?.role !== 'assistant') continue;
+    const pending = m.pendingAction;
+    if (pending && pending.status === 'pending') return m;
+    // 已有更新的 assistant 则不再往前找过期 pending
+    return null;
+  }
+  return null;
+}
+
+/** 上文用正文提议归类并征求确认，但没有挂 pendingAction */
+function priorWasVerbalOrganizeProposal(history) {
+  const list = Array.isArray(history) ? history : [];
+  for (let i = list.length - 1; i >= 0; i -= 1) {
+    const m = list[i];
+    if (m?.role !== 'assistant') continue;
+    if (m.pendingAction?.status === 'pending') return false;
+    const c = String(m.content || '');
+    if (!c) return false;
+    const asksConfirm =
+      /可以吗|要不要|请确认|确认后|这样分|这样归|按这个|写入|建架/.test(c);
+    const looksPlan =
+      /归类|分类|建架|架子/.test(c) &&
+      (/←|：/.test(c) || /\*\*[^*]+\*\*/.test(c) || /^- /m.test(c));
+    return asksConfirm && looksPlan;
+  }
+  return false;
+}
+
 function looksOrdinalPick(text) {
   const t = String(text || '').trim();
   return (
@@ -951,8 +1714,10 @@ function normalizePlan(
   let intent = [
     'search',
     'list',
+    'list_tags',
     'compare',
     'tag_edit',
+    'organize',
     'chitchat',
     'clarify',
   ].includes(intentRaw)
@@ -966,6 +1731,7 @@ function normalizePlan(
   }
   let followUp = false;
   let tagEdit = normalizeTagEdit(json?.tagEdit || json?.tag_edit);
+  let organize = normalizeOrganize(json?.organize);
 
   const priorSet = new Set(
     (priorIds || []).map((id) => Number(id)).filter((n) => n > 0),
@@ -1040,7 +1806,7 @@ function normalizePlan(
   }
 
   // 点名改标签：启发式优先，避免模型仍答「无法改标签」
-  if (looksLikeTagEdit(userContent)) {
+  if (looksLikeTagEdit(userContent) && !looksLikeOrganize(userContent)) {
     intent = 'tag_edit';
     queries = [];
     followUp = false;
@@ -1065,21 +1831,112 @@ function normalizePlan(
     }
   }
 
+  // 「有哪些标签」是盘点，不是归类；「还有吗」若上文刚列过标签则继续 list_tags
+  if (
+    (looksLikeTagInventory(userContent) &&
+      !looksLikeOrganize(userContent)) ||
+    (looksLikeMoreList(userContent) && priorWasTagInventory(history))
+  ) {
+    intent = 'list_tags';
+    queries = [];
+    excerptItemIds = [];
+    followUp = false;
+    tagEdit = null;
+    organize = null;
+  }
+
+  // 建架 / 填入归类 / 重排：必须走 propose_organize + pendingAction（才有确认按钮）
+  // 「漏掉了 / 补上」等修正上文方案：同样强制预览，禁止模型正文手写无按钮
+  if (
+    intent !== 'list_tags' &&
+    (looksLikeOrganize(userContent) ||
+      looksLikeOrganizeFollowUp(userContent, history) ||
+      looksLikeOrganizeAfterTagList(userContent, history) ||
+      looksLikeOrganizeRevision(userContent, history) ||
+      (intent === 'organize' &&
+        !looksLikeTagInventory(userContent) &&
+        !looksLikeInventory(userContent)))
+  ) {
+    intent = 'organize';
+    queries = [];
+    excerptItemIds = [];
+    followUp = false;
+    tagEdit = null;
+    if (!organize) organize = { mode: 'ungrouped', hint: null };
+    if (
+      looksLikeFullOrganize(userContent) ||
+      looksLikeOrganizePreference(userContent) ||
+      looksLikeOrganizeRevision(userContent, history)
+    ) {
+      organize.mode = 'full';
+    }
+    organize.hint = buildOrganizeHint(
+      userContent,
+      history,
+      organize.hint,
+    );
+    // 用户已表态（含「你看着分」）时：加稳定架名约束，减少同库每次乱跳
+    if (
+      hasOrganizePreferenceInText(userContent) ||
+      priorWasOrganizePreferenceAsk(history)
+    ) {
+      const stable =
+        '按用户意见划分；一层归类；优先简洁稳定架名（如汽车与新能源、科技与影像、潮玩消费、职场效率、财经分析），可按实际增减；标签尽量分全、勿遗漏。';
+      organize.hint = organize.hint
+        ? `${stable}\n${organize.hint}`.slice(0, 700)
+        : stable;
+      if (organize.mode !== 'full') {
+        organize.mode =
+          looksLikeFullOrganize(userContent) ||
+          priorWasOrganizePreferenceAsk(history)
+            ? 'full'
+            : organize.mode;
+      }
+      if (
+        priorWasOrganizePreferenceAsk(history) ||
+        /你看着|你来分|你定|随便|自动分/.test(userContent)
+      ) {
+        organize.mode = 'full';
+      }
+    }
+  }
+
   // 盘点收藏：强制 list，禁止用「文章」等空泛词搜出残缺结果
-  if (looksLikeInventory(userContent) || looksLikeMoreList(userContent)) {
+  if (
+    (looksLikeInventory(userContent) || looksLikeMoreList(userContent)) &&
+    intent !== 'organize' &&
+    intent !== 'list_tags'
+  ) {
     intent = 'list';
     queries = [];
     excerptItemIds = [];
     followUp = false;
     tagEdit = null;
+    organize = null;
   }
 
   // 阅读锚定：默认钉在当前篇；仅明确要查库/盘点/找别的时才放开
+  // 「有哪些标签」在阅读页默认问本篇；「现在/库里/全部…有哪些标签」才盘点全库
   let focusBound = false;
   if (
+    intent === 'list_tags' &&
+    focusItem?.itemId &&
+    !wantsLibraryTagScope(userContent)
+  ) {
+    const fid = Number(focusItem.itemId);
+    intent = 'search';
+    queries = [];
+    excerptItemIds = [fid];
+    followUp = true;
+    tagEdit = null;
+    organize = null;
+    focusBound = true;
+  } else if (
     focusItem?.itemId &&
     !wantsLibraryScope(userContent) &&
     intent !== 'tag_edit' &&
+    intent !== 'organize' &&
+    intent !== 'list_tags' &&
     intent !== 'chitchat' &&
     intent !== 'clarify' &&
     intent !== 'compare'
@@ -1103,12 +1960,12 @@ function normalizePlan(
     excerptItemIds = [Number(focusItem.itemId)];
   }
 
-  if (intent === 'list') {
+  if (intent === 'list' || intent === 'list_tags') {
     queries = [];
     excerptItemIds = [];
   }
 
-  if (intent === 'tag_edit') {
+  if (intent === 'tag_edit' || intent === 'organize' || intent === 'list_tags') {
     queries = [];
   }
 
@@ -1118,8 +1975,296 @@ function normalizePlan(
     excerptItemIds: excerptItemIds.slice(0, MAX_EXCERPTS),
     followUp,
     tagEdit,
+    organize,
     focusBound,
   };
+}
+
+function normalizeOrganize(raw) {
+  if (!raw || typeof raw !== 'object') return null;
+  const mode = raw.mode === 'full' ? 'full' : 'ungrouped';
+  const hint = String(raw.hint || '').trim().slice(0, 200) || null;
+  return { mode, hint };
+}
+
+/** 「有哪些标签 / 现在有哪些标签」→ 盘点标签，不是归类 */
+function looksLikeTagInventory(text) {
+  const t = String(text || '').trim();
+  if (!t || looksLikeOrganize(t) || looksLikeTagEdit(t)) return false;
+  if (/(这篇|本篇|当前篇).{0,10}标签|标签.{0,10}(这篇|本篇)/.test(t)) {
+    return false;
+  }
+  return (
+    /(有哪些|有什么|有啥|都有哪些).{0,6}标签/.test(t) ||
+    /标签.{0,6}(有哪些|有什么|有啥|列表)/.test(t) ||
+    /列出.{0,6}标签/.test(t) ||
+    /^(我的)?标签[？?]?$/.test(t)
+  );
+}
+
+/** 明确要盘点全库标签（相对阅读页「本篇有哪些标签」） */
+function wantsLibraryTagScope(text) {
+  const t = String(text || '').trim();
+  if (!t) return false;
+  return (
+    /现在|目前|库里|全库|全部|所有|整个/.test(t) ||
+    /我的标签/.test(t) ||
+    /列出.{0,6}标签/.test(t)
+  );
+}
+
+/** 建归类 / 填入归类 / 整理架子（非单篇改标）——宁可多进系统预览，禁止模型手写假确认条 */
+function looksLikeOrganize(text) {
+  const t = String(text || '').trim();
+  if (!t) return false;
+  if (
+    looksLikeTagEdit(t) &&
+    !/归类|架子|整理标签|重排|分类|分一下类/.test(t)
+  ) {
+    return false;
+  }
+  return (
+    /(建|创建|新建).{0,8}(归类|架子)/.test(t) ||
+    /(归类|架子).{0,8}(建|创建|新建)/.test(t) ||
+    /(填入|放入|整理|重排|分类).{0,8}(归类|架子|标签)/.test(t) ||
+    /(归类|架子|标签).{0,8}(填入|整理|重排|分类)/.test(t) ||
+    /帮我.{0,16}(归类|分类|分一下)/.test(t) ||
+    /自动归类|AI归类|ai归类/.test(t) ||
+    /整理(一下)?标签/.test(t) ||
+    /把标签.{0,12}(归类|分到|放进|分类|分)/.test(t) ||
+    /未归类.{0,12}(填|归|整理)/.test(t) ||
+    /(给|对).{0,12}(这些)?标签.{0,12}(分类|归类|分)/.test(t) ||
+    /标签.{0,6}(分类|归类|分一下|分个类)/.test(t) ||
+    /分一下类|分个类|分分类|分类一下|归类一下/.test(t) ||
+    /按.{0,8}(行业|主题|类型|领域|品类).{0,8}(归类|分类|分)/.test(t) ||
+    /(归类|分类)(一下|下|吧|么|嘛)/.test(t) ||
+    /怎么(归类|分类|分装|整理)/.test(t) ||
+    /分(到|进|入).{0,8}(归类|架子|类)/.test(t)
+  );
+}
+
+/** 刚盘点完标签后，短说「归类/按行业分」也走 organize 预览（才有确认按钮） */
+function looksLikeOrganizeAfterTagList(text, history) {
+  if (!priorWasTagInventory(history)) return false;
+  const t = String(text || '').trim();
+  if (!t || t.length > 36) return false;
+  if (looksLikeOrganize(t)) return true;
+  return (
+    /^(归类|分类|整理|整理一下|分一下|归一下|按行业|按主题|按类型)[。.!！]?$/.test(
+      t,
+    ) || /^(帮我)?(归类|分类|整理)(一下|下)?[。.!！]?$/.test(t)
+  );
+}
+
+function looksLikeFullOrganize(text) {
+  const t = String(text || '');
+  return (
+    /全部重排|重新归类|整体重排|全量归类|所有标签.{0,8}重/.test(t) ||
+    /(给|对).{0,8}(这些)?标签.{0,8}分类/.test(t) ||
+    /标签分类|分类标签/.test(t)
+  );
+}
+
+/** 「新建一个 / 用现有」等短决策，需结合上文归类提议 */
+function looksLikeOrganizePreference(text) {
+  const t = String(text || '').trim();
+  if (!t || t.length > 24) return false;
+  return (
+    /^(新建一个|新建|建新的|用新建|新建归类|建一个新的|建新归类)[。.!！]?$/.test(
+      t,
+    ) ||
+    /^(用现有|放进现有|用已有|放进已有|第一个方案|第二个方案|前者|后者|用第一个|用第二个)[。.!！]?$/.test(
+      t,
+    )
+  );
+}
+
+function latestAssistantContent(history) {
+  const list = Array.isArray(history) ? history : [];
+  for (let i = list.length - 1; i >= 0; i -= 1) {
+    const m = list[i];
+    if (m?.role !== 'assistant') continue;
+    const c = String(m.content || '').trim();
+    if (c) return c;
+  }
+  return '';
+}
+
+function looksLikeOrganizeFollowUp(text, history) {
+  const t = String(text || '').trim();
+  if (!t) return false;
+  // 上文在问分类意见：用户短回偏好 → 进入预览
+  if (priorWasOrganizePreferenceAsk(history)) {
+    if (t.length > 80) return false;
+    if (/^(取消|不做了|算了|不用了)[。.!！]?$/.test(t)) return false;
+    return true;
+  }
+  // 上文已有归类预览：用户指出遗漏/微调 → 重新出带确认条的预览
+  if (looksLikeOrganizeRevision(t, history)) return true;
+  if (!looksLikeOrganizePreference(t)) return false;
+  const prior = latestAssistantContent(history);
+  return Boolean(
+    prior && /归类|分类|建架|架子|整理|智能硬件|填入/.test(prior),
+  );
+}
+
+/** 「漏掉了 / 忘了 / 还有两个标签 / 补上」——修正上文归类方案，必须重出确认条 */
+function looksLikeOrganizeRevision(text, history) {
+  const prior = latestAssistantContent(history);
+  const pending = findLatestPendingActionMessage(history)?.pendingAction;
+  const hasPlan =
+    priorLooksLikeOrganizePlan(prior) ||
+    pending?.type === 'organize_tags';
+  if (!hasPlan) return false;
+  const t = String(text || '').trim();
+  if (!t || t.length > 120) return false;
+  // 「可以/确认」走写库确认，不是修正
+  if (looksWriteAffirmative(t)) return false;
+  if (/^(取消|不做了|算了|不用了)[。.!！]?$/.test(t)) return false;
+  return (
+    /漏(掉|了)?|忘了|忘记|遗漏|少了|缺了|不全/.test(t) ||
+    /没(有)?(算|算上|放进|归入|列入|写|列|放)/.test(t) ||
+    /补上|补进|也要算|也要归|再加上|还要加/.test(t) ||
+    /还有.{0,16}(标签|个)/.test(t) ||
+    /把.{1,24}(放进|归入|放到|改到|挪到|移到)/.test(t) ||
+    /(改成|换成|挪到|放到|移到).{0,24}(归类|架|类)/.test(t) ||
+    /不要放|别放进|单独一|拆出来/.test(t)
+  );
+}
+
+function priorWasOrganizePreferenceAsk(history) {
+  const prior = latestAssistantContent(history);
+  return (
+    /听听你的分类意见|你更希望怎么分|分类意见/.test(prior) &&
+    /\*\*按行业\*\*|\*\*按主题\*\*|\*\*你看着分\*\*/.test(prior)
+  );
+}
+
+/** 用户是否已明确给出分类意见（有则跳过追问，直接出预览） */
+function hasOrganizePreferenceInText(text) {
+  const t = String(text || '').trim();
+  if (!t) return false;
+  if (looksLikeOrganizePreference(t)) return true;
+  return (
+    /按.{0,12}(行业|主题|类型|领域|品类|公司|品牌|时间|平台|内容)/.test(t) ||
+    /你看着|你来分|你定|随便分|自动分|都可以|随意|你决定/.test(t) ||
+    /分成|归成|分成几|分两|分三/.test(t) ||
+    /侧重|优先|不要放|单独一|新建一个|用现有|放进已有/.test(t) ||
+    /(汽车|新能源|科技|潮玩|职场|财经|影像|硬件).{0,8}(一类|一架|归类|放一起)/.test(
+      t,
+    )
+  );
+}
+
+/**
+ * 未明确分法 → 先问；已明确意见 / 正在回答追问 / 修正预览 → 直接出确认预览。
+ */
+function shouldAskOrganizePreference(text, history) {
+  // 正在回答「怎么分」→ 出预览
+  if (priorWasOrganizePreferenceAsk(history)) return false;
+  // 补漏/微调已有预览 → 出预览
+  if (looksLikeOrganizeRevision(text, history)) return false;
+  // 本轮已明确意见 → 不问，直接预览
+  if (hasOrganizePreferenceInText(text)) return false;
+  const prior = latestAssistantContent(history);
+  // 已有确认预览，用户继续微调且未否定 → 出预览
+  if (
+    priorLooksLikeOrganizePlan(prior) &&
+    !looksLikeOrganizeRejection(text)
+  ) {
+    return false;
+  }
+  // 否定但没给新分法 → 再问意见
+  if (looksLikeOrganizeRejection(text) && !hasOrganizePreferenceInText(text)) {
+    return true;
+  }
+  // 只说「分一下类」等、未带意见 → 先问
+  return true;
+}
+
+function priorLooksLikeOrganizePlan(content) {
+  const c = String(content || '');
+  if (!c) return false;
+  const hasStructure =
+    /\*\*[^*]+\*\*/.test(c) ||
+    /（新建）/.test(c) ||
+    /准备这样整理归类|按这样整理归类|建议建这几个归类|确认后才会写入/.test(
+      c,
+    );
+  return (
+    hasStructure &&
+    (/归类|分类|建架|架子|整理/.test(c) || /标签都归进去/.test(c))
+  );
+}
+
+/** 用户否定上文归类方案 / 要求重做 → 不要沿用 */
+function looksLikeOrganizeRejection(text) {
+  const t = String(text || '').trim();
+  if (!t) return false;
+  return (
+    /不好|不行|不对|不要|别这样|不满意|重新|重做|重分|重来|换一个|换套|换种|另分|另起|推翻|作废|取消方案/.test(
+      t,
+    ) ||
+    /太乱|太粗|太细|分得不对|分错了|再想想|换个分法|换个角度|按别的/.test(t)
+  );
+}
+
+/**
+ * 短回复 / 再出预览：默认沿用上文方案；用户明确说不好/重分时则带否定约束另出。
+ */
+function buildOrganizeHint(userContent, history, planHint) {
+  const user = String(userContent || '').trim();
+  const prior = latestAssistantContent(history);
+  const fromPlan = String(planHint || '').trim();
+  const reject = looksLikeOrganizeRejection(user);
+
+  if (looksLikeOrganizePreference(user) && prior && !reject) {
+    const preferNew = /新建|建新/.test(user);
+    const preferExisting = /现有|已有/.test(user);
+    const constraint = preferNew
+      ? '用户选择【新建归类】：上文提到的标签必须进新建架子（如「智能硬件」），禁止塞进已有架；其它标签可一并整理。'
+      : preferExisting
+        ? '用户选择【用已有归类】：上文提到的标签并入已有架，不要为此新建架子。'
+        : `用户决定：${user}`;
+    return `${constraint}\n上文助手建议：${prior.slice(0, 450)}`.slice(0, 700);
+  }
+
+  if (priorLooksLikeOrganizePlan(prior)) {
+    if (reject) {
+      // 否定上文：明确要求换方案，可参考但禁止原样照搬
+      const bits = [
+        '用户不满意上文归类方案，请按用户新要求重新划分；禁止原样沿用上文架名与归属。',
+        `用户本轮说：${user}`,
+      ];
+      if (fromPlan && fromPlan !== user) bits.push(`补充偏好：${fromPlan}`);
+      bits.push(`（仅供对照、勿照搬）上文方案：${prior.slice(0, 280)}`);
+      return bits.join('\n').slice(0, 700);
+    }
+    if (looksLikeOrganizeRevision(user, history)) {
+      const bits = [
+        '用户指出上文方案有遗漏或需微调：沿用上文架名与已有归属，落实本轮修正；点名标签禁止再漏，必要时可新建架子收留。',
+        `用户修正：${user}`,
+        `上文方案：${prior.slice(0, 400)}`,
+      ];
+      return bits.join('\n').slice(0, 700);
+    }
+    // 未否定：沿用架名与标签归属，避免每次另起一套
+    const stick =
+      '必须优先沿用上文归类方案的架名与标签归属，不要另起一套分类名；上文点名的标签禁止遗漏，仅可补漏。';
+    const bits = [stick];
+    if (user) bits.push(`用户本轮说：${user}`);
+    if (fromPlan && fromPlan !== user) bits.push(`补充偏好：${fromPlan}`);
+    bits.push(`上文方案：${prior.slice(0, 420)}`);
+    return bits.join('\n').slice(0, 700);
+  }
+
+  if (fromPlan && fromPlan !== user) {
+    return fromPlan.slice(0, 700);
+  }
+  if (prior && user.length < 48 && /归类|分类|建架|架子/.test(prior)) {
+    return `用户说：${user}\n上文：${prior.slice(0, 400)}`.slice(0, 700);
+  }
+  return (fromPlan || user).slice(0, 700);
 }
 
 /**

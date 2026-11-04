@@ -838,7 +838,7 @@ class _FocusItemBanner extends StatelessWidget {
   }
 }
 
-/// 空态：主题色 ✦ 圆标（无光晕）+ 居中标题/副文/能力标。
+/// 空态：主题色 ✦ 圆标（无光晕）+ 居中标题/副文。
 /// 有锚定篇时顶部已展示条目，这里只留短提示。
 class _EmptyState extends StatelessWidget {
   const _EmptyState({this.focused = false});
@@ -880,18 +880,6 @@ class _EmptyState extends StatelessWidget {
                   height: 1.55,
                   letterSpacing: 0.15,
                 ),
-              ),
-              SizedBox(height: 18),
-              Wrap(
-                alignment: WrapAlignment.center,
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  _CapabilityMark(label: '深挖原文'),
-                  _CapabilityMark(label: '对照内容'),
-                  _CapabilityMark(label: '改标签'),
-                  _CapabilityMark(label: '检索其它'),
-                ],
               ),
             ],
           ),
@@ -944,49 +932,7 @@ class _EmptyState extends StatelessWidget {
                 letterSpacing: 0.15,
               ),
             ),
-            const SizedBox(height: 22),
-            const Wrap(
-              alignment: WrapAlignment.center,
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                _CapabilityMark(label: '检索内容'),
-                _CapabilityMark(label: '对照内容'),
-                _CapabilityMark(label: '深挖原文'),
-                _CapabilityMark(label: '改标签'),
-              ],
-            ),
           ],
-        ),
-      ),
-    );
-  }
-}
-
-class _CapabilityMark extends StatelessWidget {
-  const _CapabilityMark({required this.label});
-
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-      decoration: BoxDecoration(
-        color: const Color(0xFF2F6FED).withValues(alpha: 0.06),
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(
-          color: const Color(0xFF2F6FED).withValues(alpha: 0.14),
-        ),
-      ),
-      child: Text(
-        label,
-        style: const TextStyle(
-          fontSize: 12,
-          fontWeight: FontWeight.w500,
-          letterSpacing: 0.4,
-          color: Color(0xFF2F6FED),
-          height: 1.2,
         ),
       ),
     );
@@ -1366,9 +1312,12 @@ class _AssistantBlock extends StatelessWidget {
                   minimumSize: Size.zero,
                   tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                 ),
-                child: const Text(
-                  '确认调整',
-                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+                child: Text(
+                  pendingAction?.confirmLabel ?? '确认调整',
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
               ),
             ],

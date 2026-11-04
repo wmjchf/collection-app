@@ -20,7 +20,6 @@ class CollectionTagModulesSection extends StatelessWidget {
     required this.onCreateModule,
     this.onRenameModule,
     this.onDeleteModule,
-    this.onAiOrganize,
     this.onPlaceTag,
     this.headerKey,
     this.headerCollapse,
@@ -36,7 +35,6 @@ class CollectionTagModulesSection extends StatelessWidget {
   final VoidCallback onCreateModule;
   final ValueChanged<TagModule>? onRenameModule;
   final ValueChanged<TagModule>? onDeleteModule;
-  final VoidCallback? onAiOrganize;
   /// 拖放到目标归类（`null` = 未归类）。
   final void Function(Tag tag, int? targetModuleId)? onPlaceTag;
   final Key? headerKey;
@@ -124,7 +122,6 @@ class CollectionTagModulesSection extends StatelessWidget {
                       _CollapsingSectionHeader(
                         collapse: headerCollapse,
                         onCreateModule: onCreateModule,
-                        onAiOrganize: onAiOrganize,
                       ),
                       Expanded(
                         child: ListView(
@@ -142,7 +139,6 @@ class CollectionTagModulesSection extends StatelessWidget {
                       _CollapsingSectionHeader(
                         collapse: headerCollapse,
                         onCreateModule: onCreateModule,
-                        onAiOrganize: onAiOrganize,
                       ),
                       ...blocks,
                     ],
@@ -157,13 +153,11 @@ class CollectionTagModulesSection extends StatelessWidget {
 class _CollapsingSectionHeader extends StatelessWidget {
   const _CollapsingSectionHeader({
     required this.onCreateModule,
-    this.onAiOrganize,
     this.collapse,
   });
 
   final ValueListenable<double>? collapse;
   final VoidCallback onCreateModule;
-  final VoidCallback? onAiOrganize;
 
   @override
   Widget build(BuildContext context) {
@@ -172,7 +166,6 @@ class _CollapsingSectionHeader extends StatelessWidget {
       children: [
         _SectionHeader(
           onCreateModule: onCreateModule,
-          onAiOrganize: onAiOrganize,
         ),
         const SizedBox(height: 12),
       ],
@@ -207,11 +200,9 @@ class _CollapsingSectionHeader extends StatelessWidget {
 class _SectionHeader extends StatelessWidget {
   const _SectionHeader({
     required this.onCreateModule,
-    this.onAiOrganize,
   });
 
   final VoidCallback onCreateModule;
-  final VoidCallback? onAiOrganize;
 
   @override
   Widget build(BuildContext context) {
@@ -235,25 +226,6 @@ class _SectionHeader extends StatelessWidget {
                   ),
                 ),
               ),
-              if (onAiOrganize != null)
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 2),
-                  child: IconButton(
-                    tooltip: '归类',
-                    onPressed: onAiOrganize,
-                    visualDensity: VisualDensity.compact,
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(
-                      minWidth: 36,
-                      minHeight: 36,
-                    ),
-                    icon: const Icon(
-                      Icons.auto_awesome_outlined,
-                      size: 22,
-                      color: CollectionTagModulesSection.brand,
-                    ),
-                  ),
-                ),
               CollectionCreateModuleButton(
                 onPressed: onCreateModule,
                 iconPadding: EdgeInsets.zero,
@@ -263,7 +235,7 @@ class _SectionHeader extends StatelessWidget {
           ),
           const SizedBox(height: 4),
           Text(
-            '你建归类 · AI 可填入 · 长按拖动',
+            '你建归类 · 长按拖动；也可在 AI 助手里整理',
             style: TextStyle(
               fontSize: 12,
               height: 1.35,

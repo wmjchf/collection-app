@@ -60,16 +60,16 @@ class AiAutoTagsHelpPage extends StatelessWidget {
               figureIndex: 1,
               title: '你建归类',
               desc:
-                  '归类名由你来定。归类旁的 ··· 可改名、往归类里加标签，或删除整个归类。',
+                  '归类名由你来定。归类旁的 ··· 可改名、往归类里加标签，或删除整个归类。'
+                  '也可在 AI 助手里让 AI 建议建架与归类，确认后再写入。',
             ),
             const SizedBox(height: 12),
             _GuideStepCard(
               urls: urls,
               figureIndex: 2,
-              title: '拖动或归类',
+              title: '拖动整理',
               desc:
-                  '长按标签拖到目标归类；也可点标题旁 ✦「归类」，'
-                  '让 AI 把未归类标签填进已有归类（不会新建归类名）。',
+                  '长按标签拖到目标归类。需要 AI 建架或批量填入时，去 AI 助手说明你的偏好即可。',
             ),
             const SizedBox(height: 24),
             const _SectionHeading('解析后自动打标签'),
@@ -78,7 +78,7 @@ class AiAutoTagsHelpPage extends StatelessWidget {
               child: Text(
                 '太子Pro / 帝王Pro：粘贴链接解析完成后，文章会自动打标签；'
                 '视频在转写成功后同样自动打标；图集不自动打标。'
-                '打标后不会自动归类——你先建归类，再用拖动或 ✦「归类」整理。'
+                '打标后不会自动归类——可在收藏页手建归类并拖动，或在 AI 助手里建议建架与归类。'
                 '点进内容可在上方看到标签。',
                 style: TextStyle(
                   fontSize: 15,
