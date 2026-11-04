@@ -44,7 +44,7 @@
 
 | 阶段 | 能力条 | 做什么 | 不做什么 |
 | --- | --- | --- | --- |
-| **P1 查** | `查收藏` 点亮 | 检索收藏、对照内容、深挖原文（围绕已找到篇目追问观点/原话） | 不写库、不生成分享稿 |
+| **P1 查** | `查收藏` 点亮 | 检索收藏、对照内容、深挖原文（围绕已找到篇目追问观点/原话）；点名篇目「加上/去掉/改用标签」仅预览，确认后写入 | 不静默写库、不批量全库改标、不生成分享稿 |
 | **P2 整理** | `整理` 点亮 | 收拢现网 AI 为 Tools：解读 / 脑图 / 打标建议 / 归类预览（确认后写入） | 不写对外长文、不发帖 |
 | **P3a 轻创作** | `创作` 点亮（轻） | 基于出处的分享文案、对照短评、一句话推荐、摘句润色 | 不写无出处的自由长文 |
 | **P3b 中创作** | `创作` 加深 | 多篇综合备忘、主题导读、读书笔记草稿（可编辑再导出） | 不承诺自动发布 |
@@ -80,7 +80,7 @@
 
 ### 2.5 非目标（Phase 1）
 
-- 不自动改标签 / 归类 / 删内容（无确认写操作）
+- ~~不自动改标签~~ → **已支持点名改标签（预览 + 确认后写入）**；仍不做：无确认静默改标、整篇 AI 重打标流水线、无点名目标的批量全库改标、改归类架子、删条目
 - 不接外部网页搜索、不读用户未收藏的 URL
 - 不做语音输入、不做流式 UI 动画规范以外的花活
 - 不在 Phase 1 做跨用户知识、推荐他人内容
@@ -291,14 +291,14 @@ GET /api/agent/messages/:id
 
 Stream（已落地）：`Accept: text/event-stream`，事件 `user` / `phase`（planning|searching|answering）/ `token` / `done`（含完整 assistant + citations）/ `error`。plan+工具仍同步；仅 answer 纯文本流式。
 
-### 5.3 Phase 2：确认类写操作
+### 5.3 确认类写操作（P1.2 改标签已落地）
 
 ```
 POST /api/agent/actions/confirm
-Body: { actionId, approve: true|false, params? }
+Body: { conversationId, messageId, approve: true|false }
 ```
 
-`actionId` 来自助手消息里的 `pendingAction`（如 organize preview）。
+从该助手消息的 `pendingAction`（写入 `tool_calls_json`）读取预览；`approve=true` 后 `setItemTags`（find-or-create 用户标签）；`approve=false` 标记取消。已确认/已取消幂等。后续 organize 等可复用同一接口形状。
 
 ## 6. Tools 规格
 
@@ -321,6 +321,15 @@ Body: { actionId, approve: true|false, params? }
 | 实现 | `aiInput.buildInputText` 后按 `maxChars`（默认 6k～12k）截断；音视频无文稿时返回 `needsTranscript: true`（Phase 1 **不**自动开转写，提示用户去阅读页转写或「需要我先转写这篇吗」待 P1.1） |
 | 返回 | `{ title, excerpt, tagNames, contentHash }` |
 
+#### `propose_item_tag_edit`（只读预览）
+
+| 项 | 说明 |
+| --- | --- |
+| Args | `{ itemId, add?: string[], remove?: string[], replace?: string[] }` |
+| 实现 | 校验属主；`listItemTags` 算 before/after/willCreate；**不写库** |
+| 返回 | `{ title, before, after, add, remove, willCreate, noop }` + citations |
+| 写入 | 用户点确认 → `POST /api/agent/actions/confirm` → find-or-create + `setItemTags` |
+
 #### `answer`（内部，非 LLM tool）
 
 编排层根据 tool 结果生成对用户短答；prompt 约束：
@@ -328,6 +337,7 @@ Body: { actionId, approve: true|false, params? }
 - 只依据工具返回的内容，禁止编造库外事实
 - 提及具体篇目时必须能在 `citations` 找到对应 `itemId`
 - 找不到时直说，并建议换说法或去搜索页用关键词
+- `tag_edit`：说明将如何调整并挂 `pendingAction`，勿声称无法改标签
 
 ### 6.2 Phase 2 Tools（包装现网）
 
@@ -429,8 +439,9 @@ Body: { actionId, approve: true|false, params? }
 | P0 设计 | Figma + 本文 | 入口与空态/查库屏对齐 |
 | **P1.0 查** | 会话 API + `search_library` + 短答出处 + 首页入口 + 门控 | 太子可问「我存过哪些…」并点进阅读；免费被拦；能力条仅「查收藏」亮 |
 | **P1.1 查** | 多轮上下文（上文 citations → `excerptItemIds`）、历史列表、可选 SSE | 追问「第二篇呢 / 对比这两篇」不丢语境、不另起无关检索 |
+| **P1.2 改标** | `propose_item_tag_edit` + `POST /api/agent/actions/confirm`；App 确认条 | 点名/当前篇「用某某标签」出预览，确认后 `setItemTags`；取消不写库 |
 | **P2.0 整理** | Tools：summary / mindmap；阅读页可跳转助手 | 助手内生成解读并写入 `ai_meta`；能力条「整理」亮 |
-| **P2.1 整理** | Tools：tags / organize（确认条） | 无静默改库 |
+| **P2.1 整理** | Tools：suggest_tags / organize（确认条） | 无静默改库；点名改标已在 P1.2 |
 | **P3a 轻创作** | `draft_share_copy` / `polish_quote` / `compare_notes` | 输出必带 citations；能力条「创作」亮 |
 | **P3b 中创作** | `draft_memo` / `draft_reading_notes` | 多篇选篇 UX + 可编辑草稿；仍可点回出处 |
 | 更后 | 重创作（大纲/脚本/发布） | 单独立项，不在本里程碑内 |

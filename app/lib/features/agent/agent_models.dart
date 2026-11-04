@@ -76,18 +76,95 @@ class AgentCitation {
       };
 }
 
+class AgentPendingAction {
+  const AgentPendingAction({
+    required this.type,
+    required this.status,
+    required this.itemId,
+    this.title = '',
+    this.before = const [],
+    this.after = const [],
+    this.add = const [],
+    this.remove = const [],
+    this.willCreate = const [],
+  });
+
+  final String type;
+  final String status;
+  final int itemId;
+  final String title;
+  final List<String> before;
+  final List<String> after;
+  final List<String> add;
+  final List<String> remove;
+  final List<String> willCreate;
+
+  bool get isPending =>
+      type == 'item_tag_edit' && status == 'pending';
+
+  factory AgentPendingAction.fromJson(Map<String, dynamic> json) {
+    List<String> names(dynamic raw) {
+      if (raw is! List) return const [];
+      return [
+        for (final e in raw)
+          if ((e?.toString().trim() ?? '').isNotEmpty) e.toString().trim(),
+      ];
+    }
+
+    return AgentPendingAction(
+      type: json['type'] as String? ?? '',
+      status: json['status'] as String? ?? 'pending',
+      itemId: (json['itemId'] as num?)?.toInt() ?? 0,
+      title: json['title'] as String? ?? '',
+      before: names(json['before']),
+      after: names(json['after']),
+      add: names(json['add']),
+      remove: names(json['remove']),
+      willCreate: names(json['willCreate']),
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+        'type': type,
+        'status': status,
+        'itemId': itemId,
+        'title': title,
+        'before': before,
+        'after': after,
+        'add': add,
+        'remove': remove,
+        'willCreate': willCreate,
+      };
+
+  AgentPendingAction copyWith({String? status}) {
+    return AgentPendingAction(
+      type: type,
+      status: status ?? this.status,
+      itemId: itemId,
+      title: title,
+      before: before,
+      after: after,
+      add: add,
+      remove: remove,
+      willCreate: willCreate,
+    );
+  }
+}
+
 class AgentMessage {
   const AgentMessage({
     required this.id,
     required this.role,
     required this.content,
     this.citations = const [],
+    this.pendingAction,
   });
 
   final int id;
   final String role;
   final String content;
   final List<AgentCitation> citations;
+  final AgentPendingAction? pendingAction;
 
   bool get isUser => role == 'user';
   bool get isAssistant => role == 'assistant';
@@ -97,12 +174,16 @@ class AgentMessage {
     String? role,
     String? content,
     List<AgentCitation>? citations,
+    AgentPendingAction? pendingAction,
+    bool clearPendingAction = false,
   }) {
     return AgentMessage(
       id: id ?? this.id,
       role: role ?? this.role,
       content: content ?? this.content,
       citations: citations ?? this.citations,
+      pendingAction:
+          clearPendingAction ? null : (pendingAction ?? this.pendingAction),
     );
   }
 
@@ -118,11 +199,19 @@ class AgentMessage {
         }
       }
     }
+    AgentPendingAction? pending;
+    final pa = json['pendingAction'];
+    if (pa is Map<String, dynamic>) {
+      pending = AgentPendingAction.fromJson(pa);
+    } else if (pa is Map) {
+      pending = AgentPendingAction.fromJson(Map<String, dynamic>.from(pa));
+    }
     return AgentMessage(
       id: (json['id'] as num?)?.toInt() ?? 0,
       role: json['role'] as String? ?? 'assistant',
       content: json['content'] as String? ?? '',
       citations: citations,
+      pendingAction: pending,
     );
   }
 
@@ -131,6 +220,7 @@ class AgentMessage {
         'role': role,
         'content': content,
         'citations': [for (final c in citations) c.toJson()],
+        if (pendingAction != null) 'pendingAction': pendingAction!.toJson(),
       };
 }
 

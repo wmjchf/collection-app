@@ -1,8 +1,14 @@
 const searchLibrary = require('./tools/searchLibrary');
 const getItemExcerpt = require('./tools/getItemExcerpt');
 const listLibrary = require('./tools/listLibrary');
+const proposeItemTagEdit = require('./tools/proposeItemTagEdit');
 
-const ALL_TOOLS = [searchLibrary, getItemExcerpt, listLibrary];
+const ALL_TOOLS = [
+  searchLibrary,
+  getItemExcerpt,
+  listLibrary,
+  proposeItemTagEdit,
+];
 
 /**
  * @param {{ stages?: string[] }} [opts]

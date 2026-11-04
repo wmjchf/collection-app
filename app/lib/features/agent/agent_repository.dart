@@ -284,4 +284,50 @@ class AgentRepository {
       accessToken: await _token(),
     );
   }
+
+  /// 确认或取消助手预览中的写操作（如改标签）。
+  Future<AgentConfirmActionResult> confirmAction({
+    required int conversationId,
+    required int messageId,
+    required bool approve,
+  }) async {
+    final json = await _client.post(
+      '/api/agent/actions/confirm',
+      accessToken: await _token(),
+      body: {
+        'conversationId': conversationId,
+        'messageId': messageId,
+        'approve': approve,
+      },
+    );
+    return AgentConfirmActionResult.fromJson(json);
+  }
+}
+
+class AgentConfirmActionResult {
+  const AgentConfirmActionResult({
+    this.assistantMessage,
+    this.pendingAction,
+    this.alreadySettled = false,
+  });
+
+  final AgentMessage? assistantMessage;
+  final AgentPendingAction? pendingAction;
+  final bool alreadySettled;
+
+  factory AgentConfirmActionResult.fromJson(Map<String, dynamic> json) {
+    Map<String, dynamic>? asMap(dynamic v) {
+      if (v is Map<String, dynamic>) return v;
+      if (v is Map) return Map<String, dynamic>.from(v);
+      return null;
+    }
+
+    final a = asMap(json['assistantMessage']);
+    final p = asMap(json['pendingAction']);
+    return AgentConfirmActionResult(
+      assistantMessage: a != null ? AgentMessage.fromJson(a) : null,
+      pendingAction: p != null ? AgentPendingAction.fromJson(p) : null,
+      alreadySettled: json['alreadySettled'] == true,
+    );
+  }
 }
