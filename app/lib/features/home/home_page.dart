@@ -11,7 +11,7 @@ import 'package:super_collection/core/ui/parse_progress_tracker.dart';
 import 'package:super_collection/core/ui/pro_copy.dart';
 import 'package:super_collection/core/utils/clipboard_utils.dart';
 import 'package:super_collection/core/utils/link_utils.dart';
-import 'package:super_collection/features/agent/agent_page.dart';
+import 'package:super_collection/features/agent/agent_host.dart';
 import 'package:super_collection/features/auth/auth_repository.dart';
 import 'package:super_collection/core/ui/app_orientation.dart';
 import 'package:super_collection/features/collection/system_filter_list_page.dart';
@@ -392,18 +392,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     );
   }
 
-  Future<void> _openAgent() async {
-    final allowed = await ensurePlanFeatures(
-      context,
-      requirements: [
-        (has: (f) => f.aiAgent, tier: UsagePlan.prince),
-      ],
-    );
-    if (!allowed || !mounted) return;
-    await Navigator.of(context).push(
-      MaterialPageRoute<void>(builder: (_) => const AgentPage()),
-    );
-  }
+  Future<void> _openAgent() => openAgent(context);
 
   Future<void> _onAddPressed() async {
     if (_coachStep != null) return;
@@ -749,6 +738,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       trailing: _tabletAddButton(),
       autoSelectFirst: false,
       showMediaKinds: true,
+      agentHostActive: widget.isActive,
       loader: ({required limit, required offset, mediaKind}) =>
           _filtersRepo.listItems(
         filter: 'unread',

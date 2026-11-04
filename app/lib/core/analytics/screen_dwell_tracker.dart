@@ -23,6 +23,7 @@ abstract final class AnalyticsScreens {
   static const aiAgentHelp = 'ai_agent_help';
   static const aiAutoTagsHelp = 'ai_auto_tags_help';
   static const shortcutsHelp = 'shortcuts_help';
+  static const agentPanel = 'agent_panel';
   static const feedback = 'feedback';
   static const doc = 'doc';
 }

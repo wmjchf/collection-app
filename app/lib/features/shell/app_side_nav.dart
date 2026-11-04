@@ -1,9 +1,12 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:super_collection/core/config/app_brand.dart';
+import 'package:super_collection/features/agent/agent_host.dart';
 import 'package:super_collection/features/shell/app_bottom_nav_bar.dart';
 
-/// iPad 横屏左侧导航：品牌 + 首页/收藏/搜索 + 底部账户。
+/// iPad 横屏左侧导航：品牌 + 首页/收藏/搜索；底部 AI助手行 + 账户。
 class AppSideNav extends StatelessWidget {
   const AppSideNav({
     super.key,
@@ -23,6 +26,7 @@ class AppSideNav extends StatelessWidget {
   static const _hairline = Color(0xFFE9EBEF);
   static const _brandSoft = Color(0xFFE8F0FF);
   static const _avatarBg = Color(0xFFE8EEF5);
+  static const _blue = Color(0xFF2F6FED);
 
   @override
   Widget build(BuildContext context) {
@@ -65,6 +69,8 @@ class AppSideNav extends StatelessWidget {
               onTap: () => onChanged(2),
             ),
             const Spacer(),
+            _AgentRow(onTap: () => unawaited(openAgent(context))),
+            const SizedBox(height: 4),
             _AccountRow(onTap: onOpenAccount),
           ],
         ),
@@ -169,6 +175,63 @@ class _NavItem extends StatelessWidget {
                       fontWeight:
                           selected ? FontWeight.w600 : FontWeight.w400,
                       color: color,
+                      height: 1.2,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// 底部次要入口：账户上方，浅底行。
+class _AgentRow extends StatelessWidget {
+  const _AgentRow({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: AppSideNav._brandSoft,
+      borderRadius: BorderRadius.circular(12),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: const SizedBox(
+          height: 44,
+          child: Padding(
+            padding: EdgeInsets.symmetric(horizontal: 12),
+            child: Row(
+              children: [
+                SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: Center(
+                    child: Text(
+                      '✦',
+                      style: TextStyle(
+                        fontSize: 16,
+                        height: 1,
+                        color: AppSideNav._blue,
+                      ),
+                    ),
+                  ),
+                ),
+                SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'AI助手',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w500,
+                      color: AppSideNav._ink,
                       height: 1.2,
                     ),
                   ),

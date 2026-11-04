@@ -6,7 +6,7 @@ import 'package:super_collection/core/ui/app_confirm_dialog.dart';
 import 'package:super_collection/core/ui/app_orientation.dart';
 import 'package:super_collection/core/ui/app_toast.dart';
 import 'package:super_collection/core/ui/pro_copy.dart';
-import 'package:super_collection/features/agent/agent_page.dart';
+import 'package:super_collection/features/agent/agent_host.dart';
 import 'package:super_collection/features/collection/collection_tag_modules_section.dart';
 import 'package:super_collection/features/collection/create_module_sheet.dart';
 import 'package:super_collection/features/collection/create_tag_sheet.dart';
@@ -18,7 +18,6 @@ import 'package:super_collection/features/collection/tag_models.dart';
 import 'package:super_collection/features/collection/tag_module_models.dart';
 import 'package:super_collection/features/collection/tag_modules_repository.dart';
 import 'package:super_collection/features/collection/tags_repository.dart';
-import 'package:super_collection/features/settings/quota_gate.dart';
 import 'package:super_collection/features/settings/usage_repository.dart';
 import 'package:super_collection/features/shell/tablet_items_split.dart';
 import 'package:super_collection/features/shell/user_avatar_button.dart';
@@ -30,6 +29,7 @@ class CollectionPage extends StatefulWidget {
     this.isActive = true,
     this.refreshTick = 0,
     this.onOpenAccount,
+    this.onTabletSplitChanged,
   });
 
   /// 是否为当前 Tab；切回时静默刷新数量。
@@ -40,6 +40,9 @@ class CollectionPage extends StatefulWidget {
 
   /// 打开账户抽屉。
   final VoidCallback? onOpenAccount;
+
+  /// iPad：进入/退出列表|阅读浏览态（三列）时通知主壳，以便助手从缝顶入。
+  final ValueChanged<bool>? onTabletSplitChanged;
 
   @override
   State<CollectionPage> createState() => _CollectionPageState();
@@ -280,8 +283,8 @@ class _CollectionPageState extends State<CollectionPage> {
       isPro: _isPro,
     );
     if (AppOrientation.isTablet(context)) {
-      setState(() {
-        _tabletBrowse = _TabletBrowse(
+      _setTabletBrowse(
+        _TabletBrowse(
           title: title,
           openEntry: 'library',
           showMediaKinds: true,
@@ -292,9 +295,8 @@ class _CollectionPageState extends State<CollectionPage> {
             limit: limit,
             offset: offset,
           ),
-        );
-        _tabletBrowseTick++;
-      });
+        ),
+      );
       return;
     }
     Navigator.of(context)
@@ -313,8 +315,8 @@ class _CollectionPageState extends State<CollectionPage> {
 
   void _openTag(Tag tag) {
     if (AppOrientation.isTablet(context)) {
-      setState(() {
-        _tabletBrowse = _TabletBrowse(
+      _setTabletBrowse(
+        _TabletBrowse(
           title: tag.name,
           openEntry: 'tag',
           loader: ({required limit, required offset, mediaKind}) =>
@@ -323,9 +325,8 @@ class _CollectionPageState extends State<CollectionPage> {
             limit: limit,
             offset: offset,
           ),
-        );
-        _tabletBrowseTick++;
-      });
+        ),
+      );
       return;
     }
     Navigator.of(context)
@@ -349,8 +350,8 @@ class _CollectionPageState extends State<CollectionPage> {
 
   void _openModule(TagModule module) {
     if (AppOrientation.isTablet(context)) {
-      setState(() {
-        _tabletBrowse = _TabletBrowse(
+      _setTabletBrowse(
+        _TabletBrowse(
           title: module.name,
           openEntry: 'library',
           loader: ({required limit, required offset, mediaKind}) =>
@@ -359,9 +360,8 @@ class _CollectionPageState extends State<CollectionPage> {
             limit: limit,
             offset: offset,
           ),
-        );
-        _tabletBrowseTick++;
-      });
+        ),
+      );
       return;
     }
     Navigator.of(context)
@@ -385,21 +385,19 @@ class _CollectionPageState extends State<CollectionPage> {
 
   void _closeTabletBrowse() {
     setState(() => _tabletBrowse = null);
+    widget.onTabletSplitChanged?.call(false);
     _load(quiet: true);
   }
 
-  Future<void> _openAgent() async {
-    final allowed = await ensurePlanFeatures(
-      context,
-      requirements: [
-        (has: (f) => f.aiAgent, tier: UsagePlan.prince),
-      ],
-    );
-    if (!allowed || !mounted) return;
-    await Navigator.of(context).push(
-      MaterialPageRoute<void>(builder: (_) => const AgentPage()),
-    );
+  void _setTabletBrowse(_TabletBrowse browse) {
+    setState(() {
+      _tabletBrowse = browse;
+      _tabletBrowseTick++;
+    });
+    widget.onTabletSplitChanged?.call(true);
   }
+
+  Future<void> _openAgent() => openAgent(context);
 
   PreferredSizeWidget _buildAppBar() {
     // 头像放 leading，与阅读页同槽位，避免 Tab 切换时左右错位
