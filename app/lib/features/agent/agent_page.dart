@@ -626,6 +626,20 @@ class _AgentPageState extends State<AgentPage> {
                             },
                           ),
           ),
+          if (!_booting && !_sending)
+            _AgentPresets(
+              items: _resolvePresetItems(),
+              enabled: true,
+              onDraft: (text) {
+                final draft =
+                    text.endsWith('…') ? text.substring(0, text.length - 1) : text;
+                _input
+                  ..text = draft
+                  ..selection =
+                      TextSelection.collapsed(offset: draft.length);
+                _focus.requestFocus();
+              },
+            ),
           _Composer(
             controller: _input,
             focusNode: _focus,
@@ -638,6 +652,27 @@ class _AgentPageState extends State<AgentPage> {
           ),
         ],
       ),
+    );
+  }
+
+  /// 空会话起步；有回复后按上一轮规则切换（不走 AI）。
+  List<String> _resolvePresetItems() {
+    if (_messages.isEmpty) {
+      return _AgentPresetRules.starters(focused: _focusItem != null);
+    }
+    AgentMessage? lastAssistant;
+    for (var i = _messages.length - 1; i >= 0; i--) {
+      if (_messages[i].isAssistant) {
+        lastAssistant = _messages[i];
+        break;
+      }
+    }
+    if (lastAssistant == null) {
+      return _AgentPresetRules.starters(focused: _focusItem != null);
+    }
+    return _AgentPresetRules.fromAssistant(
+      lastAssistant,
+      focused: _focusItem != null,
     );
   }
 
@@ -1155,8 +1190,17 @@ class _UserBubble extends StatelessWidget {
   final String text;
   final EditableTextContextMenuBuilder contextMenuBuilder;
 
+  static const _brand = Color(0xFF2F6FED);
+  static const _body = Color(0xFF1F242E);
+  static final _titleRef = RegExp(r'「([^」]*)」');
+
   @override
   Widget build(BuildContext context) {
+    const base = TextStyle(
+      fontSize: 16,
+      color: _body,
+      height: 1.45,
+    );
     return Align(
       alignment: Alignment.centerRight,
       child: Container(
@@ -1170,18 +1214,70 @@ class _UserBubble extends StatelessWidget {
           data: const TextSelectionThemeData(
             selectionColor: Color(0x662F6FED),
           ),
-          child: SelectableText(
-            text,
-            style: const TextStyle(
-              fontSize: 16,
-              color: Color(0xFF1F242E),
-              height: 1.45,
-            ),
+          child: SelectableText.rich(
+            TextSpan(style: base, children: _spans(text, base)),
             contextMenuBuilder: contextMenuBuilder,
           ),
         ),
       ),
     );
+  }
+
+  /// 「标题」用图标 + 主题色加粗，和后面问句区分开。
+  static List<InlineSpan> _spans(String text, TextStyle base) {
+    final matches = _titleRef.allMatches(text).toList(growable: false);
+    if (matches.isEmpty) {
+      return [TextSpan(text: text, style: base)];
+    }
+    final titleStyle = base.copyWith(
+      color: _brand,
+      fontWeight: FontWeight.w600,
+      height: 1.4,
+      fontSize: 15,
+    );
+    final out = <InlineSpan>[];
+    var start = 0;
+    for (final m in matches) {
+      if (m.start > start) {
+        out.add(TextSpan(text: text.substring(start, m.start), style: base));
+      }
+      final title = (m.group(1) ?? '').trim();
+      if (title.isEmpty) {
+        out.add(TextSpan(text: m.group(0), style: base));
+      } else {
+        out.add(
+          TextSpan(
+            children: [
+              const WidgetSpan(
+                alignment: PlaceholderAlignment.middle,
+                child: Padding(
+                  padding: EdgeInsets.only(right: 2),
+                  child: Icon(
+                    Icons.article_outlined,
+                    size: 15,
+                    color: _brand,
+                  ),
+                ),
+              ),
+              TextSpan(
+                text: '「',
+                style: titleStyle.copyWith(fontWeight: FontWeight.w500),
+              ),
+              TextSpan(text: title, style: titleStyle),
+              TextSpan(
+                text: '」',
+                style: titleStyle.copyWith(fontWeight: FontWeight.w500),
+              ),
+            ],
+          ),
+        );
+      }
+      start = m.end;
+    }
+    if (start < text.length) {
+      out.add(TextSpan(text: text.substring(start), style: base));
+    }
+    return out;
   }
 }
 
@@ -1328,6 +1424,165 @@ class _AssistantBlock extends StatelessWidget {
   }
 }
 
+/// 按上一轮助手回复用规则推断预设（不走模型）。
+/// 挂确认条的最后一步不展示预设，避免与「确认整理」抢决策。
+class _AgentPresetRules {
+  static List<String> starters({required bool focused}) {
+    if (focused) {
+      return const [
+        '这篇的核心观点是什么？',
+        '还有哪些相关收藏？',
+        '调整这篇的标签',
+        '整理归类',
+      ];
+    }
+    return const [
+      '最近收藏了哪些内容？',
+      '现在有哪些标签？',
+      '整理归类',
+      '查找关于…',
+    ];
+  }
+
+  static List<String> fromAssistant(
+    AgentMessage message, {
+    required bool focused,
+  }) {
+    // 确认写入步骤：只用消息上的确认/取消，不再挂预设
+    if (message.pendingAction?.isPending == true) {
+      return const [];
+    }
+
+    final content = message.content;
+    if (_looksLikeOrganizeAsk(content)) {
+      return const [
+        '按行业归类',
+        '按主题归类',
+        '由你来分',
+        '我有自己的分法…',
+      ];
+    }
+    if (_looksLikeTagInventory(content)) {
+      final title = _firstBookTitle(content);
+      return [
+        '整理归类',
+        '继续列出其余标签',
+        if (title != null) '调整《$title》的标签',
+        '查找关于…',
+      ];
+    }
+    if (message.citations.isNotEmpty) {
+      final title = message.citations.first.title.trim();
+      final short = title.length > 12 ? '${title.substring(0, 12)}…' : title;
+      return [
+        if (short.isNotEmpty) '深入解读《$short》',
+        '对照这几篇',
+        '调整标签',
+        '整理归类',
+      ];
+    }
+    if (focused) {
+      return const [
+        '再展开说明',
+        '对照其它收藏',
+        '调整这篇的标签',
+        '整理归类',
+      ];
+    }
+    return const [
+      '还有其它吗？',
+      '整理归类',
+      '现在有哪些标签？',
+      '查找关于…',
+    ];
+  }
+
+  static bool _looksLikeOrganizeAsk(String content) {
+    return content.contains('可以先听听你的分类意见') ||
+        content.contains('你更希望怎么分');
+  }
+
+  static bool _looksLikeTagInventory(String content) {
+    if (!content.contains('标签')) return false;
+    return content.contains('《') ||
+        content.contains('没有文章') ||
+        content.contains('有标签的文章');
+  }
+
+  static String? _firstBookTitle(String content) {
+    final m = RegExp(r'《([^》]+)》').firstMatch(content);
+    final t = m?.group(1)?.trim();
+    if (t == null || t.isEmpty) return null;
+    return t.length > 16 ? '${t.substring(0, 16)}…' : t;
+  }
+}
+
+/// 输入框上方口语预设：点选先填入输入框，由用户再发。
+class _AgentPresets extends StatelessWidget {
+  const _AgentPresets({
+    required this.items,
+    required this.enabled,
+    required this.onDraft,
+  });
+
+  final List<String> items;
+  final bool enabled;
+  final ValueChanged<String> onDraft;
+
+  static const _brand = Color(0xFF2F6FED);
+
+  @override
+  Widget build(BuildContext context) {
+    if (items.isEmpty) return const SizedBox.shrink();
+    return ColoredBox(
+      color: Colors.white,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(0, 0, 0, 8),
+        child: SizedBox(
+          height: 32,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 14),
+            itemCount: items.length,
+            separatorBuilder: (_, __) => const SizedBox(width: 8),
+            itemBuilder: (context, index) {
+              final text = items[index];
+              return Material(
+                color: _brand.withValues(alpha: 0.06),
+                borderRadius: BorderRadius.circular(999),
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(999),
+                  onTap: enabled ? () => onDraft(text) : null,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(999),
+                      border: Border.all(
+                        color: _brand.withValues(alpha: 0.14),
+                      ),
+                    ),
+                    child: Text(
+                      text,
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w500,
+                        letterSpacing: 0.2,
+                        color: enabled ? _brand : _brand.withValues(alpha: 0.4),
+                        height: 1.2,
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _Composer extends StatelessWidget {
   const _Composer({
     required this.controller,
@@ -1376,34 +1631,38 @@ class _Composer extends StatelessWidget {
               ),
             ],
           ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            mainAxisSize: MainAxisSize.min,
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
             children: [
-              if (picked.isNotEmpty) ...[
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(2, 4, 4, 6),
-                  child: Wrap(
-                    spacing: 6,
-                    runSpacing: 6,
-                    children: [
-                      for (final c in picked)
-                        _ComposerCitationChip(
-                          title: c.title,
-                          enabled: enabled,
-                          onRemove: onRemovePicked == null
-                              ? null
-                              : () => onRemovePicked!(c),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (picked.isNotEmpty) ...[
+                      SizedBox(
+                        height: 28,
+                        child: ListView.separated(
+                          scrollDirection: Axis.horizontal,
+                          padding: const EdgeInsets.fromLTRB(2, 2, 4, 0),
+                          itemCount: picked.length,
+                          separatorBuilder: (_, __) =>
+                              const SizedBox(width: 6),
+                          itemBuilder: (context, index) {
+                            final c = picked[index];
+                            return _ComposerCitationChip(
+                              title: c.title,
+                              enabled: enabled,
+                              onRemove: onRemovePicked == null
+                                  ? null
+                                  : () => onRemovePicked!(c),
+                            );
+                          },
                         ),
+                      ),
+                      const SizedBox(height: 4),
                     ],
-                  ),
-                ),
-              ],
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Expanded(
-                    child: TextField(
+                    TextField(
                       controller: controller,
                       focusNode: focusNode,
                       enabled: enabled,
@@ -1431,29 +1690,29 @@ class _Composer extends StatelessWidget {
                             const EdgeInsets.symmetric(vertical: 10),
                       ),
                     ),
-                  ),
-                  const SizedBox(width: 6),
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 2),
-                    child: Material(
-                      color: enabled ? _brand : const Color(0xFFD7E2F5),
-                      shape: const CircleBorder(),
-                      child: InkWell(
-                        customBorder: const CircleBorder(),
-                        onTap: enabled ? onSend : null,
-                        child: const SizedBox(
-                          width: 36,
-                          height: 36,
-                          child: Icon(
-                            Icons.arrow_upward_rounded,
-                            size: 20,
-                            color: Colors.white,
-                          ),
-                        ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 6),
+              Padding(
+                padding: const EdgeInsets.only(bottom: 2),
+                child: Material(
+                  color: enabled ? _brand : const Color(0xFFD7E2F5),
+                  shape: const CircleBorder(),
+                  child: InkWell(
+                    customBorder: const CircleBorder(),
+                    onTap: enabled ? onSend : null,
+                    child: const SizedBox(
+                      width: 36,
+                      height: 36,
+                      child: Icon(
+                        Icons.arrow_upward_rounded,
+                        size: 20,
+                        color: Colors.white,
                       ),
                     ),
                   ),
-                ],
+                ),
               ),
             ],
           ),
@@ -1482,33 +1741,39 @@ class _ComposerCitationChip extends StatelessWidget {
     final label = title.trim().isEmpty ? '未命名' : title.trim();
     return Material(
       color: _brandSoft,
-      borderRadius: BorderRadius.circular(999),
+      borderRadius: BorderRadius.circular(8),
       child: InkWell(
         onTap: enabled ? onRemove : null,
-        borderRadius: BorderRadius.circular(999),
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(10, 5, 6, 5),
+        borderRadius: BorderRadius.circular(8),
+        child: Container(
+          constraints: const BoxConstraints(maxWidth: 148),
+          padding: const EdgeInsets.fromLTRB(8, 4, 4, 4),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: _brand.withValues(alpha: 0.16)),
+          ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 168),
+              const Icon(Icons.article_outlined, size: 14, color: _brand),
+              const SizedBox(width: 4),
+              Flexible(
                 child: Text(
                   label,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w500,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
                     color: _brand,
-                    height: 1.2,
+                    height: 1.15,
+                    letterSpacing: 0.1,
                   ),
                 ),
               ),
-              const SizedBox(width: 2),
               Icon(
                 Icons.close_rounded,
-                size: 16,
+                size: 14,
                 color: enabled ? _brand : const Color(0xFFB0B7C3),
               ),
             ],
