@@ -80,13 +80,14 @@ class AgentPendingAction {
   const AgentPendingAction({
     required this.type,
     required this.status,
-    required this.itemId,
+    this.itemId = 0,
     this.title = '',
     this.before = const [],
     this.after = const [],
     this.add = const [],
     this.remove = const [],
     this.willCreate = const [],
+    this.willCreateModules = const [],
   });
 
   final String type;
@@ -98,9 +99,15 @@ class AgentPendingAction {
   final List<String> add;
   final List<String> remove;
   final List<String> willCreate;
+  final List<String> willCreateModules;
 
   bool get isPending =>
-      type == 'item_tag_edit' && status == 'pending';
+      status == 'pending' &&
+      (type == 'item_tag_edit' || type == 'organize_tags');
+
+  bool get isOrganize => type == 'organize_tags';
+
+  String get confirmLabel => isOrganize ? '确认整理' : '确认调整';
 
   factory AgentPendingAction.fromJson(Map<String, dynamic> json) {
     List<String> names(dynamic raw) {
@@ -121,6 +128,7 @@ class AgentPendingAction {
       add: names(json['add']),
       remove: names(json['remove']),
       willCreate: names(json['willCreate']),
+      willCreateModules: names(json['willCreateModules']),
     );
   }
 
@@ -134,6 +142,7 @@ class AgentPendingAction {
         'add': add,
         'remove': remove,
         'willCreate': willCreate,
+        'willCreateModules': willCreateModules,
       };
 
   AgentPendingAction copyWith({String? status}) {
@@ -147,6 +156,7 @@ class AgentPendingAction {
       add: add,
       remove: remove,
       willCreate: willCreate,
+      willCreateModules: willCreateModules,
     );
   }
 }

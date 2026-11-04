@@ -103,6 +103,17 @@ const tool = {
       coverImageUrl: item.coverImageUrl || item.cover_image_url || null,
     };
 
+    let snippet;
+    if (noop) {
+      snippet = before.length
+        ? `当前标签：${before.join('、')}`
+        : '当前没有用户标签';
+    } else if (!after.length) {
+      snippet = '将清空该篇用户标签';
+    } else {
+      snippet = `标签将调整为：${after.join('、')}`;
+    }
+
     return {
       ok: true,
       data,
@@ -110,9 +121,7 @@ const tool = {
         {
           itemId,
           title,
-          snippet: after.length
-            ? `标签将调整为：${after.join('、')}`
-            : '将清空该篇用户标签',
+          snippet,
           tagNames: before,
           coverImageUrl: data.coverImageUrl,
         },

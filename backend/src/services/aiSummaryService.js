@@ -14,8 +14,9 @@ const {
 } = require('./aiRegeneratePrompt');
 
 function summaryModelId() {
+  // 解读入口已收束到助手；遗留 summary API 与助手共用 AGENT 模型
   return (
-    require('../config').aliyun.aiModelSummary ||
+    require('../config').aliyun.aiModelAgent ||
     require('../config').aliyun.aiModel ||
     'qwen3.8-flash'
   );

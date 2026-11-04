@@ -1,13 +1,17 @@
 const searchLibrary = require('./tools/searchLibrary');
 const getItemExcerpt = require('./tools/getItemExcerpt');
 const listLibrary = require('./tools/listLibrary');
+const listTags = require('./tools/listTags');
 const proposeItemTagEdit = require('./tools/proposeItemTagEdit');
+const proposeOrganize = require('./tools/proposeOrganize');
 
 const ALL_TOOLS = [
   searchLibrary,
   getItemExcerpt,
   listLibrary,
+  listTags,
   proposeItemTagEdit,
+  proposeOrganize,
 ];
 
 /**

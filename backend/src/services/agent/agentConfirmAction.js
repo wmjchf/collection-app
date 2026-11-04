@@ -1,9 +1,10 @@
 const itemService = require('../itemService');
 const tagService = require('../tagService');
+const aiOrganizeService = require('../aiOrganizeService');
 const conversationService = require('./agentConversationService');
 
 /**
- * 确认或取消助手消息上的 pendingAction（当前仅 item_tag_edit）。
+ * 确认或取消助手消息上的 pendingAction。
  * @param {{ userId: number, conversationId: number, messageId: number, approve: boolean }}
  */
 async function confirmAction({ userId, conversationId, messageId, approve }) {
@@ -25,8 +26,11 @@ async function confirmAction({ userId, conversationId, messageId, approve }) {
   }
 
   const pending = message.pendingAction;
-  if (!pending || pending.type !== 'item_tag_edit') {
-    throw Object.assign(new Error('没有待确认的标签调整'), { status: 400 });
+  if (
+    !pending ||
+    (pending.type !== 'item_tag_edit' && pending.type !== 'organize_tags')
+  ) {
+    throw Object.assign(new Error('没有待确认的操作'), { status: 400 });
   }
 
   // 幂等：已确认 / 已取消
@@ -46,9 +50,14 @@ async function confirmAction({ userId, conversationId, messageId, approve }) {
     const cancelMsg = await conversationService.insertMessage({
       conversationId,
       role: 'assistant',
-      content: '已取消这次标签调整。',
+      content:
+        pending.type === 'organize_tags'
+          ? '已取消这次归类整理。'
+          : '已取消这次标签调整。',
       citations: null,
-      toolTrace: { steps: [{ tool: 'confirm_action', ok: true, args: { approve: false } }] },
+      toolTrace: {
+        steps: [{ tool: 'confirm_action', ok: true, args: { approve: false } }],
+      },
     });
     return {
       pendingAction: next,
@@ -57,6 +66,87 @@ async function confirmAction({ userId, conversationId, messageId, approve }) {
     };
   }
 
+  if (pending.type === 'organize_tags') {
+    return confirmOrganize({
+      userId,
+      conversationId,
+      messageId,
+      pending,
+    });
+  }
+
+  return confirmTagEdit({
+    userId,
+    conversationId,
+    messageId,
+    message,
+    pending,
+  });
+}
+
+async function confirmOrganize({
+  userId,
+  conversationId,
+  messageId,
+  pending,
+}) {
+  const result = await aiOrganizeService.applyOrganize(userId, {
+    modules: pending.modules || [],
+    ungroupedTagIds: pending.ungroupedTagIds || [],
+    mode: pending.mode === 'full' ? 'full' : 'ungrouped',
+    // 与助手预览一致：可写入全部用户标签（用户已点确认）
+    scope: pending.scope === 'ai_movable' ? 'ai_movable' : 'all_user_tags',
+  });
+
+  const next = { ...pending, status: 'approved' };
+  await conversationService.patchMessageToolPayload(messageId, {
+    pendingAction: next,
+  });
+
+  const created = Array.isArray(result.createdModules)
+    ? result.createdModules
+    : [];
+  const content =
+    result.message ||
+    (created.length
+      ? `已新建 ${created.length} 个归类并完成整理。`
+      : '已完成归类整理。');
+
+  const resultMsg = await conversationService.insertMessage({
+    conversationId,
+    role: 'assistant',
+    content,
+    citations: null,
+    toolTrace: {
+      steps: [
+        {
+          tool: 'confirm_action',
+          ok: true,
+          args: {
+            approve: true,
+            type: 'organize_tags',
+            createdCount: created.length,
+          },
+        },
+      ],
+    },
+  });
+
+  return {
+    pendingAction: next,
+    assistantMessage: resultMsg,
+    createdModules: created,
+    alreadySettled: false,
+  };
+}
+
+async function confirmTagEdit({
+  userId,
+  conversationId,
+  messageId,
+  message,
+  pending,
+}) {
   const itemId = Number(pending.itemId);
   if (!Number.isFinite(itemId) || itemId <= 0) {
     throw Object.assign(new Error('无效的条目'), { status: 400 });
@@ -80,7 +170,6 @@ async function confirmAction({ userId, conversationId, messageId, approve }) {
     pendingAction: next,
   });
 
-  // 顺带刷新原消息出处卡上的 tagNames
   if (Array.isArray(message.citations) && message.citations.length) {
     const patched = message.citations.map((c) => {
       if (Number(c?.itemId) !== itemId) return c;
@@ -109,7 +198,9 @@ async function confirmAction({ userId, conversationId, messageId, approve }) {
       },
     ],
     toolTrace: {
-      steps: [{ tool: 'confirm_action', ok: true, args: { approve: true, itemId } }],
+      steps: [
+        { tool: 'confirm_action', ok: true, args: { approve: true, itemId } },
+      ],
     },
   });
 

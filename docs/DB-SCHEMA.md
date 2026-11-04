@@ -243,8 +243,7 @@ API：`GET …/transcript-targets`、`POST …/transcript`（body.segmentKey）�
 | `POST /api/tag-modules` | body `{ name }` 新建模块（仅标题） |
 | `PATCH /api/tag-modules/:id` | body `{ name }` 重命名 |
 | `DELETE /api/tag-modules/:id` | 删除模块；组内标签回未归类 |
-| `POST /api/tag-modules/ai-organize` | AI 填入归类建议（同步，不落库；只填已有架子、禁止新建归类）；太子+；共享 AI token；body 可选 `{ hint, mode }` |
-| `POST /api/tag-modules/ai-organize/apply` | 应用方案：新建模块 + `placeTag`；body `{ modules:[{ name, existingModuleId?, tagIds[] }], ungroupedTagIds[] }` |
+| （已下线）`POST /api/tag-modules/ai-organize*` | 归类建议/应用改走 AI 助手 `propose_organize` + `/api/agent/actions/confirm` |
 
 ## 系统筛选 API（约定）
 

@@ -1,7 +1,6 @@
 const express = require('express');
 const { requireAuth } = require('../middleware/auth');
 const tagModuleService = require('../services/tagModuleService');
-const aiOrganizeService = require('../services/aiOrganizeService');
 
 const router = express.Router();
 
@@ -11,32 +10,6 @@ router.use(requireAuth);
 router.get('/', async (req, res, next) => {
   try {
     const result = await tagModuleService.listModules(req.auth.userId);
-    return res.json(result);
-  } catch (err) {
-    return next(err);
-  }
-});
-
-/** POST /api/tag-modules/ai-organize — AI 归类建议（同步，不落库）；body.mode=ungrouped|full */
-router.post('/ai-organize', async (req, res, next) => {
-  try {
-    const result = await aiOrganizeService.suggestOrganize(req.auth.userId, {
-      hint: req.body?.hint,
-      mode: req.body?.mode,
-    });
-    return res.json(result);
-  } catch (err) {
-    return next(err);
-  }
-});
-
-/** POST /api/tag-modules/ai-organize/apply — 应用归类方案；body.mode 与 suggest 一致 */
-router.post('/ai-organize/apply', async (req, res, next) => {
-  try {
-    const result = await aiOrganizeService.applyOrganize(
-      req.auth.userId,
-      req.body || {},
-    );
     return res.json(result);
   } catch (err) {
     return next(err);
