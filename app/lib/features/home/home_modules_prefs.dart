@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:super_collection/core/analytics/analytics.dart';
 
 /// 首页形态（互斥）：未读+漫游 ↔ 所有（整库）。
 enum HomeLayoutMode {
@@ -96,6 +97,7 @@ class HomeModulesPrefs extends ChangeNotifier {
     _mode = mode;
     _loaded = true;
     notifyListeners();
+    Analytics.instance.homeLayoutSet(mode.storageValue);
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString(_keyMode, mode.storageValue);
