@@ -91,23 +91,35 @@ function extractTagEditAskMeta(message) {
   return meta.itemId || meta.title ? meta : null;
 }
 
-/** 短句像单个标签名（模型漏填时兜底「直接丢一个名」） */
+/**
+ * 短句像单个标签名（模型漏填时兜底「直接丢一个名」）。
+ * 评价/指令句一律不算，避免「数码评测不太准确」整句被当成新标签。
+ */
 function looksLikeBareTagName(text) {
   const t = String(text || '').trim();
-  if (!t || t.length > 24) return false;
+  if (!t || t.length > 16) return false;
   if (/[。！？\n]/.test(t)) return false;
   if (/^(取消|不做了|算了|不用了|可以|确认|好的|行|嗯)[。.!！]?$/.test(t)) {
     return false;
   }
-  if (
-    /(加上|去掉|删掉|删除|换成|改成|调整|归类|对照|对比|搜索|查找|收藏|合适|不对|不好|不行)/.test(
-      t,
-    )
-  ) {
+  // 含否定/程度/评价 → 是反馈，不是标签名
+  if (/不|太|很|有点|比较|准确|合适|贴切|换掉|去掉|删|改成|换成/.test(t)) {
     return false;
   }
-  return /^[\u4e00-\u9fffA-Za-z0-9][\u4e00-\u9fffA-Za-z0-9 ·_\-]{0,23}$/.test(
+  if (/(加上|调整|归类|对照|对比|搜索|查找|收藏)/.test(t)) {
+    return false;
+  }
+  return /^[\u4e00-\u9fffA-Za-z0-9][\u4e00-\u9fffA-Za-z0-9 ·_\-]{0,15}$/.test(
     t,
+  );
+}
+
+/** 不像合法标签名（整句评价、指令残留） */
+function looksLikeInvalidTagName(name) {
+  const n = String(name || '').trim();
+  if (!n || n.length > 24) return true;
+  return /不(太)?(合适|准确|对|好|行|喜欢|贴切)|有点|比较|换掉|去掉|删掉|加上|改成|换成/.test(
+    n,
   );
 }
 
@@ -228,5 +240,6 @@ module.exports = {
   looksLikeOrganizePreferenceAskContent,
   looksLikeTagEditPreferenceAskContent,
   looksLikeBareTagName,
+  looksLikeInvalidTagName,
   toolPayload,
 };

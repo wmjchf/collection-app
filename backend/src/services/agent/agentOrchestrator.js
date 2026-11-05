@@ -13,6 +13,7 @@ const {
   looksLikeAwaitingAnswer,
   shouldContinueAwaiting,
   looksLikeBareTagName,
+  looksLikeInvalidTagName,
   toolPayload,
 } = require('./agentAwaiting');
 const { executeTool } = require('./agentRegistry');
@@ -1437,11 +1438,11 @@ async function finishTagEditTurn({
 
   const args = {
     itemId,
-    add: plan.tagEdit?.add || [],
-    remove: plan.tagEdit?.remove || [],
-    replace: plan.tagEdit?.replace || [],
+    add: [...(plan.tagEdit?.add || [])],
+    remove: [...(plan.tagEdit?.remove || [])],
+    replace: [...(plan.tagEdit?.replace || [])],
   };
-  const hasOps =
+  let hasOps =
     (args.add && args.add.length > 0) ||
     (args.remove && args.remove.length > 0) ||
     (args.replace && args.replace.length > 0);
@@ -1460,6 +1461,31 @@ async function finishTagEditTurn({
       emit,
       stream,
     });
+  }
+
+  // 「数码评测不太准确」且未给出新名 → 按正文推荐替换标签，而不是只删
+  let suggestedReplace = null;
+  const wantsReplaceSuggest =
+    looksLikeTagQualityFeedback(text) &&
+    args.remove.length > 0 &&
+    !args.add.length &&
+    !args.replace.length;
+  if (wantsReplaceSuggest) {
+    const suggestResult = await suggestTagReplacement({
+      ctx,
+      itemId,
+      badTags: args.remove,
+      keepTags: currentTagsFromHistory(history).filter(
+        (n) => !args.remove.includes(n),
+      ),
+      userText: text,
+      toolTrace,
+    });
+    usageTotal = mergeUsage(usageTotal, suggestResult.usage);
+    if (suggestResult.tag) {
+      suggestedReplace = suggestResult.tag;
+      args.add = [suggestResult.tag];
+    }
   }
 
   const obs = await executeTool('propose_item_tag_edit', ctx, args);
@@ -1501,7 +1527,23 @@ async function finishTagEditTurn({
         ? `按你说的调整后标签不变，仍是：${data.after.join('、')}。若要改，可以说「加上/去掉某某」。`
         : `按你说的调整后仍没有用户标签。若要改，可以说「加上某某」。`;
   } else {
-    const lines = [`准备调整「${data.title}」的标签：`];
+    const lines = [];
+    if (suggestedReplace && data.remove?.length) {
+      lines.push(
+        `「${data.remove.join('、')}」可以更准一点。按正文内容，建议换成「${suggestedReplace}」：`,
+      );
+    } else if (
+      wantsReplaceSuggest &&
+      data.remove?.length &&
+      !data.add?.length
+    ) {
+      lines.push(
+        `同意「${data.remove.join('、')}」不太贴。想换成哪个？也可以直接说新标签名。`,
+      );
+      lines.push('也可以先去掉它：');
+    } else {
+      lines.push(`准备调整「${data.title}」的标签：`);
+    }
     if (data.remove?.length) {
       lines.push(`- 去掉：${data.remove.join('、')}`);
     }
@@ -2228,13 +2270,22 @@ function normalizePlan(
         tagEdit.replace = heurAwait.replace;
       }
     }
-    // 模型漏填且用户只丢了一个标签名 → 视为加上
-    const hasOpsAwait =
+    // 丢掉「数码评测不太准确」这类被误塞进 add 的整句
+    tagEdit = sanitizeTagEditNames(tagEdit);
+    let hasOpsAwait =
       (tagEdit.add && tagEdit.add.length > 0) ||
       (tagEdit.remove && tagEdit.remove.length > 0) ||
       (tagEdit.replace && tagEdit.replace.length > 0);
+    // 模型漏填且用户只丢了一个干净标签名 → 视为加上
     if (!hasOpsAwait && looksLikeBareTagName(userContent)) {
       tagEdit.add = [String(userContent).trim()];
+      hasOpsAwait = true;
+    }
+    // 仍无操作：用上文「当前标签」+ 用户话里点到的名字推断去掉（语义仍靠模型；这里只防整句新建）
+    if (!hasOpsAwait) {
+      const known = currentTagsFromHistory(history);
+      const inferred = inferTagRemovesFromFeedback(userContent, known);
+      if (inferred.length) tagEdit.remove = inferred;
     }
   }
 
@@ -2770,7 +2821,9 @@ function normalizeTagEdit(raw) {
     Number.isFinite(itemIdRaw) && itemIdRaw > 0 ? itemIdRaw : null;
   const asNames = (v) =>
     Array.isArray(v)
-      ? v.map((s) => String(s || '').trim()).filter(Boolean)
+      ? v
+          .map((s) => String(s || '').trim())
+          .filter((s) => s && !looksLikeInvalidTagName(s))
       : [];
   return {
     itemId,
@@ -2822,6 +2875,171 @@ function heuristicTagEdit(text) {
     return { add: names, remove: [], replace: [] };
   }
   return { add: names, remove: [], replace: [] };
+}
+
+function sanitizeTagEditNames(tagEdit) {
+  if (!tagEdit) return tagEdit;
+  const clean = (arr) =>
+    (Array.isArray(arr) ? arr : [])
+      .map((s) => String(s || '').trim())
+      .filter((s) => s && !looksLikeInvalidTagName(s));
+  return {
+    ...tagEdit,
+    add: clean(tagEdit.add),
+    remove: clean(tagEdit.remove),
+    replace: clean(tagEdit.replace),
+  };
+}
+
+/** 从改标询问回合解析「当前标签：A、B」 */
+function currentTagsFromHistory(history) {
+  const list = Array.isArray(history) ? history : [];
+  for (let i = list.length - 1; i >= 0; i -= 1) {
+    const m = list[i];
+    if (m?.role !== 'assistant') continue;
+    const chunks = [String(m.content || '')];
+    if (Array.isArray(m.citations)) {
+      for (const c of m.citations) {
+        chunks.push(String(c?.snippet || ''));
+        if (Array.isArray(c?.tagNames)) {
+          return c.tagNames.map((s) => String(s || '').trim()).filter(Boolean);
+        }
+      }
+    }
+    for (const chunk of chunks) {
+      const hit = chunk.match(/当前标签[：:]\s*([^\n]+)/);
+      if (hit) {
+        return String(hit[1])
+          .split(/[、,，]/)
+          .map((s) => s.replace(/[。.!！]/g, '').trim())
+          .filter((s) => s && s.length <= 32 && !/没有用户标签/.test(s));
+      }
+    }
+    break;
+  }
+  return [];
+}
+
+/**
+ * 「数码评测不太准确」且已知当前有「数码评测」→ remove 该名。
+ * 仅当前缀命中已知标签且后文含「不」时启用，避免整句新建。
+ */
+function inferTagRemovesFromFeedback(userContent, knownTags) {
+  const t = String(userContent || '').trim();
+  if (!t || !/不/.test(t) || !Array.isArray(knownTags) || !knownTags.length) {
+    return [];
+  }
+  const hits = [];
+  for (const raw of knownTags) {
+    const tag = String(raw || '').trim();
+    if (!tag || tag.length < 2) continue;
+    if (t === tag) continue;
+    if (t.startsWith(tag) && /不/.test(t.slice(tag.length))) {
+      hits.push(tag);
+    }
+  }
+  // 最长优先，避免短前缀误伤
+  hits.sort((a, b) => b.length - a.length);
+  return hits.length ? [hits[0]] : [];
+}
+
+/** 用户在吐槽标签不准，且未写出「换成某某」 */
+function looksLikeTagQualityFeedback(text) {
+  const t = String(text || '').trim();
+  if (!t || t.length > 48) return false;
+  if (/(改成|换成|改用|用)\s*[「"']?[^」"'\s]{1,24}/.test(t)) return false;
+  if (/(加上|加个|添加)\s*[「"']?[^」"'\s]{1,24}/.test(t)) return false;
+  return /不(太)?(合适|准确|对|好|行|喜欢|贴切|妥)|有点(偏|宽|窄|空|泛)|不太对|不对劲|别用/.test(
+    t,
+  );
+}
+
+/**
+ * 根据正文摘录，为被吐槽的标签推荐一个替换名。
+ */
+async function suggestTagReplacement({
+  ctx,
+  itemId,
+  badTags,
+  keepTags,
+  userText,
+  toolTrace,
+}) {
+  const bad = (badTags || []).map((s) => String(s || '').trim()).filter(Boolean);
+  if (!bad.length) return { tag: null, usage: null };
+
+  const excerptObs = await executeTool('get_item_excerpt', ctx, {
+    itemId,
+    maxChars: 3500,
+  });
+  toolTrace.push({
+    tool: 'get_item_excerpt',
+    ok: Boolean(excerptObs.ok),
+    args: { itemId, via: 'tag_replace_suggest' },
+  });
+  if (!excerptObs.ok || !excerptObs.data) {
+    return { tag: null, usage: null };
+  }
+
+  const title = String(excerptObs.data.title || '').trim();
+  const excerpt = String(excerptObs.data.excerpt || '').trim().slice(0, 2800);
+  const keep = (keepTags || [])
+    .map((s) => String(s || '').trim())
+    .filter(Boolean);
+  const before = Array.isArray(excerptObs.data.tagNames)
+    ? excerptObs.data.tagNames.map((s) => String(s || '').trim()).filter(Boolean)
+    : [...keep, ...bad];
+
+  try {
+    const result = await aliyunDashScope.chatJson({
+      messages: [
+        {
+          role: 'system',
+          content: `你在帮用户改收藏标签。用户觉得现有标签不准，需要你根据文章推荐一个更贴切的中文标签来替换。
+只输出 JSON：{"tag":"标签名"}
+要求：
+- 2～10 个字，像正常标签（主题/品类/对象），不要句子
+- 不要与「保留标签」重复，不要复用「要替换的标签」
+- 禁止把用户原话或「不准确/不合适」写进标签名
+- 若实在推不出，输出 {"tag":""}`,
+        },
+        {
+          role: 'user',
+          content: [
+            `标题：${title || '（无）'}`,
+            `现有标签：${before.length ? before.join('、') : '（无）'}`,
+            `要替换：${bad.join('、')}`,
+            `保留：${keep.length ? keep.join('、') : '（无）'}`,
+            `用户原话：${String(userText || '').trim()}`,
+            `正文摘录：${excerpt || '（无）'}`,
+          ].join('\n'),
+        },
+      ],
+      model: agentModel(),
+      temperature: 0.3,
+    });
+    const raw = String(result.json?.tag || result.json?.name || '').trim();
+    const tag =
+      raw &&
+      !looksLikeInvalidTagName(raw) &&
+      !bad.includes(raw) &&
+      !keep.includes(raw)
+        ? raw.slice(0, 24)
+        : '';
+    toolTrace.push({
+      tool: 'suggest_tag_replacement',
+      ok: Boolean(tag),
+      args: { itemId, bad, tag: tag || null },
+    });
+    return { tag: tag || null, usage: result.usage || null };
+  } catch (err) {
+    toolTrace.push({
+      tool: 'suggest_tag_replacement',
+      ok: false,
+      args: { itemId, bad, error: err.message },
+    });
+    return { tag: null, usage: null };
+  }
 }
 
 /** App「选用」会写入「标题」；有明确书名号/引号才按标题锁定，避免普通检索误伤 */
