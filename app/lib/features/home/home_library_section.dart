@@ -5,6 +5,7 @@ import 'package:super_collection/core/network/api_client.dart';
 import 'package:super_collection/core/ui/paged_list.dart';
 import 'package:super_collection/features/collection/system_filters_repository.dart';
 import 'package:super_collection/features/home/home_format.dart';
+import 'package:super_collection/features/home/home_loading_skeleton.dart';
 import 'package:super_collection/features/home/home_modules_prefs.dart';
 import 'package:super_collection/features/items/item_models.dart';
 import 'package:super_collection/features/items/item_reading_page.dart';
@@ -198,7 +199,7 @@ class _HomeLibrarySectionState extends State<HomeLibrarySection> {
   @override
   Widget build(BuildContext context) {
     if (_loading && _items.isEmpty) {
-      return const Center(child: CircularProgressIndicator());
+      return const HomeLibraryLoadingSkeleton();
     }
     if (_error != null && _items.isEmpty) {
       return ListView(

@@ -17,6 +17,7 @@ import 'package:super_collection/features/collection/system_filters_repository.d
 import 'package:super_collection/features/home/add_link_sheet.dart';
 import 'package:super_collection/features/collection/system_filter_list_page.dart';
 import 'package:super_collection/features/home/home_library_section.dart';
+import 'package:super_collection/features/home/home_loading_skeleton.dart';
 import 'package:super_collection/features/home/home_modules_prefs.dart';
 import 'package:super_collection/features/home/home_repository.dart';
 import 'package:super_collection/features/home/home_unread_section.dart';
@@ -795,34 +796,41 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       ),
       body: Builder(
         builder: (context) {
-          final content = _loading && _data == null
-              ? ListView(
-                  physics: const AlwaysScrollableScrollPhysics(),
-                  children: const [
-                    SizedBox(height: 120),
-                    Center(child: CircularProgressIndicator()),
-                  ],
-                )
-              : _error != null && _data == null
-                  ? ListView(
-                      physics: const AlwaysScrollableScrollPhysics(),
-                      children: [
-                        const SizedBox(height: 80),
-                        Center(
-                          child: Text(
-                            _error!,
-                            style: const TextStyle(color: Color(0xFF737A85)),
-                          ),
-                        ),
-                        TextButton(onPressed: _load, child: const Text('重试')),
-                      ],
-                    )
-                  : _buildPhoneHomeBody(
-                      unread: _data?.unread.items ?? const <CollectionItem>[],
-                      roam: roam,
-                    );
+          final library = HomeModulesPrefs.instance.showLibrary;
+          // 整库不依赖 /home 摘要，直接进列表（自带骨架）；未读+漫游等摘要时用骨架
+          final Widget content;
+          if (library) {
+            content = _buildPhoneHomeBody(
+              unread: const <CollectionItem>[],
+              roam: const <RoamSnippet>[],
+            );
+          } else if (_loading && _data == null) {
+            content = const Padding(
+              padding: EdgeInsets.only(top: 12),
+              child: HomeUnreadRoamLoadingSkeleton(),
+            );
+          } else if (_error != null && _data == null) {
+            content = ListView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              children: [
+                const SizedBox(height: 80),
+                Center(
+                  child: Text(
+                    _error!,
+                    style: const TextStyle(color: Color(0xFF737A85)),
+                  ),
+                ),
+                TextButton(onPressed: _load, child: const Text('重试')),
+              ],
+            );
+          } else {
+            content = _buildPhoneHomeBody(
+              unread: _data?.unread.items ?? const <CollectionItem>[],
+              roam: roam,
+            );
+          }
           // 整库模式由 HomeLibrarySection 自带下拉刷新，避免叠两个指示器
-          if (HomeModulesPrefs.instance.showLibrary) return content;
+          if (library) return content;
           return RefreshIndicator(onRefresh: _load, child: content);
         },
       ),
