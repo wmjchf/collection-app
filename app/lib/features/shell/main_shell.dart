@@ -13,6 +13,7 @@ import 'package:super_collection/features/agent/agent_host.dart';
 import 'package:super_collection/features/agent/agent_page.dart';
 import 'package:super_collection/features/agent/agent_panel_slot.dart';
 import 'package:super_collection/features/collection/collection_page.dart';
+import 'package:super_collection/features/home/home_modules_prefs.dart';
 import 'package:super_collection/features/home/home_page.dart';
 import 'package:super_collection/features/items/item_models.dart';
 import 'package:super_collection/features/search/search_page.dart';
@@ -151,11 +152,20 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
     );
   }
 
+  Future<void> _trackAppOpen({required bool coldStart}) async {
+    await HomeModulesPrefs.instance.ensureLoaded();
+    if (!mounted && !coldStart) return;
+    Analytics.instance.appOpen(
+      coldStart: coldStart,
+      homeLayout: HomeModulesPrefs.instance.mode.storageValue,
+    );
+  }
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    Analytics.instance.appOpen(coldStart: true);
+    unawaited(_trackAppOpen(coldStart: true));
     _startTabDwell(_index);
     unawaited(UsageRefresh.ensure());
     void bumpLists() {
@@ -198,7 +208,7 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
-      Analytics.instance.appOpen(coldStart: false);
+      unawaited(_trackAppOpen(coldStart: false));
       if (_drawerDwell == null && !_agentOpen) {
         _tabDwell?.resume();
       }

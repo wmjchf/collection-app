@@ -201,6 +201,28 @@
         <div id="parse"></div>
       </div>
 
+      <div class="card section" style="margin-top:12px">
+        <h2>首页模块（未读与漫游 / 所有）</h2>
+        <p class="muted" style="margin:0 0 10px;font-size:13px">
+          活跃形态看 <code>app_open.home_layout</code>；切换看 <code>home_layout_set</code>；打开阅读按首页入口 <code>item_open.entry</code>。
+        </p>
+        <div id="homeModulesKpis" class="grid" style="margin-bottom:12px"></div>
+        <div class="panels">
+          <div>
+            <h3 style="font-size:13px;margin:0 0 8px;font-weight:600;color:var(--muted)">活跃形态（打开次数 / 用户）</h3>
+            <div id="homeModulesLayout"></div>
+          </div>
+          <div>
+            <h3 style="font-size:13px;margin:0 0 8px;font-weight:600;color:var(--muted)">首页打开阅读</h3>
+            <div id="homeModulesOpens"></div>
+          </div>
+        </div>
+        <div style="margin-top:14px">
+          <h3 style="font-size:13px;margin:0 0 8px;font-weight:600;color:var(--muted)">形态切换</h3>
+          <div id="homeModulesSets"></div>
+        </div>
+      </div>
+
       <div class="card section screen-dwell" style="margin-top:12px">
         <h2>页面停留</h2>
         <div id="screenDwellPages"></div>
@@ -608,6 +630,49 @@
         $('parse').innerHTML =
           `<p>ready <b class="ok">${p.ready ?? 0}</b> · fail <b class="bad">${p.fail ?? 0}</b>` +
           (p.successRate != null ? ` · ${p.successRate}%` : '') + `</p>`;
+
+        const homeModules = data.homeModules || {};
+        const layoutLabel = (mode) => {
+          if (mode === 'library') return '所有';
+          if (mode === 'unread_roam') return '未读与漫游';
+          return mode || '—';
+        };
+        const entryLabel = (entry) => {
+          if (entry === 'home_library') return '所有（整库）';
+          if (entry === 'unread') return '未读';
+          return entry || '—';
+        };
+        const byLayout = homeModules.byLayout || [];
+        const opensByEntry = homeModules.opensByEntry || [];
+        const sets = homeModules.sets || [];
+        const usersLibrary = byLayout.find((x) => x.mode === 'library')?.users ?? 0;
+        const usersUnread = byLayout.find((x) => x.mode === 'unread_roam')?.users ?? 0;
+        const opensLibrary = opensByEntry.find((x) => x.entry === 'home_library')?.count ?? 0;
+        const opensUnread = opensByEntry.find((x) => x.entry === 'unread')?.count ?? 0;
+        $('homeModulesKpis').innerHTML = [
+          kpi('所有 · 活跃用户', usersLibrary, 'app_open 带 home_layout'),
+          kpi('未读与漫游 · 活跃用户', usersUnread, 'app_open 带 home_layout'),
+          kpi('所有 · 打开阅读', opensLibrary, 'entry=home_library'),
+          kpi('未读 · 打开阅读', opensUnread, 'entry=unread'),
+        ].join('');
+        $('homeModulesLayout').innerHTML = byLayout.length
+          ? bars(byLayout.map((x) => ({
+              label: `${layoutLabel(x.mode)} · ${x.users}人`,
+              count: x.opens,
+            })))
+          : '<p class="muted">暂无（需新版 App 上报 home_layout）</p>';
+        $('homeModulesOpens').innerHTML = opensByEntry.length
+          ? bars(opensByEntry.map((x) => ({
+              label: `${entryLabel(x.entry)} · ${x.users}人`,
+              count: x.count,
+            })))
+          : '<p class="muted">暂无首页入口打开</p>';
+        $('homeModulesSets').innerHTML = sets.length
+          ? bars(sets.map((x) => ({
+              label: `${layoutLabel(x.mode)} · ${x.users}人`,
+              count: x.count,
+            })))
+          : '<p class="muted">暂无切换事件</p>';
 
         const screenRows = (screens.byScreen || []).map((x) => ({
           label: x.avgSeconds != null ? `${x.screen} · ${x.avgSeconds}s` : x.screen,

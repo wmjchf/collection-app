@@ -97,12 +97,18 @@ class Analytics {
 
   // —— P0 便捷方法 ——
 
-  void appOpen({bool coldStart = false, bool fromShortcut = false}) {
+  void appOpen({
+    bool coldStart = false,
+    bool fromShortcut = false,
+    String? homeLayout,
+  }) {
     if (coldStart) {
       if (_coldStartSent) {
         track('app_open', {
           'cold_start': false,
           if (fromShortcut) 'from_shortcut': true,
+          if (homeLayout != null && homeLayout.isNotEmpty)
+            'home_layout': homeLayout,
         });
         return;
       }
@@ -111,7 +117,13 @@ class Analytics {
     track('app_open', {
       'cold_start': coldStart,
       if (fromShortcut) 'from_shortcut': true,
+      if (homeLayout != null && homeLayout.isNotEmpty) 'home_layout': homeLayout,
     });
+  }
+
+  /// 设置页切换首页形态：`library` | `unread_roam`
+  void homeLayoutSet(String mode) {
+    track('home_layout_set', {'mode': mode});
   }
 
   void appBackground() => track('app_background');

@@ -33,6 +33,7 @@ const ALLOWED_EVENTS = new Set([
   'ai_mindmap_request',
   'ai_mindmap_ready',
   'ai_mindmap_fail',
+  'home_layout_set',
 ]);
 
 /** 主链路事件（入库 → 阅读 → AI → 付费） */
@@ -305,6 +306,12 @@ function eventLabel(ev) {
   }
   if (ev.name === 'pro_page_view' && props?.from) {
     label = `Pro(${props.from})`;
+  }
+  if (ev.name === 'home_layout_set' && props?.mode) {
+    label = `首页形态·${props.mode === 'unread_roam' ? '未读与漫游' : props.mode === 'library' ? '所有' : props.mode}`;
+  }
+  if (ev.name === 'app_open' && props?.home_layout) {
+    label = `打开·${props.home_layout === 'unread_roam' ? '未读与漫游' : props.home_layout === 'library' ? '所有' : props.home_layout}`;
   }
   if (props?.segment_key) {
     label = `${label}·${props.segment_key}`;
@@ -961,6 +968,41 @@ async function getSummary(days = 7, userId = null) {
     baseParams,
   );
 
+  const [homeLayoutOpenRows] = await pool.execute(
+    `SELECT JSON_UNQUOTE(JSON_EXTRACT(props, '$.home_layout')) AS mode,
+            COUNT(*) AS opens,
+            COUNT(DISTINCT user_id) AS users
+     FROM analytics_events
+     WHERE name = 'app_open' AND created_at >= :start${userFilterSql}
+       AND JSON_EXTRACT(props, '$.home_layout') IS NOT NULL
+     GROUP BY mode
+     ORDER BY users DESC`,
+    baseParams,
+  );
+
+  const [homeLayoutSetRows] = await pool.execute(
+    `SELECT JSON_UNQUOTE(JSON_EXTRACT(props, '$.mode')) AS mode,
+            COUNT(*) AS cnt,
+            COUNT(DISTINCT user_id) AS users
+     FROM analytics_events
+     WHERE name = 'home_layout_set' AND created_at >= :start${userFilterSql}
+     GROUP BY mode
+     ORDER BY cnt DESC`,
+    baseParams,
+  );
+
+  const [homeOpenEntryRows] = await pool.execute(
+    `SELECT JSON_UNQUOTE(JSON_EXTRACT(props, '$.entry')) AS entry,
+            COUNT(*) AS cnt,
+            COUNT(DISTINCT user_id) AS users
+     FROM analytics_events
+     WHERE name = 'item_open' AND created_at >= :start${userFilterSql}
+       AND JSON_UNQUOTE(JSON_EXTRACT(props, '$.entry')) IN ('home_library', 'unread')
+     GROUP BY entry
+     ORDER BY cnt DESC`,
+    baseParams,
+  );
+
   const [recentRows] = await pool.execute(
     `SELECT id, user_id, name, props, app_version, platform_os, created_at
      FROM analytics_events
@@ -1048,6 +1090,26 @@ async function getSummary(days = 7, userId = null) {
       iapSuccess: byName.iap_purchase_success || 0,
       iapStart: byName.iap_purchase_start || 0,
       iapFail: byName.iap_purchase_fail || 0,
+    },
+    homeModules: {
+      /** app_open 携带的当前首页形态（活跃偏好代理） */
+      byLayout: homeLayoutOpenRows.map((r) => ({
+        mode: r.mode || '(null)',
+        opens: Number(r.opens),
+        users: Number(r.users),
+      })),
+      /** 设置页切换次数 */
+      sets: homeLayoutSetRows.map((r) => ({
+        mode: r.mode || '(null)',
+        count: Number(r.cnt),
+        users: Number(r.users),
+      })),
+      /** 首页入口打开阅读：home_library=所有 · unread=未读与漫游 */
+      opensByEntry: homeOpenEntryRows.map((r) => ({
+        entry: r.entry || '(null)',
+        count: Number(r.cnt),
+        users: Number(r.users),
+      })),
     },
     journey,
     recent: recentRows.map((r) => ({
