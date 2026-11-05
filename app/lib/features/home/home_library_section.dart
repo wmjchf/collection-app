@@ -219,6 +219,9 @@ class _HomeLibrarySectionState extends State<HomeLibrarySection> {
       );
     }
 
+    // 主壳 extendBody：MediaQuery.padding.bottom 已含底栏高度，须计入列表尾部
+    // 否则末条（尤其瀑布+筛选头）会压在底栏下、滑不出来
+    final bottomPad = MediaQuery.paddingOf(context).bottom + 16;
     return RefreshIndicator(
       onRefresh: () => _load(reset: true),
       child: ItemsFeedBody(
@@ -230,6 +233,7 @@ class _HomeLibrarySectionState extends State<HomeLibrarySection> {
         hasMore: _hasMore,
         onItemTap: (item) => unawaited(_openItem(item)),
         layoutPrefs: ItemsLayoutPrefs.homeLibrary,
+        bottomPadding: bottomPad,
         header: Padding(
           padding: const EdgeInsets.only(bottom: 12),
           child: Column(

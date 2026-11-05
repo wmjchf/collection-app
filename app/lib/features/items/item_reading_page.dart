@@ -1,5 +1,5 @@
 import 'dart:async';
-import 'dart:ui' show BoxHeightStyle, BoxWidthStyle, ImageFilter;
+import 'dart:ui' show BoxHeightStyle, BoxWidthStyle;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
@@ -2239,21 +2239,19 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
                               Expanded(
                                 child: DecoratedBox(
                                   decoration: BoxDecoration(
+                                    color: Colors.white,
                                     borderRadius: BorderRadius.circular(
                                       _bottomBarRadius,
+                                    ),
+                                    border: Border.all(
+                                      color: const Color(0xFFE6E8ED),
                                     ),
                                     boxShadow: [
                                       BoxShadow(
                                         color: Colors.black
-                                            .withValues(alpha: 0.10),
-                                        blurRadius: 24,
-                                        offset: const Offset(0, 8),
-                                      ),
-                                      BoxShadow(
-                                        color: Colors.black
-                                            .withValues(alpha: 0.04),
-                                        blurRadius: 6,
-                                        offset: const Offset(0, 2),
+                                            .withValues(alpha: 0.06),
+                                        blurRadius: 16,
+                                        offset: const Offset(0, 4),
                                       ),
                                     ],
                                   ),
@@ -2261,39 +2259,27 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
                                     borderRadius: BorderRadius.circular(
                                       _bottomBarRadius,
                                     ),
-                                    child: BackdropFilter(
-                                      filter: ImageFilter.blur(
-                                        sigmaX: 24,
-                                        sigmaY: 24,
-                                      ),
-                                      child: ColoredBox(
-                                        color: Colors.white
-                                            .withValues(alpha: 0.86),
-                                        child: Row(
-                                          children: [
-                                            _ActionItem(
-                                              icon: Icons.tag_outlined,
-                                              label: '标签',
-                                              onTap: _openTagsSheet,
-                                            ),
-                                            _ActionItem(
-                                              icon: Icons
-                                                  .edit_note_outlined,
-                                              label: '感想',
-                                              iconColor: _hasNote
-                                                  ? _blue
-                                                  : null,
-                                              onTap: () =>
-                                                  unawaited(_onNote()),
-                                            ),
-                                            _ActionItem(
-                                              icon: Icons.more_vert,
-                                              label: '更多',
-                                              onTap: _onMore,
-                                            ),
-                                          ],
+                                    child: Row(
+                                      children: [
+                                        _ActionItem(
+                                          icon: Icons.tag_outlined,
+                                          label: '标签',
+                                          onTap: _openTagsSheet,
                                         ),
-                                      ),
+                                        _ActionItem(
+                                          icon: Icons.edit_note_outlined,
+                                          label: '感想',
+                                          iconColor:
+                                              _hasNote ? _blue : null,
+                                          onTap: () =>
+                                              unawaited(_onNote()),
+                                        ),
+                                        _ActionItem(
+                                          icon: Icons.more_vert,
+                                          label: '更多',
+                                          onTap: _onMore,
+                                        ),
+                                      ],
                                     ),
                                   ),
                                 ),
@@ -3722,7 +3708,7 @@ class _ReadingFailedCard extends StatelessWidget {
   }
 }
 
-/// 底栏助手入口：胶囊外独立毛玻璃圆钮，✦ 与「助手」都包在圆内。
+/// 底栏助手入口：胶囊外独立圆钮，✦ 与「助手」都包在圆内。
 class _AgentActionItem extends StatelessWidget {
   const _AgentActionItem({required this.onTap});
 
@@ -3730,19 +3716,6 @@ class _AgentActionItem extends StatelessWidget {
 
   static const _brand = Color(0xFF2F6FED);
   static const _size = _ItemReadingPageState._bottomBarHeight;
-
-  static List<BoxShadow> get _shadows => [
-        BoxShadow(
-          color: Colors.black.withValues(alpha: 0.10),
-          blurRadius: 24,
-          offset: const Offset(0, 8),
-        ),
-        BoxShadow(
-          color: Colors.black.withValues(alpha: 0.04),
-          blurRadius: 6,
-          offset: const Offset(0, 2),
-        ),
-      ];
 
   @override
   Widget build(BuildContext context) {
@@ -3752,43 +3725,43 @@ class _AgentActionItem extends StatelessWidget {
       overlayColor: WidgetStateProperty.all(Colors.transparent),
       child: DecoratedBox(
         decoration: BoxDecoration(
+          color: Colors.white,
           shape: BoxShape.circle,
-          boxShadow: _shadows,
+          border: Border.all(color: const Color(0xFFE6E8ED)),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.06),
+              blurRadius: 16,
+              offset: const Offset(0, 4),
+            ),
+          ],
         ),
-        child: ClipOval(
-          child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
-            child: ColoredBox(
-              color: Colors.white.withValues(alpha: 0.90),
-              child: const SizedBox(
-                width: _size,
-                height: _size,
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Text(
-                      '✦',
-                      style: TextStyle(
-                        fontSize: 16,
-                        height: 1,
-                        color: _brand,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    SizedBox(height: 2),
-                    Text(
-                      '助手',
-                      style: TextStyle(
-                        fontSize: 11,
-                        height: 1.1,
-                        color: _brand,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ],
+        child: const SizedBox(
+          width: _size,
+          height: _size,
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text(
+                '✦',
+                style: TextStyle(
+                  fontSize: 16,
+                  height: 1,
+                  color: _brand,
+                  fontWeight: FontWeight.w700,
                 ),
               ),
-            ),
+              SizedBox(height: 2),
+              Text(
+                '助手',
+                style: TextStyle(
+                  fontSize: 11,
+                  height: 1.1,
+                  color: _brand,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
           ),
         ),
       ),
