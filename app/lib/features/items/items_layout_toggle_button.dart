@@ -8,9 +8,13 @@ class ItemsLayoutToggleButton extends StatelessWidget {
   const ItemsLayoutToggleButton({
     super.key,
     this.enabled = true,
+    this.layoutPrefs,
   });
 
   final bool enabled;
+
+  /// 缺省全局偏好；首页整库传 [ItemsLayoutPrefs.homeLibrary]。
+  final ItemsLayoutPrefs? layoutPrefs;
 
   static const _muted = Color(0xFF9AA0A8);
   static const _track = Color(0xFFF0F2F5);
@@ -19,10 +23,11 @@ class ItemsLayoutToggleButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final prefs = layoutPrefs ?? ItemsLayoutPrefs.instance;
     return ListenableBuilder(
-      listenable: ItemsLayoutPrefs.instance,
+      listenable: prefs,
       builder: (context, _) {
-        final mode = ItemsLayoutPrefs.instance.mode;
+        final mode = prefs.mode;
         return Opacity(
           opacity: enabled ? 1 : 0.45,
           child: DecoratedBox(
@@ -41,9 +46,7 @@ class ItemsLayoutToggleButton extends StatelessWidget {
                     tooltip: '单列列表',
                     enabled: enabled,
                     onTap: () {
-                      unawaited(
-                        ItemsLayoutPrefs.instance.setMode(ItemsLayoutMode.list),
-                      );
+                      unawaited(prefs.setMode(ItemsLayoutMode.list));
                     },
                   ),
                   _Segment(
@@ -52,10 +55,7 @@ class ItemsLayoutToggleButton extends StatelessWidget {
                     tooltip: '双列瀑布',
                     enabled: enabled,
                     onTap: () {
-                      unawaited(
-                        ItemsLayoutPrefs.instance
-                            .setMode(ItemsLayoutMode.masonry),
-                      );
+                      unawaited(prefs.setMode(ItemsLayoutMode.masonry));
                     },
                   ),
                 ],
@@ -120,6 +120,7 @@ class ItemsFeedCountRow extends StatelessWidget {
     super.key,
     required this.label,
     this.enabled = true,
+    this.layoutPrefs,
     this.labelStyle = const TextStyle(
       fontSize: 13,
       color: Color(0xFF737A85),
@@ -128,6 +129,7 @@ class ItemsFeedCountRow extends StatelessWidget {
 
   final String label;
   final bool enabled;
+  final ItemsLayoutPrefs? layoutPrefs;
   final TextStyle labelStyle;
 
   @override
@@ -137,7 +139,10 @@ class ItemsFeedCountRow extends StatelessWidget {
         Expanded(
           child: Text(label, style: labelStyle),
         ),
-        ItemsLayoutToggleButton(enabled: enabled),
+        ItemsLayoutToggleButton(
+          enabled: enabled,
+          layoutPrefs: layoutPrefs,
+        ),
       ],
     );
   }

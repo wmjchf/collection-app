@@ -215,6 +215,7 @@
 				9705A1C41CF9048500538489 /* Embed Frameworks */,
 				1287881EDDC54C30A1FE256B /* Embed Foundation Extensions */,
 				3B06AD1E1E4923F5004D2608 /* Thin Binary */,
+				A7C3E91B2F4D4A6E9C1B8D0E /* Generate WechatOpenSDK dSYM */,
 			);
 			buildRules = (
 			);
@@ -351,6 +352,23 @@
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
 			shellScript = "/bin/sh \"$FLUTTER_ROOT/packages/flutter_tools/bin/xcode_backend.sh\" build";
+		};
+		A7C3E91B2F4D4A6E9C1B8D0E /* Generate WechatOpenSDK dSYM */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+				"${TARGET_BUILD_DIR}/${WRAPPER_NAME}/Frameworks/WechatOpenSDK.framework/WechatOpenSDK",
+			);
+			name = "Generate WechatOpenSDK dSYM";
+			outputPaths = (
+				"${DWARF_DSYM_FOLDER_PATH}/WechatOpenSDK.framework.dSYM",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "/bin/sh \"${SRCROOT}/scripts/generate_wechat_dsym.sh\"\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 

@@ -1,5 +1,5 @@
 import 'dart:async';
-import 'dart:ui' show BoxHeightStyle, BoxWidthStyle;
+import 'dart:ui' show BoxHeightStyle, BoxWidthStyle, ImageFilter;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
@@ -96,6 +96,10 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
   static const _chromeAnim = Duration(milliseconds: 240);
   static const _topBarHeight = 52.0;
   static const _bottomBarHeight = 56.0;
+  static const _bottomBarHInset = 16.0;
+  static const _bottomBarGap = 10.0;
+  static const _bottomBarRadius = 28.0;
+  static const _bottomBarAgentGap = 10.0;
 
   final _repo = ItemsRepository();
   final _tagsRepo = TagsRepository();
@@ -106,8 +110,6 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
   List<ItemAnnotation> _annotations = const [];
   bool _loadingAnns = true;
   bool _chromeVisible = true;
-  bool _bodyHasSelection = false;
-  DateTime? _lastChromeToggleAt;
   late final ReadingMediaController _pageAudio = ReadingMediaController();
   Timer? _itemPollTimer;
   Timer? _markReadTimer;
@@ -516,22 +518,6 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
     }
   }
 
-  void _toggleReadingChrome() {
-    if (_bodyHasSelection) return;
-    final now = DateTime.now();
-    if (_lastChromeToggleAt != null &&
-        now.difference(_lastChromeToggleAt!) <
-            const Duration(milliseconds: 80)) {
-      return;
-    }
-    _lastChromeToggleAt = now;
-    setState(() => _chromeVisible = !_chromeVisible);
-  }
-
-  void _onBodySelectionChanged(TextSelection selection) {
-    _bodyHasSelection = selection.isValid && !selection.isCollapsed;
-  }
-
   String get _rawBody => (_item.content ?? _item.summary ?? '').trim();
 
   /// 标注 / 选区用的可见纯文字（去掉图标记与 ** / # 等）
@@ -616,7 +602,6 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
   List<Widget> _buildBodyContent(
     String body, {
     required bool gallery,
-    bool allowChromeToggle = true,
   }) {
     if (_rawBody.isEmpty) {
       if (gallery) return const [];
@@ -627,8 +612,6 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
         ),
       ];
     }
-    final chromeTap =
-        (!gallery && allowChromeToggle) ? _toggleReadingChrome : null;
     if (!gallery && ArticleContentBlocks.hasRichMarkup(_rawBody)) {
       return [
         _InlineArticleBody(
@@ -638,8 +621,6 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
           annotationRanges: _annotationRanges(body),
           toolbarAt: _toolbarAt,
           onTapAnnotation: _openAnnotation,
-          onBodyTap: chromeTap,
-          onSelectionChanged: _onBodySelectionChanged,
           focusAnnotationId:
               _locateAnnotationId ?? widget.focusAnnotationId,
           onFocusAnnotationRect: _onFocusAnnotationRect,
@@ -662,8 +643,6 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
         annotations: _annotationRanges(body),
         contextMenuBuilder: _selectionToolbar,
         onTapAnnotation: _openAnnotation,
-        onBodyTap: chromeTap,
-        onSelectionChanged: _onBodySelectionChanged,
         textStyle: gallery ? _galleryCaptionStyle : _bodyTextStyle,
         focusAnnotationId:
             _locateAnnotationId ?? widget.focusAnnotationId,
@@ -808,7 +787,6 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
               ..._buildBodyContent(
                 body,
                 gallery: false,
-                allowChromeToggle: false,
               ),
             ],
             if (_loadingAnns) ...[
@@ -2056,7 +2034,8 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
     final topChrome = mq.padding.top + _topBarHeight;
     // 壳内分栏阅读不占 Home Indicator，避免操作栏下方多出一条空白
     final bottomSafe = widget.embedded ? 0.0 : mq.padding.bottom;
-    final bottomChrome = bottomSafe + _bottomBarHeight;
+    final bottomChrome =
+        bottomSafe + _bottomBarGap + _bottomBarHeight;
 
     return PopScope(
       canPop: widget.embedded || !_shouldNudgeOnLeave,
@@ -2079,15 +2058,7 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
                   ? bottomChrome
                   : bottomSafe,
             ),
-            child: GestureDetector(
-              // 仅文章可点空白藏顶底栏；图集 / 顶栏真视频栏常显
-              onTap: canRead &&
-                      !_item.isImageGallery &&
-                      !_isTopBarTrueVideo
-                  ? _toggleReadingChrome
-                  : null,
-              behavior: HitTestBehavior.translucent,
-              child: ListView(
+            child: ListView(
                 controller: _scrollController,
                 physics: const BouncingScrollPhysics(
                   parent: AlwaysScrollableScrollPhysics(),
@@ -2190,7 +2161,6 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
                   ],
                 ],
               ),
-            ),
           ),
           Positioned(
             top: 0,
@@ -2246,14 +2216,18 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
                   offset:
                       _chromeVisible ? Offset.zero : const Offset(0, 1),
                   child: Material(
-                    color: Colors.white,
-                    child: Container(
-                      decoration: const BoxDecoration(
-                        border: Border(top: BorderSide(color: _border)),
-                      ),
-                      child: SafeArea(
-                        top: false,
-                        bottom: !widget.embedded,
+                    type: MaterialType.transparency,
+                    child: SafeArea(
+                      top: false,
+                      bottom: !widget.embedded,
+                      minimum: EdgeInsets.zero,
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(
+                          _bottomBarHInset,
+                          0,
+                          _bottomBarHInset,
+                          _bottomBarGap,
+                        ),
                         child: SizedBox(
                           height: _bottomBarHeight,
                           child: Row(
@@ -2261,21 +2235,68 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
                               _AgentActionItem(
                                 onTap: () => unawaited(_openAgent()),
                               ),
-                              _ActionItem(
-                                icon: Icons.tag_outlined,
-                                label: '标签',
-                                onTap: _openTagsSheet,
-                              ),
-                              _ActionItem(
-                                icon: Icons.edit_note_outlined,
-                                label: '感想',
-                                iconColor: _hasNote ? _blue : null,
-                                onTap: () => unawaited(_onNote()),
-                              ),
-                              _ActionItem(
-                                icon: Icons.more_vert,
-                                label: '更多',
-                                onTap: _onMore,
+                              const SizedBox(width: _bottomBarAgentGap),
+                              Expanded(
+                                child: DecoratedBox(
+                                  decoration: BoxDecoration(
+                                    borderRadius: BorderRadius.circular(
+                                      _bottomBarRadius,
+                                    ),
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: Colors.black
+                                            .withValues(alpha: 0.10),
+                                        blurRadius: 24,
+                                        offset: const Offset(0, 8),
+                                      ),
+                                      BoxShadow(
+                                        color: Colors.black
+                                            .withValues(alpha: 0.04),
+                                        blurRadius: 6,
+                                        offset: const Offset(0, 2),
+                                      ),
+                                    ],
+                                  ),
+                                  child: ClipRRect(
+                                    borderRadius: BorderRadius.circular(
+                                      _bottomBarRadius,
+                                    ),
+                                    child: BackdropFilter(
+                                      filter: ImageFilter.blur(
+                                        sigmaX: 24,
+                                        sigmaY: 24,
+                                      ),
+                                      child: ColoredBox(
+                                        color: Colors.white
+                                            .withValues(alpha: 0.86),
+                                        child: Row(
+                                          children: [
+                                            _ActionItem(
+                                              icon: Icons.tag_outlined,
+                                              label: '标签',
+                                              onTap: _openTagsSheet,
+                                            ),
+                                            _ActionItem(
+                                              icon: Icons
+                                                  .edit_note_outlined,
+                                              label: '感想',
+                                              iconColor: _hasNote
+                                                  ? _blue
+                                                  : null,
+                                              onTap: () =>
+                                                  unawaited(_onNote()),
+                                            ),
+                                            _ActionItem(
+                                              icon: Icons.more_vert,
+                                              label: '更多',
+                                              onTap: _onMore,
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
                               ),
                             ],
                           ),
@@ -3701,55 +3722,71 @@ class _ReadingFailedCard extends StatelessWidget {
   }
 }
 
-/// 底栏助手入口：品牌蓝软底圆标 + 蓝色字，与其它灰图标操作区分。
+/// 底栏助手入口：胶囊外独立毛玻璃圆钮，✦ 与「助手」都包在圆内。
 class _AgentActionItem extends StatelessWidget {
   const _AgentActionItem({required this.onTap});
 
   final VoidCallback onTap;
 
   static const _brand = Color(0xFF2F6FED);
-  static const _brandSoft = Color(0xFFE8F0FF);
-  static const _brandRing = Color(0xFFD0DFFC);
+  static const _size = _ItemReadingPageState._bottomBarHeight;
+
+  static List<BoxShadow> get _shadows => [
+        BoxShadow(
+          color: Colors.black.withValues(alpha: 0.10),
+          blurRadius: 24,
+          offset: const Offset(0, 8),
+        ),
+        BoxShadow(
+          color: Colors.black.withValues(alpha: 0.04),
+          blurRadius: 6,
+          offset: const Offset(0, 2),
+        ),
+      ];
 
   @override
   Widget build(BuildContext context) {
-    return Expanded(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
-        child: Material(
-          color: _brandSoft,
-          borderRadius: BorderRadius.circular(12),
-          clipBehavior: Clip.antiAlias,
-          child: InkWell(
-            onTap: onTap,
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: _brandRing),
-              ),
-              child: const Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text(
-                    '✦',
-                    style: TextStyle(
-                      fontSize: 15,
-                      height: 1,
-                      color: _brand,
-                      fontWeight: FontWeight.w700,
+    return InkWell(
+      onTap: onTap,
+      customBorder: const CircleBorder(),
+      overlayColor: WidgetStateProperty.all(Colors.transparent),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          boxShadow: _shadows,
+        ),
+        child: ClipOval(
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
+            child: ColoredBox(
+              color: Colors.white.withValues(alpha: 0.90),
+              child: const SizedBox(
+                width: _size,
+                height: _size,
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      '✦',
+                      style: TextStyle(
+                        fontSize: 16,
+                        height: 1,
+                        color: _brand,
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
-                  ),
-                  SizedBox(height: 2),
-                  Text(
-                    'AI助手',
-                    style: TextStyle(
-                      fontSize: 11,
-                      height: 1.1,
-                      color: _brand,
-                      fontWeight: FontWeight.w600,
+                    SizedBox(height: 2),
+                    Text(
+                      '助手',
+                      style: TextStyle(
+                        fontSize: 11,
+                        height: 1.1,
+                        color: _brand,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
           ),
@@ -3785,8 +3822,8 @@ class _ActionItem extends StatelessWidget {
       child: InkWell(
         onTap: onTap,
         child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
           children: [
+            const Spacer(),
             SizedBox(
               width: 24,
               height: 24,
@@ -3799,11 +3836,17 @@ class _ActionItem extends StatelessWidget {
                     ),
               ),
             ),
-            const SizedBox(height: 4),
+            const SizedBox(height: 2),
             Text(
               label,
-              style: const TextStyle(fontSize: 11, color: _muted),
+              style: TextStyle(
+                fontSize: 11,
+                height: 1.2,
+                color: iconColor ?? _muted,
+                fontWeight: FontWeight.w500,
+              ),
             ),
+            const SizedBox(height: 6),
           ],
         ),
       ),

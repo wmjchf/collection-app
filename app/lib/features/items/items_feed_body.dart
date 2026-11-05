@@ -26,6 +26,7 @@ class ItemsFeedBody extends StatefulWidget {
     this.header,
     this.empty,
     this.bottomPadding = 24,
+    this.layoutPrefs,
   });
 
   final ScrollController controller;
@@ -42,23 +43,29 @@ class ItemsFeedBody extends StatefulWidget {
   final Widget? empty;
   final double bottomPadding;
 
+  /// 缺省用全局 [ItemsLayoutPrefs.instance]；首页整库传 [ItemsLayoutPrefs.homeLibrary]。
+  final ItemsLayoutPrefs? layoutPrefs;
+
   @override
   State<ItemsFeedBody> createState() => _ItemsFeedBodyState();
 }
 
 class _ItemsFeedBodyState extends State<ItemsFeedBody> {
+  ItemsLayoutPrefs get _layout =>
+      widget.layoutPrefs ?? ItemsLayoutPrefs.instance;
+
   @override
   void initState() {
     super.initState();
-    unawaited(ItemsLayoutPrefs.instance.ensureLoaded());
+    unawaited(_layout.ensureLoaded());
   }
 
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
-      listenable: ItemsLayoutPrefs.instance,
+      listenable: _layout,
       builder: (context, _) {
-        final masonry = ItemsLayoutPrefs.instance.mode.isMasonry;
+        final masonry = _layout.mode.isMasonry;
         final bottom = widget.selecting ? 16.0 : widget.bottomPadding;
         return CustomScrollView(
           controller: widget.controller,

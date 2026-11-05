@@ -1,18 +1,14 @@
-import 'package:super_collection/core/config/app_brand.dart';
 import 'package:flutter/material.dart';
+import 'package:super_collection/core/config/app_brand.dart';
 import 'package:super_collection/features/auth/auth_repository.dart';
 import 'package:super_collection/features/auth/login_page.dart';
-import 'package:super_collection/features/onboarding/shortcuts_help_page.dart';
+import 'package:super_collection/features/settings/about_hub_page.dart';
 import 'package:super_collection/features/settings/account_page.dart';
-import 'package:super_collection/features/settings/account_security_page.dart';
-import 'package:super_collection/features/settings/ai_agent_help_page.dart';
-import 'package:super_collection/features/settings/ai_auto_tags_help_page.dart';
 import 'package:super_collection/features/settings/feedback_page.dart';
-import 'package:super_collection/features/settings/how_to_add_link_page.dart';
-import 'package:super_collection/features/settings/legal_docs.dart';
+import 'package:super_collection/features/settings/help_hub_page.dart';
+import 'package:super_collection/features/settings/home_modules_settings_page.dart';
 import 'package:super_collection/features/settings/logout_confirm_dialog.dart';
 import 'package:super_collection/features/settings/settings_modal.dart';
-import 'package:super_collection/features/settings/simple_doc_page.dart';
 
 /// 设置内容（设置页 / 账户抽屉共用）
 class SettingsPanel extends StatefulWidget {
@@ -26,9 +22,6 @@ class SettingsPanel extends StatefulWidget {
 }
 
 class _SettingsPanelState extends State<SettingsPanel> {
-  static const _muted = Color(0xFF737A85);
-  static const _version = 'v1.7.1';
-
   final _auth = AuthRepository();
 
   Future<void> _logout() async {
@@ -57,7 +50,7 @@ class _SettingsPanelState extends State<SettingsPanel> {
               if (widget.showAccountEntry) ...[
                 _CardGroup(
                   children: [
-                    _InfoRow(
+                    _SettingsRow(
                       title: '账户和用量',
                       showChevron: true,
                       onTap: () => _open(const AccountPage()),
@@ -66,29 +59,31 @@ class _SettingsPanelState extends State<SettingsPanel> {
                 ),
                 const SizedBox(height: 16),
               ],
-              const _SectionLabel('使用帮助'),
+              const _SectionLabel('偏好'),
               const SizedBox(height: 8),
               _CardGroup(
                 children: [
-                  _InfoRow(
-                    title: '如何添加链接',
+                  _SettingsRow(
+                    title: '首页模块',
                     showChevron: true,
-                    onTap: () => _open(const HowToAddLinkPage()),
+                    onTap: () => _open(const HomeModulesSettingsPage()),
                   ),
-                  _InfoRow(
-                    title: 'AI助手',
+                ],
+              ),
+              const SizedBox(height: 16),
+              const _SectionLabel('支持'),
+              const SizedBox(height: 8),
+              _CardGroup(
+                children: [
+                  _SettingsRow(
+                    title: '使用帮助',
                     showChevron: true,
-                    onTap: () => _open(const AiAgentHelpPage()),
+                    onTap: () => _open(const HelpHubPage()),
                   ),
-                  _InfoRow(
-                    title: 'AI自动标签方法',
+                  _SettingsRow(
+                    title: '意见反馈',
                     showChevron: true,
-                    onTap: () => _open(const AiAutoTagsHelpPage()),
-                  ),
-                  _InfoRow(
-                    title: 'iOS 快捷指令说明',
-                    showChevron: true,
-                    onTap: () => _open(const ShortcutsHelpPage()),
+                    onTap: () => _open(const FeedbackPage()),
                   ),
                 ],
               ),
@@ -97,42 +92,10 @@ class _SettingsPanelState extends State<SettingsPanel> {
               const SizedBox(height: 8),
               _CardGroup(
                 children: [
-                  _InfoRow(
-                    title: '意见反馈',
-                    showChevron: true,
-                    onTap: () => _open(const FeedbackPage()),
-                  ),
-                  _InfoRow(
-                    title: '用户协议',
-                    showChevron: true,
-                    onTap: () => _open(
-                      const SimpleDocPage(
-                        title: '用户协议',
-                        body: LegalDocs.userAgreement,
-                      ),
-                    ),
-                  ),
-                  _InfoRow(
-                    title: '隐私政策',
-                    showChevron: true,
-                    onTap: () => _open(
-                      const SimpleDocPage(
-                        title: '隐私政策',
-                        body: LegalDocs.privacyPolicy,
-                      ),
-                    ),
-                  ),
-                  _InfoRow(
-                    title: '账号安全',
-                    showChevron: true,
-                    onTap: () => _open(const AccountSecurityPage()),
-                  ),
-                  const _InfoRow(
+                  _SettingsRow(
                     title: '关于 ${AppBrand.name}',
-                    trailing: Text(
-                      _version,
-                      style: TextStyle(fontSize: 14, color: _muted),
-                    ),
+                    showChevron: true,
+                    onTap: () => _open(const AboutHubPage()),
                   ),
                 ],
               ),
@@ -209,16 +172,14 @@ class _CardGroup extends StatelessWidget {
   }
 }
 
-class _InfoRow extends StatelessWidget {
-  const _InfoRow({
+class _SettingsRow extends StatelessWidget {
+  const _SettingsRow({
     required this.title,
-    this.trailing,
     this.showChevron = false,
     this.onTap,
   });
 
   final String title;
-  final Widget? trailing;
   final bool showChevron;
   final VoidCallback? onTap;
 
@@ -239,7 +200,6 @@ class _InfoRow extends StatelessWidget {
                 ),
               ),
             ),
-            if (trailing != null) trailing!,
             if (showChevron)
               const Padding(
                 padding: EdgeInsets.only(left: 4),
