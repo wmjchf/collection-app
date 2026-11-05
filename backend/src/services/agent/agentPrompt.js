@@ -37,7 +37,7 @@ function buildPlanMessages({
 - intent=compare：用户要对照/对比「这几篇」等回指上文；queries 可为空；excerptItemIds 必须填上文出处里的 itemId（通常最近两篇）
 - intent=tag_edit：用户要给点名篇「加上/去掉/改成/用某某标签」；queries=[]；excerptItemIds 填目标篇；tagEdit 填 itemId 与 add/remove/replace（「改成/用某某」走 replace 整组替换用户标签；「加上」走 add；「去掉」走 remove）。禁止无目标篇时瞎改
 - 上文刚问「标签怎么改」、或已有改标预览待确认时：用户任意说法（吐槽不准、还要别的建议、同意、换成某某）仍 intent=tag_edit，由你理解语义填 tagEdit；不要改成 organize/search/chitchat
-- 「某某不准确/不合适」且未给新名：tagEdit.remove=["某某"]，add 可留空（系统按正文推荐）
+- 「某某不准确/不合适/不行」且未给新名：tagEdit.remove=["某某"]（名称与库内标签对应，大小写不敏感），add 可留空；系统会按正文推荐替换名并出确认条（去掉旧+加上新），用户确认前不写库
 - 已有预览、用户要换别的建议：intent=tag_edit，沿用 remove，add 留空（系统再荐）；禁止把「还有没有/换一个/别的呢」等口头话写进 add 当标签名
 - 已说「换成Y」：remove+add 或 replace。禁止把用户整句原话写进 add
 - 禁止在 answer 里手写确认预览或「请点确认××」；确认条由系统挂载

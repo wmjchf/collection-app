@@ -1468,7 +1468,7 @@ async function finishTagEditTurn({
     });
   }
 
-  // 吐槽不准 / 确认态要换建议：按正文推荐替换名（是否续改由模型 intent，此处只出带确认条的方案）
+  // 吐槽 / 换建议：去掉旧标签 + 按正文推荐新标签；写入必须等确认条
   let suggestedReplace = null;
   const wantsReplaceSuggest =
     (forceResuggest || looksLikeTagQualityFeedback(text)) &&
@@ -1476,13 +1476,16 @@ async function finishTagEditTurn({
     !args.add.length &&
     !args.replace.length;
   if (wantsReplaceSuggest) {
+    const keepTags = (
+      currentTagsFromHistory(history).length
+        ? currentTagsFromHistory(history)
+        : []
+    ).filter((n) => !args.remove.some((r) => String(r).toLowerCase() === String(n).toLowerCase()));
     const suggestResult = await suggestTagReplacement({
       ctx,
       itemId,
       badTags: args.remove,
-      keepTags: currentTagsFromHistory(history).filter(
-        (n) => !args.remove.includes(n),
-      ),
+      keepTags,
       excludeTags: excludeSuggested,
       userText: text,
       toolTrace,
@@ -2323,11 +2326,17 @@ function normalizePlan(
       tagEdit.add = [String(userContent).trim()];
       hasOpsAwait = true;
     }
-    // 询问态仍无操作：用上文当前标签推断去掉
+    // 询问态仍无操作：用上文当前标签推断去掉（忽略大小写）；吐槽 → 标记要推荐替换
     if (!hasOpsAwait && awaitingEarly?.kind === AWAITING.TAG_EDIT_PREFERENCE) {
       const known = currentTagsFromHistory(history);
       const inferred = inferTagRemovesFromFeedback(userContent, known);
-      if (inferred.length) tagEdit.remove = inferred;
+      if (inferred.length) {
+        tagEdit.remove = inferred;
+        if (looksLikeTagQualityFeedback(userContent)) {
+          tagEdit._resuggest = true;
+          tagEdit._excludeAdd = [];
+        }
+      }
     }
     // 确认态：无有效加删、或只剩去掉项 → 沿用上一预览并重新推荐（一次性收「还要别的建议」类）
     if (inConfirm) {
@@ -3035,24 +3044,34 @@ function currentTagsFromHistory(history) {
 }
 
 /**
- * 「数码评测不太准确」且已知当前有「数码评测」→ remove 该名。
- * 仅当前缀命中已知标签且后文含「不」时启用，避免整句新建。
+ * 「claude不合适 / 数码评测不太准确」+ 当前标签列表 → 命中要去掉的标签名。
+ * 忽略大小写；返回库内原始写法。
  */
 function inferTagRemovesFromFeedback(userContent, knownTags) {
   const t = String(userContent || '').trim();
-  if (!t || !/不/.test(t) || !Array.isArray(knownTags) || !knownTags.length) {
-    return [];
-  }
+  if (!t || !Array.isArray(knownTags) || !knownTags.length) return [];
+  const feedback = looksLikeTagQualityFeedback(t) || /不/.test(t);
+  if (!feedback) return [];
+
+  const tLower = t.toLowerCase();
   const hits = [];
   for (const raw of knownTags) {
     const tag = String(raw || '').trim();
     if (!tag || tag.length < 2) continue;
-    if (t === tag) continue;
-    if (t.startsWith(tag) && /不/.test(t.slice(tag.length))) {
+    const tagLower = tag.toLowerCase();
+    if (tLower === tagLower) continue;
+    const idx = tLower.indexOf(tagLower);
+    if (idx < 0) continue;
+    const after = t.slice(idx + tag.length);
+    // 标签名后紧跟吐槽，或整句是吐槽且点到了该标签
+    if (
+      /^\s*(不|不太|有点|别|挺|太)/.test(after) ||
+      (looksLikeTagQualityFeedback(t) && idx === 0) ||
+      (looksLikeTagQualityFeedback(t) && /不/.test(after))
+    ) {
       hits.push(tag);
     }
   }
-  // 最长优先，避免短前缀误伤
   hits.sort((a, b) => b.length - a.length);
   return hits.length ? [hits[0]] : [];
 }
