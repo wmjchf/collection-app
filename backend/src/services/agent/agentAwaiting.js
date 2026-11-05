@@ -37,11 +37,19 @@ function resolveAwaiting(history) {
       };
     }
 
-    // 兼容旧消息：文案嗅探归类询问
+    // 兼容旧消息：文案嗅探询问态（模型手写或漏挂 awaiting）
     if (looksLikeOrganizePreferenceAskContent(m.content)) {
       return {
         kind: AWAITING.ORGANIZE_PREFERENCE,
         source: 'legacy_content',
+      };
+    }
+    if (looksLikeTagEditPreferenceAskContent(m.content)) {
+      const meta = extractTagEditAskMeta(m);
+      return {
+        kind: AWAITING.TAG_EDIT_PREFERENCE,
+        source: 'legacy_content',
+        meta,
       };
     }
     break;
@@ -54,6 +62,51 @@ function looksLikeOrganizePreferenceAskContent(content) {
   return (
     /听听你的分类意见|你更希望怎么分|分类意见/.test(c) &&
     /\*\*按行业\*\*|\*\*按主题\*\*|\*\*你看着分\*\*/.test(c)
+  );
+}
+
+/** 上文在问「标签怎么改」（含系统询问与模型变体文案） */
+function looksLikeTagEditPreferenceAskContent(content) {
+  const c = String(content || '');
+  if (!c) return false;
+  return (
+    /想怎么改|想怎么调|可以说[「"]加上|去掉某某|加上某某|我来出预览/.test(c) &&
+    /标签/.test(c)
+  );
+}
+
+function extractTagEditAskMeta(message) {
+  const meta = { itemId: null, title: '' };
+  const id = Number(message?.citations?.[0]?.itemId);
+  if (Number.isFinite(id) && id > 0) meta.itemId = id;
+  const title = String(message?.citations?.[0]?.title || '').trim();
+  if (title) meta.title = title;
+  if (!meta.itemId && message?.awaitingMeta?.itemId) {
+    const mid = Number(message.awaitingMeta.itemId);
+    if (Number.isFinite(mid) && mid > 0) meta.itemId = mid;
+  }
+  if (!meta.title && message?.awaitingMeta?.title) {
+    meta.title = String(message.awaitingMeta.title || '').trim();
+  }
+  return meta.itemId || meta.title ? meta : null;
+}
+
+/** 短句像单个标签名（答「怎么改」时常见：直接丢一个名） */
+function looksLikeBareTagName(text) {
+  const t = String(text || '').trim();
+  if (!t || t.length > 24) return false;
+  if (/[。！？\n]/.test(t)) return false;
+  if (/^(取消|不做了|算了|不用了|可以|确认|好的|行|嗯)[。.!！]?$/.test(t)) {
+    return false;
+  }
+  if (
+    /(加上|去掉|删掉|删除|换成|改成|调整|归类|对照|对比|搜索|查找|收藏)/.test(t)
+  ) {
+    return false;
+  }
+  // 中文 / 英文数字标签名，允许中间空格、·、-、_
+  return /^[\u4e00-\u9fffA-Za-z0-9][\u4e00-\u9fffA-Za-z0-9 ·_\-]{0,23}$/.test(
+    t,
   );
 }
 
@@ -112,11 +165,16 @@ function looksLikeAwaitingAnswer(text, awaiting) {
 
   if (awaiting.kind === AWAITING.TAG_EDIT_PREFERENCE) {
     if (/^(取消|不做了|算了|不用了)[。.!！]?$/.test(t)) return true;
-    return (
+    if (
       /(加|添|补).{0,12}(上|个|标签)|去掉|删掉|删除|换成|改成|调整为|改成只有/.test(
         t,
-      ) || /^(加上|去掉|删除|换成)/.test(t)
-    );
+      ) ||
+      /^(加上|去掉|删除|换成)/.test(t)
+    ) {
+      return true;
+    }
+    // 「产品实测」这类直接丢标签名，仍算答在改标询问
+    return looksLikeBareTagName(t);
   }
 
   if (
@@ -173,5 +231,7 @@ module.exports = {
   looksLikeAwaitingAnswer,
   shouldContinueAwaiting,
   looksLikeOrganizePreferenceAskContent,
+  looksLikeTagEditPreferenceAskContent,
+  looksLikeBareTagName,
   toolPayload,
 };

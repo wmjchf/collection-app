@@ -12,6 +12,7 @@ const {
   looksLikeTopicSwitch,
   looksLikeAwaitingAnswer,
   shouldContinueAwaiting,
+  looksLikeBareTagName,
   toolPayload,
 } = require('./agentAwaiting');
 const { executeTool } = require('./agentRegistry');
@@ -1820,7 +1821,8 @@ function looksWriteAffirmative(text) {
 
 /**
  * 上文助手正文手写了改标预览（无 pendingAction）。
- * 解析「调整为：A、B、C」+ 出处 itemId，供口头确认后挂真正确认条。
+ * 解析「调整为：A、B、C」/「调整后的标签预览」列表 + 出处 itemId，
+ * 供口头确认后挂真正确认条。
  */
 function parseVerbalTagEditProposal(history) {
   const list = Array.isArray(history) ? history : [];
@@ -1831,8 +1833,9 @@ function parseVerbalTagEditProposal(history) {
     const c = String(m.content || '');
     if (!c) return null;
     const looksPreview =
-      /标签调整预览|请确认是否写入|准备调整.{0,40}标签|调整为[：:]/.test(c) &&
-      /标签/.test(c);
+      /标签调整预览|调整后的标签预览|请确认是否写入|准备调整.{0,40}标签|调整为[：:]|调整后[：:]/.test(
+        c,
+      ) && /标签/.test(c);
     if (!looksPreview) return null;
 
     let replace = [];
@@ -1843,6 +1846,27 @@ function parseVerbalTagEditProposal(history) {
       .split(/[、,，]/)
       .map((s) => s.replace(/[。.!！]/g, '').trim())
       .filter((s) => s && s.length <= 32 && !/确认|写入|篇目|当前/.test(s));
+
+    // 「• AI Agent（保留）」「• 产品实测（新增…）」
+    if (!replace.length) {
+      const bulletNames = [];
+      const re =
+        /(?:^|\n)\s*[•\-·*]\s*([^\n（(]{1,32}?)\s*(?:[（(][^）)\n]*[）)])?\s*(?=\n|$)/g;
+      let bm;
+      while ((bm = re.exec(c))) {
+        const name = String(bm[1] || '')
+          .replace(/\*+/g, '')
+          .trim();
+        if (
+          name &&
+          name.length <= 32 &&
+          !/确认|写入|预览|调整后|收到/.test(name)
+        ) {
+          bulletNames.push(name);
+        }
+      }
+      replace = bulletNames;
+    }
 
     let itemId = 0;
     if (Array.isArray(m.citations) && m.citations[0]?.itemId) {
@@ -2202,6 +2226,14 @@ function normalizePlan(
       if (!tagEdit.replace?.length && heurAwait.replace?.length) {
         tagEdit.replace = heurAwait.replace;
       }
+    }
+    // 「产品实测」：直接丢标签名 → 视为加上，走出系统确认条（带按钮）
+    const hasOpsAwait =
+      (tagEdit.add && tagEdit.add.length > 0) ||
+      (tagEdit.remove && tagEdit.remove.length > 0) ||
+      (tagEdit.replace && tagEdit.replace.length > 0);
+    if (!hasOpsAwait && looksLikeBareTagName(userContent)) {
+      tagEdit.add = [String(userContent).trim()];
     }
   }
 
