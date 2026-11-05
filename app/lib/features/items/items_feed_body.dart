@@ -112,7 +112,7 @@ class _ItemsFeedBodyState extends State<ItemsFeedBody> {
               )
             else if (masonry)
               SliverPadding(
-                padding: EdgeInsets.fromLTRB(16, 0, 16, bottom),
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
                 sliver: SliverMasonryGrid.count(
                   crossAxisCount: 2,
                   mainAxisSpacing: 4,
@@ -136,7 +136,7 @@ class _ItemsFeedBodyState extends State<ItemsFeedBody> {
               )
             else
               SliverPadding(
-                padding: EdgeInsets.fromLTRB(16, 0, 16, bottom),
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
                 sliver: SliverList(
                   delegate: SliverChildBuilderDelegate(
                     (context, index) {
@@ -162,12 +162,18 @@ class _ItemsFeedBodyState extends State<ItemsFeedBody> {
               ),
             if (widget.items.isNotEmpty)
               SliverToBoxAdapter(
-                child: pagedListFooter(
-                  loadingMore: widget.loadingMore,
-                  hasMore: widget.hasMore,
-                  isEmpty: false,
+                child: Padding(
+                  // 底栏 extendBody：留白放在「没有更多了」之后，文案才能滑出底栏
+                  padding: EdgeInsets.only(bottom: bottom),
+                  child: pagedListFooter(
+                    loadingMore: widget.loadingMore,
+                    hasMore: widget.hasMore,
+                    isEmpty: false,
+                  ),
                 ),
-              ),
+              )
+            else
+              SliverToBoxAdapter(child: SizedBox(height: bottom)),
           ],
         );
       },
