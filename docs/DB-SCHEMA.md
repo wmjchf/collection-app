@@ -268,14 +268,29 @@ API：`GET …/transcript-targets`、`POST …/transcript`（body.segmentKey）�
 | 字段 | 说明 |
 | --- | --- |
 | user_id | FK → users |
-| plan | 目前仅 `pro` |
+| plan | `basic` / `prince` / `emperor`（legacy `pro`） |
 | status | `active` / `expired` / `cancelled` |
 | source | `manual` / `dev` / `apple` / `google` / `wechat` / `alipay` … |
-| external_id | 商店订单号（支付接入后） |
-| expires_at | NULL=不限期；有效 Pro = active 且未过期 |
-| meta | JSON | 含 `productId`、`isTrial`、`offerDiscountType`、`autoRenewEnabled` 等 |
+| external_id | 商店订单号 / 微信 transaction_id |
+| expires_at | NULL=不限期；有效付费档 = active 且未过期 |
+| meta | JSON | 含 `productId`、`sku`、`isTrial`、`lifetime` 等 |
 
-当前是否 Pro：查有效 active 行；额度数字在环境变量（`FREE_*` / `PRO_*`），不写进本表。
+当前是否付费：查有效 active 行；额度数字在环境变量，不写进本表。
+
+## `wechat_pay_orders`（迁移 `041`）
+
+Android 微信 APP 支付订单；成功后 `activateSubscription(source=wechat)`。
+
+| 字段 | 说明 |
+| --- | --- |
+| out_trade_no | 商户订单号（唯一） |
+| user_id | FK → users |
+| sku | `basic_lifetime` / `prince_monthly` … |
+| plan | `basic` / `prince` / `emperor` |
+| amount_fen | 金额（分） |
+| period_days | NULL=买断 |
+| status | `pending` / `paid` / `closed` |
+| transaction_id | 微信支付订单号 |
 
 ---
 

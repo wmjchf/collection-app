@@ -4,6 +4,7 @@ const config = require('../config');
 const subscriptionService = require('../services/subscriptionService');
 const usageService = require('../services/usageService');
 const appleIapService = require('../services/appleIapService');
+const wechatPayService = require('../services/wechatPayService');
 
 const router = express.Router();
 
@@ -19,6 +20,23 @@ router.post('/apple/notifications', async (req, res, next) => {
     return res.json({ ok: true, ...result });
   } catch (err) {
     return next(err);
+  }
+});
+
+/**
+ * 微信支付结果通知（无 JWT）
+ * 须在公网 HTTPS；验签靠 APIv3 解密 + 主动查单。
+ */
+router.post('/wechat/notify', async (req, res) => {
+  try {
+    const result = await wechatPayService.handleNotify(req.body || {});
+    if (!result.ok) {
+      return res.status(400).json({ code: 'FAIL', message: result.code || 'fail' });
+    }
+    return res.json({ code: 'SUCCESS', message: '成功' });
+  } catch (err) {
+    console.error('[wechat/notify]', err.message);
+    return res.status(500).json({ code: 'FAIL', message: err.message || 'fail' });
   }
 });
 
@@ -40,9 +58,68 @@ router.get('/subscription', async (req, res, next) => {
   }
 });
 
-/** GET /api/billing/products — 客户端商品 id（与 ASC 一致） */
+/** GET /api/billing/products — iOS ASC 商品 + Android 微信价目 */
 router.get('/products', async (_req, res) => {
-  return res.json(appleIapService.publicProductConfig());
+  const apple = appleIapService.publicProductConfig();
+  return res.json({
+    ...apple,
+    wechat: wechatPayService.publicProductConfig(),
+  });
+});
+
+/**
+ * POST /api/billing/wechat/prepay
+ * body: { sku: basic_lifetime | prince_monthly | … }
+ */
+router.post('/wechat/prepay', async (req, res, next) => {
+  try {
+    const sku = req.body?.sku;
+    const result = await wechatPayService.createPrepay({
+      userId: req.auth.userId,
+      sku,
+    });
+    return res.json(result);
+  } catch (err) {
+    return next(err);
+  }
+});
+
+/** GET /api/billing/wechat/orders/:outTradeNo — 支付后轮询 */
+router.get('/wechat/orders/:outTradeNo', async (req, res, next) => {
+  try {
+    const order = await wechatPayService.getOrderForUser(
+      req.params.outTradeNo,
+      req.auth.userId,
+    );
+    return res.json({ order });
+  } catch (err) {
+    return next(err);
+  }
+});
+
+/**
+ * POST /api/billing/wechat/dev/simulate-paid — 无商户联调开通（仅 SMS_DEV_MODE）
+ * body: { sku }
+ */
+router.post('/wechat/dev/simulate-paid', async (req, res, next) => {
+  try {
+    if (!config.auth?.smsDevMode) {
+      return res.status(403).json({ message: '仅开发模式可用' });
+    }
+    const result = await wechatPayService.simulatePaid({
+      userId: req.auth.userId,
+      sku: req.body?.sku,
+    });
+    const summary = await usageService.getUsageSummary(req.auth.userId);
+    return res.json({
+      message: '已模拟微信支付并开通',
+      ...result,
+      plan: summary.plan,
+      usage: summary,
+    });
+  } catch (err) {
+    return next(err);
+  }
 });
 
 /**
