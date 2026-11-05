@@ -314,8 +314,8 @@ Body: { conversationId, messageId, approve: true|false }
 | 值 | 何时挂上 | 下一轮 |
 | --- | --- | --- |
 | `organize_preference` | 归类询问「怎么分」 | 仅明确分法/取消继续；对照/检索等换题放行 |
-| `tag_edit_preference` | 只说改标签、未给加删 | 列出当前标签并询问；未换题则钉住 `tag_edit`，加删由 plan 模型填 `tagEdit` 后出确认预览；只说「就按这个来」则追问具体标签 |
-| `organize_confirm` / `tag_edit_confirm` | 挂 `pendingAction` 时 | **仅此时 App 出确认按钮**；禁止正文手写「请确认是否写入」 |
+| `tag_edit_preference` | 只说改标签、未给加删 | 列出当前标签并询问；未换题钉住 `tag_edit`，加删由 plan 理解任意说法后出带按钮预览 |
+| `organize_confirm` / `tag_edit_confirm` | 挂 `pendingAction` 时 | **仅此时 App 出确认按钮**；改标确认态未换题仍钉 `tag_edit`（换建议/同意由模型理解）；禁止正文手写「请确认是否写入」 |
 
 实现：`agentAwaiting.js`（`resolveAwaiting` / `looksLikeTopicSwitch` / `shouldContinueAwaiting`）。后续新半成品对话加一种 awaiting 值即可，避免两两特判。
 

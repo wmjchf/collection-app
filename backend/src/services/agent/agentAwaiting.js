@@ -181,16 +181,21 @@ function looksLikeAwaitingAnswer(text, awaiting) {
     return /^(取消|不做了|算了|不用了)[。.!！]?$/.test(t);
   }
 
-  if (
-    awaiting.kind === AWAITING.ORGANIZE_CONFIRM ||
-    awaiting.kind === AWAITING.TAG_EDIT_CONFIRM
-  ) {
+  if (awaiting.kind === AWAITING.ORGANIZE_CONFIRM) {
     if (/^(取消|不做了|算了|不用了)[。.!！]?$/.test(t)) return true;
     if (/^(可以|确认|好的|行|嗯|没问题|就这样|确认整理|确认调整)[。.!！]?$/.test(t)) {
       return true;
     }
     // 修正预览仍算答在确认步
     return /漏(掉|了)?|忘了|遗漏|补上|还有.{0,12}标签/.test(t);
+  }
+
+  if (awaiting.kind === AWAITING.TAG_EDIT_CONFIRM) {
+    // 同意/取消的明确短答；其它说法（再换、换个别的…）交给模型，由 shouldContinue 钉住
+    return (
+      /^(取消|不做了|算了|不用了)[。.!！]?$/.test(t) ||
+      /^(可以|确认|好的|行|嗯|没问题|就这样|确认调整)[。.!！]?$/.test(t)
+    );
   }
 
   return false;
@@ -200,14 +205,17 @@ function looksLikeAwaitingAnswer(text, awaiting) {
  * 当前 awaiting 下本轮是否应继续该流程。
  * 换题且并非在回答 awaiting → 放行新意图。
  *
- * 改标询问：只要没换题，就钉住 tag_edit，具体加删由 plan 模型填 tagEdit
- * （不靠「不太合适」等词表）。归类询问仍只接受明确分法短答。
+ * 改标询问/确认：未换题则钉住，具体意图由 plan 模型理解（不靠「再换一个」词表）。
+ * 归类询问仍只接受明确分法短答。
  */
 function shouldContinueAwaiting(text, awaiting) {
   if (!awaiting?.kind) return false;
   if (looksLikeAwaitingAnswer(text, awaiting)) return true;
   if (looksLikeTopicSwitch(text)) return false;
-  if (awaiting.kind === AWAITING.TAG_EDIT_PREFERENCE) {
+  if (
+    awaiting.kind === AWAITING.TAG_EDIT_PREFERENCE ||
+    awaiting.kind === AWAITING.TAG_EDIT_CONFIRM
+  ) {
     return true;
   }
   // 归类询问：不含糊吞掉任意短句；只接受明确答中
