@@ -36,6 +36,7 @@ function buildPlanMessages({
 - intent=compare：用户要对照/对比「这几篇」等回指上文；queries 可为空；excerptItemIds 必须填上文出处里的 itemId（通常最近两篇）
 - intent=tag_edit：用户要给点名篇「加上/去掉/改成/用某某标签」；queries=[]；excerptItemIds 填目标篇；tagEdit 填 itemId 与 add/remove/replace（「改成/用某某」走 replace 整组替换用户标签；「加上」走 add；「去掉」走 remove）。禁止无目标篇时瞎改
 - 上文刚问「标签怎么改」时：即使用户说法随意（如「数码评测不太合适」「这个换掉」「改成产品实测」），仍 intent=tag_edit，由你理解语义填 tagEdit；不要改成 organize/search
+- 「某某不准确/不合适/不对」且未说换成什么：tagEdit.remove=["某某"]，add 可留空（系统会按正文推荐替换名）；若用户已说「换成Y」则 remove+add 或 replace。禁止把用户整句原话写进 add 当新标签名
 - intent=organize：建归类/填入归类/整理或「给标签分类」等（库级整理，非单篇改标）；queries=[]；organize.mode 默认 ungrouped，用户要「全部重排/重新归类/对这些标签分类」用 full；hint 摘用户偏好短句。归类仅一层架子，禁止追问「要不要多级/分层」
 - 「有哪些标签 / 现在有哪些标签」≠ organize，必须 list_tags（按文章列标签，不提归类；阅读锚定下无「现在/库里」时问本篇标签走 search）；禁止输出归类预览
 - 用户说「这两篇 / 对比一下」等：优先 compare + excerptItemIds，禁止另起无关新关键词去搜
