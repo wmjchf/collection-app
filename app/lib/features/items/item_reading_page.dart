@@ -1,5 +1,5 @@
 import 'dart:async';
-import 'dart:ui' show BoxHeightStyle, BoxWidthStyle;
+import 'dart:ui' show BoxHeightStyle, BoxWidthStyle, ImageFilter;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
@@ -96,6 +96,9 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
   static const _chromeAnim = Duration(milliseconds: 240);
   static const _topBarHeight = 52.0;
   static const _bottomBarHeight = 56.0;
+  static const _bottomBarHInset = 18.0;
+  static const _bottomBarGap = 10.0;
+  static const _bottomBarRadius = 28.0;
 
   final _repo = ItemsRepository();
   final _tagsRepo = TagsRepository();
@@ -2056,7 +2059,8 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
     final topChrome = mq.padding.top + _topBarHeight;
     // 壳内分栏阅读不占 Home Indicator，避免操作栏下方多出一条空白
     final bottomSafe = widget.embedded ? 0.0 : mq.padding.bottom;
-    final bottomChrome = bottomSafe + _bottomBarHeight;
+    final bottomChrome =
+        bottomSafe + _bottomBarGap + _bottomBarHeight;
 
     return PopScope(
       canPop: widget.embedded || !_shouldNudgeOnLeave,
@@ -2246,38 +2250,79 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
                   offset:
                       _chromeVisible ? Offset.zero : const Offset(0, 1),
                   child: Material(
-                    color: Colors.white,
-                    child: Container(
-                      decoration: const BoxDecoration(
-                        border: Border(top: BorderSide(color: _border)),
-                      ),
-                      child: SafeArea(
-                        top: false,
-                        bottom: !widget.embedded,
-                        child: SizedBox(
-                          height: _bottomBarHeight,
-                          child: Row(
-                            children: [
-                              _AgentActionItem(
-                                onTap: () => unawaited(_openAgent()),
+                    type: MaterialType.transparency,
+                    child: SafeArea(
+                      top: false,
+                      bottom: !widget.embedded,
+                      minimum: EdgeInsets.zero,
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(
+                          _bottomBarHInset,
+                          0,
+                          _bottomBarHInset,
+                          _bottomBarGap,
+                        ),
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            borderRadius:
+                                BorderRadius.circular(_bottomBarRadius),
+                            boxShadow: [
+                              BoxShadow(
+                                color:
+                                    Colors.black.withValues(alpha: 0.10),
+                                blurRadius: 24,
+                                offset: const Offset(0, 8),
                               ),
-                              _ActionItem(
-                                icon: Icons.tag_outlined,
-                                label: '标签',
-                                onTap: _openTagsSheet,
-                              ),
-                              _ActionItem(
-                                icon: Icons.edit_note_outlined,
-                                label: '感想',
-                                iconColor: _hasNote ? _blue : null,
-                                onTap: () => unawaited(_onNote()),
-                              ),
-                              _ActionItem(
-                                icon: Icons.more_vert,
-                                label: '更多',
-                                onTap: _onMore,
+                              BoxShadow(
+                                color:
+                                    Colors.black.withValues(alpha: 0.04),
+                                blurRadius: 6,
+                                offset: const Offset(0, 2),
                               ),
                             ],
+                          ),
+                          child: ClipRRect(
+                            borderRadius:
+                                BorderRadius.circular(_bottomBarRadius),
+                            child: BackdropFilter(
+                              filter: ImageFilter.blur(
+                                sigmaX: 24,
+                                sigmaY: 24,
+                              ),
+                              child: ColoredBox(
+                                color:
+                                    Colors.white.withValues(alpha: 0.86),
+                                child: SizedBox(
+                                  height: _bottomBarHeight,
+                                  child: Row(
+                                    children: [
+                                      _AgentActionItem(
+                                        onTap: () =>
+                                            unawaited(_openAgent()),
+                                      ),
+                                      _ActionItem(
+                                        icon: Icons.tag_outlined,
+                                        label: '标签',
+                                        onTap: _openTagsSheet,
+                                      ),
+                                      _ActionItem(
+                                        icon: Icons.edit_note_outlined,
+                                        label: '感想',
+                                        iconColor:
+                                            _hasNote ? _blue : null,
+                                        onTap: () =>
+                                            unawaited(_onNote()),
+                                      ),
+                                      _ActionItem(
+                                        icon: Icons.more_vert,
+                                        label: '更多',
+                                        onTap: _onMore,
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ),
                           ),
                         ),
                       ),
