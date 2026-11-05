@@ -793,34 +793,38 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
           ),
         ],
       ),
-      body: RefreshIndicator(
-        onRefresh: _load,
-        child: _loading && _data == null
-            ? ListView(
-                physics: const AlwaysScrollableScrollPhysics(),
-                children: const [
-                  SizedBox(height: 120),
-                  Center(child: CircularProgressIndicator()),
-                ],
-              )
-            : _error != null && _data == null
-                ? ListView(
-                    physics: const AlwaysScrollableScrollPhysics(),
-                    children: [
-                      const SizedBox(height: 80),
-                      Center(
-                        child: Text(
-                          _error!,
-                          style: const TextStyle(color: Color(0xFF737A85)),
+      body: Builder(
+        builder: (context) {
+          final content = _loading && _data == null
+              ? ListView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  children: const [
+                    SizedBox(height: 120),
+                    Center(child: CircularProgressIndicator()),
+                  ],
+                )
+              : _error != null && _data == null
+                  ? ListView(
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      children: [
+                        const SizedBox(height: 80),
+                        Center(
+                          child: Text(
+                            _error!,
+                            style: const TextStyle(color: Color(0xFF737A85)),
+                          ),
                         ),
-                      ),
-                      TextButton(onPressed: _load, child: const Text('重试')),
-                    ],
-                  )
-                : _buildPhoneHomeBody(
-                    unread: _data?.unread.items ?? const <CollectionItem>[],
-                    roam: roam,
-                  ),
+                        TextButton(onPressed: _load, child: const Text('重试')),
+                      ],
+                    )
+                  : _buildPhoneHomeBody(
+                      unread: _data?.unread.items ?? const <CollectionItem>[],
+                      roam: roam,
+                    );
+          // 整库模式由 HomeLibrarySection 自带下拉刷新，避免叠两个指示器
+          if (HomeModulesPrefs.instance.showLibrary) return content;
+          return RefreshIndicator(onRefresh: _load, child: content);
+        },
       ),
     );
   }
