@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:super_collection/core/network/api_client.dart';
 import 'package:super_collection/core/ui/paged_list.dart';
+import 'package:super_collection/features/agent/agent_split_inset.dart';
 import 'package:super_collection/features/home/home_format.dart';
 import 'package:super_collection/features/items/item_list_tile.dart';
 import 'package:super_collection/features/items/item_models.dart';
@@ -23,6 +24,7 @@ class TabletItemsSplit extends StatefulWidget {
     this.refreshTick = 0,
     this.autoSelectFirst = true,
     this.showMediaKinds = false,
+    this.agentHostActive = true,
   });
 
   final String title;
@@ -39,6 +41,9 @@ class TabletItemsSplit extends StatefulWidget {
 
   /// 是否显示「全部 / 文章 / 图集 / 视频」（对齐手机系统筛选列表）
   final bool showMediaKinds;
+
+  /// 当前页是否可见（IndexedStack 下仅可见 Tab 承接助手）
+  final bool agentHostActive;
 
   @override
   State<TabletItemsSplit> createState() => _TabletItemsSplitState();
@@ -216,45 +221,41 @@ class _TabletItemsSplitState extends State<TabletItemsSplit> {
 
   @override
   Widget build(BuildContext context) {
-    return ColoredBox(
-      color: _bg,
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          SizedBox(
-            width: widget.listWidth,
-            child: DecoratedBox(
-              decoration: const BoxDecoration(
-                color: _bg,
-                border: Border(right: BorderSide(color: _hairline)),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  _ListHeader(
-                    title: widget.title,
-                    onBack: widget.onBack,
-                    trailing: widget.trailing,
-                  ),
-                  if (widget.showMediaKinds)
-                    Material(
-                      color: Colors.white,
-                      child: Padding(
-                        padding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
-                        child: _MediaKindBar(
-                          kinds: _mediaKinds,
-                          selected: _mediaKind,
-                          onSelect: _selectMediaKind,
-                        ),
-                      ),
-                    ),
-                  Expanded(child: _buildList()),
-                ],
+    final listColumn = Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _ListHeader(
+          title: widget.title,
+          onBack: widget.onBack,
+          trailing: widget.trailing,
+        ),
+        if (widget.showMediaKinds)
+          Material(
+            color: Colors.white,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
+              child: _MediaKindBar(
+                kinds: _mediaKinds,
+                selected: _mediaKind,
+                onSelect: _selectMediaKind,
               ),
             ),
           ),
-          Expanded(child: _buildReading()),
-        ],
+        Expanded(child: _buildList()),
+      ],
+    );
+
+    return ColoredBox(
+      color: _bg,
+      child: AgentSplitInset(
+        listWidth: widget.listWidth,
+        active: widget.agentHostActive,
+        listDecoration: const BoxDecoration(
+          color: _bg,
+          border: Border(right: BorderSide(color: _hairline)),
+        ),
+        list: listColumn,
+        detail: _buildReading(),
       ),
     );
   }

@@ -314,7 +314,7 @@ Body: { conversationId, messageId, approve: true|false }
 | 值 | 何时挂上 | 下一轮 |
 | --- | --- | --- |
 | `organize_preference` | 归类询问「怎么分」 | 仅明确分法/取消继续；对照/检索等换题放行 |
-| `tag_edit_preference` | 只说改标签、未给加删 | 列出当前标签并询问；答「加上/去掉」后出确认预览；只说「就按这个来」则追问具体标签 |
+| `tag_edit_preference` | 只说改标签、未给加删 | 列出当前标签并询问；答「加上/去掉」或直接丢标签名后出带按钮的确认预览；只说「就按这个来」则追问具体标签 |
 | `organize_confirm` / `tag_edit_confirm` | 挂 `pendingAction` 时 | **仅此时 App 出确认按钮**；禁止正文手写「请确认是否写入」 |
 
 实现：`agentAwaiting.js`（`resolveAwaiting` / `looksLikeTopicSwitch` / `shouldContinueAwaiting`）。后续新半成品对话加一种 awaiting 值即可，避免两两特判。
@@ -436,7 +436,7 @@ Body: { conversationId, messageId, approve: true|false }
 
 - 本地：当前 `conversationId`、消息列表、sending/streaming；**会话消息 SharedPreferences 缓存**（按用户 + 全局/篇），进页先渲染缓存再 `ensure`+拉网同步
 - 出处点击 → `ItemReadingPage(openEntry: 'agent')`；左侧勾选 → 输入胶囊内蓝底标题 chip（可 × 取消），发送时拼「标题」锁定篇目
-- 阅读页底栏首位「AI助手」→ `AgentPage(focusItemId)` + `ensure(focusItemId)` 篇专属会话；首页/收藏 `ensure()` 全局会话
+- 阅读页底栏首位「AI助手」→ `openAgent(focusItemId)` 篇专属会话；首页/收藏/侧栏 → 全局会话。手机全屏 `AgentPage`；iPad：三列从列表右缘顶入（挤没侧栏+列表），两列枢纽压一半（`AgentSplitInset` / `asPanel`）
 - 盘点类问题（有哪些/有多少收藏）→ `list_library`，勿用空泛词 `search_library`
 - 带时间的盘点（今天/昨天/本周/本月/最近收藏）→ 仍走 `list_library`，由编排层解析 Asia/Shanghai 时间窗写入 `createdAfter`/`createdBefore`；「还有吗」继承上一问时间窗；回答不得把窗外旧篇说成该时段的
 - 「最近阅读 / 朕已阅」「批注 / 朱批」盘点 → `list_library` + `filter=recent_read|annotated`（与收藏页瓷砖同一套 `systemFilterService` 规则：近 7 天已读 / 有标注）

@@ -15,6 +15,7 @@ const FILES = [
   { local: 'help/fig1.png', key: 'help/ai-auto-tags-fig1.png' },
   { local: 'help/fig2.png', key: 'help/ai-auto-tags-fig2.png' },
   { local: 'help/fig3.png', key: 'help/ai-auto-tags-fig3.png' },
+  { local: 'ai_agent/chat.png', key: 'help/ai-agent-chat.png' },
   { local: 'shortcuts/fig1.png', key: 'help/shortcuts-fig1.png' },
   { local: 'shortcuts/fig2.png', key: 'help/shortcuts-fig2.png' },
   { local: 'shortcuts/fig3.png', key: 'help/shortcuts-fig3.png' },

@@ -7,6 +7,9 @@ const SETS = {
     'help/ai-auto-tags-fig2.png',
     'help/ai-auto-tags-fig3.png',
   ],
+  ai_agent: [
+    'help/ai-agent-chat.png',
+  ],
   shortcuts: [
     'help/shortcuts-fig1.png',
     'help/shortcuts-fig2.png',
