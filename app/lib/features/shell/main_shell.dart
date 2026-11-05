@@ -392,10 +392,18 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
         ),
         bottomNavigationBar: tablet
             ? null
-            : AppBottomNavBar(
-                currentIndex: _index.clamp(0, 1),
-                onChanged: _switchTab,
-                onSearch: _openSearch,
+            : BottomAppBar(
+                color: Colors.white,
+                elevation: 0,
+                shadowColor: Colors.black.withValues(alpha: 0.08),
+                surfaceTintColor: Colors.transparent,
+                height: AppBottomNavBar.barH,
+                padding: EdgeInsets.zero,
+                child: AppBottomNavBar(
+                  currentIndex: _index.clamp(0, 1),
+                  onChanged: _switchTab,
+                  onSearch: _openSearch,
+                ),
               ),
       ),
     );
