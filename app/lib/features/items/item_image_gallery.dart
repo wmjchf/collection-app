@@ -11,6 +11,7 @@ class ItemImageGallery extends StatefulWidget {
     this.borderRadius = 12,
     this.height = 360,
     this.fit = BoxFit.cover,
+    this.overlayIndicators = false,
   });
 
   final List<String> urls;
@@ -19,6 +20,8 @@ class ItemImageGallery extends StatefulWidget {
   final double height;
   /// 阅读页图集默认 cover 铺满；全图预览仍用 contain
   final BoxFit fit;
+  /// true：页码与圆点叠在图上（图集阅读）；false：圆点在图下方
+  final bool overlayIndicators;
 
   @override
   State<ItemImageGallery> createState() => _ItemImageGalleryState();
@@ -78,75 +81,115 @@ class _ItemImageGalleryState extends State<ItemImageGallery> {
       );
     }
 
-    return Column(
-      children: [
-        ClipRRect(
-          borderRadius: BorderRadius.circular(widget.borderRadius),
-          child: SizedBox(
-            height: widget.height,
-            width: double.infinity,
-            child: Stack(
-              fit: StackFit.expand,
-              children: [
-                PageView.builder(
-                  controller: _controller,
-                  itemCount: list.length,
-                  onPageChanged: (i) => setState(() => _index = i),
-                  itemBuilder: (context, i) => GestureDetector(
-                    onTap: () => _openPreview(i),
-                    child: _CarouselImage(
-                      url: list[i],
-                      pageUrl: widget.pageUrl,
-                      height: widget.height,
-                      borderRadius: 0,
-                      fit: widget.fit,
-                    ),
-                  ),
-                ),
-                Positioned(
-                  right: 10,
-                  top: 10,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 4,
-                    ),
-                    decoration: BoxDecoration(
-                      color: const Color(0x99000000),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Text(
-                      '${_index + 1}/${list.length}',
-                      style: const TextStyle(
-                        fontSize: 12,
-                        color: Colors.white,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-        const SizedBox(height: 10),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.center,
+    final frame = ClipRRect(
+      borderRadius: BorderRadius.circular(widget.borderRadius),
+      child: SizedBox(
+        height: widget.height,
+        width: double.infinity,
+        child: Stack(
+          fit: StackFit.expand,
           children: [
-            for (var i = 0; i < list.length; i++) ...[
-              if (i > 0) const SizedBox(width: 6),
-              AnimatedContainer(
-                duration: const Duration(milliseconds: 180),
-                width: i == _index ? 16 : 6,
-                height: 6,
-                decoration: BoxDecoration(
-                  color: i == _index ? _dotActive : _dot,
-                  borderRadius: BorderRadius.circular(3),
+            PageView.builder(
+              controller: _controller,
+              itemCount: list.length,
+              onPageChanged: (i) => setState(() => _index = i),
+              itemBuilder: (context, i) => GestureDetector(
+                onTap: () => _openPreview(i),
+                child: _CarouselImage(
+                  url: list[i],
+                  pageUrl: widget.pageUrl,
+                  height: widget.height,
+                  borderRadius: 0,
+                  fit: widget.fit,
                 ),
               ),
-            ],
+            ),
+            Positioned(
+              right: 10,
+              top: 10,
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 8,
+                  vertical: 4,
+                ),
+                decoration: BoxDecoration(
+                  color: const Color(0x99000000),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Text(
+                  '${_index + 1}/${list.length}',
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: Colors.white,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ),
+            ),
+            if (widget.overlayIndicators)
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: 12,
+                child: _DotRow(
+                  count: list.length,
+                  index: _index,
+                  active: Colors.white,
+                  inactive: Colors.white.withValues(alpha: 0.45),
+                ),
+              ),
           ],
         ),
+      ),
+    );
+
+    if (widget.overlayIndicators) return frame;
+
+    return Column(
+      children: [
+        frame,
+        const SizedBox(height: 10),
+        _DotRow(
+          count: list.length,
+          index: _index,
+          active: _dotActive,
+          inactive: _dot,
+        ),
+      ],
+    );
+  }
+}
+
+class _DotRow extends StatelessWidget {
+  const _DotRow({
+    required this.count,
+    required this.index,
+    required this.active,
+    required this.inactive,
+  });
+
+  final int count;
+  final int index;
+  final Color active;
+  final Color inactive;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        for (var i = 0; i < count; i++) ...[
+          if (i > 0) const SizedBox(width: 6),
+          AnimatedContainer(
+            duration: const Duration(milliseconds: 180),
+            width: i == index ? 16 : 6,
+            height: 6,
+            decoration: BoxDecoration(
+              color: i == index ? active : inactive,
+              borderRadius: BorderRadius.circular(3),
+            ),
+          ),
+        ],
       ],
     );
   }

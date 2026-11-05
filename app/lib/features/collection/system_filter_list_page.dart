@@ -5,10 +5,11 @@ import 'package:super_collection/core/ui/app_subpage_app_bar.dart';
 import 'package:super_collection/core/ui/paged_list.dart';
 import 'package:super_collection/features/collection/system_filters_repository.dart';
 import 'package:super_collection/features/home/home_format.dart';
-import 'package:super_collection/features/items/item_list_tile.dart';
 import 'package:super_collection/features/items/item_reading_page.dart';
 import 'package:super_collection/features/items/item_models.dart';
 import 'package:super_collection/features/items/items_batch_delete.dart';
+import 'package:super_collection/features/items/items_feed_body.dart';
+import 'package:super_collection/features/items/items_layout_toggle_button.dart';
 import 'package:super_collection/features/items/items_repository.dart';
 
 /// 系统筛选条目列表（未读 / 所有 / 今天 …）
@@ -374,74 +375,41 @@ class _SystemFilterListPageState extends State<SystemFilterListPage>
                       ),
                     ],
                   )
-                : ListView.builder(
+                : ItemsFeedBody(
                     controller: _scroll,
-                    physics: const AlwaysScrollableScrollPhysics(),
-                    padding: EdgeInsets.fromLTRB(
-                      16,
-                      12,
-                      16,
-                      _selecting ? 16 : 24,
-                    ),
-                    itemCount: _items.isEmpty
-                        ? 2
-                        : (2 + _items.length),
-                    itemBuilder: (context, index) {
-                      if (index == 0) {
-                        return Padding(
-                          padding: const EdgeInsets.only(bottom: 12),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              if (_showMediaKinds) ...[
-                                _MediaKindBar(
-                                  kinds: _mediaKinds,
-                                  selected: _mediaKind,
-                                  onSelect: _selectMediaKind,
-                                ),
-                                const SizedBox(height: 12),
-                              ],
-                              Text(
-                                '共 $_total 条',
-                                style: const TextStyle(
-                                  fontSize: 13,
-                                  color: _muted,
-                                ),
-                              ),
-                            ],
+                    items: _items,
+                    total: _total,
+                    subtitleOf: _subtitle,
+                    loadingMore: _loadingMore,
+                    hasMore: _hasMore,
+                    selecting: _selecting,
+                    selectedIds: _selectedIds,
+                    onItemTap: _onItemTap,
+                    onItemLongPress:
+                        _selecting ? null : (item) => _enterSelecting(item.id),
+                    header: Padding(
+                      padding: const EdgeInsets.only(bottom: 12),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          if (_showMediaKinds) ...[
+                            _MediaKindBar(
+                              kinds: _mediaKinds,
+                              selected: _mediaKind,
+                              onSelect: _selectMediaKind,
+                            ),
+                            const SizedBox(height: 12),
+                          ],
+                          ItemsFeedCountRow(
+                            label: '共 $_total 条',
                           ),
-                        );
-                      }
-                      if (_items.isEmpty) {
-                        return Padding(
-                          padding: const EdgeInsets.only(top: 48),
-                          child: _ListEmptyHint(icon: _emptyIcon),
-                        );
-                      }
-                      final itemIndex = index - 1;
-                      if (itemIndex >= _items.length) {
-                        return pagedListFooter(
-                          loadingMore: _loadingMore,
-                          hasMore: _hasMore,
-                          isEmpty: false,
-                        );
-                      }
-                      final item = _items[itemIndex];
-                      return Padding(
-                        key: ValueKey('item-${item.id}'),
-                        padding: const EdgeInsets.only(bottom: 8),
-                        child: ItemListTile.fromItem(
-                          item,
-                          subtitle: _subtitle(item),
-                          selecting: _selecting,
-                          selected: _selectedIds.contains(item.id),
-                          onTap: () => _onItemTap(item),
-                          onLongPress: _selecting
-                              ? null
-                              : () => _enterSelecting(item.id),
-                        ),
-                      );
-                    },
+                        ],
+                      ),
+                    ),
+                    empty: Padding(
+                      padding: const EdgeInsets.only(top: 48),
+                      child: _ListEmptyHint(icon: _emptyIcon),
+                    ),
                   ),
       ),
     );

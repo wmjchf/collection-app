@@ -89,6 +89,8 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
   static const _muted = Color(0xFF737A85);
   static const _border = Color(0xFFE5E5EB);
   static const _blue = Color(0xFF2F6FED);
+  /// 图集正文 / 标签行：略淡于品牌蓝
+  static const _tagSoftBlue = Color(0xFF6B9AE8);
   static const _highlight = Color(0xFFFFF2C7);
 
   static const _chromeAnim = Duration(milliseconds: 240);
@@ -186,6 +188,14 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
         fontSize: _bodyFontSize,
         height: 1.85,
         letterSpacing: 0.2,
+        color: _text,
+      );
+
+  /// 图集说明：行高略收；颜色与文章正文同为黑色
+  TextStyle get _galleryCaptionStyle => TextStyle(
+        fontSize: _bodyFontSize,
+        height: 1.65,
+        letterSpacing: 0.15,
         color: _text,
       );
 
@@ -532,9 +542,7 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
 
   List<ArticleBlock> get _bodyBlocks => ArticleContentBlocks.parse(_rawBody);
 
-  /// 阅读页顶部轮播：仅真图集；普通文章图插在正文对应位置
-  bool get _showReadingImages => _readingImageUrls.isNotEmpty;
-
+  /// 图集阅读轮播用图（仅 `isImageGallery`）
   List<String> get _readingImageUrls {
     if (!_item.isImageGallery) return const [];
     return _item.imageUrls
@@ -595,6 +603,125 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
       ),
       dateStr,
     ].where((e) => e.isNotEmpty).join(' · ');
+  }
+
+  List<Widget> _buildBodyContent(String body, {required bool gallery}) {
+    if (_rawBody.isEmpty) {
+      if (gallery) return const [];
+      return const [
+        Text(
+          '暂无正文',
+          style: TextStyle(fontSize: 15, color: _muted),
+        ),
+      ];
+    }
+    if (!gallery && ArticleContentBlocks.hasRichMarkup(_rawBody)) {
+      return [
+        _InlineArticleBody(
+          blocks: _bodyBlocks,
+          plainText: body,
+          fontSize: _bodyFontSize,
+          annotationRanges: _annotationRanges(body),
+          toolbarAt: _toolbarAt,
+          onTapAnnotation: _openAnnotation,
+          onBodyTap: _toggleReadingChrome,
+          onSelectionChanged: _onBodySelectionChanged,
+          focusAnnotationId:
+              _locateAnnotationId ?? widget.focusAnnotationId,
+          onFocusAnnotationRect: _onFocusAnnotationRect,
+          itemId: _item.id,
+          pageUrl: _item.sourcePageUrl,
+          transcriptSegments: _item.transcriptSegments,
+          platform: _item.platform,
+          pageAudio: _pageAudio,
+          onRefreshInlineVideo:
+              _platformNeedsVideoRefresh ? _refreshInlineVideo : null,
+          onShareQuote: _shareExistingQuote,
+        ),
+      ];
+    }
+    // 图集正文原样展示（含 #标签，不做高亮/剔除）
+    return [
+      _AnnotatedBodyStack(
+        text: body,
+        spans: _bodySpans(body),
+        annotations: _annotationRanges(body),
+        contextMenuBuilder: _selectionToolbar,
+        onTapAnnotation: _openAnnotation,
+        onBodyTap: gallery ? null : _toggleReadingChrome,
+        onSelectionChanged: _onBodySelectionChanged,
+        textStyle: gallery ? _galleryCaptionStyle : _bodyTextStyle,
+        focusAnnotationId:
+            _locateAnnotationId ?? widget.focusAnnotationId,
+        onFocusAnnotationRect: _onFocusAnnotationRect,
+      ),
+    ];
+  }
+
+  List<Widget> _buildGalleryReadingChildren({
+    required String title,
+    required String body,
+  }) {
+    final screenW = MediaQuery.sizeOf(context).width;
+    final galleryH = (screenW * 1.05).clamp(300.0, 560.0);
+    return [
+      ItemImageGallery(
+        urls: _readingImageUrls,
+        pageUrl: _item.sourcePageUrl,
+        height: galleryH,
+        borderRadius: 0,
+        overlayIndicators: true,
+      ),
+      Padding(
+        padding: const EdgeInsets.fromLTRB(22, 16, 22, 0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SelectableText(
+              title,
+              style: const TextStyle(
+                fontSize: 17,
+                fontWeight: FontWeight.w600,
+                color: _text,
+                height: 1.35,
+                letterSpacing: 0.1,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              _metaLine(),
+              style: const TextStyle(
+                fontSize: 12,
+                color: _muted,
+                height: 1.4,
+              ),
+            ),
+            if (_itemTags.isNotEmpty) ...[
+              const SizedBox(height: 10),
+              _ArticleTagHashtags(
+                tags: _itemTags,
+                onTap: _openTagList,
+                color: _tagSoftBlue,
+              ),
+            ],
+            if (_rawBody.isNotEmpty) ...[
+              const SizedBox(height: 14),
+              ..._buildBodyContent(body, gallery: true),
+            ],
+            if (_loadingAnns) ...[
+              const SizedBox(height: 16),
+              const Center(
+                child: SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    ];
   }
 
   Future<void> _loadAnnotations() async {
@@ -1852,7 +1979,10 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
                   : bottomSafe,
             ),
             child: GestureDetector(
-              onTap: canRead ? _toggleReadingChrome : null,
+              // 仅文章可点空白藏顶底栏；图集保持栏常显
+              onTap: canRead && !_item.isImageGallery
+                  ? _toggleReadingChrome
+                  : null,
               behavior: HitTestBehavior.translucent,
               child: ListView(
                 controller: _scrollController,
@@ -1861,131 +1991,93 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
                 ),
                 // 避免播放器滚出视口后被 Platform View 回收/暂停（尤其播客音频）
                 cacheExtent: mq.size.height * 2,
-                padding: const EdgeInsets.fromLTRB(22, 18, 22, 28),
+                padding: canRead && _item.isImageGallery
+                    ? const EdgeInsets.only(bottom: 28)
+                    : const EdgeInsets.fromLTRB(22, 18, 22, 28),
                 children: [
-                  SelectableText(
-                    title,
-                    style: const TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.w700,
-                      color: _text,
-                      height: 1.4,
-                      letterSpacing: 0.2,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  Text(
-                    _metaLine(),
-                    style: const TextStyle(
-                      fontSize: 12,
-                      color: _muted,
-                      height: 1.4,
-                    ),
-                  ),
-                  if (canRead && _itemTags.isNotEmpty) ...[
-                    const SizedBox(height: 14),
-                    _ArticleTagHashtags(
-                      tags: _itemTags,
-                      onTap: _openTagList,
-                    ),
-                  ],
-                  const SizedBox(height: 22),
-                  if (!canRead) ...[
-                    _ReadingStatusChip(status: _item.status),
-                    const SizedBox(height: 16),
-                    if (_item.isPending)
-                      const _ReadingPendingCard()
-                    else if (_item.isFailed)
-                      _ReadingFailedCard(
-                        message: _item.errorMessage,
-                        onRetry: _reparseItem,
-                      ),
-                  ] else ...[
-                  if (_item.hasVideo && !_hasInlineVideos) ...[
-                    ItemVideoPlayer(
-                      key: ValueKey('item-video-${_item.id}'),
-                      url: _item.videoUrl!.trim(),
-                      coverUrl: _item.coverImageUrl ??
-                          (_item.displayImages.isNotEmpty
-                              ? _item.displayImages.first
-                              : null),
-                      pageUrl: _item.sourcePageUrl,
-                      platform: _item.platform,
-                      pageAudio: _pageAudio,
-                      onRefreshUrl: _platformNeedsVideoRefresh
-                          ? _refreshVideoUrl
-                          : null,
-                    ),
-                    TranscriptSegmentPanel(
-                      segment: _item.segmentTranscript(
-                        TranscriptTargets.segmentVideoUrl,
-                      ),
-                      itemId: _item.id,
-                      segmentKey: TranscriptTargets.segmentVideoUrl,
-                      hidePendingLoading: _item.isAiAwaitingTranscript,
-                      fontSize: _bodyFontSize,
-                      onShareQuote: _shareExistingQuote,
-                    ),
-                    const SizedBox(height: 18),
-                  ] else if (_showReadingImages) ...[
-                    ItemImageGallery(
-                      urls: _readingImageUrls,
-                      pageUrl: _item.sourcePageUrl,
-                    ),
-                    const SizedBox(height: 18),
-                  ],
-                  if (_rawBody.isEmpty)
-                    const Text(
-                      '暂无正文',
-                      style: TextStyle(fontSize: 15, color: _muted),
+                  if (canRead && _item.isImageGallery)
+                    ..._buildGalleryReadingChildren(
+                      title: title,
+                      body: body,
                     )
-                  else if (ArticleContentBlocks.hasRichMarkup(_rawBody))
-                    _InlineArticleBody(
-                      blocks: _bodyBlocks,
-                      plainText: body,
-                      fontSize: _bodyFontSize,
-                      annotationRanges: _annotationRanges(body),
-                      toolbarAt: _toolbarAt,
-                      onTapAnnotation: _openAnnotation,
-                      onBodyTap: _toggleReadingChrome,
-                      onSelectionChanged: _onBodySelectionChanged,
-                      focusAnnotationId:
-                          _locateAnnotationId ?? widget.focusAnnotationId,
-                      onFocusAnnotationRect: _onFocusAnnotationRect,
-                      itemId: _item.id,
-                      pageUrl: _item.sourcePageUrl,
-                      transcriptSegments: _item.transcriptSegments,
-                      platform: _item.platform,
-                      pageAudio: _pageAudio,
-                      onRefreshInlineVideo: _platformNeedsVideoRefresh
-                      ? _refreshInlineVideo
-                      : null,
-                  onShareQuote: _shareExistingQuote,
-                )
-                  else
-                    _AnnotatedBodyStack(
-                      text: body,
-                      spans: _bodySpans(body),
-                      annotations: _annotationRanges(body),
-                      contextMenuBuilder: _selectionToolbar,
-                      onTapAnnotation: _openAnnotation,
-                      onBodyTap: _toggleReadingChrome,
-                      onSelectionChanged: _onBodySelectionChanged,
-                      textStyle: _bodyTextStyle,
-                      focusAnnotationId:
-                          _locateAnnotationId ?? widget.focusAnnotationId,
-                      onFocusAnnotationRect: _onFocusAnnotationRect,
-                    ),
-                  if (_loadingAnns) ...[
-                    const SizedBox(height: 16),
-                    const Center(
-                      child: SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2),
+                  else ...[
+                    SelectableText(
+                      title,
+                      style: const TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.w700,
+                        color: _text,
+                        height: 1.4,
+                        letterSpacing: 0.2,
                       ),
                     ),
-                  ],
+                    const SizedBox(height: 12),
+                    Text(
+                      _metaLine(),
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: _muted,
+                        height: 1.4,
+                      ),
+                    ),
+                    if (canRead && _itemTags.isNotEmpty) ...[
+                      const SizedBox(height: 14),
+                      _ArticleTagHashtags(
+                        tags: _itemTags,
+                        onTap: _openTagList,
+                      ),
+                    ],
+                    const SizedBox(height: 22),
+                    if (!canRead) ...[
+                      _ReadingStatusChip(status: _item.status),
+                      const SizedBox(height: 16),
+                      if (_item.isPending)
+                        const _ReadingPendingCard()
+                      else if (_item.isFailed)
+                        _ReadingFailedCard(
+                          message: _item.errorMessage,
+                          onRetry: _reparseItem,
+                        ),
+                    ] else ...[
+                      if (_item.hasVideo && !_hasInlineVideos) ...[
+                        ItemVideoPlayer(
+                          key: ValueKey('item-video-${_item.id}'),
+                          url: _item.videoUrl!.trim(),
+                          coverUrl: _item.coverImageUrl ??
+                              (_item.displayImages.isNotEmpty
+                                  ? _item.displayImages.first
+                                  : null),
+                          pageUrl: _item.sourcePageUrl,
+                          platform: _item.platform,
+                          pageAudio: _pageAudio,
+                          onRefreshUrl: _platformNeedsVideoRefresh
+                              ? _refreshVideoUrl
+                              : null,
+                        ),
+                        TranscriptSegmentPanel(
+                          segment: _item.segmentTranscript(
+                            TranscriptTargets.segmentVideoUrl,
+                          ),
+                          itemId: _item.id,
+                          segmentKey: TranscriptTargets.segmentVideoUrl,
+                          hidePendingLoading: _item.isAiAwaitingTranscript,
+                          fontSize: _bodyFontSize,
+                          onShareQuote: _shareExistingQuote,
+                        ),
+                        const SizedBox(height: 18),
+                      ],
+                      ..._buildBodyContent(body, gallery: false),
+                      if (_loadingAnns) ...[
+                        const SizedBox(height: 16),
+                        const Center(
+                          child: SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          ),
+                        ),
+                      ],
+                    ],
                   ],
                 ],
               ),
@@ -2016,8 +2108,12 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
                     onDelete: _confirmDelete,
                     onMarkUnread: _markAsUnread,
                     onFontSize: _openFontSizeSheet,
-                    onHighlights: canRead ? _showHighlightList : null,
-                    onAnnotations: canRead ? _showNoteAnnotationList : null,
+                    onHighlights: canRead && !_item.isImageGallery
+                        ? _showHighlightList
+                        : null,
+                    onAnnotations: canRead && !_item.isImageGallery
+                        ? _showNoteAnnotationList
+                        : null,
                   ),
                 ),
               ),
@@ -2103,10 +2199,12 @@ class _ArticleTagHashtags extends StatelessWidget {
   const _ArticleTagHashtags({
     required this.tags,
     required this.onTap,
+    this.color = _brand,
   });
 
   final List<Tag> tags;
   final ValueChanged<Tag> onTap;
+  final Color color;
 
   static const _brand = Color(0xFF2F6FED);
 
@@ -2125,20 +2223,20 @@ class _ArticleTagHashtags extends StatelessWidget {
             child: Text.rich(
               TextSpan(
                 children: [
-                  const TextSpan(
+                  TextSpan(
                     text: '#',
                     style: TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.w600,
-                      color: _brand,
+                      color: color,
                     ),
                   ),
                   TextSpan(
                     text: tag.name,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.w500,
-                      color: _brand,
+                      color: color,
                     ),
                   ),
                 ],

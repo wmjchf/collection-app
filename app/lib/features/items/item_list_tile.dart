@@ -4,7 +4,7 @@ import 'package:super_collection/features/items/item_models.dart';
 import 'package:super_collection/features/settings/usage_repository.dart';
 
 /// 列表行条目：左封面缩略图 + 标题/标签/副文案。
-/// 封面大卡见 [ItemCoverCard]；当前列表页默认用封面卡，本组件保留备用。
+/// 封面大卡 / 双列瀑布见 [ItemCoverCard]；布局偏好见 [ItemsLayoutPrefs]。
 ///
 /// 布局随档位（读 [UsageRefresh]）：
 /// - 太子 / 帝王：标题一行省略 + `#标签` 行（样式与原先一致）
