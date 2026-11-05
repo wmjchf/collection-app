@@ -92,13 +92,30 @@ function extractTagEditAskMeta(message) {
 }
 
 /**
- * 短句像单个标签名（模型漏填时兜底「直接丢一个名」）。
- * 评价/指令句一律不算，避免「数码评测不太准确」整句被当成新标签。
+ * 像对话续句/追问，不是名词标签。
+ * 用于清洗 add（避免「还有没有」建成标签），不靠穷举口令做意图路由。
+ */
+function looksLikeConversationalUtterance(text) {
+  const t = String(text || '').trim();
+  if (!t || t.length > 24) return false;
+  if (/[？?\n]/.test(t)) return true;
+  if (/(吗|呢|么)$/.test(t)) return true;
+  if (/^(然后呢|接下来|继续|好了|收到)$/.test(t)) return true;
+  // 索要其它选项 / 继续给建议（结构特征，不是意图词表路由）
+  return /还有|有没有|别的|其他的?|再(来|换|给|推荐)|换(一个|别的|一个呢)/.test(
+    t,
+  );
+}
+
+/**
+ * 短句像单个标签名（仅改标「询问态」模型漏填时兜底）。
+ * 确认态禁用此兜底。
  */
 function looksLikeBareTagName(text) {
   const t = String(text || '').trim();
   if (!t || t.length > 16) return false;
   if (/[。！？\n]/.test(t)) return false;
+  if (looksLikeConversationalUtterance(t)) return false;
   if (/^(取消|不做了|算了|不用了|可以|确认|好的|行|嗯)[。.!！]?$/.test(t)) {
     return false;
   }
@@ -114,11 +131,12 @@ function looksLikeBareTagName(text) {
   );
 }
 
-/** 不像合法标签名（整句评价、指令残留） */
+/** 不像合法标签名（评价句、对话续句、指令残留） */
 function looksLikeInvalidTagName(name) {
   const n = String(name || '').trim();
   if (!n || n.length > 24) return true;
-  return /不(太)?(合适|准确|对|好|行|喜欢|贴切)|有点|比较|换掉|去掉|删掉|加上|改成|换成/.test(
+  if (looksLikeConversationalUtterance(n)) return true;
+  return /不(太)?(合适|准确|对|好|行|喜欢|贴切)|有点|比较|换掉|去掉|删掉|加上|改成|换成|有没有|还有没有/.test(
     n,
   );
 }
@@ -181,16 +199,21 @@ function looksLikeAwaitingAnswer(text, awaiting) {
     return /^(取消|不做了|算了|不用了)[。.!！]?$/.test(t);
   }
 
-  if (
-    awaiting.kind === AWAITING.ORGANIZE_CONFIRM ||
-    awaiting.kind === AWAITING.TAG_EDIT_CONFIRM
-  ) {
+  if (awaiting.kind === AWAITING.ORGANIZE_CONFIRM) {
     if (/^(取消|不做了|算了|不用了)[。.!！]?$/.test(t)) return true;
     if (/^(可以|确认|好的|行|嗯|没问题|就这样|确认整理|确认调整)[。.!！]?$/.test(t)) {
       return true;
     }
     // 修正预览仍算答在确认步
     return /漏(掉|了)?|忘了|遗漏|补上|还有.{0,12}标签/.test(t);
+  }
+
+  if (awaiting.kind === AWAITING.TAG_EDIT_CONFIRM) {
+    // 同意/取消的明确短答；其它说法（再换、换个别的…）交给模型，由 shouldContinue 钉住
+    return (
+      /^(取消|不做了|算了|不用了)[。.!！]?$/.test(t) ||
+      /^(可以|确认|好的|行|嗯|没问题|就这样|确认调整)[。.!！]?$/.test(t)
+    );
   }
 
   return false;
@@ -200,14 +223,17 @@ function looksLikeAwaitingAnswer(text, awaiting) {
  * 当前 awaiting 下本轮是否应继续该流程。
  * 换题且并非在回答 awaiting → 放行新意图。
  *
- * 改标询问：只要没换题，就钉住 tag_edit，具体加删由 plan 模型填 tagEdit
- * （不靠「不太合适」等词表）。归类询问仍只接受明确分法短答。
+ * 改标询问/确认：未换题则钉住，具体意图由 plan 模型理解（不靠「再换一个」词表）。
+ * 归类询问仍只接受明确分法短答。
  */
 function shouldContinueAwaiting(text, awaiting) {
   if (!awaiting?.kind) return false;
   if (looksLikeAwaitingAnswer(text, awaiting)) return true;
   if (looksLikeTopicSwitch(text)) return false;
-  if (awaiting.kind === AWAITING.TAG_EDIT_PREFERENCE) {
+  if (
+    awaiting.kind === AWAITING.TAG_EDIT_PREFERENCE ||
+    awaiting.kind === AWAITING.TAG_EDIT_CONFIRM
+  ) {
     return true;
   }
   // 归类询问：不含糊吞掉任意短句；只接受明确答中
@@ -241,5 +267,6 @@ module.exports = {
   looksLikeTagEditPreferenceAskContent,
   looksLikeBareTagName,
   looksLikeInvalidTagName,
+  looksLikeConversationalUtterance,
   toolPayload,
 };

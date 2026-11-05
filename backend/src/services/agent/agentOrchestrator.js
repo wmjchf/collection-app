@@ -14,6 +14,7 @@ const {
   shouldContinueAwaiting,
   looksLikeBareTagName,
   looksLikeInvalidTagName,
+  looksLikeConversationalUtterance,
   toolPayload,
 } = require('./agentAwaiting');
 const { executeTool } = require('./agentRegistry');
@@ -1442,6 +1443,10 @@ async function finishTagEditTurn({
     remove: [...(plan.tagEdit?.remove || [])],
     replace: [...(plan.tagEdit?.replace || [])],
   };
+  const excludeSuggested = Array.isArray(plan.tagEdit?._excludeAdd)
+    ? plan.tagEdit._excludeAdd
+    : [];
+  const forceResuggest = Boolean(plan.tagEdit?._resuggest);
   let hasOps =
     (args.add && args.add.length > 0) ||
     (args.remove && args.remove.length > 0) ||
@@ -1463,10 +1468,10 @@ async function finishTagEditTurn({
     });
   }
 
-  // 「数码评测不太准确」且未给出新名 → 按正文推荐替换标签，而不是只删
+  // 吐槽不准 / 确认态要换建议：按正文推荐替换名（是否续改由模型 intent，此处只出带确认条的方案）
   let suggestedReplace = null;
   const wantsReplaceSuggest =
-    looksLikeTagQualityFeedback(text) &&
+    (forceResuggest || looksLikeTagQualityFeedback(text)) &&
     args.remove.length > 0 &&
     !args.add.length &&
     !args.replace.length;
@@ -1478,6 +1483,7 @@ async function finishTagEditTurn({
       keepTags: currentTagsFromHistory(history).filter(
         (n) => !args.remove.includes(n),
       ),
+      excludeTags: excludeSuggested,
       userText: text,
       toolTrace,
     });
@@ -1530,7 +1536,9 @@ async function finishTagEditTurn({
     const lines = [];
     if (suggestedReplace && data.remove?.length) {
       lines.push(
-        `「${data.remove.join('、')}」可以更准一点。按正文内容，建议换成「${suggestedReplace}」：`,
+        forceResuggest
+          ? `好，换一个建议：用「${suggestedReplace}」替换「${data.remove.join('、')}」：`
+          : `「${data.remove.join('、')}」可以更准一点。按正文内容，建议换成「${suggestedReplace}」：`,
       );
     } else if (
       wantsReplaceSuggest &&
@@ -1861,10 +1869,22 @@ function looksWriteAffirmative(text) {
   );
 }
 
+/** 正文是否像改标预览（含模型手写变体） */
+function looksLikeVerbalTagEditPreviewContent(content) {
+  const c = String(content || '');
+  if (!c) return false;
+  return (
+    /请确认后才会写入|请确认是否写入|准备调整.{0,40}标签|调整后的标签预览|标签调整预览/.test(
+      c,
+    ) ||
+    (/调整后[：:]/.test(c) && /(去掉|加上|换成|建议换成)/.test(c)) ||
+    (/换成[「"'][^」"']+[」"']/.test(c) && /调整后[：:]/.test(c))
+  );
+}
+
 /**
  * 上文助手正文手写了改标预览（无 pendingAction）。
- * 解析「调整为：A、B、C」/「调整后的标签预览」列表 + 出处 itemId，
- * 供口头确认后挂真正确认条。
+ * 解析「调整后：A、B」等 + 出处 itemId，供口头确认后挂真正确认条。
  */
 function parseVerbalTagEditProposal(history) {
   const list = Array.isArray(history) ? history : [];
@@ -1873,21 +1893,16 @@ function parseVerbalTagEditProposal(history) {
     if (m?.role !== 'assistant') continue;
     if (m.pendingAction?.status === 'pending') return null;
     const c = String(m.content || '');
-    if (!c) return null;
-    const looksPreview =
-      /标签调整预览|调整后的标签预览|请确认是否写入|准备调整.{0,40}标签|调整为[：:]|调整后[：:]/.test(
-        c,
-      ) && /标签/.test(c);
-    if (!looksPreview) return null;
+    if (!looksLikeVerbalTagEditPreviewContent(c)) return null;
 
     let replace = [];
     const m1 = c.match(/调整为[：:]\s*([^\n]+)/);
-    const m2 = c.match(/调整后[：:]\s*([^\n]+)/);
+    const m2 = c.match(/调整后[：:]\s*([^\n*]+)/);
     const raw = (m1 || m2)?.[1] || '';
     replace = String(raw)
       .split(/[、,，]/)
-      .map((s) => s.replace(/[。.!！]/g, '').trim())
-      .filter((s) => s && s.length <= 32 && !/确认|写入|篇目|当前/.test(s));
+      .map((s) => s.replace(/[。.!！*]/g, '').trim())
+      .filter((s) => s && s.length <= 32 && !/确认|写入|篇目|当前|去掉|加上/.test(s));
 
     // 「• AI Agent（保留）」「• 产品实测（新增…）」
     if (!replace.length) {
@@ -1921,6 +1936,17 @@ function parseVerbalTagEditProposal(history) {
     return { itemId, replace };
   }
   return null;
+}
+
+function priorWasVerbalTagEditPreview(history) {
+  const list = Array.isArray(history) ? history : [];
+  for (let i = list.length - 1; i >= 0; i -= 1) {
+    const m = list[i];
+    if (m?.role !== 'assistant') continue;
+    if (m.pendingAction?.status === 'pending') return false;
+    return looksLikeVerbalTagEditPreviewContent(m.content);
+  }
+  return false;
 }
 
 async function finishTagEditNeedOpsTurn({
@@ -1970,13 +1996,12 @@ async function finishTagEditNeedOpsTurn({
 
 function findLatestPendingActionMessage(history) {
   const list = Array.isArray(history) ? history : [];
+  // 往前找最近一条仍 pending 的预览（中间若夹了无 pending 的模型废话，仍应能确认）
   for (let i = list.length - 1; i >= 0; i -= 1) {
     const m = list[i];
     if (m?.role !== 'assistant') continue;
     const pending = m.pendingAction;
     if (pending && pending.status === 'pending') return m;
-    // 已有更新的 assistant 则不再往前找过期 pending
-    return null;
   }
   return null;
 }
@@ -2244,19 +2269,29 @@ function normalizePlan(
     }
   }
 
-  // 上文在问「标签怎么改」：答中则钉回 tag_edit，带上 awaiting 的篇目
+  // 上文在改标询问/确认：未换题则钉住 tag_edit；加删由 plan 模型理解（不靠固定口令）
   const awaitingEarly = resolveAwaiting(history);
-  if (
-    awaitingEarly?.kind === AWAITING.TAG_EDIT_PREFERENCE &&
-    shouldContinueAwaiting(userContent, awaitingEarly)
-  ) {
+  const pinTagEdit =
+    (awaitingEarly?.kind === AWAITING.TAG_EDIT_PREFERENCE ||
+      awaitingEarly?.kind === AWAITING.TAG_EDIT_CONFIRM) &&
+    shouldContinueAwaiting(userContent, awaitingEarly);
+  const pinVerbalTagPreview =
+    !pinTagEdit &&
+    priorWasVerbalTagEditPreview(history) &&
+    !looksLikeTopicSwitch(userContent);
+  if (pinTagEdit || pinVerbalTagPreview) {
     intent = 'tag_edit';
     queries = [];
     followUp = false;
     organize = null;
     if (!tagEdit) tagEdit = { itemId: null, add: [], remove: [], replace: [] };
-    const metaId = Number(awaitingEarly.meta?.itemId);
+    const metaId = Number(awaitingEarly?.meta?.itemId);
     if (Number.isFinite(metaId) && metaId > 0) tagEdit.itemId = metaId;
+    if (!tagEdit.itemId) {
+      const pendingMsg = findLatestPendingActionMessage(history);
+      const pid = Number(pendingMsg?.pendingAction?.itemId);
+      if (Number.isFinite(pid) && pid > 0) tagEdit.itemId = pid;
+    }
     // 加删以 plan 模型 tagEdit 为准；仅当模型漏填「加上/去掉某某」时用轻量启发式补洞
     const heurAwait = heuristicTagEdit(userContent);
     if (heurAwait) {
@@ -2270,22 +2305,74 @@ function normalizePlan(
         tagEdit.replace = heurAwait.replace;
       }
     }
-    // 丢掉「数码评测不太准确」这类被误塞进 add 的整句
+    // 丢掉评价句 / 对话续句误进 add（「还有没有」）
     tagEdit = sanitizeTagEditNames(tagEdit);
+    tagEdit = stripEchoedUserAsTag(tagEdit, userContent);
+    const inConfirm =
+      awaitingEarly?.kind === AWAITING.TAG_EDIT_CONFIRM || pinVerbalTagPreview;
     let hasOpsAwait =
       (tagEdit.add && tagEdit.add.length > 0) ||
       (tagEdit.remove && tagEdit.remove.length > 0) ||
       (tagEdit.replace && tagEdit.replace.length > 0);
-    // 模型漏填且用户只丢了一个干净标签名 → 视为加上
-    if (!hasOpsAwait && looksLikeBareTagName(userContent)) {
+    // 仅询问态允许「直接丢一个干净标签名→加上」；确认态禁用（否则「还有没有」变新标签）
+    if (
+      !inConfirm &&
+      !hasOpsAwait &&
+      looksLikeBareTagName(userContent)
+    ) {
       tagEdit.add = [String(userContent).trim()];
       hasOpsAwait = true;
     }
-    // 仍无操作：用上文「当前标签」+ 用户话里点到的名字推断去掉（语义仍靠模型；这里只防整句新建）
-    if (!hasOpsAwait) {
+    // 询问态仍无操作：用上文当前标签推断去掉
+    if (!hasOpsAwait && awaitingEarly?.kind === AWAITING.TAG_EDIT_PREFERENCE) {
       const known = currentTagsFromHistory(history);
       const inferred = inferTagRemovesFromFeedback(userContent, known);
       if (inferred.length) tagEdit.remove = inferred;
+    }
+    // 确认态：无有效加删、或只剩去掉项 → 沿用上一预览并重新推荐（一次性收「还要别的建议」类）
+    if (inConfirm) {
+      const needResuggest =
+        !hasOpsAwait ||
+        (tagEdit.remove?.length > 0 &&
+          !tagEdit.add?.length &&
+          !tagEdit.replace?.length) ||
+        looksLikeConversationalUtterance(userContent);
+      if (needResuggest) {
+        const prev = findLatestPendingActionMessage(history)?.pendingAction;
+        if (
+          prev?.type === 'item_tag_edit' &&
+          Array.isArray(prev.remove) &&
+          prev.remove.length
+        ) {
+          if (!tagEdit.remove?.length) {
+            tagEdit.remove = prev.remove
+              .map((s) => String(s || '').trim())
+              .filter(Boolean);
+          }
+          tagEdit.add = [];
+          tagEdit.replace = [];
+          tagEdit._resuggest = true;
+          tagEdit._excludeAdd = Array.isArray(prev.add)
+            ? prev.add.map((s) => String(s || '').trim()).filter(Boolean)
+            : [];
+        } else {
+          const verbal = parseVerbalTagEditProposal(history);
+          const known = currentTagsFromHistory(history);
+          if (verbal?.replace?.length && known.length) {
+            const next = new Set(verbal.replace);
+            const removed = known.filter((n) => !next.has(n));
+            if (removed.length) {
+              tagEdit.remove = removed;
+              tagEdit.add = [];
+              tagEdit.replace = [];
+              tagEdit._resuggest = true;
+              tagEdit._excludeAdd = verbal.replace.filter(
+                (n) => !known.includes(n),
+              );
+            }
+          }
+        }
+      }
     }
   }
 
@@ -2879,15 +2966,42 @@ function heuristicTagEdit(text) {
 
 function sanitizeTagEditNames(tagEdit) {
   if (!tagEdit) return tagEdit;
-  const clean = (arr) =>
+  // add/replace：拒对话续句；remove：仍允许清掉误建的「还有没有」
+  const cleanAdd = (arr) =>
     (Array.isArray(arr) ? arr : [])
       .map((s) => String(s || '').trim())
       .filter((s) => s && !looksLikeInvalidTagName(s));
+  const cleanRemove = (arr) =>
+    (Array.isArray(arr) ? arr : [])
+      .map((s) => String(s || '').trim())
+      .filter(
+        (s) =>
+          s &&
+          !/不(太)?(合适|准确|对|好|行|喜欢|贴切)|有点|比较|换掉|去掉|删掉|加上|改成|换成/.test(
+            s,
+          ),
+      );
   return {
     ...tagEdit,
-    add: clean(tagEdit.add),
-    remove: clean(tagEdit.remove),
-    replace: clean(tagEdit.replace),
+    add: cleanAdd(tagEdit.add),
+    remove: cleanRemove(tagEdit.remove),
+    replace: cleanAdd(tagEdit.replace),
+  };
+}
+
+/** 禁止把用户整句原话写进 add/replace（确认态「还有没有」） */
+function stripEchoedUserAsTag(tagEdit, userContent) {
+  if (!tagEdit) return tagEdit;
+  const uttered = String(userContent || '').trim();
+  if (!uttered) return tagEdit;
+  const drop = (arr) =>
+    (Array.isArray(arr) ? arr : []).filter(
+      (s) => String(s || '').trim() !== uttered,
+    );
+  return {
+    ...tagEdit,
+    add: drop(tagEdit.add),
+    replace: drop(tagEdit.replace),
   };
 }
 
@@ -2962,6 +3076,7 @@ async function suggestTagReplacement({
   itemId,
   badTags,
   keepTags,
+  excludeTags,
   userText,
   toolTrace,
 }) {
@@ -2986,6 +3101,9 @@ async function suggestTagReplacement({
   const keep = (keepTags || [])
     .map((s) => String(s || '').trim())
     .filter(Boolean);
+  const excluded = (excludeTags || [])
+    .map((s) => String(s || '').trim())
+    .filter(Boolean);
   const before = Array.isArray(excerptObs.data.tagNames)
     ? excerptObs.data.tagNames.map((s) => String(s || '').trim()).filter(Boolean)
     : [...keep, ...bad];
@@ -3000,6 +3118,7 @@ async function suggestTagReplacement({
 要求：
 - 2～10 个字，像正常标签（主题/品类/对象），不要句子
 - 不要与「保留标签」重复，不要复用「要替换的标签」
+- 不要使用「勿用」列表里的名字（用户刚否过的建议）
 - 禁止把用户原话或「不准确/不合适」写进标签名
 - 若实在推不出，输出 {"tag":""}`,
         },
@@ -3010,26 +3129,28 @@ async function suggestTagReplacement({
             `现有标签：${before.length ? before.join('、') : '（无）'}`,
             `要替换：${bad.join('、')}`,
             `保留：${keep.length ? keep.join('、') : '（无）'}`,
+            `勿用：${excluded.length ? excluded.join('、') : '（无）'}`,
             `用户原话：${String(userText || '').trim()}`,
             `正文摘录：${excerpt || '（无）'}`,
           ].join('\n'),
         },
       ],
       model: agentModel(),
-      temperature: 0.3,
+      temperature: 0.45,
     });
     const raw = String(result.json?.tag || result.json?.name || '').trim();
     const tag =
       raw &&
       !looksLikeInvalidTagName(raw) &&
       !bad.includes(raw) &&
-      !keep.includes(raw)
+      !keep.includes(raw) &&
+      !excluded.includes(raw)
         ? raw.slice(0, 24)
         : '';
     toolTrace.push({
       tool: 'suggest_tag_replacement',
       ok: Boolean(tag),
-      args: { itemId, bad, tag: tag || null },
+      args: { itemId, bad, excluded, tag: tag || null },
     });
     return { tag: tag || null, usage: result.usage || null };
   } catch (err) {
