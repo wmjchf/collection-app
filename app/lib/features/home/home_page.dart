@@ -146,7 +146,10 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   void didUpdateWidget(covariant HomePage oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (widget.isActive && !oldWidget.isActive) {
-      _load(quiet: true);
+      // 整库瀑布自管列表；再拉 /home 会重建父树，封面易闪
+      if (!HomeModulesPrefs.instance.showLibrary) {
+        _load(quiet: true);
+      }
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (_coachStep == null) {
           unawaited(_startCoachThenClipboard());

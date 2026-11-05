@@ -8,10 +8,19 @@ class CoverAspectCache {
 
   static final Map<String, double> _byUrl = {};
 
-  static double? get(String url) => _byUrl[url];
+  /// OSS 签名参数会变；比例缓存只看去 query 后的地址。
+  static String cacheKey(String url) {
+    final raw = url.trim();
+    if (raw.isEmpty) return raw;
+    final uri = Uri.tryParse(raw);
+    if (uri == null || !uri.hasScheme) return raw;
+    return uri.replace(query: '', fragment: '').toString();
+  }
+
+  static double? get(String url) => _byUrl[cacheKey(url)];
 
   static void put(String url, double aspect) {
-    if (aspect > 0 && aspect.isFinite) _byUrl[url] = aspect;
+    if (aspect > 0 && aspect.isFinite) _byUrl[cacheKey(url)] = aspect;
   }
 }
 
@@ -53,7 +62,9 @@ class _NaturalAspectCoverState extends State<NaturalAspectCover> {
   @override
   void didUpdateWidget(covariant NaturalAspectCover oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.url != widget.url || oldWidget.pageUrl != widget.pageUrl) {
+    final urlChanged = CoverAspectCache.cacheKey(oldWidget.url?.trim() ?? '') !=
+        CoverAspectCache.cacheKey(widget.url?.trim() ?? '');
+    if (urlChanged || oldWidget.pageUrl != widget.pageUrl) {
       _detach();
       _aspect = _initialAspect();
       _resolve();
@@ -148,6 +159,10 @@ class _NaturalAspectCoverState extends State<NaturalAspectCover> {
                     const DefaultItemCover(),
                 loadingBuilder: (context, child, progress) {
                   if (progress == null) return child;
+                  // 比例已缓存说明见过这张图，别闪默认封面（切 Tab 常触发）
+                  if (CoverAspectCache.get(resolveMediaUrl(raw)) != null) {
+                    return child;
+                  }
                   return const DefaultItemCover(showSpinner: true);
                 },
               )
