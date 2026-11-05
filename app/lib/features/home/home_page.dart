@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:super_collection/core/analytics/analytics.dart';
 import 'package:super_collection/core/network/api_client.dart';
-import 'package:super_collection/core/ui/app_haptics.dart';
 import 'package:super_collection/core/ui/app_toast.dart';
 import 'package:super_collection/core/ui/client_fetch_backfill.dart';
 import 'package:super_collection/core/ui/parse_progress_tracker.dart';
@@ -14,19 +13,20 @@ import 'package:super_collection/core/utils/link_utils.dart';
 import 'package:super_collection/features/agent/agent_host.dart';
 import 'package:super_collection/features/auth/auth_repository.dart';
 import 'package:super_collection/core/ui/app_orientation.dart';
-import 'package:super_collection/features/collection/system_filter_list_page.dart';
 import 'package:super_collection/features/collection/system_filters_repository.dart';
 import 'package:super_collection/features/home/add_link_sheet.dart';
-import 'package:super_collection/features/home/home_format.dart';
+import 'package:super_collection/features/collection/system_filter_list_page.dart';
+import 'package:super_collection/features/home/home_library_section.dart';
+import 'package:super_collection/features/home/home_modules_prefs.dart';
 import 'package:super_collection/features/home/home_repository.dart';
+import 'package:super_collection/features/home/home_unread_section.dart';
 import 'package:super_collection/features/home/roam_list_page.dart';
 import 'package:super_collection/features/home/roam_models.dart';
 import 'package:super_collection/features/home/roam_mute.dart';
 import 'package:super_collection/features/home/roam_player_page.dart';
 import 'package:super_collection/features/home/widgets/roam_stack_preview.dart';
-import 'package:super_collection/features/items/item_list_tile.dart';
-import 'package:super_collection/features/items/item_reading_page.dart';
 import 'package:super_collection/features/items/item_models.dart';
+import 'package:super_collection/features/items/item_reading_page.dart';
 import 'package:super_collection/features/items/items_repository.dart';
 import 'package:super_collection/features/onboarding/coach_prefs.dart';
 import 'package:super_collection/features/onboarding/home_coach_overlay.dart';
@@ -38,7 +38,7 @@ import 'package:super_collection/features/settings/quota_gate.dart';
 import 'package:super_collection/features/settings/trial_expiry_banner.dart';
 import 'package:super_collection/features/settings/usage_repository.dart';
 
-/// 一级页：首页 — 未读 / 漫游
+/// 一级页：首页 — 「所有」整库，或「未读 + 漫游」（设置互斥）
 class HomePage extends StatefulWidget {
   const HomePage({
     super.key,
@@ -96,6 +96,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     UsageRefresh.version.addListener(_onUsageRefresh);
+    HomeModulesPrefs.instance.addListener(_onHomeModules);
+    unawaited(HomeModulesPrefs.instance.ensureLoaded());
     _load();
     unawaited(_loadPro());
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -106,12 +108,18 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   @override
   void dispose() {
     UsageRefresh.version.removeListener(_onUsageRefresh);
+    HomeModulesPrefs.instance.removeListener(_onHomeModules);
     _removeCoachOverlays();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
 
   void _onUsageRefresh() => unawaited(_loadPro());
+
+  void _onHomeModules() {
+    if (!mounted) return;
+    setState(() => _tabletListTick++);
+  }
 
   Future<void> _loadPro() async {
     try {
@@ -656,56 +664,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     });
   }
 
-  void _openFilter(String code, String title) {
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => SystemFilterListPage(code: code, title: title),
-      ),
-    ).then((_) {
-      if (mounted) _load();
-    });
-  }
-
-  Future<void> _openItem(CollectionItem item, {String entry = 'home'}) async {
-    final deleted = await Navigator.of(context).push<bool>(
-      MaterialPageRoute(
-        builder: (_) => ItemReadingPage(
-          itemId: item.id,
-          initialItem: item,
-          openEntry: entry,
-        ),
-      ),
-    );
-    if (!mounted) return;
-    if (deleted == true) {
-      final data = _data;
-      if (data == null) return;
-      HomeSectionData strip(HomeSectionData s) {
-        final next = s.items.where((e) => e.id != item.id).toList();
-        final removed = s.items.length - next.length;
-        return HomeSectionData(
-          total: (s.total - removed).clamp(0, 1 << 30),
-          items: next,
-        );
-      }
-      setState(() {
-        _data = HomeData(
-          unread: strip(data.unread),
-          recentRead: strip(data.recentRead),
-          roam: RoamSectionData(
-            total: (data.roam.total -
-                    data.roam.items.where((e) => e.itemId == item.id).length)
-                .clamp(0, 1 << 30),
-            items: data.roam.items.where((e) => e.itemId != item.id).toList(),
-          ),
-        );
-      });
-      return;
-    }
-    // 阅读页可能改了标签 / 已读等，静默拉首页以刷新卡片标签
-    await _load(quiet: true);
-  }
-
   Widget _tabletAddButton() {
     return IconButton(
       key: _addButtonKey,
@@ -730,10 +688,11 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   }
 
   Widget _buildTabletBody() {
+    final library = HomeModulesPrefs.instance.showLibrary;
     return TabletItemsSplit(
-      title: unreadSectionTitle(isPro: _isPro),
-      emptyText: unreadEmptyText(isPro: _isPro),
-      openEntry: 'unread',
+      title: library ? '收藏' : unreadSectionTitle(isPro: _isPro),
+      emptyText: library ? '暂无收藏' : unreadEmptyText(isPro: _isPro),
+      openEntry: library ? 'home_library' : 'unread',
       refreshTick: widget.refreshTick + _tabletListTick,
       trailing: _tabletAddButton(),
       autoSelectFirst: false,
@@ -741,7 +700,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       agentHostActive: widget.isActive,
       loader: ({required limit, required offset, mediaKind}) =>
           _filtersRepo.listItems(
-        filter: 'unread',
+        filter: library ? 'all' : 'unread',
         mediaKind: mediaKind,
         limit: limit,
         offset: offset,
@@ -758,7 +717,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       );
     }
 
-    final unread = _data?.unread.items ?? const <CollectionItem>[];
     final roam = _roamItems;
 
     return Scaffold(
@@ -859,63 +817,110 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                       TextButton(onPressed: _load, child: const Text('重试')),
                     ],
                   )
-                : LayoutBuilder(
-                    builder: (context, constraints) {
-                      // 未读按条数；漫游吃掉剩余高度，整页刚好一屏
-                      const sectionGap = 8.0;
-                      const padTop = 12.0;
-                      final padBottom =
-                          12 + MediaQuery.paddingOf(context).bottom;
-                      return SingleChildScrollView(
-                        physics: const AlwaysScrollableScrollPhysics(),
-                        child: SizedBox(
-                          height: constraints.maxHeight,
-                          child: Padding(
-                            padding: EdgeInsets.fromLTRB(
-                              16,
-                              padTop,
-                              16,
-                              padBottom,
-                            ),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.stretch,
-                              children: [
-                                TrialExpiryBannerHost(
-                                  margin: const EdgeInsets.only(bottom: 12),
-                                  refreshTick: widget.refreshTick +
-                                      _trialRefreshTick,
-                                ),
-                                _HomeItemStackSection(
-                                  title: unreadSectionTitle(isPro: _isPro),
-                                  emptyText: unreadEmptyText(isPro: _isPro),
-                                  emptyIcon: Icons.mark_email_unread_outlined,
-                                  emptyHeight: _homeUnreadBodyHeight,
-                                  items: unread,
-                                  onMore: () => _openFilter(
-                                    'unread',
-                                    unreadSectionTitle(isPro: _isPro),
-                                  ),
-                                  onOpen: (item) =>
-                                      _openItem(item, entry: 'unread'),
-                                ),
-                                const SizedBox(height: sectionGap),
-                                Expanded(
-                                  child: _HomeRoamSection(
-                                    title: roamSectionTitle(isPro: _isPro),
-                                    emptyText: roamEmptyText(isPro: _isPro),
-                                    items: roam,
-                                    moreLabel: roamMoreLabel(isPro: _isPro),
-                                    onMore: _openRoamList,
-                                    onPlay: _openRoamPlayer,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      );
-                    },
+                : _buildPhoneHomeBody(
+                    unread: _data?.unread.items ?? const <CollectionItem>[],
+                    roam: roam,
                   ),
+      ),
+    );
+  }
+
+  void _openUnreadFilter() {
+    Navigator.of(context)
+        .push(
+      MaterialPageRoute<void>(
+        builder: (_) => SystemFilterListPage(
+          code: 'unread',
+          title: unreadSectionTitle(isPro: _isPro),
+        ),
+      ),
+    )
+        .then((_) {
+      if (mounted) _load();
+    });
+  }
+
+  Future<void> _openUnreadItem(CollectionItem item) async {
+    final deleted = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) => ItemReadingPage(
+          itemId: item.id,
+          initialItem: item,
+          openEntry: 'unread',
+        ),
+      ),
+    );
+    if (!mounted) return;
+    if (deleted == true) {
+      final data = _data;
+      if (data == null) return;
+      setState(() {
+        _data = HomeData(
+          unread: HomeSectionData(
+            total: (data.unread.total - 1).clamp(0, 1 << 30),
+            items: data.unread.items.where((e) => e.id != item.id).toList(),
+          ),
+          recentRead: data.recentRead,
+          roam: data.roam,
+        );
+      });
+      return;
+    }
+    await _load(quiet: true);
+  }
+
+  Widget _buildPhoneHomeBody({
+    required List<CollectionItem> unread,
+    required List<RoamSnippet> roam,
+  }) {
+    final library = HomeModulesPrefs.instance.showLibrary;
+    final padBottom = 12.0 + MediaQuery.paddingOf(context).bottom;
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: TrialExpiryBannerHost(
+              margin: const EdgeInsets.only(bottom: 12),
+              refreshTick: widget.refreshTick + _trialRefreshTick,
+            ),
+          ),
+          if (library)
+            Expanded(
+              child: HomeLibrarySection(
+                isActive: widget.isActive,
+                refreshTick: widget.refreshTick,
+              ),
+            )
+          else ...[
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: HomeUnreadSection(
+                isPro: _isPro,
+                items: unread,
+                onMore: _openUnreadFilter,
+                onOpen: (item) => unawaited(_openUnreadItem(item)),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Expanded(
+              child: Padding(
+                padding: EdgeInsets.fromLTRB(16, 0, 16, padBottom),
+                child: _HomeRoamSection(
+                  title: roamSectionTitle(isPro: _isPro),
+                  emptyText: roamEmptyText(isPro: _isPro),
+                  items: roam,
+                  moreLabel: roamMoreLabel(isPro: _isPro),
+                  onMore: _openRoamList,
+                  onPlay: _openRoamPlayer,
+                ),
+              ),
+            ),
+          ],
+        ],
       ),
     );
   }
@@ -1017,165 +1022,6 @@ class _HomeRoamSection extends StatelessWidget {
           ),
         ),
       ],
-    );
-  }
-}
-
-/// 封面 64 + 上下内边距 24；条目高度恒定。
-/// 太子/帝王：标题一行 + `#标签`；普通/免费：标题两行省略。
-const _homeUnreadTileHeight = 88.0;
-const _homeUnreadTileGap = 8.0;
-const _homeUnreadSlotCount = 3;
-const _homeUnreadBodyHeight = _homeUnreadTileHeight * _homeUnreadSlotCount +
-    _homeUnreadTileGap * (_homeUnreadSlotCount - 1);
-
-String _homeUnreadSubtitle(CollectionItem item) {
-  final pageUrl = (item.canonicalUrl?.trim().isNotEmpty == true)
-      ? item.canonicalUrl
-      : item.url;
-  final platform = platformLabel(item.platform, url: pageUrl);
-  final status = switch (item.status) {
-    'pending' => '解析中',
-    'failed' => '解析失败',
-    'success' => '已解析',
-    _ => item.status,
-  };
-  return '$platform · $status';
-}
-
-/// 首页未读：与列表相同的条目，点哪条进哪条。
-class _HomeItemStackSection extends StatelessWidget {
-  const _HomeItemStackSection({
-    required this.title,
-    required this.emptyText,
-    required this.emptyIcon,
-    required this.emptyHeight,
-    required this.items,
-    required this.onMore,
-    required this.onOpen,
-    this.moreLabel = '查看更多 ›',
-  });
-
-  final String title;
-  final String emptyText;
-  final IconData emptyIcon;
-  final double emptyHeight;
-  final List<CollectionItem> items;
-  final VoidCallback onMore;
-  final ValueChanged<CollectionItem> onOpen;
-  final String moreLabel;
-
-  static const _muted = Color(0xFF737A85);
-  static const _iconMuted = Color(0xFFC5CAD3);
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Row(
-          children: [
-            Text(
-              title,
-              style: const TextStyle(
-                fontSize: 15,
-                fontWeight: FontWeight.w500,
-                color: _HomePageState._text,
-              ),
-            ),
-            const Spacer(),
-            GestureDetector(
-              onTap: () {
-                AppHaptics.select();
-                onMore();
-              },
-              behavior: HitTestBehavior.opaque,
-              child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 2),
-                child: Text(
-                  moreLabel,
-                  style: const TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w400,
-                    color: _HomePageState._blue,
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 8),
-        _UnreadFrame(
-          height: emptyHeight,
-          child: items.isEmpty
-              ? Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(emptyIcon, size: 42, color: _iconMuted),
-                    const SizedBox(height: 10),
-                    Text(
-                      emptyText,
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(fontSize: 14, color: _muted),
-                    ),
-                  ],
-                )
-              : Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    for (var i = 0; i < items.length; i++) ...[
-                      if (i > 0) const SizedBox(height: _homeUnreadTileGap),
-                      ItemListTile.fromItem(
-                        items[i],
-                        subtitle: _homeUnreadSubtitle(items[i]),
-                        onTap: () {
-                          AppHaptics.select();
-                          onOpen(items[i]);
-                        },
-                      ),
-                    ],
-                    if (items.length < _homeUnreadSlotCount)
-                      const Expanded(
-                        child: Center(
-                          child: const Text(
-                            '未读就这些了',
-                            style: TextStyle(fontSize: 13, color: _muted),
-                          ),
-                        ),
-                      ),
-                  ],
-                ),
-        ),
-      ],
-    );
-  }
-}
-
-/// 未读三条的外框：白底、圆角、细边，把条目收成一块。
-/// [height] 为内容区高度；外边框另占上下各 1，避免 Column 被 border inset 挤爆。
-class _UnreadFrame extends StatelessWidget {
-  const _UnreadFrame({required this.height, required this.child});
-
-  final double height;
-  final Widget child;
-
-  static const _borderWidth = 1.0;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      height: height + _borderWidth * 2,
-      width: double.infinity,
-      clipBehavior: Clip.antiAlias,
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: const Color(0xFFE6E8ED),
-          width: _borderWidth,
-        ),
-      ),
-      child: child,
     );
   }
 }

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:super_collection/core/analytics/screen_dwell_tracker.dart';
 import 'package:super_collection/features/auth/auth_repository.dart';
+import 'package:super_collection/features/settings/account_security_page.dart';
 import 'package:super_collection/features/settings/settings_modal.dart';
 import 'package:super_collection/features/settings/trial_expiry_banner.dart';
 import 'package:super_collection/features/settings/upgrade_pro_page.dart';
@@ -198,6 +199,14 @@ class _AccountPageState extends State<AccountPage> with ScreenDwellMixin {
                           style: const TextStyle(fontSize: 14, color: _muted),
                         ),
                       ),
+                    _InfoRow(
+                      title: '账号安全',
+                      showChevron: true,
+                      onTap: () => openSettingsPage<void>(
+                        context,
+                        const AccountSecurityPage(),
+                      ),
+                    ),
                   ],
                 ),
                 if (_usage != null && !_usage!.isPaid) ...[
@@ -438,14 +447,18 @@ class _InfoRow extends StatelessWidget {
   const _InfoRow({
     required this.title,
     this.trailing,
+    this.showChevron = false,
+    this.onTap,
   });
 
   final String title;
   final Widget? trailing;
+  final bool showChevron;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
+    final row = Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
       child: Row(
         children: [
@@ -459,9 +472,20 @@ class _InfoRow extends StatelessWidget {
             ),
           ),
           if (trailing != null) trailing!,
+          if (showChevron)
+            const Padding(
+              padding: EdgeInsets.only(left: 4),
+              child: Icon(
+                Icons.chevron_right,
+                size: 22,
+                color: Color(0xFF737A85),
+              ),
+            ),
         ],
       ),
     );
+    if (onTap == null) return row;
+    return InkWell(onTap: onTap, child: row);
   }
 }
 

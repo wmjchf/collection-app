@@ -18,6 +18,7 @@ import 'package:super_collection/features/collection/tag_models.dart';
 import 'package:super_collection/features/collection/tag_module_models.dart';
 import 'package:super_collection/features/collection/tag_modules_repository.dart';
 import 'package:super_collection/features/collection/tags_repository.dart';
+import 'package:super_collection/features/home/home_modules_prefs.dart';
 import 'package:super_collection/features/settings/usage_repository.dart';
 import 'package:super_collection/features/shell/tablet_items_split.dart';
 import 'package:super_collection/features/shell/user_avatar_button.dart';
@@ -77,6 +78,8 @@ class _CollectionPageState extends State<CollectionPage> {
     super.initState();
     _scrollController.addListener(_onScrollForTagsFocus);
     UsageRefresh.version.addListener(_onUsageRefresh);
+    HomeModulesPrefs.instance.addListener(_onHomeModules);
+    unawaited(HomeModulesPrefs.instance.ensureLoaded());
     _load();
     _loadPro();
   }
@@ -84,6 +87,7 @@ class _CollectionPageState extends State<CollectionPage> {
   @override
   void dispose() {
     UsageRefresh.version.removeListener(_onUsageRefresh);
+    HomeModulesPrefs.instance.removeListener(_onHomeModules);
     _scrollController.removeListener(_onScrollForTagsFocus);
     _scrollController.dispose();
     _tagsFocusT.dispose();
@@ -91,6 +95,10 @@ class _CollectionPageState extends State<CollectionPage> {
   }
 
   void _onUsageRefresh() => _loadPro();
+
+  void _onHomeModules() {
+    if (mounted) unawaited(_load(quiet: true));
+  }
 
   Future<void> _loadPro() async {
     try {
@@ -135,9 +143,8 @@ class _CollectionPageState extends State<CollectionPage> {
       setState(() {
         _modules = modulesResult.modules;
         _ungrouped = modulesResult.ungrouped;
-        // mediaFilters 留给列表页；收藏首页：所有 / 今天 / 最近阅读 / 批注
-        // （无标签、未读不在此展示；未读在首页）
-        const order = ['all', 'today', 'recent_read', 'annotated'];
+        // 与首页形态互补：首页「所有」→ 此处含未读；首页「未读+漫游」→ 此处含所有
+        final order = HomeModulesPrefs.instance.collectionSystemFilterOrder;
         _systemFilters = [
           for (final code in order)
             ...filterResult.filters.where((f) => f.code == code),

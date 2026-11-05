@@ -23,15 +23,31 @@ extension ItemsLayoutModeX on ItemsLayoutMode {
   }
 }
 
-/// 全局布局偏好；启动 [ensureLoaded]，切换 [setMode]。
+/// 布局偏好；启动 [ensureLoaded]，切换 [setMode]。
+///
+/// - [instance]：系统筛选 / 浏览 / 搜索（默认单列）
+/// - [homeLibrary]：首页「所有」整库（默认瀑布）
 class ItemsLayoutPrefs extends ChangeNotifier {
-  ItemsLayoutPrefs._();
+  ItemsLayoutPrefs._(
+    this._key, {
+    ItemsLayoutMode defaultMode = ItemsLayoutMode.list,
+  }) : _mode = defaultMode,
+       _defaultMode = defaultMode;
 
-  static final ItemsLayoutPrefs instance = ItemsLayoutPrefs._();
+  static final ItemsLayoutPrefs instance = ItemsLayoutPrefs._(
+    'items_feed_layout_mode',
+  );
 
-  static const _key = 'items_feed_layout_mode';
+  /// 首页整库独立偏好，默认双列瀑布。
+  static final ItemsLayoutPrefs homeLibrary = ItemsLayoutPrefs._(
+    'home_library_layout_mode',
+    defaultMode: ItemsLayoutMode.masonry,
+  );
 
-  ItemsLayoutMode _mode = ItemsLayoutMode.list;
+  final String _key;
+  final ItemsLayoutMode _defaultMode;
+
+  ItemsLayoutMode _mode;
   bool _loaded = false;
   Future<void>? _loading;
 
@@ -46,9 +62,12 @@ class ItemsLayoutPrefs extends ChangeNotifier {
   Future<void> _load() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      _mode = ItemsLayoutModeX.fromStorage(prefs.getString(_key));
+      final raw = prefs.getString(_key);
+      _mode = raw == null
+          ? _defaultMode
+          : ItemsLayoutModeX.fromStorage(raw);
     } catch (_) {
-      _mode = ItemsLayoutMode.list;
+      _mode = _defaultMode;
     }
     _loaded = true;
     _loading = null;

@@ -233,9 +233,9 @@ function emptyCollection() {
   };
 }
 
-/** 与 App 收藏页一致：所有 / 今天 / 最近阅读 / 批注（不含未读、无标签） */
+/** 扩展端默认按 App「所有」首页形态：未读 / 今天 / 最近阅读 / 批注 */
 function collectionFilters(filters) {
-  const order = ['all', 'today', 'recent_read', 'annotated'];
+  const order = ['unread', 'today', 'recent_read', 'annotated'];
   const byCode = new Map((filters || []).map((f) => [f.code, f]));
   return order.map((code) => byCode.get(code)).filter(Boolean);
 }
