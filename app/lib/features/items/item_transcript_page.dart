@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:super_collection/core/network/api_client.dart';
-import 'package:super_collection/core/ui/app_subpage_app_bar.dart';
+import 'package:super_collection/core/ui/app_bottom_sheet.dart';
 import 'package:super_collection/core/ui/app_toast.dart';
 import 'package:super_collection/core/ui/pro_copy.dart';
 import 'package:super_collection/features/items/item_models.dart';
@@ -16,7 +16,48 @@ import 'package:super_collection/features/items/transcript_display.dart';
 import 'package:super_collection/features/items/transcript_models.dart';
 import 'package:super_collection/features/settings/usage_repository.dart';
 
-/// 单段转写文稿全屏阅读（可划线高亮 / 批注 / 复制 / 删除）
+/// 转写文稿全文：底部滑出（可划线高亮 / 批注 / 复制 / 删除）
+Future<void> showItemTranscriptSheet(
+  BuildContext context, {
+  required String text,
+  List<TranscriptCue> cues = const [],
+  double fontSize = ReadingFontPrefs.defaultSize,
+  int? itemId,
+  String? segmentKey,
+  int? focusAnnotationId,
+  Future<void> Function(String quote, Rect? shareOrigin)? onShareQuote,
+  String? shareTitle,
+  String? shareLink,
+  String? shareCoverUrl,
+  String? sharePageUrl,
+}) {
+  return showAppBottomSheet<void>(
+    context: context,
+    padding: EdgeInsets.zero,
+    includeSafeArea: false,
+    builder: (context) {
+      final h = MediaQuery.sizeOf(context).height * 0.92;
+      return SizedBox(
+        height: h,
+        child: ItemTranscriptPage(
+          text: text,
+          cues: cues,
+          fontSize: fontSize,
+          itemId: itemId,
+          segmentKey: segmentKey,
+          focusAnnotationId: focusAnnotationId,
+          onShareQuote: onShareQuote,
+          shareTitle: shareTitle,
+          shareLink: shareLink,
+          shareCoverUrl: shareCoverUrl,
+          sharePageUrl: sharePageUrl,
+        ),
+      );
+    },
+  );
+}
+
+/// 文稿面板内容（由 [showItemTranscriptSheet] 弹出）
 class ItemTranscriptPage extends StatefulWidget {
   const ItemTranscriptPage({
     super.key,
@@ -56,6 +97,7 @@ class _ItemTranscriptPageState extends State<ItemTranscriptPage> {
   static const _text = Color(0xFF1F242E);
   static const _muted = Color(0xFF737A85);
   static const _highlight = Color(0xFFFFF2C7);
+  static const _handle = Color(0xFFD9DBE0);
 
   final _repo = ItemsRepository();
   final _scrollController = ScrollController();
@@ -488,39 +530,62 @@ class _ItemTranscriptPageState extends State<ItemTranscriptPage> {
     final size = ReadingFontPrefs.clamp(widget.fontSize);
     final bodyStyle = _bodyTextStyle;
     final ranges = _ranges(body);
-    return Scaffold(
-      backgroundColor: Colors.white,
-      appBar: const AppSubpageAppBar(title: '文稿'),
-      body: body.isEmpty
-          ? Center(
-              child: Text(
-                '暂无文稿',
-                style: TextStyle(fontSize: size, color: _muted),
-              ),
-            )
-          : ListView(
-              controller: _scrollController,
-              padding: const EdgeInsets.fromLTRB(22, 18, 22, 28),
-              children: [
-                if (_canAnnotate)
-                  _TranscriptAnnotatedBody(
-                    text: body,
-                    spans: _spans(body, bodyStyle),
-                    textStyle: bodyStyle,
-                    annotations: ranges,
-                    contextMenuBuilder: _selectionToolbar,
-                    onTapAnnotation: _openAnnotation,
-                    focusAnnotationId: widget.focusAnnotationId,
-                    onFocusAnnotationRect: _onFocusAnnotationRect,
-                  )
-                else
-                  TranscriptDisplay(
-                    text: body,
-                    cues: widget.cues,
-                    bodyStyle: bodyStyle,
-                  ),
-              ],
+    final content = body.isEmpty
+        ? Center(
+            child: Text(
+              '暂无文稿',
+              style: TextStyle(fontSize: size, color: _muted),
             ),
+          )
+        : ListView(
+            controller: _scrollController,
+            padding: const EdgeInsets.fromLTRB(22, 8, 22, 28),
+            children: [
+              if (_canAnnotate)
+                _TranscriptAnnotatedBody(
+                  text: body,
+                  spans: _spans(body, bodyStyle),
+                  textStyle: bodyStyle,
+                  annotations: ranges,
+                  contextMenuBuilder: _selectionToolbar,
+                  onTapAnnotation: _openAnnotation,
+                  focusAnnotationId: widget.focusAnnotationId,
+                  onFocusAnnotationRect: _onFocusAnnotationRect,
+                )
+              else
+                TranscriptDisplay(
+                  text: body,
+                  cues: widget.cues,
+                  bodyStyle: bodyStyle,
+                ),
+            ],
+          );
+
+    return Material(
+      color: Colors.white,
+      borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+      clipBehavior: Clip.antiAlias,
+      child: SafeArea(
+        top: false,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const SizedBox(height: 12),
+            Center(
+              child: Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: _handle,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Expanded(child: content),
+          ],
+        ),
+      ),
     );
   }
 }

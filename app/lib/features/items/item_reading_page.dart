@@ -554,6 +554,14 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
   bool get _hasInlineVideos =>
       ArticleContentBlocks.hasInlineVideos(_rawBody);
 
+  /// 顶栏真视频（非播客、非文中内嵌）：媒体优先版式
+  bool get _isTopBarTrueVideo {
+    if (!_item.hasVideo || _hasInlineVideos) return false;
+    final url = _item.videoUrl?.trim() ?? '';
+    if (url.isEmpty) return false;
+    return !isAudioOnlyMediaUrl(url, platform: _item.platform);
+  }
+
   bool get _platformNeedsVideoRefresh {
     final p = (_item.platform ?? '').toLowerCase();
     final v = (_item.videoUrl ?? '').toLowerCase();
@@ -605,7 +613,11 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
     ].where((e) => e.isNotEmpty).join(' · ');
   }
 
-  List<Widget> _buildBodyContent(String body, {required bool gallery}) {
+  List<Widget> _buildBodyContent(
+    String body, {
+    required bool gallery,
+    bool allowChromeToggle = true,
+  }) {
     if (_rawBody.isEmpty) {
       if (gallery) return const [];
       return const [
@@ -615,6 +627,8 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
         ),
       ];
     }
+    final chromeTap =
+        (!gallery && allowChromeToggle) ? _toggleReadingChrome : null;
     if (!gallery && ArticleContentBlocks.hasRichMarkup(_rawBody)) {
       return [
         _InlineArticleBody(
@@ -624,7 +638,7 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
           annotationRanges: _annotationRanges(body),
           toolbarAt: _toolbarAt,
           onTapAnnotation: _openAnnotation,
-          onBodyTap: _toggleReadingChrome,
+          onBodyTap: chromeTap,
           onSelectionChanged: _onBodySelectionChanged,
           focusAnnotationId:
               _locateAnnotationId ?? widget.focusAnnotationId,
@@ -648,7 +662,7 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
         annotations: _annotationRanges(body),
         contextMenuBuilder: _selectionToolbar,
         onTapAnnotation: _openAnnotation,
-        onBodyTap: gallery ? null : _toggleReadingChrome,
+        onBodyTap: chromeTap,
         onSelectionChanged: _onBodySelectionChanged,
         textStyle: gallery ? _galleryCaptionStyle : _bodyTextStyle,
         focusAnnotationId:
@@ -707,6 +721,95 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
             if (_rawBody.isNotEmpty) ...[
               const SizedBox(height: 14),
               ..._buildBodyContent(body, gallery: true),
+            ],
+            if (_loadingAnns) ...[
+              const SizedBox(height: 16),
+              const Center(
+                child: SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    ];
+  }
+
+  List<Widget> _buildTopBarVideoReadingChildren({
+    required String title,
+    required String body,
+  }) {
+    final screenW = MediaQuery.sizeOf(context).width;
+    final playerH = (screenW * 9 / 16).clamp(180.0, 420.0);
+    return [
+      ItemVideoPlayer(
+        key: ValueKey('item-video-${_item.id}'),
+        url: _item.videoUrl!.trim(),
+        coverUrl: _item.coverImageUrl ??
+            (_item.displayImages.isNotEmpty
+                ? _item.displayImages.first
+                : null),
+        pageUrl: _item.sourcePageUrl,
+        platform: _item.platform,
+        pageAudio: _pageAudio,
+        height: playerH,
+        borderRadius: 0,
+        onRefreshUrl:
+            _platformNeedsVideoRefresh ? _refreshVideoUrl : null,
+      ),
+      Padding(
+        padding: const EdgeInsets.fromLTRB(22, 16, 22, 0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SelectableText(
+              title,
+              style: const TextStyle(
+                fontSize: 17,
+                fontWeight: FontWeight.w600,
+                color: _text,
+                height: 1.35,
+                letterSpacing: 0.1,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              _metaLine(),
+              style: const TextStyle(
+                fontSize: 12,
+                color: _muted,
+                height: 1.4,
+              ),
+            ),
+            if (_itemTags.isNotEmpty) ...[
+              const SizedBox(height: 10),
+              _ArticleTagHashtags(
+                tags: _itemTags,
+                onTap: _openTagList,
+                color: _tagSoftBlue,
+              ),
+            ],
+            const SizedBox(height: 14),
+            TranscriptSegmentPanel(
+              segment: _item.segmentTranscript(
+                TranscriptTargets.segmentVideoUrl,
+              ),
+              itemId: _item.id,
+              segmentKey: TranscriptTargets.segmentVideoUrl,
+              hidePendingLoading: _item.isAiAwaitingTranscript,
+              fontSize: _bodyFontSize,
+              onShareQuote: _shareExistingQuote,
+            ),
+            if (_rawBody.isNotEmpty) ...[
+              const SizedBox(height: 14),
+              ..._buildBodyContent(
+                body,
+                gallery: false,
+                allowChromeToggle: false,
+              ),
             ],
             if (_loadingAnns) ...[
               const SizedBox(height: 16),
@@ -785,17 +888,16 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
       final seg = _item.segmentTranscript(segmentKey);
       final text = (seg?.text ?? '').trim();
       if (text.isNotEmpty) {
-        Navigator.of(context).push(
-          MaterialPageRoute<void>(
-            builder: (_) => ItemTranscriptPage(
-              text: text,
-              cues: seg?.cues ?? const [],
-              fontSize: _bodyFontSize,
-              itemId: _item.id,
-              segmentKey: segmentKey,
-              focusAnnotationId: ann.id,
-              onShareQuote: _shareExistingQuote,
-            ),
+        unawaited(
+          showItemTranscriptSheet(
+            context,
+            text: text,
+            cues: seg?.cues ?? const [],
+            fontSize: _bodyFontSize,
+            itemId: _item.id,
+            segmentKey: segmentKey,
+            focusAnnotationId: ann.id,
+            onShareQuote: _shareExistingQuote,
           ),
         );
         return;
@@ -1146,17 +1248,16 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
       final seg = _item.segmentTranscript(segmentKey);
       final text = (seg?.text ?? '').trim();
       if (text.isNotEmpty) {
-        Navigator.of(context).push(
-          MaterialPageRoute<void>(
-            builder: (_) => ItemTranscriptPage(
-              text: text,
-              cues: seg?.cues ?? const [],
-              fontSize: _bodyFontSize,
-              itemId: _item.id,
-              segmentKey: segmentKey,
-              focusAnnotationId: ann.id,
-              onShareQuote: _shareExistingQuote,
-            ),
+        unawaited(
+          showItemTranscriptSheet(
+            context,
+            text: text,
+            cues: seg?.cues ?? const [],
+            fontSize: _bodyFontSize,
+            itemId: _item.id,
+            segmentKey: segmentKey,
+            focusAnnotationId: ann.id,
+            onShareQuote: _shareExistingQuote,
           ),
         );
         return;
@@ -1979,8 +2080,10 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
                   : bottomSafe,
             ),
             child: GestureDetector(
-              // 仅文章可点空白藏顶底栏；图集保持栏常显
-              onTap: canRead && !_item.isImageGallery
+              // 仅文章可点空白藏顶底栏；图集 / 顶栏真视频栏常显
+              onTap: canRead &&
+                      !_item.isImageGallery &&
+                      !_isTopBarTrueVideo
                   ? _toggleReadingChrome
                   : null,
               behavior: HitTestBehavior.translucent,
@@ -1991,12 +2094,18 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
                 ),
                 // 避免播放器滚出视口后被 Platform View 回收/暂停（尤其播客音频）
                 cacheExtent: mq.size.height * 2,
-                padding: canRead && _item.isImageGallery
+                padding: canRead &&
+                        (_item.isImageGallery || _isTopBarTrueVideo)
                     ? const EdgeInsets.only(bottom: 28)
                     : const EdgeInsets.fromLTRB(22, 18, 22, 28),
                 children: [
                   if (canRead && _item.isImageGallery)
                     ..._buildGalleryReadingChildren(
+                      title: title,
+                      body: body,
+                    )
+                  else if (canRead && _isTopBarTrueVideo)
+                    ..._buildTopBarVideoReadingChildren(
                       title: title,
                       body: body,
                     )
@@ -2108,10 +2217,14 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
                     onDelete: _confirmDelete,
                     onMarkUnread: _markAsUnread,
                     onFontSize: _openFontSizeSheet,
-                    onHighlights: canRead && !_item.isImageGallery
+                    onHighlights: canRead &&
+                            !_item.isImageGallery &&
+                            !_isTopBarTrueVideo
                         ? _showHighlightList
                         : null,
-                    onAnnotations: canRead && !_item.isImageGallery
+                    onAnnotations: canRead &&
+                            !_item.isImageGallery &&
+                            !_isTopBarTrueVideo
                         ? _showNoteAnnotationList
                         : null,
                   ),

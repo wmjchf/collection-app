@@ -24,6 +24,7 @@ class ItemVideoPlayer extends StatefulWidget {
     this.platform,
     this.pageAudio,
     this.height = 220,
+    this.borderRadius = 12,
     this.onRefreshUrl,
   });
 
@@ -36,6 +37,8 @@ class ItemVideoPlayer extends StatefulWidget {
   /// 阅读页级音频控制器（滚出视口 / 息屏仍可播）。
   final ReadingMediaController? pageAudio;
   final double height;
+  /// 顶栏英雄视频可读 0；文中内嵌保持 12。
+  final double borderRadius;
 
   /// 直链失效时回调，返回新 URL；阅读页可对接 refresh-video
   final Future<String?> Function()? onRefreshUrl;
@@ -575,7 +578,7 @@ try{
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 18),
           decoration: BoxDecoration(
             color: const Color(0xFFF5F7FA),
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(widget.borderRadius),
           ),
           alignment: Alignment.center,
           child: Row(
@@ -615,7 +618,7 @@ try{
     final cover = widget.coverUrl?.trim() ?? '';
 
     return ClipRRect(
-      borderRadius: BorderRadius.circular(12),
+      borderRadius: BorderRadius.circular(widget.borderRadius),
       child: ColoredBox(
         color: Colors.black,
         child: SizedBox(
@@ -677,7 +680,7 @@ try{
   Widget _buildWebShell() {
     final web = _webController;
     return ClipRRect(
-      borderRadius: BorderRadius.circular(12),
+      borderRadius: BorderRadius.circular(widget.borderRadius),
       child: ColoredBox(
         color: Colors.black,
         child: SizedBox(
@@ -724,7 +727,7 @@ try{
     final ready = !_inFullscreen && c != null && c.value.isInitialized;
 
     return ClipRRect(
-      borderRadius: BorderRadius.circular(12),
+      borderRadius: BorderRadius.circular(widget.borderRadius),
       child: ColoredBox(
         color: Colors.black,
         child: SizedBox(

@@ -4,7 +4,7 @@ import 'package:super_collection/features/items/item_reading_page.dart';
 import 'package:super_collection/features/items/item_transcript_page.dart';
 import 'package:super_collection/features/items/items_repository.dart';
 
-/// 漫游点开：文稿标注进文稿页，其余进阅读页。
+/// 漫游点开：文稿标注底部滑出文稿，其余进阅读页。
 Future<bool?> openRoamSnippet(
   BuildContext context,
   RoamSnippet snippet, {
@@ -20,21 +20,19 @@ Future<bool?> openRoamSnippet(
     final seg = key.isEmpty ? null : item.segmentTranscript(key);
     final text = (seg?.text ?? '').trim();
     if (text.isNotEmpty) {
-      return Navigator.of(context).push<bool>(
-        MaterialPageRoute(
-          builder: (_) => ItemTranscriptPage(
-            text: text,
-            cues: seg?.cues ?? const [],
-            itemId: item.id,
-            segmentKey: key,
-            focusAnnotationId: snippet.annotationId,
-            shareTitle: (item.title ?? '').trim(),
-            shareLink: (item.canonicalUrl ?? item.url).trim(),
-            shareCoverUrl: item.shareCoverUrl,
-            sharePageUrl: item.sourcePageUrl,
-          ),
-        ),
+      await showItemTranscriptSheet(
+        context,
+        text: text,
+        cues: seg?.cues ?? const [],
+        itemId: item.id,
+        segmentKey: key,
+        focusAnnotationId: snippet.annotationId,
+        shareTitle: (item.title ?? '').trim(),
+        shareLink: (item.canonicalUrl ?? item.url).trim(),
+        shareCoverUrl: item.shareCoverUrl,
+        sharePageUrl: item.sourcePageUrl,
       );
+      return null;
     }
   }
 
