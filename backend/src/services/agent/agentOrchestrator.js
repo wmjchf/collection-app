@@ -2215,6 +2215,7 @@ function normalizePlan(
     if (!tagEdit) tagEdit = { itemId: null, add: [], remove: [], replace: [] };
     const metaId = Number(awaitingEarly.meta?.itemId);
     if (Number.isFinite(metaId) && metaId > 0) tagEdit.itemId = metaId;
+    // 加删以 plan 模型 tagEdit 为准；仅当模型漏填「加上/去掉某某」时用轻量启发式补洞
     const heurAwait = heuristicTagEdit(userContent);
     if (heurAwait) {
       if (!tagEdit.add?.length && heurAwait.add?.length) {
@@ -2227,7 +2228,7 @@ function normalizePlan(
         tagEdit.replace = heurAwait.replace;
       }
     }
-    // 「产品实测」：直接丢标签名 → 视为加上，走出系统确认条（带按钮）
+    // 模型漏填且用户只丢了一个标签名 → 视为加上
     const hasOpsAwait =
       (tagEdit.add && tagEdit.add.length > 0) ||
       (tagEdit.remove && tagEdit.remove.length > 0) ||
@@ -2280,8 +2281,13 @@ function normalizePlan(
   // 建架 / 填入归类 / 重排：必须走 propose_organize + pendingAction（才有确认按钮）
   // 「漏掉了 / 补上」等修正上文方案：同样强制预览，禁止模型正文手写无按钮
   // 通用 awaiting：换题时不得把对照/检索等盖回 organize
+  // 注意：continueAwait 含改标询问；不得并进 wantOrganize，否则「数码评测不太合适」会被盖成归类
   const awaiting = resolveAwaiting(history);
   const continueAwait = shouldContinueAwaiting(userContent, awaiting);
+  const continueOrganizeAwait =
+    continueAwait &&
+    (awaiting?.kind === AWAITING.ORGANIZE_PREFERENCE ||
+      awaiting?.kind === AWAITING.ORGANIZE_CONFIRM);
   const topicSwitch =
     looksLikeTopicSwitch(userContent) &&
     !looksLikeAwaitingAnswer(userContent, awaiting) &&
@@ -2291,11 +2297,13 @@ function normalizePlan(
     looksLikeOrganizeFollowUp(userContent, history) ||
     looksLikeOrganizeAfterTagList(userContent, history) ||
     looksLikeOrganizeRevision(userContent, history) ||
-    continueAwait ||
+    continueOrganizeAwait ||
     (intent === 'organize' &&
       !looksLikeTagInventory(userContent) &&
       !looksLikeInventory(userContent) &&
-      !topicSwitch);
+      !topicSwitch &&
+      awaiting?.kind !== AWAITING.TAG_EDIT_PREFERENCE &&
+      awaiting?.kind !== AWAITING.TAG_EDIT_CONFIRM);
   if (intent !== 'list_tags' && wantOrganize && !topicSwitch) {
     intent = 'organize';
     queries = [];
@@ -2307,7 +2315,7 @@ function normalizePlan(
       looksLikeFullOrganize(userContent) ||
       looksLikeOrganizePreference(userContent) ||
       looksLikeOrganizeRevision(userContent, history) ||
-      continueAwait
+      continueOrganizeAwait
     ) {
       organize.mode = 'full';
     }
@@ -2319,7 +2327,7 @@ function normalizePlan(
     // 用户已表态（含「你看着分」）时：加稳定架名约束，减少同库每次乱跳
     if (
       hasOrganizePreferenceInText(userContent) ||
-      (priorWasOrganizePreferenceAsk(history) && continueAwait)
+      (priorWasOrganizePreferenceAsk(history) && continueOrganizeAwait)
     ) {
       const stable =
         '按用户意见划分；一层归类；优先简洁稳定架名（如汽车与新能源、科技与影像、潮玩消费、职场效率、财经分析），可按实际增减；标签尽量分全、勿遗漏。';
@@ -2329,12 +2337,12 @@ function normalizePlan(
       if (organize.mode !== 'full') {
         organize.mode =
           looksLikeFullOrganize(userContent) ||
-          (priorWasOrganizePreferenceAsk(history) && continueAwait)
+          (priorWasOrganizePreferenceAsk(history) && continueOrganizeAwait)
             ? 'full'
             : organize.mode;
       }
       if (
-        (priorWasOrganizePreferenceAsk(history) && continueAwait) ||
+        (priorWasOrganizePreferenceAsk(history) && continueOrganizeAwait) ||
         /你看着|你来分|你定|随便|自动分/.test(userContent)
       ) {
         organize.mode = 'full';

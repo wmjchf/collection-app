@@ -91,7 +91,7 @@ function extractTagEditAskMeta(message) {
   return meta.itemId || meta.title ? meta : null;
 }
 
-/** 短句像单个标签名（答「怎么改」时常见：直接丢一个名） */
+/** 短句像单个标签名（模型漏填时兜底「直接丢一个名」） */
 function looksLikeBareTagName(text) {
   const t = String(text || '').trim();
   if (!t || t.length > 24) return false;
@@ -100,11 +100,12 @@ function looksLikeBareTagName(text) {
     return false;
   }
   if (
-    /(加上|去掉|删掉|删除|换成|改成|调整|归类|对照|对比|搜索|查找|收藏)/.test(t)
+    /(加上|去掉|删掉|删除|换成|改成|调整|归类|对照|对比|搜索|查找|收藏|合适|不对|不好|不行)/.test(
+      t,
+    )
   ) {
     return false;
   }
-  // 中文 / 英文数字标签名，允许中间空格、·、-、_
   return /^[\u4e00-\u9fffA-Za-z0-9][\u4e00-\u9fffA-Za-z0-9 ·_\-]{0,23}$/.test(
     t,
   );
@@ -164,17 +165,8 @@ function looksLikeAwaitingAnswer(text, awaiting) {
   }
 
   if (awaiting.kind === AWAITING.TAG_EDIT_PREFERENCE) {
-    if (/^(取消|不做了|算了|不用了)[。.!！]?$/.test(t)) return true;
-    if (
-      /(加|添|补).{0,12}(上|个|标签)|去掉|删掉|删除|换成|改成|调整为|改成只有/.test(
-        t,
-      ) ||
-      /^(加上|去掉|删除|换成)/.test(t)
-    ) {
-      return true;
-    }
-    // 「产品实测」这类直接丢标签名，仍算答在改标询问
-    return looksLikeBareTagName(t);
+    // 改标询问：不靠词表猜说法；取消算答中，其余由 shouldContinueAwaiting 默认续上
+    return /^(取消|不做了|算了|不用了)[。.!！]?$/.test(t);
   }
 
   if (
@@ -195,16 +187,19 @@ function looksLikeAwaitingAnswer(text, awaiting) {
 /**
  * 当前 awaiting 下本轮是否应继续该流程。
  * 换题且并非在回答 awaiting → 放行新意图。
+ *
+ * 改标询问：只要没换题，就钉住 tag_edit，具体加删由 plan 模型填 tagEdit
+ * （不靠「不太合适」等词表）。归类询问仍只接受明确分法短答。
  */
 function shouldContinueAwaiting(text, awaiting) {
   if (!awaiting?.kind) return false;
   if (looksLikeAwaitingAnswer(text, awaiting)) return true;
   if (looksLikeTopicSwitch(text)) return false;
-  // 询问态：不含糊吞掉任意短句；只接受明确答中
-  if (
-    awaiting.kind === AWAITING.ORGANIZE_PREFERENCE ||
-    awaiting.kind === AWAITING.TAG_EDIT_PREFERENCE
-  ) {
+  if (awaiting.kind === AWAITING.TAG_EDIT_PREFERENCE) {
+    return true;
+  }
+  // 归类询问：不含糊吞掉任意短句；只接受明确答中
+  if (awaiting.kind === AWAITING.ORGANIZE_PREFERENCE) {
     return false;
   }
   return false;
