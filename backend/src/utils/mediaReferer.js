@@ -33,6 +33,16 @@ function refererForMediaUrl(mediaUrl, pageUrl) {
   if (lower.includes('toutiaovod') || lower.includes('toutiao.com')) {
     return 'https://www.toutiao.com/';
   }
+  if (
+    lower.includes('douyinpic') ||
+    lower.includes('douyinvod') ||
+    lower.includes('byteimg.com') ||
+    lower.includes('ibyteimg.com') ||
+    lower.includes('iesdouyin') ||
+    lower.includes('douyin.com')
+  ) {
+    return 'https://www.douyin.com/';
+  }
   return null;
 }
 

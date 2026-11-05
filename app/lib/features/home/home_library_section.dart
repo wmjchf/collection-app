@@ -75,9 +75,7 @@ class _HomeLibrarySectionState extends State<HomeLibrarySection> {
     if (widget.refreshTick != oldWidget.refreshTick) {
       unawaited(_load(reset: true, quiet: true));
     }
-    if (widget.isActive && !oldWidget.isActive) {
-      unawaited(_load(reset: true, quiet: true));
-    }
+    // 切回首页不整表重载：OSS 签名 URL 一变会打爆封面比例缓存，瀑布会抖
   }
 
   void _onPrefs() {
