@@ -44,6 +44,7 @@ const transcriptSegments = require('./transcriptSegments');
 const aiMeta = require('./aiMeta');
 const guideItemService = require('./guideItemService');
 const mediaProxy = require('./mediaProxy');
+const itemMediaOss = require('./itemMediaOss');
 const itemMediaKind = require('./itemMediaKind');
 
 /** 服务端抓取被拦时，等待客户端上报 HTML */
@@ -81,9 +82,11 @@ function mapItem(row) {
     content: mediaProxy.rewriteMediaUrlsInText(contentRaw),
     summary: row.summary,
     coverImageUrl: coverRaw
-      ? mediaProxy.toProxiedMediaUrl(coverRaw)
+      ? itemMediaOss.rewriteOutgoingUrl(mediaProxy.toProxiedMediaUrl(coverRaw))
       : null,
-    imageUrls: mediaProxy.rewriteMediaUrlList(imageUrls),
+    imageUrls: itemMediaOss.rewriteOutgoingList(
+      mediaProxy.rewriteMediaUrlList(imageUrls),
+    ),
     videoUrl: row.video_url || null,
     transcriptSegments: transcriptSegments.mapSegmentsForApi(
       transcriptSegments.parseSegments(row.transcript_segments),
@@ -361,9 +364,21 @@ async function runContentParse(itemId) {
     });
 
     if (parsed.ok) {
-      const imageUrls = Array.isArray(parsed.imageUrls)
+      const imageUrlsRaw = Array.isArray(parsed.imageUrls)
         ? parsed.imageUrls.filter(Boolean).slice(0, 30)
         : [];
+      const persisted = await itemMediaOss.persistItemImages({
+        platform: row.platform,
+        userId: row.user_id,
+        itemId,
+        pageUrl:
+          parsed.pageUrl ||
+          resolveParseUrl(row.canonical_url, row.url),
+        coverImageUrl: parsed.coverImageUrl || null,
+        imageUrls: imageUrlsRaw,
+      });
+      const imageUrls = persisted.imageUrls;
+      const coverImageUrl = persisted.coverImageUrl;
       const fixedCanonical = normalizeCanonicalForPlatform(
         row.platform,
         parsed.pageUrl,
@@ -398,7 +413,7 @@ async function runContentParse(itemId) {
           itemId,
           title: parsed.title || null,
           summary: parsed.summary || null,
-          coverImageUrl: parsed.coverImageUrl || null,
+          coverImageUrl,
           imageUrls: JSON.stringify(imageUrls),
           videoUrl: parsed.videoUrl || null,
           mediaKind,
@@ -526,9 +541,21 @@ async function parseWithClientHtml(userId, itemId, html) {
   });
 
   if (parsed.ok) {
-    const imageUrls = Array.isArray(parsed.imageUrls)
+    const imageUrlsRaw = Array.isArray(parsed.imageUrls)
       ? parsed.imageUrls.filter(Boolean).slice(0, 30)
       : [];
+    const persisted = await itemMediaOss.persistItemImages({
+      platform: item.platform,
+      userId,
+      itemId,
+      pageUrl:
+        parsed.pageUrl ||
+        resolveParseUrl(item.canonicalUrl, item.url),
+      coverImageUrl: parsed.coverImageUrl || null,
+      imageUrls: imageUrlsRaw,
+    });
+    const imageUrls = persisted.imageUrls;
+    const coverImageUrl = persisted.coverImageUrl;
     const mediaKind = itemMediaKind.resolveMediaKind({
       video_url: parsed.videoUrl || null,
       image_urls: imageUrls,
@@ -554,7 +581,7 @@ async function parseWithClientHtml(userId, itemId, html) {
         userId,
         title: parsed.title || null,
         summary: parsed.summary || null,
-        coverImageUrl: parsed.coverImageUrl || null,
+        coverImageUrl,
         imageUrls: JSON.stringify(imageUrls),
         videoUrl: parsed.videoUrl || null,
         mediaKind,
@@ -703,9 +730,21 @@ async function refreshItemVideo(userId, itemId) {
       item.canonicalUrl,
       item.url,
     ) || item.canonicalUrl;
+  const persisted = await itemMediaOss.persistItemImages({
+    platform: item.platform,
+    userId,
+    itemId,
+    pageUrl: parsed.pageUrl || nextCanonical || item.url,
+    coverImageUrl: parsed.coverImageUrl || null,
+    imageUrls: Array.isArray(parsed.imageUrls)
+      ? parsed.imageUrls.filter(Boolean).slice(0, 30)
+      : item.imageUrls || [],
+  });
   const mediaKind = itemMediaKind.resolveMediaKind({
     video_url: parsed.videoUrl || null,
-    image_urls: item.imageUrls,
+    image_urls: persisted.imageUrls.length
+      ? persisted.imageUrls
+      : item.imageUrls,
     content: nextContent,
     platform: item.platform,
     canonical_url: nextCanonical,
@@ -718,6 +757,7 @@ async function refreshItemVideo(userId, itemId) {
          media_kind = :mediaKind,
          content = COALESCE(:content, content),
          cover_image_url = COALESCE(:coverImageUrl, cover_image_url),
+         image_urls = COALESCE(CAST(:imageUrls AS JSON), image_urls),
          canonical_url = COALESCE(:canonicalUrl, canonical_url),
          updated_at = CURRENT_TIMESTAMP
      WHERE id = :itemId AND user_id = :userId`,
@@ -727,7 +767,10 @@ async function refreshItemVideo(userId, itemId) {
       videoUrl: parsed.videoUrl || null,
       mediaKind,
       content: preserveUserContent ? null : parsed.content || null,
-      coverImageUrl: parsed.coverImageUrl || null,
+      coverImageUrl: persisted.coverImageUrl || null,
+      imageUrls: persisted.imageUrls.length
+        ? JSON.stringify(persisted.imageUrls)
+        : null,
       canonicalUrl: normalizeCanonicalForPlatform(
         item.platform,
         parsed.pageUrl,
