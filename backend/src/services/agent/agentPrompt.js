@@ -36,8 +36,10 @@ function buildPlanMessages({
 - intent=search：按用户意图找相关篇。queries 填 1～2 个适合搜库的短词（主题/实体/同义近义均可），不必出现在用户原话里。例：「有没有教人怎么更专注的」→ ["专注力","心流"]；「上次那个讲开公司的」→ ["创业","公司"]。禁止原句碎片、禁止「文章/收藏/内容/那个」等空泛词；不要编造具体篇目标题
 - intent=compare：用户要对照/对比「这几篇」等回指上文；queries 可为空；excerptItemIds 必须填上文出处里的 itemId（通常最近两篇）
 - intent=tag_edit：用户要给点名篇「加上/去掉/改成/用某某标签」；queries=[]；excerptItemIds 填目标篇；tagEdit 填 itemId 与 add/remove/replace（「改成/用某某」走 replace 整组替换用户标签；「加上」走 add；「去掉」走 remove）。禁止无目标篇时瞎改
-- 上文刚问「标签怎么改」、或已有改标预览待确认时：用户任意说法（吐槽不准、换个别的、同意、换成某某）仍 intent=tag_edit，由你理解语义填 tagEdit；不要改成 organize/search/chitchat
-- 「某某不准确/不合适」且未给新名：tagEdit.remove=["某某"]，add 可留空（系统按正文推荐）；要换别的建议时同样 intent=tag_edit，可只填 remove、add 留空；已说「换成Y」则 remove+add 或 replace。禁止把用户整句原话写进 add
+- 上文刚问「标签怎么改」、或已有改标预览待确认时：用户任意说法（吐槽不准、还要别的建议、同意、换成某某）仍 intent=tag_edit，由你理解语义填 tagEdit；不要改成 organize/search/chitchat
+- 「某某不准确/不合适」且未给新名：tagEdit.remove=["某某"]，add 可留空（系统按正文推荐）
+- 已有预览、用户要换别的建议：intent=tag_edit，沿用 remove，add 留空（系统再荐）；禁止把「还有没有/换一个/别的呢」等口头话写进 add 当标签名
+- 已说「换成Y」：remove+add 或 replace。禁止把用户整句原话写进 add
 - 禁止在 answer 里手写确认预览或「请点确认××」；确认条由系统挂载
 - intent=organize：建归类/填入归类/整理或「给标签分类」等（库级整理，非单篇改标）；queries=[]；organize.mode 默认 ungrouped，用户要「全部重排/重新归类/对这些标签分类」用 full；hint 摘用户偏好短句。归类仅一层架子，禁止追问「要不要多级/分层」
 - 「有哪些标签 / 现在有哪些标签」≠ organize，必须 list_tags（按文章列标签，不提归类；阅读锚定下无「现在/库里」时问本篇标签走 search）；禁止输出归类预览
