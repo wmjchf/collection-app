@@ -10,9 +10,11 @@ import 'package:super_collection/features/agent/agent_split_inset.dart';
 import 'package:super_collection/features/collection/tag_models.dart';
 import 'package:super_collection/features/collection/tags_repository.dart';
 import 'package:super_collection/features/home/home_format.dart';
-import 'package:super_collection/features/items/item_list_tile.dart';
 import 'package:super_collection/features/items/item_models.dart';
 import 'package:super_collection/features/items/item_reading_page.dart';
+import 'package:super_collection/features/items/items_feed_body.dart';
+import 'package:super_collection/features/items/items_layout_prefs.dart';
+import 'package:super_collection/features/items/items_layout_toggle_button.dart';
 import 'package:super_collection/features/items/items_repository.dart';
 
 /// 统一搜索：结果区可按标签筛选（弹框多选），下方为匹配内容。
@@ -110,6 +112,7 @@ class _SearchPageState extends State<SearchPage> with ScreenDwellMixin {
   void initState() {
     super.initState();
     _scroll.addListener(_onScroll);
+    unawaited(ItemsLayoutPrefs.instance.ensureLoaded());
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted && widget.isActive) _focus.requestFocus();
     });
@@ -747,11 +750,11 @@ class _SearchPageState extends State<SearchPage> with ScreenDwellMixin {
           SliverPadding(
             padding: const EdgeInsets.fromLTRB(16, 22, 16, 0),
             sliver: SliverToBoxAdapter(
-              child: Text(
-                _filteringByTags
+              child: ItemsFeedCountRow(
+                label: _filteringByTags
                     ? '内容 · $_contentTotal（按所选标签）'
                     : '内容 · $_contentTotal',
-                style: const TextStyle(
+                labelStyle: const TextStyle(
                   fontSize: 13,
                   fontWeight: FontWeight.w600,
                   color: _muted,
@@ -759,45 +762,23 @@ class _SearchPageState extends State<SearchPage> with ScreenDwellMixin {
               ),
             ),
           ),
+          ItemsFeedContentSliver(
+            items: contentItems,
+            subtitleOf: _subtitle,
+            selectedId: _selectedId,
+            highlightSelected: widget.embedded,
+            highlightColor: _brand,
+            onItemTap: (item) => unawaited(
+              _openItem(item, entry: 'search'),
+            ),
+          ),
           SliverPadding(
-            padding: const EdgeInsets.fromLTRB(16, 10, 16, 24),
-            sliver: SliverList(
-              delegate: SliverChildBuilderDelegate(
-                (context, index) {
-                  if (index == contentItems.length) {
-                    return pagedListFooter(
-                      loadingMore: _loadingMore,
-                      hasMore: _hasMore,
-                      isEmpty: false,
-                    );
-                  }
-                  final item = contentItems[index];
-                  final selected =
-                      widget.embedded && item.id == _selectedId;
-                  return Padding(
-                    key: ValueKey('search-item-${item.id}'),
-                    padding: const EdgeInsets.only(bottom: 8),
-                    child: DecoratedBox(
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(12),
-                        border: selected
-                            ? Border.all(
-                                color: _brand.withValues(alpha: 0.35),
-                              )
-                            : null,
-                      ),
-                      child: ItemListTile.fromItem(
-                        item,
-                        subtitle: _subtitle(item),
-                        selected: selected,
-                        onTap: () => unawaited(
-                          _openItem(item, entry: 'search'),
-                        ),
-                      ),
-                    ),
-                  );
-                },
-                childCount: contentItems.length + 1,
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+            sliver: SliverToBoxAdapter(
+              child: pagedListFooter(
+                loadingMore: _loadingMore,
+                hasMore: _hasMore,
+                isEmpty: false,
               ),
             ),
           ),

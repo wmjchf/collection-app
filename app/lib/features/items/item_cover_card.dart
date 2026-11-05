@@ -2,9 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:super_collection/features/items/cover_aspect.dart';
 import 'package:super_collection/features/items/cover_image.dart';
 import 'package:super_collection/features/items/item_models.dart';
+import 'package:super_collection/features/settings/usage_repository.dart';
 
 /// 封面卡：上图下文（首页叠卡 / 列表瀑布流共用）。
 /// 列表行样式见 [ItemListTile]，两者并存。
+/// 标签行仅太子/帝王展示（与 [ItemListTile] 一致）；无标签不占高。
 class ItemCoverCard extends StatelessWidget {
   const ItemCoverCard({
     super.key,
@@ -102,7 +104,18 @@ class ItemCoverCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tagsLine = showMeta ? _tagsLine(tags) : null;
+    return ListenableBuilder(
+      listenable: UsageRefresh.version,
+      builder: (context, _) {
+        final princeLayout = UsageRefresh.snapshot?.isPrince == true;
+        final tagsLine =
+            showMeta && princeLayout ? _tagsLine(tags) : null;
+        return _buildCard(tagsLine: tagsLine);
+      },
+    );
+  }
+
+  Widget _buildCard({required String? tagsLine}) {
     final fixedCover = coverHeight != null && !fillHeight;
 
     late final Widget body;

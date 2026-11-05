@@ -1,9 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:super_collection/features/items/item_transcript_page.dart';
 import 'package:super_collection/features/items/reading_font_prefs.dart';
 import 'package:super_collection/features/items/transcript_models.dart';
 
-/// 挂在播放器下方：loading / 失败提示；成功态为可点击预览，跳转文稿页
+/// 挂在播放器下方：loading / 失败提示；成功态为可点击预览，底部滑出文稿
 class TranscriptSegmentPanel extends StatelessWidget {
   const TranscriptSegmentPanel({
     super.key,
@@ -31,16 +33,15 @@ class TranscriptSegmentPanel extends StatelessWidget {
 
   void _openTranscriptPage(BuildContext context, TranscriptSegment seg) {
     final text = (seg.text ?? '').trim();
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => ItemTranscriptPage(
-          text: text,
-          cues: seg.cues,
-          fontSize: fontSize,
-          itemId: itemId,
-          segmentKey: segmentKey,
-          onShareQuote: onShareQuote,
-        ),
+    unawaited(
+      showItemTranscriptSheet(
+        context,
+        text: text,
+        cues: seg.cues,
+        fontSize: fontSize,
+        itemId: itemId,
+        segmentKey: segmentKey,
+        onShareQuote: onShareQuote,
       ),
     );
   }

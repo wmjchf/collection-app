@@ -13,8 +13,9 @@ import 'package:super_collection/features/settings/apple_iap_service.dart';
 import 'package:super_collection/features/settings/legal_docs.dart';
 import 'package:super_collection/features/settings/simple_doc_page.dart';
 import 'package:super_collection/features/settings/usage_repository.dart';
+import 'package:super_collection/features/settings/wechat_pay_service.dart';
 
-/// 订阅升级页（普通 / 太子 / 帝王；iOS StoreKit）
+/// 订阅升级页（普通 / 太子 / 帝王；iOS StoreKit / Android 微信）
 class UpgradeProPage extends StatefulWidget {
   const UpgradeProPage({
     super.key,
@@ -41,6 +42,7 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
   static const _border = Color(0xFFE8EBF0);
 
   final _iap = AppleIapService();
+  final _wechat = WechatPayService();
   final _usageRepo = UsageRepository();
 
   Map<String, ProductDetails> _products = {};
@@ -62,6 +64,10 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
   bool get _isIos => !kIsWeb && Platform.isIOS;
   bool get _isAndroid => !kIsWeb && Platform.isAndroid;
   bool get _busy => _phase != null;
+  bool get _wechatReady =>
+      _isAndroid && (_billing?.wechat.configured ?? false);
+  WechatBillingConfig get _wechatCfg =>
+      _billing?.wechat ?? WechatBillingConfig.none;
 
   /// 该档是否已实购（普通≠被太子覆盖）
   bool _isTierOwned(String tier) => _ownedPlans.owns(tier);
@@ -290,7 +296,14 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
 
   AppleFreeTrialOffer? get _selectedTrial => _trialForTier(_selectedTier);
 
-  /// 已开通档始终显示文案；其余等 Store 商品就绪后再出价。
+  WechatPaySku? _wechatSkuForTier(String tier) {
+    return _wechatCfg.skuFor(
+      plan: UsagePlan.normalize(tier),
+      yearly: _yearlyBilling,
+    );
+  }
+
+  /// 已开通档始终显示文案；其余等 Store / 微信价目就绪后再出价。
   Widget? _cardPriceWidget(String tier, {required bool selected}) {
     if (_isTierOwned(tier)) {
       return Text(
@@ -303,8 +316,91 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
         ),
       );
     }
+    if (_wechatReady) {
+      return _wechatPriceWidgetForTier(tier, selected: selected);
+    }
     if (!_isIos || _productsLoading || _error != null) return null;
     return _priceWidgetForTier(tier, selected: selected);
+  }
+
+  Widget? _wechatPriceWidgetForTier(String tier, {required bool selected}) {
+    final t = UsagePlan.normalize(tier);
+    if (t == UsagePlan.basic) {
+      final sku = _wechatSkuForTier(tier);
+      if (sku == null || sku.priceFen <= 0) return null;
+      return Text(
+        '${sku.displayPrice} 一次买断',
+        style: TextStyle(
+          fontSize: 22,
+          fontWeight: FontWeight.w700,
+          color: selected ? _accent : _text,
+          height: 1.2,
+        ),
+      );
+    }
+    if (_yearlyBilling) {
+      return _wechatYearlySavingsLabel(tier, selected: selected);
+    }
+    final sku = _wechatSkuForTier(tier);
+    if (sku == null || sku.priceFen <= 0) return null;
+    return Text(
+      '${sku.displayPrice}/月',
+      style: TextStyle(
+        fontSize: 22,
+        fontWeight: FontWeight.w700,
+        color: selected ? _accent : _text,
+        height: 1.2,
+      ),
+    );
+  }
+
+  /// 微信年付：与 iOS 相同——删除线（月×12）+「立省」；实付在 CTA。
+  Widget? _wechatYearlySavingsLabel(String tier, {required bool selected}) {
+    final plan = UsagePlan.normalize(tier);
+    final monthly = _wechatCfg.skuFor(plan: plan, yearly: false);
+    final yearly = _wechatCfg.skuFor(plan: plan, yearly: true);
+    if (yearly == null || yearly.priceFen <= 0) return null;
+
+    final accent = selected ? _accent : _text;
+    if (monthly == null || monthly.priceFen <= 0) {
+      return Text(
+        '${yearly.displayPrice}/年',
+        style: TextStyle(
+          fontSize: 22,
+          fontWeight: FontWeight.w700,
+          color: accent,
+          height: 1.2,
+        ),
+      );
+    }
+
+    final fullYearFen = monthly.priceFen * 12;
+    final saveFen = fullYearFen - yearly.priceFen;
+    if (saveFen <= 0) {
+      return Text(
+        '${yearly.displayPrice}/年',
+        style: TextStyle(
+          fontSize: 22,
+          fontWeight: FontWeight.w700,
+          color: accent,
+          height: 1.2,
+        ),
+      );
+    }
+
+    return _YearlySaveBadge(
+      struckPrice: _formatFenYuan(fullYearFen),
+      saveAmount: _formatFenYuan(saveFen),
+      emphasized: selected,
+    );
+  }
+
+  static String _formatFenYuan(int fen) {
+    final yuan = fen / 100.0;
+    final body = yuan == yuan.roundToDouble()
+        ? yuan.toStringAsFixed(0)
+        : yuan.toStringAsFixed(2);
+    return '¥$body';
   }
 
   /// 普通：买断价；太子/帝王月付价签；年付：删除线（月×12）+ 立省。
@@ -435,6 +531,14 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
         _busy && !_restoreFlow && t == UsagePlan.normalize(_selectedTier);
     if (buyingThis) return _phaseLabel;
     if (_isTierOwned(tier)) return '已开通 ${_tierDisplayName(tier)}';
+    if (_wechatReady) {
+      final sku = _wechatSkuForTier(tier);
+      if (sku == null) return t == UsagePlan.basic ? '一次买断' : '微信支付';
+      if (t == UsagePlan.basic) return '微信支付 ${sku.displayPrice}';
+      return _yearlyBilling
+          ? '微信支付 ${sku.displayPrice}/年'
+          : '微信支付 ${sku.displayPrice}/月';
+    }
     final p = _productForTier(tier);
     if (t == UsagePlan.basic) {
       if (p == null) return '一次买断';
@@ -448,7 +552,9 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
   }
 
   bool _ctaEnabledForTier(String tier) {
-    if (_busy || _isTierOwned(tier) || !_isIos) return false;
+    if (_busy || _isTierOwned(tier)) return false;
+    if (_wechatReady) return _wechatSkuForTier(tier) != null;
+    if (!_isIos) return false;
     if (_productsLoading || _error != null) return false;
     return _productForTier(tier) != null;
   }
@@ -460,8 +566,13 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
 
   Future<void> _buy([String? tier]) async {
     final t = UsagePlan.normalize(tier ?? _selectedTier);
+    if (_busy || _isTierOwned(t)) return;
+    if (_wechatReady) {
+      await _buyWechat(t);
+      return;
+    }
     final product = _productForTier(t);
-    if (product == null || _busy || _isTierOwned(t)) return;
+    if (product == null) return;
     setState(() {
       _selectedTier = t;
       _restoreFlow = false;
@@ -498,6 +609,56 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
         errorCode: e.toString(),
       );
       AppToast.show(context, '购买失败，请稍后重试');
+    } finally {
+      if (mounted) {
+        setState(() {
+          _phase = null;
+          _restoreFlow = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _buyWechat(String tier) async {
+    final sku = _wechatSkuForTier(tier);
+    if (sku == null || _busy) return;
+    setState(() {
+      _selectedTier = tier;
+      _restoreFlow = false;
+      _phase = AppleIapPhase.paying;
+    });
+    Analytics.instance.iapPurchaseStart(
+      productId: sku.sku,
+      from: widget.from,
+    );
+    try {
+      await _wechat.pay(
+        sku: sku.sku,
+        appId: _wechatCfg.appId,
+        onPhase: _setPhase,
+      );
+      if (!mounted) return;
+      UsageRefresh.bump();
+      AppToast.show(context, '${_tierDisplayName(tier)} 已开通');
+      Navigator.of(context).maybePop(true);
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      Analytics.instance.iapPurchaseFail(
+        productId: sku.sku,
+        errorCode: e.code ?? e.message,
+      );
+      if (e.message.contains('取消')) {
+        AppToast.show(context, '已取消');
+      } else {
+        AppToast.show(context, e.message);
+      }
+    } catch (e) {
+      if (!mounted) return;
+      Analytics.instance.iapPurchaseFail(
+        productId: sku.sku,
+        errorCode: e.toString(),
+      );
+      AppToast.show(context, '支付失败，请稍后重试');
     } finally {
       if (mounted) {
         setState(() {
@@ -575,7 +736,7 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
             padding: const EdgeInsets.fromLTRB(16, 14, 16, 20),
             children: [
               const _MembershipIntro(),
-              if (_isAndroid) ...[
+              if (_isAndroid && !_wechatReady) ...[
                 const SizedBox(height: 12),
                 const _AndroidComingSoonHint(),
               ] else if (_nextUpgradeableTier == null) ...[
@@ -583,7 +744,9 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
                 const _AlreadyTopPlanHint(),
               ],
               const SizedBox(height: 16),
-              if (_isIos && !_selectedOwned && !_isBasicSelected)
+              if ((_isIos || _wechatReady) &&
+                  !_selectedOwned &&
+                  !_isBasicSelected)
                 Padding(
                   padding: const EdgeInsets.only(bottom: 10),
                   child: Row(
@@ -592,8 +755,8 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
                       _BillingPeriodToggle(
                         yearly: _yearlyBilling,
                         enabled: !_busy &&
-                            !_productsLoading &&
-                            _error == null,
+                            (!_isIos ||
+                                (!_productsLoading && _error == null)),
                         onChanged: _setBillingPeriod,
                       ),
                     ],
@@ -713,6 +876,31 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
               title: '隐私政策',
               body: LegalDocs.privacyPolicy,
             ),
+          )
+        else if (_wechatReady)
+          _BottomActionBar(
+            showPurchaseActions: true,
+            showRestore: false,
+            showLegalFooter: true,
+            subscribeLabel: _subscribeLabel(),
+            restoreLabel: '',
+            busy: _busy,
+            restoreFlow: false,
+            subscribeEnabled:
+                !_selectedOwned && _wechatSkuForTier(_selectedTier) != null,
+            selectedPrice: _wechatSkuForTier(_selectedTier)?.displayPrice,
+            lifetimePurchase: _isBasicSelected,
+            manualRenewal: true,
+            onSubscribe: () => _buy(),
+            onRestore: () {},
+            onUserAgreement: () => _openLegal(
+              title: '用户协议',
+              body: LegalDocs.userAgreement,
+            ),
+            onPrivacy: () => _openLegal(
+              title: '隐私政策',
+              body: LegalDocs.privacyPolicy,
+            ),
           ),
       ],
     );
@@ -732,13 +920,14 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
               children: [
                 _TabletMembershipHero(
                   freeItemLimit: freeLimit,
-                  showBillingToggle: _isIos && _nextUpgradeableTier != null,
+                  showBillingToggle: (_isIos || _wechatReady) &&
+                      _nextUpgradeableTier != null,
                   yearly: _yearlyBilling,
-                  billingEnabled:
-                      !_busy && !_productsLoading && _error == null,
+                  billingEnabled: !_busy &&
+                      (!_isIos || (!_productsLoading && _error == null)),
                   onBillingChanged: _setBillingPeriod,
                 ),
-                if (_isAndroid) ...[
+                if (_isAndroid && !_wechatReady) ...[
                   const SizedBox(height: 12),
                   const _AndroidComingSoonHint(),
                 ] else if (_nextUpgradeableTier == null) ...[
@@ -2058,13 +2247,16 @@ class _BottomActionBar extends StatelessWidget {
     required this.onUserAgreement,
     required this.onPrivacy,
     this.showLegalFooter = true,
+    this.showRestore = true,
     this.trialOffer,
     this.selectedPrice,
     this.lifetimePurchase = false,
+    this.manualRenewal = false,
   });
 
   final bool showPurchaseActions;
   final bool showLegalFooter;
+  final bool showRestore;
   final String subscribeLabel;
   final String restoreLabel;
   final bool busy;
@@ -2077,6 +2269,7 @@ class _BottomActionBar extends StatelessWidget {
   final AppleFreeTrialOffer? trialOffer;
   final String? selectedPrice;
   final bool lifetimePurchase;
+  final bool manualRenewal;
 
   @override
   Widget build(BuildContext context) {
@@ -2104,18 +2297,20 @@ class _BottomActionBar extends StatelessWidget {
                     enabled: subscribeEnabled,
                     onPressed: onSubscribe,
                   ),
-                  const SizedBox(height: 4),
-                  TextButton(
-                    onPressed: busy ? null : onRestore,
-                    style: TextButton.styleFrom(
-                      foregroundColor: const Color(0xFF737A85),
-                      minimumSize: const Size(0, 36),
+                  if (showRestore) ...[
+                    const SizedBox(height: 4),
+                    TextButton(
+                      onPressed: busy ? null : onRestore,
+                      style: TextButton.styleFrom(
+                        foregroundColor: const Color(0xFF737A85),
+                        minimumSize: const Size(0, 36),
+                      ),
+                      child: Text(
+                        restoreLabel,
+                        style: const TextStyle(fontSize: 14),
+                      ),
                     ),
-                    child: Text(
-                      restoreLabel,
-                      style: const TextStyle(fontSize: 14),
-                    ),
-                  ),
+                  ],
                   const SizedBox(height: 4),
                 ],
                 if (showLegalFooter)
@@ -2125,6 +2320,7 @@ class _BottomActionBar extends StatelessWidget {
                     trialOffer: trialOffer,
                     selectedPrice: selectedPrice,
                     lifetimePurchase: lifetimePurchase,
+                    manualRenewal: manualRenewal,
                   ),
               ],
             ),
@@ -2142,6 +2338,7 @@ class _SubscriptionLegalFooter extends StatelessWidget {
     this.trialOffer,
     this.selectedPrice,
     this.lifetimePurchase = false,
+    this.manualRenewal = false,
   });
 
   final VoidCallback onUserAgreement;
@@ -2149,6 +2346,7 @@ class _SubscriptionLegalFooter extends StatelessWidget {
   final AppleFreeTrialOffer? trialOffer;
   final String? selectedPrice;
   final bool lifetimePurchase;
+  final bool manualRenewal;
 
   @override
   Widget build(BuildContext context) {
@@ -2160,12 +2358,28 @@ class _SubscriptionLegalFooter extends StatelessWidget {
     );
     final trial = trialOffer;
     final price = selectedPrice;
-    final trialLead = !lifetimePurchase && trial != null && price != null
+    final trialLead = !lifetimePurchase &&
+            !manualRenewal &&
+            trial != null &&
+            price != null
         ? '符合条件的用户可免费试用 ${trial.days} 天，试用结束后将按 $price/月自动扣费并续订。'
         : '';
-    final lead = lifetimePurchase
-        ? '普通会员为一次买断、永久开通，不自动续费。购买即表示你接受我们的'
-        : '订阅会自动续费，除非您在当前订阅结束前 24 小时以上取消自动续订。订阅高级会员即表示你接受我们的';
+    final String lead;
+    final String trail;
+    if (lifetimePurchase) {
+      lead = '普通会员为一次买断、永久开通，不自动续费。购买即表示你接受我们的';
+      trail = manualRenewal
+          ? '。'
+          : '。如果已购买但未生效，请恢复购买。';
+    } else if (manualRenewal) {
+      lead =
+          '本页支付通过微信完成；太子Pro / 帝王Pro 为按期开通，到期后需手动续费，不会自动扣款。支付即表示你接受我们的';
+      trail = '。';
+    } else {
+      lead =
+          '订阅会自动续费，除非您在当前订阅结束前 24 小时以上取消自动续订。订阅高级会员即表示你接受我们的';
+      trail = '。如果您已经订阅过但未生效，请恢复购买。';
+    }
     return Text.rich(
       TextSpan(
         style: style,
@@ -2189,11 +2403,7 @@ class _SubscriptionLegalFooter extends StatelessWidget {
               child: const Text('用户条款', style: linkStyle),
             ),
           ),
-          TextSpan(
-            text: lifetimePurchase
-                ? '。如果已购买但未生效，请恢复购买。'
-                : '。如果您已经订阅过但未生效，请恢复购买。',
-          ),
+          TextSpan(text: trail),
         ],
       ),
       textAlign: TextAlign.center,

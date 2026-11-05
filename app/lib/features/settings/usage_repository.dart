@@ -332,6 +332,98 @@ class TierProductIds {
   final String yearly;
 }
 
+class WechatPaySku {
+  const WechatPaySku({
+    required this.sku,
+    required this.plan,
+    required this.label,
+    required this.priceFen,
+    required this.priceYuan,
+    this.periodDays,
+    this.lifetime = false,
+  });
+
+  final String sku;
+  final String plan;
+  final String label;
+  final int priceFen;
+  final String priceYuan;
+  final int? periodDays;
+  final bool lifetime;
+
+  factory WechatPaySku.fromJson(Map<String, dynamic> json) {
+    return WechatPaySku(
+      sku: (json['sku'] as String?)?.trim() ?? '',
+      plan: (json['plan'] as String?)?.trim() ?? '',
+      label: (json['label'] as String?)?.trim() ?? '',
+      priceFen: (json['priceFen'] as num?)?.toInt() ?? 0,
+      priceYuan: (json['priceYuan'] as String?)?.trim() ?? '0.00',
+      periodDays: (json['periodDays'] as num?)?.toInt(),
+      lifetime: json['lifetime'] == true,
+    );
+  }
+
+  String get displayPrice => '¥$priceYuan';
+}
+
+class WechatBillingConfig {
+  const WechatBillingConfig({
+    required this.configured,
+    required this.enabled,
+    this.appId = '',
+    this.products = const [],
+  });
+
+  final bool configured;
+  final bool enabled;
+  final String appId;
+  final List<WechatPaySku> products;
+
+  static const none = WechatBillingConfig(
+    configured: false,
+    enabled: false,
+  );
+
+  factory WechatBillingConfig.fromJson(Map<String, dynamic>? json) {
+    if (json == null) return WechatBillingConfig.none;
+    final raw = json['products'];
+    final list = <WechatPaySku>[];
+    if (raw is List) {
+      for (final item in raw) {
+        if (item is Map) {
+          list.add(
+            WechatPaySku.fromJson(
+              item.map((k, v) => MapEntry(k.toString(), v)),
+            ),
+          );
+        }
+      }
+    }
+    return WechatBillingConfig(
+      configured: json['configured'] == true,
+      enabled: json['enabled'] == true,
+      appId: (json['appId'] as String?)?.trim() ?? '',
+      products: list,
+    );
+  }
+
+  WechatPaySku? skuFor({required String plan, required bool yearly}) {
+    final p = plan.trim().toLowerCase();
+    if (p == 'basic') {
+      for (final s in products) {
+        if (s.sku == 'basic_lifetime' && s.priceFen > 0) return s;
+      }
+      return null;
+    }
+    final want = yearly ? 'yearly' : 'monthly';
+    for (final s in products) {
+      if (s.plan != p || s.priceFen <= 0) continue;
+      if (s.sku.contains(want)) return s;
+    }
+    return null;
+  }
+}
+
 class BillingProductsConfig {
   const BillingProductsConfig({
     required this.basicLifetime,
@@ -339,6 +431,7 @@ class BillingProductsConfig {
     required this.prince,
     required this.emperor,
     required this.quotas,
+    this.wechat = WechatBillingConfig.none,
   });
 
   /// 普通会员主售：非消耗型一次买断
@@ -348,6 +441,7 @@ class BillingProductsConfig {
   final TierProductIds prince;
   final TierProductIds emperor;
   final PlanQuotasTable quotas;
+  final WechatBillingConfig wechat;
 
   /// 全部商品 id（StoreKit 查询用）
   Set<String> get allIds => {
@@ -449,6 +543,12 @@ class UsageRepository {
           q.map((k, v) => MapEntry(k.toString(), v)),
         );
       }
+      final wechatRaw = json['wechat'];
+      final wechat = WechatBillingConfig.fromJson(
+        wechatRaw is Map
+            ? wechatRaw.map((k, v) => MapEntry(k.toString(), v))
+            : null,
+      );
       return BillingProductsConfig(
         basicLifetime: basicLifetime,
         basic: TierProductIds(monthly: basicMonthly, yearly: basicYearly),
@@ -458,6 +558,7 @@ class UsageRepository {
           yearly: emperorYearly,
         ),
         quotas: quotas,
+        wechat: wechat,
       );
     } catch (_) {
       return const BillingProductsConfig(

@@ -8,10 +8,10 @@ import 'package:super_collection/core/ui/paged_list.dart';
 import 'package:super_collection/features/collection/create_tag_sheet.dart';
 import 'package:super_collection/features/collection/tags_repository.dart';
 import 'package:super_collection/features/home/home_format.dart';
-import 'package:super_collection/features/items/item_list_tile.dart';
 import 'package:super_collection/features/items/item_reading_page.dart';
 import 'package:super_collection/features/items/item_models.dart';
 import 'package:super_collection/features/items/items_batch_delete.dart';
+import 'package:super_collection/features/items/items_feed_body.dart';
 import 'package:super_collection/features/items/items_repository.dart';
 
 typedef ItemsBrowseLoader = Future<({List<CollectionItem> items, int total})>
@@ -503,75 +503,18 @@ class _ItemsBrowsePageState extends State<ItemsBrowsePage> with ScreenDwellMixin
                       ),
                     ],
                   )
-                : ListView.builder(
+                : ItemsFeedBody(
                     controller: _scroll,
-                    physics: const AlwaysScrollableScrollPhysics(),
-                    padding: EdgeInsets.fromLTRB(
-                      16,
-                      12,
-                      16,
-                      _selecting ? 16 : 24,
-                    ),
-                    itemCount: _items.isEmpty ? 2 : (2 + _items.length),
-                    itemBuilder: (context, index) {
-                      if (index == 0) {
-                        return Padding(
-                          padding: const EdgeInsets.only(bottom: 12),
-                          child: Text(
-                            '共 $_total 条',
-                            style: const TextStyle(fontSize: 13, color: _muted),
-                          ),
-                        );
-                      }
-                      if (_items.isEmpty) {
-                        return const Padding(
-                          padding: EdgeInsets.only(top: 48),
-                          child: Center(
-                            child: Column(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(
-                                  Icons.inbox_outlined,
-                                  size: 42,
-                                  color: Color(0xFFC5CAD3),
-                                ),
-                                SizedBox(height: 10),
-                                Text(
-                                  '暂无内容',
-                                  style: TextStyle(
-                                    fontSize: 14,
-                                    color: _muted,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        );
-                      }
-                      final itemIndex = index - 1;
-                      if (itemIndex >= _items.length) {
-                        return pagedListFooter(
-                          loadingMore: _loadingMore,
-                          hasMore: _hasMore,
-                          isEmpty: false,
-                        );
-                      }
-                      final item = _items[itemIndex];
-                      return Padding(
-                        key: ValueKey('item-${item.id}'),
-                        padding: const EdgeInsets.only(bottom: 8),
-                        child: ItemListTile.fromItem(
-                          item,
-                          subtitle: _subtitle(item),
-                          selecting: _selecting,
-                          selected: _selectedIds.contains(item.id),
-                          onTap: () => _onItemTap(item),
-                          onLongPress: _selecting
-                              ? null
-                              : () => _enterSelecting(item.id),
-                        ),
-                      );
-                    },
+                    items: _items,
+                    total: _total,
+                    subtitleOf: _subtitle,
+                    loadingMore: _loadingMore,
+                    hasMore: _hasMore,
+                    selecting: _selecting,
+                    selectedIds: _selectedIds,
+                    onItemTap: _onItemTap,
+                    onItemLongPress:
+                        _selecting ? null : (item) => _enterSelecting(item.id),
                   ),
       ),
     );
