@@ -14,6 +14,7 @@ const {
   shouldContinueAwaiting,
   looksLikeBareTagName,
   looksLikeInvalidTagName,
+  looksLikeConversationalUtterance,
   toolPayload,
 } = require('./agentAwaiting');
 const { executeTool } = require('./agentRegistry');
@@ -2304,45 +2305,71 @@ function normalizePlan(
         tagEdit.replace = heurAwait.replace;
       }
     }
-    // 丢掉「数码评测不太准确」这类被误塞进 add 的整句
+    // 丢掉评价句 / 对话续句误进 add（「还有没有」）
     tagEdit = sanitizeTagEditNames(tagEdit);
+    tagEdit = stripEchoedUserAsTag(tagEdit, userContent);
+    const inConfirm =
+      awaitingEarly?.kind === AWAITING.TAG_EDIT_CONFIRM || pinVerbalTagPreview;
     let hasOpsAwait =
       (tagEdit.add && tagEdit.add.length > 0) ||
       (tagEdit.remove && tagEdit.remove.length > 0) ||
       (tagEdit.replace && tagEdit.replace.length > 0);
-    // 模型漏填且用户只丢了一个干净标签名 → 视为加上
-    if (!hasOpsAwait && looksLikeBareTagName(userContent)) {
+    // 仅询问态允许「直接丢一个干净标签名→加上」；确认态禁用（否则「还有没有」变新标签）
+    if (
+      !inConfirm &&
+      !hasOpsAwait &&
+      looksLikeBareTagName(userContent)
+    ) {
       tagEdit.add = [String(userContent).trim()];
       hasOpsAwait = true;
     }
-    // 仍无操作：用上文「当前标签」+ 用户话里点到的名字推断去掉（语义仍靠模型；这里只防整句新建）
+    // 询问态仍无操作：用上文当前标签推断去掉
     if (!hasOpsAwait && awaitingEarly?.kind === AWAITING.TAG_EDIT_PREFERENCE) {
       const known = currentTagsFromHistory(history);
       const inferred = inferTagRemovesFromFeedback(userContent, known);
       if (inferred.length) tagEdit.remove = inferred;
     }
-    // 确认态模型未填加删：沿用上一预览的去掉项，留给 finishTagEditTurn 再推荐替换名
-    if (
-      !hasOpsAwait &&
-      (awaitingEarly?.kind === AWAITING.TAG_EDIT_CONFIRM || pinVerbalTagPreview)
-    ) {
-      const prev = findLatestPendingActionMessage(history)?.pendingAction;
-      if (prev?.type === 'item_tag_edit' && Array.isArray(prev.remove) && prev.remove.length) {
-        tagEdit.remove = prev.remove.map((s) => String(s || '').trim()).filter(Boolean);
-        tagEdit._resuggest = true;
-        tagEdit._excludeAdd = Array.isArray(prev.add)
-          ? prev.add.map((s) => String(s || '').trim()).filter(Boolean)
-          : [];
-      } else {
-        const verbal = parseVerbalTagEditProposal(history);
-        const known = currentTagsFromHistory(history);
-        if (verbal?.replace?.length && known.length) {
-          const next = new Set(verbal.replace);
-          const removed = known.filter((n) => !next.has(n));
-          if (removed.length) {
-            tagEdit.remove = removed;
-            tagEdit._resuggest = true;
-            tagEdit._excludeAdd = verbal.replace.filter((n) => !known.includes(n));
+    // 确认态：无有效加删、或只剩去掉项 → 沿用上一预览并重新推荐（一次性收「还要别的建议」类）
+    if (inConfirm) {
+      const needResuggest =
+        !hasOpsAwait ||
+        (tagEdit.remove?.length > 0 &&
+          !tagEdit.add?.length &&
+          !tagEdit.replace?.length) ||
+        looksLikeConversationalUtterance(userContent);
+      if (needResuggest) {
+        const prev = findLatestPendingActionMessage(history)?.pendingAction;
+        if (
+          prev?.type === 'item_tag_edit' &&
+          Array.isArray(prev.remove) &&
+          prev.remove.length
+        ) {
+          if (!tagEdit.remove?.length) {
+            tagEdit.remove = prev.remove
+              .map((s) => String(s || '').trim())
+              .filter(Boolean);
+          }
+          tagEdit.add = [];
+          tagEdit.replace = [];
+          tagEdit._resuggest = true;
+          tagEdit._excludeAdd = Array.isArray(prev.add)
+            ? prev.add.map((s) => String(s || '').trim()).filter(Boolean)
+            : [];
+        } else {
+          const verbal = parseVerbalTagEditProposal(history);
+          const known = currentTagsFromHistory(history);
+          if (verbal?.replace?.length && known.length) {
+            const next = new Set(verbal.replace);
+            const removed = known.filter((n) => !next.has(n));
+            if (removed.length) {
+              tagEdit.remove = removed;
+              tagEdit.add = [];
+              tagEdit.replace = [];
+              tagEdit._resuggest = true;
+              tagEdit._excludeAdd = verbal.replace.filter(
+                (n) => !known.includes(n),
+              );
+            }
           }
         }
       }
@@ -2939,15 +2966,42 @@ function heuristicTagEdit(text) {
 
 function sanitizeTagEditNames(tagEdit) {
   if (!tagEdit) return tagEdit;
-  const clean = (arr) =>
+  // add/replace：拒对话续句；remove：仍允许清掉误建的「还有没有」
+  const cleanAdd = (arr) =>
     (Array.isArray(arr) ? arr : [])
       .map((s) => String(s || '').trim())
       .filter((s) => s && !looksLikeInvalidTagName(s));
+  const cleanRemove = (arr) =>
+    (Array.isArray(arr) ? arr : [])
+      .map((s) => String(s || '').trim())
+      .filter(
+        (s) =>
+          s &&
+          !/不(太)?(合适|准确|对|好|行|喜欢|贴切)|有点|比较|换掉|去掉|删掉|加上|改成|换成/.test(
+            s,
+          ),
+      );
   return {
     ...tagEdit,
-    add: clean(tagEdit.add),
-    remove: clean(tagEdit.remove),
-    replace: clean(tagEdit.replace),
+    add: cleanAdd(tagEdit.add),
+    remove: cleanRemove(tagEdit.remove),
+    replace: cleanAdd(tagEdit.replace),
+  };
+}
+
+/** 禁止把用户整句原话写进 add/replace（确认态「还有没有」） */
+function stripEchoedUserAsTag(tagEdit, userContent) {
+  if (!tagEdit) return tagEdit;
+  const uttered = String(userContent || '').trim();
+  if (!uttered) return tagEdit;
+  const drop = (arr) =>
+    (Array.isArray(arr) ? arr : []).filter(
+      (s) => String(s || '').trim() !== uttered,
+    );
+  return {
+    ...tagEdit,
+    add: drop(tagEdit.add),
+    replace: drop(tagEdit.replace),
   };
 }
 
