@@ -115,8 +115,8 @@ class _ItemsFeedBodyState extends State<ItemsFeedBody> {
                 padding: EdgeInsets.fromLTRB(16, 0, 16, bottom),
                 sliver: SliverMasonryGrid.count(
                   crossAxisCount: 2,
-                  mainAxisSpacing: 10,
-                  crossAxisSpacing: 10,
+                  mainAxisSpacing: 4,
+                  crossAxisSpacing: 4,
                   childCount: widget.items.length,
                   itemBuilder: (context, index) {
                     final item = widget.items[index];
@@ -207,8 +207,8 @@ class ItemsFeedContentSliver extends StatelessWidget {
             padding: padding,
             sliver: SliverMasonryGrid.count(
               crossAxisCount: 2,
-              mainAxisSpacing: 10,
-              crossAxisSpacing: 10,
+              mainAxisSpacing: 4,
+              crossAxisSpacing: 4,
               childCount: items.length,
               itemBuilder: (context, index) {
                 final item = items[index];
