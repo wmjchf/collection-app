@@ -324,16 +324,27 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
   }
 
   Widget? _wechatPriceWidgetForTier(String tier, {required bool selected}) {
+    final t = UsagePlan.normalize(tier);
+    if (t == UsagePlan.basic) {
+      final sku = _wechatSkuForTier(tier);
+      if (sku == null || sku.priceFen <= 0) return null;
+      return Text(
+        '${sku.displayPrice} 一次买断',
+        style: TextStyle(
+          fontSize: 22,
+          fontWeight: FontWeight.w700,
+          color: selected ? _accent : _text,
+          height: 1.2,
+        ),
+      );
+    }
+    if (_yearlyBilling) {
+      return _wechatYearlySavingsLabel(tier, selected: selected);
+    }
     final sku = _wechatSkuForTier(tier);
     if (sku == null || sku.priceFen <= 0) return null;
-    final t = UsagePlan.normalize(tier);
-    final text = t == UsagePlan.basic
-        ? '${sku.displayPrice} 一次买断'
-        : _yearlyBilling
-            ? '${sku.displayPrice}/年'
-            : '${sku.displayPrice}/月';
     return Text(
-      text,
+      '${sku.displayPrice}/月',
       style: TextStyle(
         fontSize: 22,
         fontWeight: FontWeight.w700,
@@ -341,6 +352,55 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
         height: 1.2,
       ),
     );
+  }
+
+  /// 微信年付：与 iOS 相同——删除线（月×12）+「立省」；实付在 CTA。
+  Widget? _wechatYearlySavingsLabel(String tier, {required bool selected}) {
+    final plan = UsagePlan.normalize(tier);
+    final monthly = _wechatCfg.skuFor(plan: plan, yearly: false);
+    final yearly = _wechatCfg.skuFor(plan: plan, yearly: true);
+    if (yearly == null || yearly.priceFen <= 0) return null;
+
+    final accent = selected ? _accent : _text;
+    if (monthly == null || monthly.priceFen <= 0) {
+      return Text(
+        '${yearly.displayPrice}/年',
+        style: TextStyle(
+          fontSize: 22,
+          fontWeight: FontWeight.w700,
+          color: accent,
+          height: 1.2,
+        ),
+      );
+    }
+
+    final fullYearFen = monthly.priceFen * 12;
+    final saveFen = fullYearFen - yearly.priceFen;
+    if (saveFen <= 0) {
+      return Text(
+        '${yearly.displayPrice}/年',
+        style: TextStyle(
+          fontSize: 22,
+          fontWeight: FontWeight.w700,
+          color: accent,
+          height: 1.2,
+        ),
+      );
+    }
+
+    return _YearlySaveBadge(
+      struckPrice: _formatFenYuan(fullYearFen),
+      saveAmount: _formatFenYuan(saveFen),
+      emphasized: selected,
+    );
+  }
+
+  static String _formatFenYuan(int fen) {
+    final yuan = fen / 100.0;
+    final body = yuan == yuan.roundToDouble()
+        ? yuan.toStringAsFixed(0)
+        : yuan.toStringAsFixed(2);
+    return '¥$body';
   }
 
   /// 普通：买断价；太子/帝王月付价签；年付：删除线（月×12）+ 立省。
