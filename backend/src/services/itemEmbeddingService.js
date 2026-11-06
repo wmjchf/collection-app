@@ -20,7 +20,10 @@ const MAX_CHUNKS = 8;
 const META_MAX = 900;
 const BODY_MAX = 12000;
 const DEFAULT_TOP_K = 8;
-const MIN_SCORE = 0.32;
+/** 余弦阈值：过低会把几乎整库都算「相关」 */
+const MIN_SCORE = 0.45;
+/** 相对头名分差超过此值的丢掉，避免「8 篇都沾边」 */
+const SCORE_GAP = 0.1;
 
 function isEnabled() {
   return (
@@ -298,8 +301,13 @@ async function searchSimilar(userId, query, {
   }
 
   const ranked = [...bestByItem.values()].sort((a, b) => b.score - a.score);
-  const top = ranked.slice(0, Math.min(Math.max(Number(limit) || DEFAULT_TOP_K, 1), 20));
-  if (!top.length) return [];
+  if (!ranked.length) return [];
+  const head = ranked[0].score;
+  const tight = ranked.filter((h) => head - h.score <= SCORE_GAP);
+  const top = tight.slice(
+    0,
+    Math.min(Math.max(Number(limit) || DEFAULT_TOP_K, 1), 20),
+  );
 
   const ids = top.map((h) => h.itemId);
   const tagsByItem = await loadTagNames(userId, ids);

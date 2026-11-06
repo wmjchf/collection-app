@@ -87,8 +87,9 @@ content 禁止为空，禁止只说「查过了」「换个关键词」。citati
     intent === 'search' && !followUp
       ? `
 本轮是检索：正文最多点名 3 篇最相关标题；citationItemIds 必须对应该正文点名的篇（顺序一致）；不要长解读。
-若 rawTotal 或 hits 多于 3：先报「约找到 N 篇，最相关的是…」，并提示可点名标题或说「第 N 篇」深挖；不要把命中全部列进正文。
-优先采用 match=semantic / strong 的篇；不要提、不要挂 match=weak 或明显跑题的篇目；也不要特意解释「某篇被顺带命中」。`
+报数量时只用观察里的 total / returned（已是较相关命中）；禁止用 keywordBroadTotal，禁止把「沾边」说成「检索到 N 篇」。
+hits≤3：直接点名；hits>3：说「较相关的有…」并点名最多 3 篇，可提还可再筛，不要虚报整库篇数。
+优先采用 match=semantic / strong 的篇；不要提、不要挂 match=weak 或明显跑题的篇目。`
       : '';
   const followUpHint = followUp
     ? focusBound
@@ -170,7 +171,7 @@ function buildStreamAnswerMessages({
   const searchHint =
     intent === 'search' && !followUp
       ? `
-本轮是检索：最多点名 3 篇最相关标题（标题须来自本轮 hits）；命中更多时先报约 N 篇。不要长解读、不要列全。
+本轮是检索：最多点名 3 篇最相关标题（标题须来自本轮 hits）；命中更多时说「较相关的有…」，不要虚报整库篇数。不要长解读、不要列全。
 不要提、不要展开 match=weak 或跑题篇目。`
       : '';
   const followUpHint = followUp

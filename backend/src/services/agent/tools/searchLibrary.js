@@ -66,19 +66,24 @@ const tool = {
       q,
     });
 
-    const rawTotal = Math.max(
-      Number(result.total) || 0,
-      semanticHits.length,
+    // 只报高质量命中规模，不用关键词 LIKE 的宽泛 total（会接近整库）
+    const strongKeywordCount = rankedKeyword.filter(
+      (item) => item._match === 'strong',
+    ).length;
+    const relevantTotal = Math.max(
       hits.length,
+      Math.min(semanticHits.length, limit),
+      strongKeywordCount,
     );
     return {
       ok: true,
       data: {
         query: result.query || q,
-        total: rawTotal,
-        rawTotal,
+        total: relevantTotal,
+        rawTotal: relevantTotal,
+        keywordBroadTotal: Number(result.total) || 0,
         returned: hits.length,
-        truncated: rawTotal > hits.length || hits.length > 3,
+        truncated: hits.length > 3,
         semantic: semanticHits.length > 0,
         hits,
       },
