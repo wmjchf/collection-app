@@ -316,9 +316,20 @@ function extractBvid(raw) {
   return m ? m[1] : null;
 }
 
+/** 多分 P：保留 ?p=（p>1），便于刷新直链对准分集 */
 function normalizeBilibiliCanonical(raw) {
   const bvid = extractBvid(raw);
-  return bvid ? `https://www.bilibili.com/video/${bvid}` : null;
+  if (!bvid) return null;
+  let page = 1;
+  try {
+    const uri = new URL(String(raw || '').trim());
+    const n = Number(uri.searchParams.get('p') || uri.searchParams.get('page'));
+    if (Number.isFinite(n) && n >= 1) page = Math.floor(n);
+  } catch {
+    // ignore
+  }
+  const base = `https://www.bilibili.com/video/${bvid}`;
+  return page > 1 ? `${base}?p=${page}` : base;
 }
 
 /** 小红书笔记 id（explore / discovery/item；短链 xhslink 无 id，需展开后规范） */
