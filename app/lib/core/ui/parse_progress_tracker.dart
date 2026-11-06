@@ -1,13 +1,16 @@
 import 'dart:async';
 
 import 'package:super_collection/core/network/api_client.dart';
+import 'package:super_collection/core/network/client_bilibili_fetch.dart';
 import 'package:super_collection/core/network/client_page_fetch.dart';
 import 'package:super_collection/core/network/client_webview_fetch.dart';
 import 'package:super_collection/core/ui/parse_progress_controller.dart';
+import 'package:super_collection/features/items/item_models.dart';
 import 'package:super_collection/features/items/items_repository.dart';
 
 /// 创建后展示底栏上方不确定进度条，并轮询解析状态。
-/// 若服务端要求客户端抓取（如微信），则由手机出口拉 HTML 再回传。
+/// 若服务端要求客户端抓取（如微信），则由手机出口拉 HTML 再回传；
+/// B站则本机调 view/playurl 回传专项结果。
 class ParseProgressTracker {
   ParseProgressTracker._();
 
@@ -18,6 +21,7 @@ class ParseProgressTracker {
   static Future<void> Function()? _onSettled;
   static bool _clientFetchStarted = false;
   static int? _watchingId;
+  static String? _watchingPlatform;
 
   /// 解析结束或条目入库后刷新首页 / 我的收藏。
   static Future<void> Function()? onListsChanged;
@@ -38,6 +42,7 @@ class ParseProgressTracker {
     _timer = null;
     _clientFetchStarted = false;
     _watchingId = null;
+    _watchingPlatform = null;
     // 打断上一条时必须释放等待中的补齐队列 Completer
     unawaited(_notifySettled());
     _progress.start(title: title, subtitle: subtitle);
@@ -56,6 +61,7 @@ class ParseProgressTracker {
     _onSettled = onSettled;
     _clientFetchStarted = false;
     _watchingId = itemId;
+    _watchingPlatform = platform;
     _progress.start(
       itemId: itemId,
       title: title ?? '正在解析内容',
@@ -84,7 +90,7 @@ class ParseProgressTracker {
             ClientWebViewFetch.needsWebView(url) ||
             url.toLowerCase().contains('36kr.com') ||
             url.toLowerCase().contains('kuaishou.com'))) {
-      unawaited(_tryClientFetch(itemId, url));
+      unawaited(_tryClientFetch(itemId, url, platform: platform));
     }
 
     _timer = Timer.periodic(const Duration(milliseconds: 900), (_) {
@@ -113,25 +119,48 @@ class ParseProgressTracker {
           s.url != null &&
           s.url!.isNotEmpty &&
           !_clientFetchStarted) {
-        unawaited(_tryClientFetch(itemId, s.url!));
+        final plat = s.platform ?? _watchingPlatform;
+        if (plat != null && plat.isNotEmpty) {
+          _watchingPlatform = plat;
+        }
+        unawaited(_tryClientFetch(itemId, s.url!, platform: plat));
       }
     } on ApiException {
       // 轮询失败不打断，等下次
     } catch (_) {}
   }
 
-  static Future<void> _tryClientFetch(int itemId, String url) async {
+  static bool _isBilibili(String? platform, String url) {
+    final p = (platform ?? '').toLowerCase();
+    if (p == 'bilibili') return true;
+    final u = url.toLowerCase();
+    return u.contains('bilibili.com') || u.contains('b23.tv');
+  }
+
+  static Future<void> _tryClientFetch(
+    int itemId,
+    String url, {
+    String? platform,
+  }) async {
     if (_clientFetchStarted || _watchingId != itemId) return;
     _clientFetchStarted = true;
+    final bili = _isBilibili(platform ?? _watchingPlatform, url);
     _progress.start(
       itemId: itemId,
       title: _progress.title,
-      subtitle: '使用本机打开页面提取…',
+      subtitle: bili ? '使用本机获取 B站 播放地址…' : '使用本机打开页面提取…',
     );
     try {
-      final html = await ClientPageFetch.fetchHtml(url);
-      if (_watchingId != itemId) return;
-      final item = await _items.parseWithHtml(itemId, html);
+      final CollectionItem item;
+      if (bili) {
+        final parsed = await ClientBilibiliFetch.fetchParsed(url);
+        if (_watchingId != itemId) return;
+        item = await _items.parseWithAdapter(itemId, parsed);
+      } else {
+        final html = await ClientPageFetch.fetchHtml(url);
+        if (_watchingId != itemId) return;
+        item = await _items.parseWithHtml(itemId, html);
+      }
       if (_watchingId != itemId) return;
       if (item.isSuccess) {
         _timer?.cancel();
@@ -175,6 +204,7 @@ class ParseProgressTracker {
   static Future<void> _finishSuccess() async {
     _timer?.cancel();
     _watchingId = null;
+    _watchingPlatform = null;
     _clientFetchStarted = false;
     _progress.markSuccess();
     await _notifySettled();
@@ -187,6 +217,7 @@ class ParseProgressTracker {
   static Future<void> _finishFailed({String? subtitle}) async {
     _timer?.cancel();
     _watchingId = null;
+    _watchingPlatform = null;
     _clientFetchStarted = false;
     _progress.markFailed(subtitle: subtitle ?? '可稍后在详情中重试');
     await _notifySettled();
@@ -220,6 +251,7 @@ class ParseProgressTracker {
     _timer?.cancel();
     _timer = null;
     _watchingId = null;
+    _watchingPlatform = null;
     _clientFetchStarted = false;
     unawaited(_notifySettled());
     _progress.hide();

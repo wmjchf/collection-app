@@ -265,6 +265,21 @@ class ItemsRepository {
     return CollectionItem.fromJson(itemJson);
   }
 
+  /// 本机专项解析回传（B站 view+playurl）
+  Future<CollectionItem> parseWithAdapter(
+    int id,
+    Map<String, dynamic> parsed,
+  ) async {
+    final token = await _token();
+    final json = await _api.post(
+      '/api/items/$id/parse-with-adapter',
+      body: parsed,
+      accessToken: token,
+    );
+    final itemJson = json['item'] as Map<String, dynamic>? ?? {};
+    return CollectionItem.fromJson(itemJson);
+  }
+
   Future<CollectionItem> markAsRead(int id) async {
     final token = await _token();
     final json = await _api.post(

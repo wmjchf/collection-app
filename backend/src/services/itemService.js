@@ -454,8 +454,29 @@ async function runContentParse(itemId) {
       return;
     }
 
-    // 云上壳页/空正文 → 本机抓 HTML。B站等 server 专项 API 已失败时除外：
-    // 本机 HTML 抽不出 playurl，走 NEED_CLIENT_FETCH 会「伪成功」只剩描述。
+    // B站：云端常 -412；改由本机调 view/playurl 回传（非 HTML 壳页）
+    if (String(row.platform || '') === 'bilibili' && !parsed.ok) {
+      await pool.execute(
+        `UPDATE items SET
+           title = COALESCE(:title, title),
+           summary = COALESCE(:summary, summary),
+           cover_image_url = COALESCE(:coverImageUrl, cover_image_url),
+           status = 'pending',
+           error_message = :errorMessage
+         WHERE id = :itemId`,
+        {
+          itemId,
+          title: parsed.title || null,
+          summary: parsed.summary || null,
+          coverImageUrl: parsed.coverImageUrl || null,
+          errorMessage: NEED_CLIENT_FETCH,
+        },
+      );
+      return;
+    }
+
+    // 云上壳页/空正文 → 本机抓 HTML。其它 server 专项 API 已失败时除外
+    // （HTML 补不出 playurl，勿「伪成功」）。
     const adapter = getAdapter(row.platform);
     const serverFetchParsed =
       typeof adapter.fetchParsed === 'function' &&
@@ -538,22 +559,23 @@ async function parseWithClientHtml(userId, itemId, html) {
     throw Object.assign(new Error('页面内容过大'), { status: 400 });
   }
 
-  const adapter = getAdapter(item.platform);
-  // B站等：直链只能走专项 API；本机 HTML 抽不出 video_url，勿只靠壳页「伪成功」
-  const preferServerFetchParsed =
-    typeof adapter.fetchParsed === 'function' &&
-    (adapter.fetchMode || 'server') === 'server';
-  const parsed = preferServerFetchParsed
-    ? await parseFullContent(resolveParseUrl(item.canonicalUrl, item.url), {
-        platform: item.platform,
-        existingSummary: item.summary,
-      })
-    : await parseFullContent(resolveParseUrl(item.canonicalUrl, item.url), {
-        platform: item.platform,
-        existingSummary: item.summary,
-        html: raw,
-        preferProvidedHtml: true,
-      });
+  // B站请走 parseWithClientAdapter（本机 API）；HTML 抽不出 playurl
+  if (String(item.platform || '') === 'bilibili') {
+    throw Object.assign(
+      new Error('B站请使用本机专项解析回传'),
+      { status: 400 },
+    );
+  }
+
+  const parsed = await parseFullContent(
+    resolveParseUrl(item.canonicalUrl, item.url),
+    {
+      platform: item.platform,
+      existingSummary: item.summary,
+      html: raw,
+      preferProvidedHtml: true,
+    },
+  );
 
   if (parsed.ok) {
     const imageUrlsRaw = Array.isArray(parsed.imageUrls)
@@ -651,6 +673,136 @@ async function parseWithClientHtml(userId, itemId, html) {
       via: 'client_html',
     },
   );
+  return getByIdForUser(userId, itemId);
+}
+
+/**
+ * 本机专项解析结果回传（B站 view+playurl）。
+ * body 字段与 adapter fetchParsed 对齐。
+ */
+async function parseWithClientAdapter(userId, itemId, body = {}) {
+  const item = await getByIdForUser(userId, itemId);
+  if (!item) {
+    throw Object.assign(new Error('条目不存在'), { status: 404 });
+  }
+  if (String(item.platform || '') !== 'bilibili') {
+    throw Object.assign(new Error('该平台不支持本机专项回传'), {
+      status: 400,
+    });
+  }
+
+  const videoUrl = String(body.videoUrl || '').trim();
+  const ok = body.ok === true && /^https?:\/\//i.test(videoUrl);
+  if (!ok) {
+    const errMsg =
+      String(body.errorMessage || '').trim() ||
+      '本机未能获取 B站 播放地址';
+    await pool.execute(
+      `UPDATE items SET
+         title = COALESCE(:title, title),
+         summary = COALESCE(:summary, summary),
+         cover_image_url = COALESCE(:coverImageUrl, cover_image_url),
+         status = 'failed',
+         error_message = :errorMessage
+       WHERE id = :itemId AND user_id = :userId`,
+      {
+        itemId,
+        userId,
+        title: body.title ? String(body.title).slice(0, 500) : null,
+        summary: body.summary ? String(body.summary).slice(0, 500) : null,
+        coverImageUrl: body.coverImageUrl
+          ? String(body.coverImageUrl).slice(0, 2000)
+          : null,
+        errorMessage: errMsg.slice(0, 500),
+      },
+    );
+    require('./analyticsService').trackParseOutcome(
+      {
+        id: itemId,
+        user_id: userId,
+        platform: item.platform,
+        created_at: item.createdAt,
+      },
+      { ok: false, errorMessage: errMsg, via: 'client_adapter' },
+    );
+    return getByIdForUser(userId, itemId);
+  }
+
+  const pageUrl = body.pageUrl ? String(body.pageUrl).trim() : null;
+  const content =
+    typeof body.content === 'string' && body.content.trim()
+      ? body.content
+      : item.content;
+  const imageUrlsRaw = Array.isArray(body.imageUrls)
+    ? body.imageUrls.filter(Boolean).map(String).slice(0, 30)
+    : [];
+  const persisted = await itemMediaOss.persistItemImages({
+    platform: item.platform,
+    userId,
+    itemId,
+    pageUrl: pageUrl || resolveParseUrl(item.canonicalUrl, item.url),
+    coverImageUrl: body.coverImageUrl
+      ? String(body.coverImageUrl).slice(0, 2000)
+      : null,
+    imageUrls: imageUrlsRaw,
+  });
+  const fixedCanonical = normalizeCanonicalForPlatform(
+    item.platform,
+    pageUrl,
+    item.canonicalUrl,
+    item.url,
+  );
+  const canonicalUrl = fixedCanonical || item.canonicalUrl;
+  const mediaKind = itemMediaKind.resolveMediaKind({
+    video_url: videoUrl,
+    image_urls: persisted.imageUrls,
+    content,
+    platform: item.platform,
+    canonical_url: canonicalUrl,
+    url: item.url,
+  });
+
+  await pool.execute(
+    `UPDATE items SET
+       title = COALESCE(:title, title),
+       summary = :summary,
+       cover_image_url = COALESCE(:coverImageUrl, cover_image_url),
+       image_urls = CAST(:imageUrls AS JSON),
+       video_url = :videoUrl,
+       media_kind = :mediaKind,
+       content = :content,
+       canonical_url = COALESCE(:canonicalUrl, canonical_url),
+       status = 'success',
+       error_message = NULL
+     WHERE id = :itemId AND user_id = :userId`,
+    {
+      itemId,
+      userId,
+      title: body.title ? String(body.title).slice(0, 500) : null,
+      summary: body.summary ? String(body.summary).slice(0, 500) : null,
+      coverImageUrl: persisted.coverImageUrl,
+      imageUrls: JSON.stringify(persisted.imageUrls),
+      videoUrl,
+      mediaKind,
+      content,
+      canonicalUrl: fixedCanonical,
+    },
+  );
+  require('./analyticsService').trackParseOutcome(
+    {
+      id: itemId,
+      user_id: userId,
+      platform: item.platform,
+      created_at: item.createdAt,
+    },
+    { ok: true, via: 'client_adapter' },
+  );
+  setImmediate(() => {
+    require('./aiSuggestService')
+      .maybeAutoTagAfterParse(userId, itemId)
+      .catch(() => {});
+  });
+  require('./itemEmbeddingService').scheduleIndexItem(userId, itemId);
   return getByIdForUser(userId, itemId);
 }
 
@@ -1850,6 +2002,7 @@ module.exports = {
   refreshItemVideo,
   runContentParse,
   parseWithClientHtml,
+  parseWithClientAdapter,
   mapItem,
   attachTagsToItems,
   listBySystemFilter,
