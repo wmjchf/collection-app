@@ -68,6 +68,12 @@ module.exports = {
      * 解读已收束到助手，不再单独配置 SUMMARY 模型。
      */
     aiModelAgent: process.env.ALIYUN_AI_MODEL_AGENT || 'qwen3.8-flash',
+    /** 收藏知识库 embedding（OpenAI 兼容 /embeddings） */
+    embeddingModel:
+      process.env.ALIYUN_EMBEDDING_MODEL || 'text-embedding-v3',
+    embeddingDims: Number(process.env.ALIYUN_EMBEDDING_DIMS) || 1024,
+    /** false 时助手检索仍只用关键词 */
+    agentKbEnabled: process.env.AGENT_KB_ENABLED !== 'false',
   },
   /**
    * 月额度：free / basic / prince / emperor；USAGE_ENFORCING 控制触顶（默认 true）

@@ -28,34 +28,18 @@ function buildPlanMessages({
       role: 'system',
       content: `${SYSTEM_PROMPT}
 
-本步任务：根据用户问题决定如何查库、改标或归类预览。只输出 JSON：
-{"intent":"search"|"list"|"list_tags"|"compare"|"tag_edit"|"organize"|"chitchat"|"clarify","queries":["关键词1"],"excerptItemIds":[123,456],"tagEdit":{"itemId":123,"add":["标签"],"remove":["标签"],"replace":["标签"]},"organize":{"mode":"ungrouped"|"full","hint":"用户偏好"}}
+本步任务：根据用户问题决定如何查库、改标或归类预览。只输出 JSON（系统按此执行，**不会**再用口令正则改写你的 intent）：
+{"intent":"search"|"list"|"list_tags"|"compare"|"tag_edit"|"organize"|"chitchat"|"clarify","queries":["关键词1"],"excerptItemIds":[123],"listContinue":false,"tagEdit":{"itemId":123,"add":[],"remove":[],"replace":[]},"organize":{"mode":"ungrouped"|"full","hint":"用户偏好"}}
 规则：
-- intent=list：盘点收藏库（有哪些/有多少/列出收藏/今天收藏/最近阅读/批注或朱批/再列出其他）；queries=[]；excerptItemIds=[]；禁止用「文章」「收藏」「今天」「批注」等空泛词去 search（时间窗与最近阅读/批注筛选由系统在 list_library 里过滤）
-- intent=list_tags：按文章盘点标签（「现在有哪些标签」）→ 形态「标签A、标签B：标题」；不展示归类；queries=[]；禁止当成 organize；太多时系统按篇分页
-- intent=search：按用户意图找相关篇。queries 填 1～2 个适合搜库的短词（主题/实体/同义近义均可），不必出现在用户原话里。例：「有没有教人怎么更专注的」→ ["专注力","心流"]；「上次那个讲开公司的」→ ["创业","公司"]。禁止原句碎片、禁止「文章/收藏/内容/那个」等空泛词；不要编造具体篇目标题
-- intent=compare：用户要对照/对比「这几篇」等回指上文；queries 可为空；excerptItemIds 必须填上文出处里的 itemId（通常最近两篇）
-- intent=tag_edit：用户要给点名篇「加上/去掉/改成/用某某标签」；queries=[]；excerptItemIds 填目标篇；tagEdit 填 itemId 与 add/remove/replace（「改成/用某某」走 replace 整组替换用户标签；「加上」走 add；「去掉」走 remove）。禁止无目标篇时瞎改
-- 上文刚问「标签怎么改」、或已有改标预览待确认时：用户任意说法（吐槽不准、还要别的建议、同意、换成某某）仍 intent=tag_edit，由你理解语义填 tagEdit；不要改成 organize/search/chitchat
-- 「某某不准确/不合适/不行」且未给新名：tagEdit.remove=["某某"]（名称与库内标签对应，大小写不敏感），add 可留空；系统会按正文推荐替换名并出确认条（去掉旧+加上新），用户确认前不写库
-- 已有预览、用户要换别的建议：intent=tag_edit，沿用 remove，add 留空（系统再荐）；禁止把「还有没有/换一个/别的呢」等口头话写进 add 当标签名
-- 已说「换成Y」：remove+add 或 replace。禁止把用户整句原话写进 add
-- 禁止在 answer 里手写确认预览或「请点确认××」；确认条由系统挂载
-- intent=organize：建归类/填入归类/整理或「给标签分类」等（库级整理，非单篇改标）；queries=[]；organize.mode 默认 ungrouped，用户要「全部重排/重新归类/对这些标签分类」用 full；hint 摘用户偏好短句。归类仅一层架子，禁止追问「要不要多级/分层」
-- 「有哪些标签 / 现在有哪些标签」≠ organize，必须 list_tags（按文章列标签，不提归类；阅读锚定下无「现在/库里」时问本篇标签走 search）；禁止输出归类预览
-- 用户说「这两篇 / 对比一下」等：优先 compare + excerptItemIds，禁止另起无关新关键词去搜
-- 流程固定：先盘点标签 → 用户要分类时 intent=organize（系统先问分类意见）→ 用户表态后再出带确认按钮的预览；禁止跳过询问、禁止正文手写假方案
-- 上文在问「怎么分」时，用户短回「按行业 / 你看着分 / 新建一个」等：intent=organize，hint 带上其意见，再出确认预览
-- 上文已有归类预览，用户说「漏掉了 / 忘了 / 还有两个标签 / 补上 / 把X放到Y」：必须 intent=organize 重新出系统确认预览（带确认按钮），禁止正文手写补丁方案
-- 归类/改标必须走系统预览确认条；禁止在正文里手写方案后自称「已确认执行 / 已写入」。用户回「可以」时由系统写库，模型不要假装已执行
-- 用户说「第一篇 / 第二篇 / 这篇」或对确认问句回「是 / 对」：intent=search，queries=[]，excerptItemIds 填对应上文出处；禁止 clarify、禁止再问「请回复是」
-- 用户消息含上文出处的完整标题（常带「」）：intent=search（或对比时 compare；改标时 tag_edit），queries=[]，excerptItemIds 填对应篇；不要再 clarify 问是哪一篇
-- 若有「当前阅读篇」：**默认围绕本篇**（观点、原话、总结、本篇标签等）→ intent=search，queries=[]，excerptItemIds=[当前篇]；**禁止**默认 list/search 全库
-- 有「当前阅读篇」时，仅当用户明确要查全库/其它收藏（如「有哪些收藏」「库里还有没有」「找一篇…」「现在有哪些标签」）才可 list / list_tags 或另搜；改本篇标签 → tag_edit；建架/填入归类 → organize（不受阅读锚定限制）
-- 无「当前阅读篇」时才按全局查库理解「有哪些…」
-- intent=chitchat：问候/闲聊；queries=[]；excerptItemIds=[]
-- intent=clarify：意图仍无法落成可搜主题时才追问；queries=[]；excerptItemIds=[]；已有上文出处可点名时不要 clarify
-- excerptItemIds 只能选自「上文已讨论出处」或「当前阅读篇」，没有则 []
+- **你必须自己选对 intent**；说法怎么变都由你理解，不要依赖系统猜关键词
+- intent=list：盘点收藏；queries=[]；「还有吗/再列其他」时 listContinue=true（排除上文已列篇），否则 false；禁止用「文章/收藏」等空泛词去 search
+- intent=list_tags：按文章列标签；queries=[]；继续列出时 listContinue=true
+- intent=search：找相关篇；queries 填 1～2 个短主题词（可改写，不必原话）；深挖已点名篇时 queries=[]、excerptItemIds 填该篇
+- intent=compare：对照；excerptItemIds 填两篇（上文出处或勾选标题）；queries=[]
+- intent=tag_edit：改标；填 tagEdit；上文改标询问/预览未结束时仍用 tag_edit，由你填 add/remove/replace
+- intent=organize：建架/填入/整理归类；organize.mode / hint 由你填；上文问「怎么分」后用户表态 → organize + hint；禁止 list_tags 与 organize 混淆
+- 有「当前阅读篇」：只问本篇 → search + excerptItemIds=[当前篇] + queries=[]；找其它/类似/相关 → 必须填 queries（或 list/compare）
+- excerptItemIds 只能选自上文出处或当前阅读篇；listContinue 仅 list / list_tags 使用
 - 不要输出其它字段或 markdown
 
 ${focusBlock}
@@ -103,8 +87,9 @@ content 禁止为空，禁止只说「查过了」「换个关键词」。citati
     intent === 'search' && !followUp
       ? `
 本轮是检索：正文最多点名 3 篇最相关标题；citationItemIds 必须对应该正文点名的篇（顺序一致）；不要长解读。
-若 rawTotal 或 hits 多于 3：先报「约找到 N 篇，最相关的是…」，并提示可点名标题或说「第 N 篇」深挖；不要把命中全部列进正文。
-不要提、不要挂 match=weak 或明显跑题的篇目；也不要特意解释「某篇被顺带命中」。`
+报数量时只用观察里的 total / returned（已是较相关命中）；禁止用 keywordBroadTotal，禁止把「沾边」说成「检索到 N 篇」。
+hits≤3：直接点名；hits>3：说「较相关的有…」并点名最多 3 篇，可提还可再筛，不要虚报整库篇数。
+优先采用 match=semantic / strong 的篇；不要提、不要挂 match=weak 或明显跑题的篇目。`
       : '';
   const followUpHint = followUp
     ? focusBound
@@ -186,7 +171,7 @@ function buildStreamAnswerMessages({
   const searchHint =
     intent === 'search' && !followUp
       ? `
-本轮是检索：最多点名 3 篇最相关标题（标题须来自本轮 hits）；命中更多时先报约 N 篇。不要长解读、不要列全。
+本轮是检索：最多点名 3 篇最相关标题（标题须来自本轮 hits）；命中更多时说「较相关的有…」，不要虚报整库篇数。不要长解读、不要列全。
 不要提、不要展开 match=weak 或跑题篇目。`
       : '';
   const followUpHint = followUp

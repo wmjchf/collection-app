@@ -1,4 +1,5 @@
 const itemService = require('../../itemService');
+const itemEmbeddingService = require('../../itemEmbeddingService');
 const { clampSearchLimit } = require('../agentPolicy');
 
 const tool = {
@@ -10,12 +11,17 @@ const tool = {
     properties: {
       q: { type: 'string', description: '搜索关键词' },
       limit: { type: 'number' },
+      excludeItemIds: {
+        type: 'array',
+        items: { type: 'number' },
+        description: '排除的 itemId（如当前阅读篇）',
+      },
     },
     required: ['q'],
   },
   /**
    * @param {{ userId: number }} ctx
-   * @param {{ q: string, limit?: number }} args
+   * @param {{ q: string, limit?: number, excludeItemIds?: number[] }} args
    */
   async execute(ctx, args) {
     const q = String(args?.q || '').trim();
@@ -23,35 +29,62 @@ const tool = {
       return { ok: true, data: { query: '', total: 0, hits: [] } };
     }
     const limit = clampSearchLimit(args?.limit);
+    const excludeItemIds = uniquePositiveIds(args?.excludeItemIds);
+
+    const semanticHits = itemEmbeddingService.isEnabled()
+      ? await itemEmbeddingService
+          .searchSimilar(ctx.userId, q, {
+            limit,
+            excludeItemIds,
+          })
+          .catch((err) => {
+            console.warn(
+              '[search_library] semantic fail:',
+              err?.message || err,
+            );
+            return [];
+          })
+      : [];
+
     // 多取一些再筛：正文顺带提到关键词的弱命中会被丢掉
     const result = await itemService.searchItems(ctx.userId, q, {
       limit: Math.min(limit * 3, 20),
       offset: 0,
     });
-    const ranked = rankAndFilterHits(result.items || [], limit);
-    const hits = ranked.map((item) => {
-      const tags = Array.isArray(item.tags) ? item.tags : [];
-      const snippet = pickSnippet(item, q);
-      return {
-        itemId: item.id,
-        title: item.title || item.url || `条目 ${item.id}`,
-        snippet,
-        tagNames: tags.map((t) => t.name).filter(Boolean).slice(0, 6),
-        coverImageUrl: item.coverImageUrl || null,
-        match: item._match || 'strong',
-        matchedFields: item.matchedFields || [],
-      };
+    const keywordItems = (result.items || []).filter((item) => {
+      if (excludeItemIds.includes(Number(item.id))) return false;
+      // 使用指引不进助手知识库召回
+      if (String(item.platform || '') === 'guide') return false;
+      return true;
     });
-    // rawTotal：库内该关键词命中规模；returned：本轮带回条数（回答仍最多挂 3 张出处）
-    const rawTotal = Number(result.total) || 0;
+    const rankedKeyword = rankAndFilterHits(keywordItems, limit);
+
+    const hits = mergeHits({
+      semanticHits,
+      keywordItems: rankedKeyword,
+      limit,
+      q,
+    });
+
+    // 只报高质量命中规模，不用关键词 LIKE 的宽泛 total（会接近整库）
+    const strongKeywordCount = rankedKeyword.filter(
+      (item) => item._match === 'strong',
+    ).length;
+    const relevantTotal = Math.max(
+      hits.length,
+      Math.min(semanticHits.length, limit),
+      strongKeywordCount,
+    );
     return {
       ok: true,
       data: {
         query: result.query || q,
-        total: Math.max(rawTotal, hits.length),
-        rawTotal,
+        total: relevantTotal,
+        rawTotal: relevantTotal,
+        keywordBroadTotal: Number(result.total) || 0,
         returned: hits.length,
-        truncated: rawTotal > hits.length || hits.length > 3,
+        truncated: hits.length > 3,
+        semantic: semanticHits.length > 0,
         hits,
       },
       citations: hits.map((h) => ({
@@ -64,6 +97,56 @@ const tool = {
     };
   },
 };
+
+function uniquePositiveIds(raw) {
+  return [
+    ...new Set(
+      (Array.isArray(raw) ? raw : [])
+        .map((id) => Number(id))
+        .filter((id) => Number.isInteger(id) && id > 0),
+    ),
+  ];
+}
+
+function mergeHits({ semanticHits, keywordItems, limit, q }) {
+  const seen = new Set();
+  const out = [];
+
+  for (const h of semanticHits || []) {
+    const id = Number(h.itemId);
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    out.push({
+      itemId: id,
+      title: h.title,
+      snippet: String(h.chunkText || '').slice(0, 160),
+      tagNames: h.tagNames || [],
+      coverImageUrl: h.coverImageUrl || null,
+      match: 'semantic',
+      matchedFields: ['semantic'],
+      score: h.score,
+    });
+    if (out.length >= limit) return out;
+  }
+
+  for (const item of keywordItems || []) {
+    const id = Number(item.id);
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    const tags = Array.isArray(item.tags) ? item.tags : [];
+    out.push({
+      itemId: id,
+      title: item.title || item.url || `条目 ${id}`,
+      snippet: pickSnippet(item, q),
+      tagNames: tags.map((t) => t.name).filter(Boolean).slice(0, 6),
+      coverImageUrl: item.coverImageUrl || null,
+      match: item._match || 'strong',
+      matchedFields: item.matchedFields || [],
+    });
+    if (out.length >= limit) break;
+  }
+  return out;
+}
 
 /** 标题/摘要/标签等强命中优先；有强命中时丢掉「仅正文顺带提到」的弱命中 */
 const STRONG_FIELDS = new Set([
