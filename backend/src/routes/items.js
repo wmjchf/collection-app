@@ -321,6 +321,23 @@ router.post('/:id/parse-with-html', async (req, res, next) => {
   }
 });
 
+/** POST /api/items/:id/parse-with-adapter — 本机专项解析回传（B站 view+playurl） */
+router.post('/:id/parse-with-adapter', async (req, res, next) => {
+  try {
+    const item = await itemService.parseWithClientAdapter(
+      req.auth.userId,
+      Number(req.params.id),
+      req.body || {},
+    );
+    return res.json({
+      item,
+      message: item.status === 'success' ? '解析完成' : '解析失败',
+    });
+  } catch (err) {
+    return next(err);
+  }
+});
+
 /** POST /api/items/:id/read — 进入阅读：已读 + last_read_at */
 router.post('/:id/read', async (req, res, next) => {
   try {
