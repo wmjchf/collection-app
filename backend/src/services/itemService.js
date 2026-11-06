@@ -454,12 +454,18 @@ async function runContentParse(itemId) {
       return;
     }
 
-    // 云上常拿到壳页/空正文（如掘金 Please wait）：改由客户端抓取
+    // 云上壳页/空正文 → 本机抓 HTML。B站等 server 专项 API 已失败时除外：
+    // 本机 HTML 抽不出 playurl，走 NEED_CLIENT_FETCH 会「伪成功」只剩描述。
+    const adapter = getAdapter(row.platform);
+    const serverFetchParsed =
+      typeof adapter.fetchParsed === 'function' &&
+      (adapter.fetchMode || 'server') === 'server';
     if (
-      parsed.errorMessage === '未能提取到可读正文' ||
-      (!parsed.content &&
-        !(parsed.imageUrls && parsed.imageUrls.length) &&
-        !parsed.videoUrl)
+      !serverFetchParsed &&
+      (parsed.errorMessage === '未能提取到可读正文' ||
+        (!parsed.content &&
+          !(parsed.imageUrls && parsed.imageUrls.length) &&
+          !parsed.videoUrl))
     ) {
       await pool.execute(
         `UPDATE items SET
@@ -532,14 +538,22 @@ async function parseWithClientHtml(userId, itemId, html) {
     throw Object.assign(new Error('页面内容过大'), { status: 400 });
   }
 
-  const parsed = await parseFullContent(
-    resolveParseUrl(item.canonicalUrl, item.url),
-    {
-    platform: item.platform,
-    existingSummary: item.summary,
-    html: raw,
-    preferProvidedHtml: true,
-  });
+  const adapter = getAdapter(item.platform);
+  // B站等：直链只能走专项 API；本机 HTML 抽不出 video_url，勿只靠壳页「伪成功」
+  const preferServerFetchParsed =
+    typeof adapter.fetchParsed === 'function' &&
+    (adapter.fetchMode || 'server') === 'server';
+  const parsed = preferServerFetchParsed
+    ? await parseFullContent(resolveParseUrl(item.canonicalUrl, item.url), {
+        platform: item.platform,
+        existingSummary: item.summary,
+      })
+    : await parseFullContent(resolveParseUrl(item.canonicalUrl, item.url), {
+        platform: item.platform,
+        existingSummary: item.summary,
+        html: raw,
+        preferProvidedHtml: true,
+      });
 
   if (parsed.ok) {
     const imageUrlsRaw = Array.isArray(parsed.imageUrls)
