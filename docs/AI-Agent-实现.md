@@ -1,7 +1,7 @@
 # 奏折AI助手（AI Agent）实现细节
 
 > 状态：P1.0 已落地（查库 + 出处 + 首页入口）；本文继续作为演进规格  
-> 更新日期：2026-11-03  
+> 更新日期：2026-11-06  
 > 相关：`docs/技术实现.md` §2.6、`docs/付费规划.md`、Figma `奏折 · 问收藏 AI`
 
 ## 0. 一句话
@@ -174,8 +174,17 @@ agentOrchestrator（ReAct loop）
 
 迁移目标：新编排调用同一 `toolRegistry.execute`；会话表与 App API **不改或仅加字段**。
 
+#### 意图路由（硬约定，2026-11-06）
+
+- **自然语言意图只认 plan JSON**（`intent` / `queries` / `excerptItemIds` / `listContinue` / `tagEdit` / `organize`），编排按计划调工具  
+- **禁止**用口令正则覆盖 / 强改 intent（盘点、改标、归类、类似文章等一律由模型选 intent）  
+- 阅读页 `focusBound`：仅当 plan **未给 queries** 且未走 list/对照/改标/归类时，才钉当前篇；有检索词即查库并排除本篇  
+- `normalizePlan` 只做校验与缺省补全（出处 ID 白名单、tagEdit.itemId、compare 缺篇、勾选标题）  
+- 可残留：确认条 / 口头「可以」确认写库、助手气泡结构识别（是否已问过分法）；**不得**再为新口令加 `looksLike*` 改 intent  
+
 #### 反模式（禁止）
 
+- 用正则表穷举用户说法来改 intent / 清空 queries  
 - 在 prompt 里堆业务 if-else，却不进 Policy  
 - Tool 内直接 `res.json` / 改 HTTP；或 Orchestrator 内直接改 `item_tags`  
 - 为「以后可能用」提前引入 LangGraph 空壳依赖  
@@ -450,14 +459,16 @@ Body: { conversationId, messageId, approve: true|false }
 | P2 | 脑图等可「在助手中打开」；底层同一 service；`summarize_item` Tool 可选接回 |
 | P3 | 底栏入口改为唤起助手并带 `bootstrap: { tool, itemId }`；sheet UI 可删或变薄 |
 
-## 10. 检索质量（Phase 1 关键）
+## 10. 检索质量（Phase 1 → 知识库）
 
-1. **plan 按意图改写检索词**：`queries` 不是从用户原话抠词，而是理解要找什么后产出 1～2 个短主题/同义词，再走现网关键词 / 标签 LIKE；回答仍只能基于命中，不得编库外篇目  
-2. 有强命中（标题/摘要等）时丢掉仅正文顺带提到的弱命中；盘点类走 `list_library`  
-3. **聊天不是搜索结果页**：正文与出处卡最多 **3** 篇；命中更多时先报总数（`rawTotal` / `total`），引导点名标题或「第 N 篇」/换主题收窄；**出处必须与正文点名标题对齐**（流式无 `citationItemIds` 时按标题回填）；「再列其他」排除上文已展示篇  
-4. 用户问「对照 A 和 B」：识别两篇 → 两篇 excerpt → 对比段落  
-5. 后续可加：embedding 表（`item_embeddings`）做语义召回；**不要** Phase 1 就上向量，除非意图改写仍明显不够  
-6. snippet：优先返回含 query 的句子；禁止把整篇正文塞进 citations UI  
+1. **plan 按意图改写检索词**：`queries` 不是从用户原话抠词，而是理解要找什么后产出 1～2 个短主题/同义词；回答仍只能基于命中，不得编库外篇目  
+2. **召回层（已落地）**：`item_embeddings` + DashScope embedding；`search_library` **语义优先，关键词 LIKE 兜底**；有强关键词命中时仍丢掉仅正文顺带提到的弱命中；盘点类走 `list_library`  
+3. **索引时机**：解析成功、用户改正文后异步 `scheduleIndexItem`；**使用指引（`platform=guide`）永不入库**；删条目靠 FK CASCADE；存量 `pnpm kb:index`；`AGENT_KB_ENABLED=false` 可关  
+4. **阅读页找类似**：明确查库时 `excludeItemIds` 排除当前篇，避免本篇占满名额  
+5. **聊天不是搜索结果页**：正文与出处卡最多 **3** 篇；命中更多时先报总数，引导点名/换主题；出处与正文标题对齐  
+6. 用户问「对照 A 和 B」：识别两篇 → 两篇 excerpt → 对比段落  
+7. 编排仍自研薄 ReAct；**不上整包 LangChain**；向量存储可后续从 MySQL JSON 近邻换 pgvector/Qdrant，只动 retrieval  
+8. snippet：语义命中用 chunk 摘要；关键词命中优先含 query 的句子；禁止整篇塞进 citations UI  
 
 ## 11. 安全与隐私
 

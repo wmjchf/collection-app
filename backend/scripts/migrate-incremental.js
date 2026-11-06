@@ -49,6 +49,7 @@ const MIGRATION_FILES = [
   '039_agent_conversations.sql',
   '040_agent_conversation_focus_item.sql',
   '041_wechat_pay_orders.sql',
+  '042_item_embeddings.sql',
 ];
 
 async function getConnection() {

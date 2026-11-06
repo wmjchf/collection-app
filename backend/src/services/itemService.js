@@ -430,6 +430,7 @@ async function runContentParse(itemId) {
           .maybeAutoTagAfterParse(row.user_id, itemId)
           .catch(() => {});
       });
+      require('./itemEmbeddingService').scheduleIndexItem(row.user_id, itemId);
       return;
     }
 
@@ -602,6 +603,7 @@ async function parseWithClientHtml(userId, itemId, html) {
         .maybeAutoTagAfterParse(userId, itemId)
         .catch(() => {});
     });
+    require('./itemEmbeddingService').scheduleIndexItem(userId, itemId);
     return getByIdForUser(userId, itemId);
   }
 
@@ -948,6 +950,7 @@ async function updateContent(userId, itemId, content) {
      WHERE id = :itemId AND user_id = :userId AND deleted_at IS NULL`,
     { itemId, userId, content: value, mediaKind },
   );
+  require('./itemEmbeddingService').scheduleIndexItem(userId, itemId);
   return getByIdForUser(userId, itemId);
 }
 

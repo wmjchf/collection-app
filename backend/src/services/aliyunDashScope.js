@@ -234,8 +234,90 @@ async function* chatTextStream({ messages, model, temperature }) {
   }
 }
 
+/**
+ * 文本向量（百炼 OpenAI 兼容 /embeddings）
+ * @param {string[]} texts
+ * @returns {Promise<{ vectors: number[][], model: string, dims: number }>}
+ */
+async function embedTexts(texts) {
+  const apiKey = config.aliyun.dashScopeApiKey;
+  if (!apiKey) {
+    throw Object.assign(new Error('AI 未配置：请设置 DASHSCOPE_API_KEY'), {
+      status: 503,
+    });
+  }
+  const list = (Array.isArray(texts) ? texts : [])
+    .map((t) => String(t || '').trim())
+    .filter(Boolean);
+  if (!list.length) {
+    return { vectors: [], model: '', dims: 0 };
+  }
+
+  const baseUrl = (config.aliyun.dashScopeBaseUrl || '').replace(/\/$/, '');
+  const modelId = config.aliyun.embeddingModel || 'text-embedding-v3';
+  const dims = Number(config.aliyun.embeddingDims) || 1024;
+
+  const payload = {
+    model: modelId,
+    input: list,
+    dimensions: dims,
+    encoding_format: 'float',
+  };
+
+  const res = await fetch(`${baseUrl}/embeddings`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+  });
+
+  const text = await res.text();
+  let body;
+  try {
+    body = JSON.parse(text);
+  } catch {
+    throw Object.assign(
+      new Error(`Embedding 响应解析失败：${text.slice(0, 200)}`),
+      { status: 502 },
+    );
+  }
+  if (!res.ok) {
+    const msg =
+      body?.error?.message ||
+      body?.message ||
+      `Embedding 请求失败 (${res.status})`;
+    throw Object.assign(new Error(msg), { status: 502 });
+  }
+
+  const data = Array.isArray(body?.data) ? body.data : [];
+  const sorted = [...data].sort(
+    (a, b) => Number(a?.index || 0) - Number(b?.index || 0),
+  );
+  const vectors = sorted.map((row) => {
+    const emb = row?.embedding;
+    if (!Array.isArray(emb) || !emb.length) {
+      throw Object.assign(new Error('Embedding 返回为空向量'), { status: 502 });
+    }
+    return emb.map((n) => Number(n) || 0);
+  });
+  if (vectors.length !== list.length) {
+    throw Object.assign(
+      new Error(`Embedding 条数不匹配：${vectors.length}/${list.length}`),
+      { status: 502 },
+    );
+  }
+  return {
+    vectors,
+    model: modelId,
+    dims: vectors[0]?.length || dims,
+  };
+}
+
 module.exports = {
   isConfigured,
   chatJson,
   chatTextStream,
+  embedTexts,
 };

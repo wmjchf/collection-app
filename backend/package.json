@@ -23,6 +23,7 @@
     "fix:bilibili-canonical": "node scripts/fix-bilibili-canonical.js",
     "fix:xiaohongshu-canonical": "node scripts/fix-xiaohongshu-canonical.js",
     "fix:douyin-covers": "node scripts/fix-douyin-covers.js",
+    "kb:index": "node scripts/index-item-embeddings.js",
     "help:upload-images": "node scripts/upload-help-images.js",
     "apk:upload": "node scripts/upload-android-apk.js"
   },
