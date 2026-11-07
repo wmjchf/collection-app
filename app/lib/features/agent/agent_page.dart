@@ -1393,9 +1393,12 @@ class _AssistantBlock extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final showConfirm = pendingAction?.isPending == true && onConfirmAction != null;
-    // 流式过程中也可能已带上文末标记
-    final copyVisible =
-        showCopyAll || text.contains('已按转写整理成文章语体');
+    // 长文/标题文/写文章草稿都给复制；不依赖文末标记（避免 plan 未走 compose 时无按钮）
+    final trimmed = text.trim();
+    final copyVisible = showCopyAll ||
+        trimmed.contains('已按转写整理成文章语体') ||
+        trimmed.startsWith('# ') ||
+        trimmed.length >= 160;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [

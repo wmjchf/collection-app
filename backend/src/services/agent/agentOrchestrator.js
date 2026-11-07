@@ -2491,6 +2491,7 @@ function normalizePlan(
       intent !== 'compare' &&
       intent !== 'tag_edit' &&
       intent !== 'organize' &&
+      intent !== 'compose' &&
       intent !== 'chitchat' &&
       intent !== 'clarify' &&
       queries.length === 0
@@ -2504,6 +2505,18 @@ function normalizePlan(
         followUp = true;
         focusBound = true;
       }
+    }
+  }
+
+  // 明确「根据转写写文章」时强制 compose，避免被上面 focus→search 或模型误判冲掉
+  const askCompose = /根据转写\s*写|转写写一篇|把转写整理成|整理成一篇文章/.test(
+    String(userContent || ''),
+  );
+  if (askCompose) {
+    intent = 'compose';
+    if (!excerptItemIds.length && focusItem?.itemId) {
+      const fid = Number(focusItem.itemId);
+      if (Number.isFinite(fid) && fid > 0) excerptItemIds = [fid];
     }
   }
 
