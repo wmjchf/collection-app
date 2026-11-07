@@ -1495,7 +1495,7 @@ class _AgentPresetRules {
     if (focused) {
       return const [
         '这篇的核心观点是什么？',
-        '根据这篇写一篇文章',
+        '根据转写写一篇文章',
         '还有哪些相关收藏？',
         '调整这篇的标签',
       ];
@@ -1548,7 +1548,7 @@ class _AgentPresetRules {
     if (focused) {
       return const [
         '再展开说明',
-        '根据这篇写一篇文章',
+        '根据转写写一篇文章',
         '对照其它收藏',
         '调整这篇的标签',
       ];

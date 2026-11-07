@@ -295,7 +295,7 @@ async function runUserTurn({
     });
   }
 
-  // —— 单篇收藏 → 文章（转写或正文）——
+  // —— 视频转写 → 文章 ——
   if (plan.intent === 'compose') {
     return finishComposeTurn({
       userId,
@@ -1470,7 +1470,7 @@ async function finishComposeTurn({
 
   if (!itemId) {
     const contentOut =
-      '要写文章，请先打开一篇收藏（有正文的文章，或已转写的视频），或勾选出处后再说「根据这篇写一篇文章」。';
+      '要根据转写写文章，请先打开一篇已转写的视频，或勾选出处后再说「根据转写写一篇文章」。';
     if (stream && emit) emit({ type: 'token', text: contentOut });
     const assistantMessage = await conversationService.insertMessage({
       conversationId,
@@ -1505,8 +1505,8 @@ async function finishComposeTurn({
       String(obs?.message || '').trim() ||
       (obs?.error === 'need_transcript'
         ? '这篇视频还没有转写文稿。请先在阅读页「更多」里完成转写，再让我写文章。'
-        : obs?.error === 'need_content'
-          ? '这篇还没有可用正文。请先打开有正文的收藏，或选一篇已转写的视频。'
+        : obs?.error === 'not_video'
+          ? '目前只支持根据视频转写写文章。请打开一篇已转写的视频后再试。'
           : '未能生成文章，请稍后重试。');
     if (stream && emit) emit({ type: 'token', text: contentOut });
     const assistantMessage = await conversationService.insertMessage({
@@ -1528,11 +1528,14 @@ async function finishComposeTurn({
   const data = obs.data || {};
   const title = String(data.title || '').trim() || '文章';
   const body = String(data.body || '').trim();
-  const footer =
-    data.sourceKind === 'transcript'
-      ? '已按转写整理成文章语体（课堂口吻已改写）。可划选复制全文。'
-      : '已根据原文整理成文章。可划选复制全文。';
-  contentOut = [`# ${title}`, '', body, '', '---', footer].join('\n');
+  contentOut = [
+    `# ${title}`,
+    '',
+    body,
+    '',
+    '---',
+    '已按转写整理成文章语体（课堂口吻已改写）。可划选复制全文。',
+  ].join('\n');
 
   if (stream && emit) emit({ type: 'token', text: contentOut });
 

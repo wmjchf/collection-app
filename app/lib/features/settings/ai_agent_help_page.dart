@@ -71,9 +71,9 @@ class AiAgentHelpPage extends StatelessWidget {
               ),
               const SizedBox(height: 12),
               const _CapabilityCard(
-                title: '根据收藏写文章',
+                title: '转写写文章',
                 desc:
-                    '打开一篇收藏后说「根据这篇写一篇文章」：视频须已转写（口播改书面语），文章则基于正文整理。单篇即可，暂不支持多篇合写与图文创作。',
+                    '对已转写的视频说「根据转写写一篇文章」：整理成可读长文，并把「这节课」等口播说法改成文章语体。暂不支持用正文生成，也不做图文创作。',
               ),
               const SizedBox(height: 24),
               const _SectionHeading('从哪里打开'),
@@ -220,7 +220,7 @@ class _IntroCard extends StatelessWidget {
         children: [
           Text(
             '太子Pro 的核心能力之一：在你的收藏库里做意图搜索、对照、深挖，'
-            '也可改标签与归类；还能根据单篇收藏（转写或正文）写文章。'
+            '也可改标签与归类；还能根据已转写视频写文章。'
             '另一核心能力是音视频转写。',
             style: TextStyle(
               fontSize: 15,
