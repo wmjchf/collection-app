@@ -50,8 +50,9 @@ class AiAgentHelpPage extends StatelessWidget {
               const _SectionHeading('能做什么'),
               const SizedBox(height: 10),
               const _CapabilityCard(
-                title: '检索收藏',
-                desc: '问「今天收藏了什么」「关于××的有哪些」，在你自己的库里找内容。',
+                title: '意图搜索',
+                desc:
+                    '按你的意思在库里找，不只关键词硬匹配。例如「类似这篇文章的」「关于××的有哪些」。',
               ),
               const SizedBox(height: 12),
               const _CapabilityCard(
@@ -151,7 +152,7 @@ class _ScreenshotCard extends StatelessWidget {
           const Padding(
             padding: EdgeInsets.symmetric(horizontal: 4),
             child: Text(
-              '可问最近收藏了什么；点选出处后再深入解读或对照。',
+              '可按意图在库里找；点选出处后再深入解读或对照。',
               style: TextStyle(
                 fontSize: 13,
                 color: AiAgentHelpPage._muted,
@@ -212,7 +213,7 @@ class _IntroCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            '太子Pro 的核心能力之一：在你的收藏库里检索、对照、深挖，'
+            '太子Pro 的核心能力之一：在你的收藏库里做意图搜索、对照、深挖，'
             '也可改标签与归类。另一核心能力是音视频转写。',
             style: TextStyle(
               fontSize: 15,
@@ -241,7 +242,7 @@ class _HighlightStrip extends StatelessWidget {
         borderRadius: BorderRadius.circular(12),
       ),
       child: const Text(
-        '不是全网搜索，而是翻你自己存过的内容——找得到、对得上、用得上。',
+        '不是全网搜索，而是按意图翻你自己存过的内容——找得到、对得上、用得上。',
         style: TextStyle(
           fontSize: 14,
           color: AiAgentHelpPage._text,

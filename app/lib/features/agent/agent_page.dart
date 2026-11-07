@@ -1022,7 +1022,7 @@ class _EmptyState extends StatelessWidget {
             ),
             const SizedBox(height: 12),
             const Text(
-              '检索、对照、深挖；也可改标签与归类。',
+              '意图搜索、对照、深挖；也可改标签与归类。',
               textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: 15,
