@@ -288,9 +288,29 @@ async function runUserTurn({
         plan.intent === 'clarify' ||
         plan.intent === 'tag_edit' ||
         plan.intent === 'organize' ||
-        plan.intent === 'list_tags'
+        plan.intent === 'list_tags' ||
+        plan.intent === 'compose'
           ? 'answering'
           : 'searching',
+    });
+  }
+
+  // —— 单篇收藏 → 文章（转写或正文）——
+  if (plan.intent === 'compose') {
+    return finishComposeTurn({
+      userId,
+      conversationId,
+      userMessage,
+      text,
+      plan,
+      focusItem,
+      priorCitations,
+      history,
+      toolTrace,
+      usageTotal,
+      ctx,
+      emit,
+      stream,
     });
   }
 
@@ -1399,6 +1419,141 @@ async function finishTagEditAskTurn({
   });
 }
 
+function resolveComposeItemId({
+  plan,
+  focusItem,
+  priorCitations,
+  history,
+  text,
+}) {
+  const fromPlan = Number(plan?.excerptItemIds?.[0]);
+  if (Number.isFinite(fromPlan) && fromPlan > 0) return fromPlan;
+  if (focusItem?.itemId) {
+    const fid = Number(focusItem.itemId);
+    if (Number.isFinite(fid) && fid > 0) return fid;
+  }
+  const titleIds = resolveTitlePickItemIds(
+    text,
+    history,
+    priorCitations,
+  );
+  if (titleIds.length === 1) return titleIds[0];
+  if (priorCitations?.length === 1) {
+    const id = Number(priorCitations[0].itemId);
+    if (Number.isFinite(id) && id > 0) return id;
+  }
+  return null;
+}
+
+async function finishComposeTurn({
+  userId,
+  conversationId,
+  userMessage,
+  text,
+  plan,
+  focusItem,
+  priorCitations,
+  history,
+  toolTrace,
+  usageTotal,
+  ctx,
+  emit,
+  stream,
+}) {
+  const itemId = resolveComposeItemId({
+    plan,
+    focusItem,
+    priorCitations,
+    history,
+    text,
+  });
+
+  if (!itemId) {
+    const contentOut =
+      '要写文章，请先打开一篇收藏（有正文的文章，或已转写的视频），或勾选出处后再说「根据这篇写一篇文章」。';
+    if (stream && emit) emit({ type: 'token', text: contentOut });
+    const assistantMessage = await conversationService.insertMessage({
+      conversationId,
+      role: 'assistant',
+      content: contentOut,
+      citations: null,
+      toolTrace,
+    });
+    return emitDone({
+      userId,
+      userMessage,
+      assistantMessage,
+      usageTotal,
+      emit,
+    });
+  }
+
+  const obs = await executeTool('draft_article', ctx, { itemId });
+  toolTrace.push({
+    tool: 'draft_article',
+    ok: Boolean(obs?.ok),
+    args: { itemId },
+    error: obs?.error || null,
+  });
+  if (obs?.usage) {
+    usageTotal = mergeUsage(usageTotal, obs.usage);
+  }
+
+  let contentOut;
+  if (!obs?.ok) {
+    contentOut =
+      String(obs?.message || '').trim() ||
+      (obs?.error === 'need_transcript'
+        ? '这篇视频还没有转写文稿。请先在阅读页「更多」里完成转写，再让我写文章。'
+        : obs?.error === 'need_content'
+          ? '这篇还没有可用正文。请先打开有正文的收藏，或选一篇已转写的视频。'
+          : '未能生成文章，请稍后重试。');
+    if (stream && emit) emit({ type: 'token', text: contentOut });
+    const assistantMessage = await conversationService.insertMessage({
+      conversationId,
+      role: 'assistant',
+      content: contentOut,
+      citations: null,
+      toolTrace,
+    });
+    return emitDone({
+      userId,
+      userMessage,
+      assistantMessage,
+      usageTotal,
+      emit,
+    });
+  }
+
+  const data = obs.data || {};
+  const title = String(data.title || '').trim() || '文章';
+  const body = String(data.body || '').trim();
+  const footer =
+    data.sourceKind === 'transcript'
+      ? '已按转写整理成文章语体（课堂口吻已改写）。可划选复制全文。'
+      : '已根据原文整理成文章。可划选复制全文。';
+  contentOut = [`# ${title}`, '', body, '', '---', footer].join('\n');
+
+  if (stream && emit) emit({ type: 'token', text: contentOut });
+
+  const citations = (obs.citations || []).slice(0, MAX_ANSWER_CITATIONS);
+  const assistantMessage = await conversationService.insertMessage({
+    conversationId,
+    role: 'assistant',
+    content: contentOut,
+    citations,
+    toolTrace,
+  });
+
+  return emitDone({
+    userId,
+    userMessage,
+    assistantMessage,
+    usageTotal,
+    emit,
+  });
+}
+
 async function finishTagEditTurn({
   userId,
   conversationId,
@@ -2183,11 +2338,14 @@ function normalizePlan(
     'compare',
     'tag_edit',
     'organize',
+    'compose',
+    'compose_video', // 旧名 → 下方归一为 compose
     'chitchat',
     'clarify',
   ].includes(intentRaw)
     ? intentRaw
     : 'search';
+  if (intent === 'compose_video') intent = 'compose';
   let queries = Array.isArray(json?.queries)
     ? json.queries.map((q) => String(q || '').trim()).filter(Boolean)
     : [];

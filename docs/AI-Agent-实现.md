@@ -67,17 +67,18 @@
 
 阅读页「AI解读」已下线；思维导图暂留「更多」。后续整理 Tools 时可用 `bootstrapTool` 从助手唤起。
 
-### 2.4 Phase 3（创作）Tools 预留
+### 2.4 Phase 3（创作）
 
-| Tool（暂定） | 阶段 | 说明 |
+| Tool | 阶段 | 说明 |
 | --- | --- | --- |
-| `draft_share_copy` | P3a | 基于 1～N 个 citation 写分享短文案 / 推荐语 |
-| `polish_quote` | P3a | 摘句润色（不改原意；可附原文对比） |
-| `compare_notes` | P3a | 两篇对照短评（强制两篇 itemId） |
-| `draft_memo` | P3b | 多篇主题备忘 / 导读草稿；返回可编辑正文 + citations |
-| `draft_reading_notes` | P3b | 读书笔记结构稿（论点 / 摘录 / 我的问题） |
+| **`draft_article`（已落地）** | P3a | **单篇收藏 → 文章**；`intent=compose`（旧名 `compose_video` 归一）；视频优先成功转写（口播→书面），否则用正文；文章用正文；返回 title/body + citations；不支持多篇合写与图文 |
+| `draft_share_copy` | P3a 预留 | 基于 1～N 个 citation 写分享短文案 / 推荐语 |
+| `polish_quote` | P3a 预留 | 摘句润色（不改原意；可附原文对比） |
+| `compare_notes` | P3a 预留 | 两篇对照短评（强制两篇 itemId） |
+| `draft_memo` | P3b 预留 | 多篇主题备忘 / 导读草稿；返回可编辑正文 + citations |
+| `draft_reading_notes` | P3b 预留 | 读书笔记结构稿（论点 / 摘录 / 我的问题） |
 
-重创作（脚本、发布稿、自动发帖）不进本表，单独立项。
+重创作（脚本、自动发帖）不进本表，单独立项。
 
 ### 2.5 非目标（Phase 1）
 
