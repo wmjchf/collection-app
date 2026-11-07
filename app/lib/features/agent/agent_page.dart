@@ -1402,27 +1402,6 @@ class _AssistantBlock extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        if (copyVisible) ...[
-          Align(
-            alignment: Alignment.centerRight,
-            child: TextButton.icon(
-              onPressed: () => _copyAll(context),
-              icon: const Icon(Icons.copy_rounded, size: 16),
-              label: const Text(
-                '复制全文',
-                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
-              ),
-              style: TextButton.styleFrom(
-                foregroundColor: _brand,
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                minimumSize: Size.zero,
-                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-              ),
-            ),
-          ),
-          const SizedBox(height: 6),
-        ],
         TextSelectionTheme(
           data: const TextSelectionThemeData(
             selectionColor: Color(0x662F6FED),
