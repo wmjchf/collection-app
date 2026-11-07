@@ -665,6 +665,7 @@ class _AgentPageState extends State<AgentPage> {
                                         text: m.content,
                                         citations: m.citations,
                                         pendingAction: m.pendingAction,
+                                        showCopyAll: m.isComposeArticleDraft,
                                         pickedIds: _pickedCitations.keys.toSet(),
                                         onOpen: _openCitation,
                                         onPick: _pickCitationIntoInput,
@@ -1345,13 +1346,10 @@ class _UserBubble extends StatelessWidget {
   }
 }
 
-/// 转写写文章草稿：文末固定说明行，用于识别与复制时剥离。
+/// 转写写文章草稿：文末固定说明行，复制时剥离。
 final _composeArticleFooterRe = RegExp(
   r'\n+---\n已按转写整理成文章语体[^\n]*\s*$',
 );
-
-bool _isComposeArticleDraft(String text) =>
-    text.contains('已按转写整理成文章语体');
 
 String _composeArticleCopyBody(String text) =>
     text.replaceFirst(_composeArticleFooterRe, '').trim();
@@ -1365,6 +1363,7 @@ class _AssistantBlock extends StatelessWidget {
     required this.onPick,
     required this.contextMenuBuilder,
     this.pendingAction,
+    this.showCopyAll = false,
     this.pickEnabled = true,
     this.confirmEnabled = true,
     this.onConfirmAction,
@@ -1373,6 +1372,7 @@ class _AssistantBlock extends StatelessWidget {
   final String text;
   final List<AgentCitation> citations;
   final AgentPendingAction? pendingAction;
+  final bool showCopyAll;
   final Set<int> pickedIds;
   final ValueChanged<AgentCitation> onOpen;
   final ValueChanged<AgentCitation> onPick;
@@ -1383,37 +1383,43 @@ class _AssistantBlock extends StatelessWidget {
 
   static const _brand = Color(0xFF2F6FED);
 
+  Future<void> _copyAll(BuildContext context) async {
+    final body = _composeArticleCopyBody(text);
+    if (body.isEmpty) return;
+    await Clipboard.setData(ClipboardData(text: body));
+    if (context.mounted) AppToast.show(context, '已复制');
+  }
+
   @override
   Widget build(BuildContext context) {
     final showConfirm = pendingAction?.isPending == true && onConfirmAction != null;
-    final showCopyAll = _isComposeArticleDraft(text);
+    // 流式过程中也可能已带上文末标记
+    final copyVisible =
+        showCopyAll || text.contains('已按转写整理成文章语体');
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        if (showCopyAll)
+        if (copyVisible) ...[
           Align(
             alignment: Alignment.centerRight,
-            child: TextButton(
-              onPressed: () async {
-                final body = _composeArticleCopyBody(text);
-                if (body.isEmpty) return;
-                await Clipboard.setData(ClipboardData(text: body));
-                if (context.mounted) AppToast.show(context, '已复制');
-              },
-              style: TextButton.styleFrom(
-                foregroundColor: _brand,
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                minimumSize: Size.zero,
-                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-              ),
-              child: const Text(
+            child: TextButton.icon(
+              onPressed: () => _copyAll(context),
+              icon: const Icon(Icons.copy_rounded, size: 16),
+              label: const Text(
                 '复制全文',
                 style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
               ),
+              style: TextButton.styleFrom(
+                foregroundColor: _brand,
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                minimumSize: Size.zero,
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
             ),
           ),
-        if (showCopyAll) const SizedBox(height: 4),
+          const SizedBox(height: 6),
+        ],
         TextSelectionTheme(
           data: const TextSelectionThemeData(
             selectionColor: Color(0x662F6FED),
@@ -1423,6 +1429,28 @@ class _AssistantBlock extends StatelessWidget {
             contextMenuBuilder: contextMenuBuilder,
           ),
         ),
+        if (copyVisible) ...[
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: () => _copyAll(context),
+              icon: const Icon(Icons.copy_rounded, size: 18),
+              label: const Text(
+                '复制全文',
+                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+              ),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: _brand,
+                side: const BorderSide(color: Color(0xFFB7C9F5)),
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+              ),
+            ),
+          ),
+        ],
         if (citations.isNotEmpty) ...[
           const SizedBox(height: 12),
           const Text(

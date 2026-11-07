@@ -168,6 +168,7 @@ class AgentMessage {
     required this.content,
     this.citations = const [],
     this.pendingAction,
+    this.toolTrace = const [],
   });
 
   final int id;
@@ -175,9 +176,22 @@ class AgentMessage {
   final String content;
   final List<AgentCitation> citations;
   final AgentPendingAction? pendingAction;
+  final List<Map<String, dynamic>> toolTrace;
 
   bool get isUser => role == 'user';
   bool get isAssistant => role == 'assistant';
+
+  /// 转写写文章草稿（可一键复制全文）
+  bool get isComposeArticleDraft {
+    if (content.contains('已按转写整理成文章语体')) return true;
+    for (final step in toolTrace) {
+      final tool = step['tool']?.toString() ?? '';
+      if (tool == 'draft_article' || tool == 'draft_from_transcript') {
+        return true;
+      }
+    }
+    return false;
+  }
 
   AgentMessage copyWith({
     int? id,
@@ -185,6 +199,7 @@ class AgentMessage {
     String? content,
     List<AgentCitation>? citations,
     AgentPendingAction? pendingAction,
+    List<Map<String, dynamic>>? toolTrace,
     bool clearPendingAction = false,
   }) {
     return AgentMessage(
@@ -194,6 +209,7 @@ class AgentMessage {
       citations: citations ?? this.citations,
       pendingAction:
           clearPendingAction ? null : (pendingAction ?? this.pendingAction),
+      toolTrace: toolTrace ?? this.toolTrace,
     );
   }
 
@@ -216,12 +232,32 @@ class AgentMessage {
     } else if (pa is Map) {
       pending = AgentPendingAction.fromJson(Map<String, dynamic>.from(pa));
     }
+    final toolTrace = <Map<String, dynamic>>[];
+    void addSteps(dynamic rawTrace) {
+      if (rawTrace is List) {
+        for (final e in rawTrace) {
+          if (e is Map<String, dynamic>) {
+            toolTrace.add(e);
+          } else if (e is Map) {
+            toolTrace.add(Map<String, dynamic>.from(e));
+          }
+        }
+      } else if (rawTrace is Map) {
+        final steps = rawTrace['steps'];
+        if (steps is List) {
+          addSteps(steps);
+        }
+      }
+    }
+
+    addSteps(json['toolTrace'] ?? json['tool_trace']);
     return AgentMessage(
       id: (json['id'] as num?)?.toInt() ?? 0,
       role: json['role'] as String? ?? 'assistant',
       content: json['content'] as String? ?? '',
       citations: citations,
       pendingAction: pending,
+      toolTrace: toolTrace,
     );
   }
 
@@ -231,6 +267,7 @@ class AgentMessage {
         'content': content,
         'citations': [for (final c in citations) c.toJson()],
         if (pendingAction != null) 'pendingAction': pendingAction!.toJson(),
+        if (toolTrace.isNotEmpty) 'toolTrace': toolTrace,
       };
 }
 
