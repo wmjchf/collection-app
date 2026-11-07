@@ -1345,6 +1345,17 @@ class _UserBubble extends StatelessWidget {
   }
 }
 
+/// 转写写文章草稿：文末固定说明行，用于识别与复制时剥离。
+final _composeArticleFooterRe = RegExp(
+  r'\n+---\n已按转写整理成文章语体[^\n]*\s*$',
+);
+
+bool _isComposeArticleDraft(String text) =>
+    text.contains('已按转写整理成文章语体');
+
+String _composeArticleCopyBody(String text) =>
+    text.replaceFirst(_composeArticleFooterRe, '').trim();
+
 class _AssistantBlock extends StatelessWidget {
   const _AssistantBlock({
     required this.text,
@@ -1375,9 +1386,34 @@ class _AssistantBlock extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final showConfirm = pendingAction?.isPending == true && onConfirmAction != null;
+    final showCopyAll = _isComposeArticleDraft(text);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        if (showCopyAll)
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton(
+              onPressed: () async {
+                final body = _composeArticleCopyBody(text);
+                if (body.isEmpty) return;
+                await Clipboard.setData(ClipboardData(text: body));
+                if (context.mounted) AppToast.show(context, '已复制');
+              },
+              style: TextButton.styleFrom(
+                foregroundColor: _brand,
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                minimumSize: Size.zero,
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+              child: const Text(
+                '复制全文',
+                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+              ),
+            ),
+          ),
+        if (showCopyAll) const SizedBox(height: 4),
         TextSelectionTheme(
           data: const TextSelectionThemeData(
             selectionColor: Color(0x662F6FED),

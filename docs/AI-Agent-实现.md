@@ -71,7 +71,7 @@
 
 | Tool | 阶段 | 说明 |
 | --- | --- | --- |
-| **`draft_article`（已落地）** | P3a | **视频转写 → 文章**；`intent=compose`（旧名 `compose_video` 归一）；须成功转写；口播→书面、独立成篇禁回指源材料；返回 title/body + citations；不用正文、不做图文 |
+| **`draft_article`（已落地）** | P3a | **视频转写 → 文章**；`intent=compose`（旧名 `compose_video` 归一）；须成功转写；口播→书面、独立成篇禁回指源材料；返回 title/body + citations；App「复制全文」；不用正文、不做图文 |
 | `draft_share_copy` | P3a 预留 | 基于 1～N 个 citation 写分享短文案 / 推荐语 |
 | `polish_quote` | P3a 预留 | 摘句润色（不改原意；可附原文对比） |
 | `compare_notes` | P3a 预留 | 两篇对照短评（强制两篇 itemId） |

@@ -1534,7 +1534,7 @@ async function finishComposeTurn({
     body,
     '',
     '---',
-    '已按转写整理成文章语体（课堂口吻已改写）。可划选复制全文。',
+    '已按转写整理成文章语体（课堂口吻已改写）。',
   ].join('\n');
 
   if (stream && emit) emit({ type: 'token', text: contentOut });
