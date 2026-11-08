@@ -87,6 +87,7 @@ async function suggestPresets({
 
   let focusBlock = '无当前阅读篇。';
   let canCompose = false;
+  let focusIsVideo = false;
   if (focusId && Number.isFinite(focusId) && focusId > 0) {
     try {
       const item = await itemService.getByIdForUser(userId, focusId);
@@ -97,6 +98,7 @@ async function suggestPresets({
         const content = clip(item.content || '', CONTENT_SNIPPET);
         const video = isVideoItem(item);
         const transcribed = video && hasSuccessfulTranscript(item);
+        focusIsVideo = video;
         canCompose = transcribed;
         focusBlock = [
           `当前阅读篇：${title}`,
@@ -113,14 +115,20 @@ async function suggestPresets({
     }
   }
 
+  const composePreset = '根据转写写一篇文章';
+  // 视频尚未转写：只留转文一条，引导先去阅读页转写（点了走既有 compose 提示）
+  if (focusIsVideo && !canCompose) {
+    return { presets: [composePreset], source: 'video_need_transcript' };
+  }
+
   const last = clip(lastAssistantContent, ASSISTANT_SNIPPET);
   const lastBlock = last
     ? `上一轮助手回复摘录：\n${last}`
     : '上一轮助手回复：无（空会话起步）。';
 
   const composeHint = canCompose
-    ? '当前篇已有转写时，可出现「根据转写写一篇文章」类预设。'
-    : '当前没有可用转写时，不要出现「根据转写写文章」类预设。';
+    ? `当前篇已有转写时，可出现「${composePreset}」类预设。`
+    : `当前没有可用转写时，不要出现「${composePreset}」类预设。`;
 
   const messages = [
     {
@@ -152,17 +160,14 @@ ${lastBlock}
       temperature: 0.5,
     });
     // 明确不计额度：此处不调用 recordAiTokenUsage / assertAiQuota
-    const presets = normalizePresets(result.json);
+    let presets = normalizePresets(result.json);
+    if (!canCompose) {
+      presets = presets.filter(
+        (p) => !/转写|写一篇文章|写篇文章/.test(p),
+      );
+    }
     if (!presets.length) {
       return { presets: [], source: 'empty' };
-    }
-    if (!canCompose) {
-      return {
-        presets: presets.filter(
-          (p) => !/转写|写一篇文章|写篇文章/.test(p),
-        ),
-        source: 'llm',
-      };
     }
     return { presets, source: 'llm' };
   } catch (err) {
