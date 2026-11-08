@@ -90,13 +90,9 @@ class AgentSplitInset extends StatelessWidget {
                     progress: t,
                     width: panelW,
                     alignment: Alignment.centerLeft,
-                    decoration: const BoxDecoration(
-                      color: Colors.white,
-                      border: Border(
-                        left: BorderSide(color: _hairline),
-                        right: BorderSide(color: _hairline),
-                      ),
-                    ),
+                    edgeColor: _hairline,
+                    showLeftEdge: true,
+                    showRightEdge: true,
                     child: child,
                   ),
                 SizedBox(
