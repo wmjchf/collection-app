@@ -55,6 +55,9 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
   /// 收藏页是否处于列表|阅读浏览态（三列）。
   bool _collectionInSplit = false;
 
+  /// 两列枢纽 ↔ 三列缝切换会换父节点；用 GlobalKey 保住收藏页浏览态，避免首点闪回枢纽。
+  final GlobalKey _collectionPageKey = GlobalKey();
+
   static String _tabScreen(int index) => switch (index) {
         0 => AnalyticsScreens.home,
         1 => AnalyticsScreens.library,
@@ -75,6 +78,10 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
 
   void _switchTab(int next) {
     if (next == _index) return;
+    // 收藏枢纽半宽助手不要带到首页/搜索
+    if (_index == 1 && (next == 0 || next == 2)) {
+      _closeAgentPanel();
+    }
     _startTabDwell(next);
     setState(() => _index = next);
   }
@@ -313,12 +320,9 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
                 progress: t,
                 width: panelW,
                 alignment: Alignment.centerRight,
-                decoration: const BoxDecoration(
-                  color: Colors.white,
-                  border: Border(
-                    left: BorderSide(color: _hairline),
-                  ),
-                ),
+                edgeColor: _hairline,
+                showLeftEdge: true,
+                showRightEdge: true,
                 child: agentPanel,
               ),
           ],
@@ -345,6 +349,7 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
               onOpenAccount: _openAccountDrawer,
             ),
             CollectionPage(
+              key: _collectionPageKey,
               isActive: stackIndex == 1,
               refreshTick: _homeRefreshTick,
               onOpenAccount: _openAccountDrawer,

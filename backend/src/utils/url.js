@@ -316,8 +316,16 @@ function extractBvid(raw) {
   return m ? m[1] : null;
 }
 
-/** 多分 P：保留 ?p=（p>1），便于刷新直链对准分集 */
+/** B站图文 opus id（/opus/{id}；短链跳转后常见） */
+function extractBilibiliOpusId(raw) {
+  const m = String(raw || '').match(/bilibili\.com\/opus\/(\d+)/i);
+  return m ? m[1] : null;
+}
+
+/** 多分 P：保留 ?p=（p>1），便于刷新直链对准分集；图文规范为 /opus/{id} */
 function normalizeBilibiliCanonical(raw) {
+  const opusId = extractBilibiliOpusId(raw);
+  if (opusId) return `https://www.bilibili.com/opus/${opusId}`;
   const bvid = extractBvid(raw);
   if (!bvid) return null;
   let page = 1;
@@ -384,6 +392,7 @@ module.exports = {
   xinhuaxmtDocId,
   placeholderTitle,
   extractBvid,
+  extractBilibiliOpusId,
   normalizeBilibiliCanonical,
   extractXiaohongshuNoteId,
   normalizeXiaohongshuCanonical,

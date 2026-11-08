@@ -391,9 +391,13 @@ class _CollectionPageState extends State<CollectionPage> {
   }
 
   void _closeTabletBrowse() {
+    FocusManager.instance.primaryFocus?.unfocus();
     setState(() => _tabletBrowse = null);
     widget.onTabletSplitChanged?.call(false);
-    _load(quiet: true);
+    // 延后刷新，避免首帧重建把刚返回的第一次点击吃掉
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) unawaited(_load(quiet: true));
+    });
   }
 
   void _setTabletBrowse(_TabletBrowse browse) {
@@ -879,6 +883,7 @@ class _FilterTile extends StatelessWidget {
       borderRadius: BorderRadius.circular(12),
       child: InkWell(
         onTap: onTap,
+        canRequestFocus: false,
         borderRadius: BorderRadius.circular(12),
         child: Padding(
           padding: const EdgeInsets.fromLTRB(10, 10, 6, 10),
