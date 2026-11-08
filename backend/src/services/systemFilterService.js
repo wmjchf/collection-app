@@ -269,5 +269,7 @@ module.exports = {
   listItemsBySystemFilter,
   todayRange,
   filterClause,
+  orderClause,
+  bindFilterParams,
   assertSystemFilter,
 };
