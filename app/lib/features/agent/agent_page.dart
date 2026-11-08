@@ -14,6 +14,8 @@ import 'package:super_collection/features/agent/agent_models.dart';
 import 'package:super_collection/features/agent/agent_preset_cache.dart';
 import 'package:super_collection/features/agent/agent_repository.dart';
 import 'package:super_collection/features/auth/auth_repository.dart';
+import 'package:super_collection/features/collection/items_browse_page.dart';
+import 'package:super_collection/features/collection/tags_repository.dart';
 import 'package:super_collection/features/home/home_format.dart';
 import 'package:super_collection/features/items/item_list_tile.dart';
 import 'package:super_collection/features/items/item_models.dart';
@@ -475,6 +477,23 @@ class _AgentPageState extends State<AgentPage> {
     );
   }
 
+  void _openInventoryTag(AgentTagChip tag) {
+    final tagsRepo = TagsRepository();
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => ItemsBrowsePage(
+          title: tag.name,
+          tagId: tag.isSystem ? null : tag.id,
+          loader: ({required limit, required offset}) => tagsRepo.listTagItems(
+            tag.id,
+            limit: limit,
+            offset: offset,
+          ),
+        ),
+      ),
+    );
+  }
+
   /// 左侧勾选：在输入区以 chip 展示所选篇目，避免「第二篇」含糊指代。
   void _pickCitationIntoInput(AgentCitation c) {
     if (_sending || _booting) return;
@@ -763,9 +782,11 @@ class _AgentPageState extends State<AgentPage> {
                                     : _AssistantBlock(
                                         text: m.content,
                                         citations: m.citations,
+                                        inventoryTags: m.inventoryTags,
                                         pendingAction: m.pendingAction,
                                         pickedIds: _pickedCitations.keys.toSet(),
                                         onOpen: _openCitation,
+                                        onOpenTag: _openInventoryTag,
                                         onPick: _pickCitationIntoInput,
                                         pickEnabled: !_sending && !_booting,
                                         confirmEnabled:
@@ -1444,8 +1465,10 @@ class _AssistantBlock extends StatelessWidget {
   const _AssistantBlock({
     required this.text,
     required this.citations,
+    required this.inventoryTags,
     required this.pickedIds,
     required this.onOpen,
+    required this.onOpenTag,
     required this.onPick,
     required this.contextMenuBuilder,
     this.pendingAction,
@@ -1456,9 +1479,11 @@ class _AssistantBlock extends StatelessWidget {
 
   final String text;
   final List<AgentCitation> citations;
+  final List<AgentTagChip> inventoryTags;
   final AgentPendingAction? pendingAction;
   final Set<int> pickedIds;
   final ValueChanged<AgentCitation> onOpen;
+  final ValueChanged<AgentTagChip> onOpenTag;
   final ValueChanged<AgentCitation> onPick;
   final EditableTextContextMenuBuilder contextMenuBuilder;
   final bool pickEnabled;
@@ -1490,6 +1515,17 @@ class _AssistantBlock extends StatelessWidget {
             contextMenuBuilder: contextMenuBuilder,
           ),
         ),
+        if (inventoryTags.isNotEmpty) ...[
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (final tag in inventoryTags)
+                _AgentTagChip(tag: tag, onTap: () => onOpenTag(tag)),
+            ],
+          ),
+        ],
         if (canCopy)
           Align(
             alignment: Alignment.centerRight,
@@ -1645,12 +1681,9 @@ class _AgentPresetRules {
         '我有自己的分法…',
       ];
     }
-    if (_looksLikeTagInventory(content)) {
-      final title = _firstBookTitle(content);
-      return [
+    if (_looksLikeTagInventory(content) || message.inventoryTags.isNotEmpty) {
+      return const [
         '整理归类',
-        '还有哪些？',
-        if (title != null) '调整《$title》的标签',
         '查找关于…',
       ];
     }
@@ -1660,7 +1693,7 @@ class _AgentPresetRules {
       return [
         if (short.isNotEmpty) '深入解读《$short》',
         '对照这几篇',
-        '还有其它吗？',
+        '查找关于…',
         '整理归类',
       ];
     }
@@ -1673,10 +1706,10 @@ class _AgentPresetRules {
       ];
     }
     return const [
-      '还有其它吗？',
       '整理归类',
       '现在有哪些标签？',
       '查找关于…',
+      '最近收藏了哪些内容？',
     ];
   }
 
@@ -1688,19 +1721,79 @@ class _AgentPresetRules {
   /// 仅认 list_tags 口吻；避免「按主题或标签筛选」+《标题》误判。
   static bool _looksLikeTagInventory(String content) {
     if (RegExp(r'现在共\s*\d+\s*个标签').hasMatch(content)) return true;
+    if (content.contains('点标签可查看')) return true;
     if (content.contains('有标签的文章')) return true;
-    if (content.contains('没有文章') &&
-        RegExp(r'\*\*[^*]{1,40}\*\*：').hasMatch(content)) {
-      return true;
-    }
     return false;
   }
+}
 
-  static String? _firstBookTitle(String content) {
-    final m = RegExp(r'《([^》]+)》').firstMatch(content);
-    final t = m?.group(1)?.trim();
-    if (t == null || t.isEmpty) return null;
-    return t.length > 16 ? '${t.substring(0, 16)}…' : t;
+class _AgentTagChip extends StatelessWidget {
+  const _AgentTagChip({required this.tag, required this.onTap});
+
+  final AgentTagChip tag;
+  final VoidCallback onTap;
+
+  static const _ink = Color(0xFF1F242E);
+  static const _fill = Color(0xFFF5F7FA);
+  static const _accent = Color(0xFF2F6FED);
+
+  String get _label {
+    final n = tag.name.trim();
+    if (n.isEmpty) return '';
+    return n.startsWith('#') ? n : '#$n';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: _fill,
+      borderRadius: BorderRadius.circular(8),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(8),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(8, 6, 9, 6),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 2,
+                height: 12,
+                decoration: BoxDecoration(
+                  color: _accent.withValues(alpha: 0.75),
+                  borderRadius: BorderRadius.circular(1),
+                ),
+              ),
+              const SizedBox(width: 5),
+              Text(
+                _label,
+                maxLines: 1,
+                softWrap: false,
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w500,
+                  height: 1.25,
+                  letterSpacing: 0.1,
+                  color: _ink.withValues(alpha: 0.88),
+                ),
+              ),
+              if (tag.itemCount > 0) ...[
+                const SizedBox(width: 5),
+                Text(
+                  '${tag.itemCount}',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w400,
+                    height: 1.2,
+                    color: _ink.withValues(alpha: 0.45),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }
 

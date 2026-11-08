@@ -32,15 +32,15 @@ function buildPlanMessages({
 {"intent":"search"|"list"|"list_tags"|"compare"|"tag_edit"|"organize"|"compose"|"chitchat"|"clarify","queries":["关键词1"],"excerptItemIds":[123],"listContinue":false,"tagEdit":{"itemId":123,"add":[],"remove":[],"replace":[]},"organize":{"mode":"ungrouped"|"full","hint":"用户偏好"}}
 规则：
 - **你必须自己选对 intent**；说法怎么变都由你理解，不要依赖系统猜关键词
-- intent=list：盘点收藏；queries=[]；「还有吗/再列其他」时 listContinue=true（排除上文已列篇），否则 false；禁止用「文章/收藏」等空泛词去 search
-- intent=list_tags：按文章列标签；queries=[]；继续列出时 listContinue=true
+- intent=list：盘点收藏（报总数 + 少量样例，不在对话里翻页）；queries=[]；listContinue 忽略；禁止用「文章/收藏」等空泛词去 search
+- intent=list_tags：盘点库内标签（系统用 chip 展示，不列文章）；queries=[]；listContinue 忽略
 - intent=search：找相关篇；queries 填 1～2 个短主题词（可改写，不必原话）；深挖已点名篇时 queries=[]、excerptItemIds 填该篇
 - intent=compare：对照；excerptItemIds 填两篇（上文出处或勾选标题）；queries=[]
 - intent=tag_edit：改标；填 tagEdit；上文改标询问/预览未结束时仍用 tag_edit，由你填 add/remove/replace
 - intent=organize：建架/填入/整理归类；organize.mode / hint 由你填；上文问「怎么分」后用户表态 → organize + hint；禁止 list_tags 与 organize 混淆
 - intent=compose：根据**已转写视频**写文章（仅转写，不用正文）；excerptItemIds 只填一篇视频；有当前阅读视频且用户说「这篇/根据转写写」→ excerptItemIds=[当前篇]、queries=[]；缺篇时仍用 compose + excerptItemIds=[]（系统会提示选篇）
 - 有「当前阅读篇」：只问本篇 → search + excerptItemIds=[当前篇] + queries=[]；找其它/类似/相关 → 必须填 queries（或 list/compare）
-- excerptItemIds 只能选自上文出处或当前阅读篇；listContinue 仅 list / list_tags 使用
+- excerptItemIds 只能选自上文出处或当前阅读篇；listContinue 现已忽略
 - 不要输出其它字段或 markdown
 
 ${focusBlock}
@@ -79,10 +79,9 @@ content 禁止为空，禁止只说「查过了」「换个关键词」。citati
   const listHint =
     intent === 'list'
       ? `
-本轮是盘点收藏：用 total 说清一共多少篇；正文最多点名 3 个标题，citationItemIds 必须是这 3 篇且顺序一致（禁止正文写 A、出处挂 B）。
+本轮是盘点收藏：用 total 说清一共多少篇；正文最多点名 3 个样例标题，citationItemIds 必须是这几篇且顺序一致（禁止正文写 A、出处挂 B）。
 若观察带 rangeLabel / filter（如「今天」「最近阅读」「批注」）：只谈该范围内的结果；total=0 就如实说没有，禁止把范围外的篇塞进来。
-若观察 hits 已排除上文篇目（再列其他）：只从本轮 hits 里点名，勿重复上文出处标题。
-若 total>3：说明还有更多、可再说主题或标题；不要罗列全库。禁止把 total 说小。`
+若 total>3：说明完整列表请到首页/收藏页浏览；想找某类可说主题做意图搜索。禁止在对话里续翻或罗列全库。禁止把 total 说小。`
       : '';
   const searchHint =
     intent === 'search' && !followUp
@@ -165,9 +164,9 @@ function buildStreamAnswerMessages({
   const listHint =
     intent === 'list'
       ? `
-本轮是盘点收藏：用 total 说清一共多少篇；正文最多点名 3 个标题，且必须来自本轮观察 hits（标题原文）。禁止正文与将展示的篇对不上。
+本轮是盘点收藏：用 total 说清一共多少篇；正文最多点名 3 个样例标题，且必须来自本轮观察 hits（标题原文）。禁止正文与将展示的篇对不上。
 若观察带 rangeLabel / filter（如「今天」「最近阅读」「批注」）：只谈该范围；total=0 如实说没有，禁止把范围外的篇塞进来。
-再列其他时只点名本轮 hits，勿重复上文已列标题。total>3 时说明还有更多。禁止把总数说小。`
+total>3 时说明完整列表请到首页/收藏页浏览；想找某类可说主题。禁止在对话里续翻。禁止把总数说小。`
       : '';
   const searchHint =
     intent === 'search' && !followUp

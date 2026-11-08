@@ -415,17 +415,48 @@ async function runUserTurn({
     plan.queries.length > 0 &&
     plan.intent === 'search';
 
+  // 盘点后续翻：不在对话里续列，引导去库外浏览或说主题搜索
+  // 带具体主题词（queries）的「还有哪些关于…」仍走检索
+  if (
+    (shouldList && plan.listContinue) ||
+    (looksLikeMoreList(text) &&
+      priorWasLibraryList(history) &&
+      !(plan.intent === 'search' && plan.queries.length > 0))
+  ) {
+    return finishListBrowseHintTurn({
+      userId,
+      conversationId,
+      userMessage,
+      toolTrace,
+      usageTotal,
+      emit,
+      stream,
+    });
+  }
+  if (
+    looksLikeMoreList(text) &&
+    priorWasTagInventory(history) &&
+    !(plan.intent === 'search' && plan.queries.length > 0) &&
+    plan.intent !== 'organize' &&
+    plan.intent !== 'tag_edit'
+  ) {
+    return finishTagBrowseHintTurn({
+      userId,
+      conversationId,
+      userMessage,
+      toolTrace,
+      usageTotal,
+      emit,
+      stream,
+    });
+  }
+
   if (shouldList) {
-    const listMore = Boolean(plan.listContinue);
-    const excludeItemIds = listMore
-      ? uniqueIds(priorCitations.map((c) => c.itemId))
-      : [];
     // 最近阅读 / 批注：对齐收藏页系统筛选；今天等时间窗其次
     const sysFilter = resolveListLibraryFilter(text, history);
     const timeRange = sysFilter ? null : resolveListTimeRange(text, history);
     const listArgs = {
       limit: MAX_LIST_ITEMS,
-      ...(excludeItemIds.length ? { excludeItemIds } : {}),
       ...(sysFilter
         ? {
             filter: sysFilter.filter,
@@ -726,76 +757,44 @@ async function finishTagInventoryTurn({
   emit,
   stream,
 }) {
-  const more = Boolean(plan?.listContinue);
-  const excludeItemIds = more ? collectPriorShownItemIds(history) : [];
-  const args = {
-    limit: 15,
-    ...(excludeItemIds.length ? { excludeItemIds } : {}),
-  };
-  const obs = await executeTool('list_tags', ctx, args);
+  // 标签后续翻：不在对话里续列
+  if (
+    plan?.listContinue ||
+    (looksLikeMoreList(text) && priorWasTagInventory(history))
+  ) {
+    return finishTagBrowseHintTurn({
+      userId,
+      conversationId,
+      userMessage,
+      toolTrace,
+      usageTotal,
+      emit,
+      stream,
+    });
+  }
+
+  const obs = await executeTool('list_tags', ctx, { limit: 12 });
+  const tags = Array.isArray(obs.data?.tags) ? obs.data.tags : [];
   toolTrace.push({
     tool: 'list_tags',
     ok: Boolean(obs.ok),
-    args: {
-      ...args,
-      shownItemIds: obs.data?.shownItemIds || [],
-    },
+    tags,
   });
 
   let contentOut = '库里暂时还没有标签。';
-  let citations = null;
   if (!obs.ok || !obs.data) {
     contentOut = '没能读取标签列表，请稍后再试。';
-  } else {
-    const data = obs.data;
-    const hits = Array.isArray(data.hits) ? data.hits : [];
-    const orphans = Array.isArray(data.orphanTagNames)
-      ? data.orphanTagNames.filter(Boolean)
-      : [];
-    if (!hits.length && data.excluded > 0) {
-      contentOut = '已经列完了，没有更多了。';
-    } else if (!hits.length && !orphans.length) {
-      contentOut = '库里暂时还没有标签。';
-    } else {
-      const lines = [];
-      if (data.excluded > 0) {
-        lines.push(
-          `接着再列 ${hits.length} 篇（共 ${data.totalItems} 篇有标签）：`,
-          '',
-        );
-      } else {
-        lines.push(
-          `现在共 ${data.totalTags} 个标签、${data.totalItems} 篇有标签的文章：`,
-          '',
-        );
-      }
-
-      for (const hit of hits) {
-        const tags = (hit.tagNames || []).filter(Boolean);
-        const tagPart = tags.length
-          ? tags.map((n) => `**${n}**`).join('、')
-          : '（无标签）';
-        const title = String(hit.title || '').trim() || '未命名';
-        lines.push(`${tagPart}：《${title}》`);
-      }
-
-      // 无文章的标签：同一行式「**标签**：没有文章」
-      if (orphans.length && !data.excluded) {
-        for (const name of orphans) {
-          lines.push(`**${name}**：没有文章`);
-        }
-      }
-
-      if (data.truncated && data.remaining > 0) {
-        lines.push('');
-        lines.push(
-          `还有 ${data.remaining} 篇未列，可以说「还有哪些」继续。`,
-        );
-      }
-      contentOut = lines.join('\n');
-      // 盘点标签不挂出处卡，避免和下方引用列表重复抢视线
-      citations = null;
+  } else if (tags.length) {
+    const total = Number(obs.data.totalTags) || tags.length;
+    const lines = [
+      `现在共 ${total} 个标签，先看 ${tags.length} 个；点标签可查看对应收藏。`,
+    ];
+    if (obs.data.truncated && obs.data.remaining > 0) {
+      lines.push(
+        `完整标签请到收藏页浏览；也可以直接说「整理归类」。`,
+      );
     }
+    contentOut = lines.join('\n');
   }
 
   if (stream && emit) emit({ type: 'token', text: contentOut });
@@ -803,7 +802,7 @@ async function finishTagInventoryTurn({
     conversationId,
     role: 'assistant',
     content: contentOut,
-    citations,
+    citations: null,
     toolTrace,
   });
   return emitDone({
@@ -813,32 +812,6 @@ async function finishTagInventoryTurn({
     usageTotal,
     emit,
   });
-}
-
-/** 上文 list_tags 已展示过的 itemId（用于「还有哪些」续翻） */
-function collectPriorShownItemIds(history) {
-  const out = [];
-  const seen = new Set();
-  const list = Array.isArray(history) ? history : [];
-  for (const m of list) {
-    if (m?.role !== 'assistant') continue;
-    const steps = Array.isArray(m.toolTrace)
-      ? m.toolTrace
-      : Array.isArray(m.toolTrace?.steps)
-        ? m.toolTrace.steps
-        : [];
-    for (const step of steps) {
-      if (step?.tool !== 'list_tags') continue;
-      const ids = step?.args?.shownItemIds || step?.data?.shownItemIds || [];
-      for (const raw of ids) {
-        const id = Number(raw);
-        if (!Number.isFinite(id) || id <= 0 || seen.has(id)) continue;
-        seen.add(id);
-        out.push(id);
-      }
-    }
-  }
-  return out;
 }
 
 function priorWasTagInventory(history) {
@@ -854,7 +827,7 @@ function priorWasTagInventory(history) {
     if (steps.some((s) => s?.tool === 'list_tags')) return true;
     const c = String(m.content || '');
     if (
-      /篇有标签的文章|未挂文的标签|接着再列\s*\d+\s*篇|还有\s*\d+\s*篇未列/.test(
+      /现在共\s*\d+\s*个标签|点标签可查看|完整标签请到收藏页|篇有标签的文章|未挂文的标签/.test(
         c,
       )
     ) {
@@ -2329,7 +2302,7 @@ function fallbackAnswer({ intent, observations, citationMap, excerptIds }) {
       const lines = shown.map((t) => `- ${t}`);
       const more =
         total > shown.length
-          ? `\n\n先看 ${shown.length} 篇；想找某类可以说主题，或点名标题：\n`
+          ? `\n\n先看 ${shown.length} 篇样例；完整列表请到首页或收藏页浏览。想找某类可以说主题：\n`
           : '：\n\n';
       return `${head}${more}${lines.join('\n')}`;
     }
@@ -3211,19 +3184,101 @@ function looksLikeInventory(text) {
   );
 }
 
-/** 「再列出其他 / 还有吗 / 下一批」→ 仍走 list，并排除上文出处 */
+/** 「再列出其他 / 还有吗 / 下一批」→ 引导库外浏览，不再对话内续翻 */
 function looksLikeMoreList(text) {
   const t = String(text || '').trim();
   if (!t) return false;
   return (
     /再(列出|看看|来|举)/.test(t) ||
     /其他(的)?(文章|篇|收藏|几篇)/.test(t) ||
-    /还有(哪些|别的|其他|更多)/.test(t) ||
+    /还有(哪些|别的|其他|更多|其它)/.test(t) ||
     /换几篇/.test(t) ||
     /下一批/.test(t) ||
     /更多(文章|篇|收藏)/.test(t) ||
     /其余(的)?(文章|篇|收藏)/.test(t)
   );
+}
+
+function priorWasLibraryList(history) {
+  const list = Array.isArray(history) ? history : [];
+  for (let i = list.length - 1; i >= 0; i -= 1) {
+    const m = list[i];
+    if (m?.role !== 'assistant') continue;
+    const steps = Array.isArray(m.toolTrace)
+      ? m.toolTrace
+      : Array.isArray(m.toolTrace?.steps)
+        ? m.toolTrace.steps
+        : [];
+    if (steps.some((s) => s?.tool === 'list_library')) return true;
+    const c = String(m.content || '');
+    if (
+      /一共(收藏了)?\s*\*\*\d+\*\*\s*篇|收藏库一共有|最近阅读一共|有批注的一共/.test(
+        c,
+      )
+    ) {
+      return true;
+    }
+    return false;
+  }
+  return false;
+}
+
+async function finishListBrowseHintTurn({
+  userId,
+  conversationId,
+  userMessage,
+  toolTrace,
+  usageTotal,
+  emit,
+  stream,
+}) {
+  const contentOut =
+    '助手里只展示少量样例。完整列表请到首页或收藏页浏览；想找某类内容可以直接说主题，我帮你意图搜索。';
+  toolTrace.push({ tool: 'list_browse_hint', ok: true });
+  if (stream && emit) emit({ type: 'token', text: contentOut });
+  const assistantMessage = await conversationService.insertMessage({
+    conversationId,
+    role: 'assistant',
+    content: contentOut,
+    citations: null,
+    toolTrace,
+  });
+  return emitDone({
+    userId,
+    userMessage,
+    assistantMessage,
+    usageTotal,
+    emit,
+  });
+}
+
+async function finishTagBrowseHintTurn({
+  userId,
+  conversationId,
+  userMessage,
+  toolTrace,
+  usageTotal,
+  emit,
+  stream,
+}) {
+  const contentOut =
+    '助手里只展示部分标签。完整标签请到收藏页浏览；点已展示的标签可看对应收藏，或直接说「整理归类」。';
+  toolTrace.push({ tool: 'tag_browse_hint', ok: true });
+  if (stream && emit) emit({ type: 'token', text: contentOut });
+  const assistantMessage = await conversationService.insertMessage({
+    conversationId,
+    role: 'assistant',
+    content: contentOut,
+    citations: null,
+    toolTrace,
+  });
+  return emitDone({
+    userId,
+    userMessage,
+    assistantMessage,
+    usageTotal,
+    emit,
+  });
 }
 
 /** 去掉引号/标点/空白，便于正文与库标题对齐（弯引号、「家」等） */

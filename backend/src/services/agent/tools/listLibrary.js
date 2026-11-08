@@ -6,8 +6,8 @@ const {
   todayRange,
 } = require('../../systemFilterService');
 
-const DEFAULT_LIMIT = 20;
-const HARD_MAX = 40;
+const DEFAULT_LIMIT = 3;
+const HARD_MAX = 8;
 const EXCLUDE_HARD_MAX = 40;
 
 /** 助手盘点可用的系统筛选（对齐收藏页瓷砖） */
