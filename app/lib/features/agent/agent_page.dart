@@ -764,7 +764,6 @@ class _AgentPageState extends State<AgentPage> {
                                         text: m.content,
                                         citations: m.citations,
                                         pendingAction: m.pendingAction,
-                                        showCopyAll: m.isComposeArticleDraft,
                                         pickedIds: _pickedCitations.keys.toSet(),
                                         onOpen: _openCitation,
                                         onPick: _pickCitationIntoInput,
@@ -1450,7 +1449,6 @@ class _AssistantBlock extends StatelessWidget {
     required this.onPick,
     required this.contextMenuBuilder,
     this.pendingAction,
-    this.showCopyAll = false,
     this.pickEnabled = true,
     this.confirmEnabled = true,
     this.onConfirmAction,
@@ -1459,7 +1457,6 @@ class _AssistantBlock extends StatelessWidget {
   final String text;
   final List<AgentCitation> citations;
   final AgentPendingAction? pendingAction;
-  final bool showCopyAll;
   final Set<int> pickedIds;
   final ValueChanged<AgentCitation> onOpen;
   final ValueChanged<AgentCitation> onPick;
@@ -1480,11 +1477,7 @@ class _AssistantBlock extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final showConfirm = pendingAction?.isPending == true && onConfirmAction != null;
-    // 写文章草稿 / 长文 / 以一级标题开头的回复显示复制
-    final trimmed = text.trim();
-    final copyVisible = showCopyAll ||
-        trimmed.startsWith('# ') ||
-        trimmed.length >= 160;
+    final canCopy = text.trim().isNotEmpty;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1497,28 +1490,22 @@ class _AssistantBlock extends StatelessWidget {
             contextMenuBuilder: contextMenuBuilder,
           ),
         ),
-        if (copyVisible) ...[
-          const SizedBox(height: 12),
-          SizedBox(
-            width: double.infinity,
-            child: OutlinedButton.icon(
+        if (canCopy)
+          Align(
+            alignment: Alignment.centerRight,
+            child: IconButton(
               onPressed: () => _copyAll(context),
-              icon: const Icon(Icons.copy_rounded, size: 18),
-              label: const Text(
-                '复制全文',
-                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
-              ),
-              style: OutlinedButton.styleFrom(
-                foregroundColor: _brand,
-                side: const BorderSide(color: Color(0xFFB7C9F5)),
-                padding: const EdgeInsets.symmetric(vertical: 12),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10),
-                ),
+              tooltip: '复制',
+              visualDensity: VisualDensity.compact,
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+              icon: const Icon(
+                Icons.copy_outlined,
+                size: 18,
+                color: Color(0xFF9AA3AF),
               ),
             ),
           ),
-        ],
         if (citations.isNotEmpty) ...[
           const SizedBox(height: 12),
           const Text(
