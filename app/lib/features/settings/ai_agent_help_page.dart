@@ -66,8 +66,8 @@ class AiAgentHelpPage extends StatelessWidget {
               ),
               const SizedBox(height: 12),
               const _CapabilityCard(
-                title: '改标与归类',
-                desc: '说明想怎么改标签、怎么建归类；助手给出预览，确认后才写入。',
+                title: '改标签',
+                desc: '说明想怎么改标签；助手给出预览，确认后才写入。归类请到收藏页手建。',
               ),
               const SizedBox(height: 12),
               const _CapabilityCard(
@@ -110,7 +110,7 @@ class AiAgentHelpPage extends StatelessWidget {
               ),
               const SizedBox(height: 12),
               const _TipCard(
-                '改标签、归类会先出预览；点确认后才改你的库。',
+                '改标签会先出预览；点确认后才写入。归类请到收藏页手建与拖动。',
               ),
               const SizedBox(height: 12),
               const _TipCard(
@@ -220,8 +220,8 @@ class _IntroCard extends StatelessWidget {
         children: [
           Text(
             '太子Pro 的核心能力之一：在你的收藏库里做意图搜索、对照、深挖，'
-            '也可改标签与归类；还能根据已转写视频写文章。'
-            '另一核心能力是音视频转写。',
+            '也可改标签；还能根据已转写视频写文章。'
+            '另一核心能力是音视频转写。归类请到收藏页手建。',
             style: TextStyle(
               fontSize: 15,
               color: AiAgentHelpPage._text,

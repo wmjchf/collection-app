@@ -1138,7 +1138,7 @@ class _EmptyState extends StatelessWidget {
             ),
             const SizedBox(height: 12),
             const Text(
-              '意图搜索、对照、深挖；也可改标签与归类。',
+              '意图搜索、对照、深挖；也可改标签。',
               textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: 15,
@@ -1658,7 +1658,6 @@ class _AgentPresetRules {
     return const [
       '最近收藏了哪些内容？',
       '现在有哪些标签？',
-      '整理归类',
       '查找关于…',
     ];
   }
@@ -1673,18 +1672,10 @@ class _AgentPresetRules {
     }
 
     final content = message.content;
-    if (_looksLikeOrganizeAsk(content)) {
-      return const [
-        '按行业归类',
-        '按主题归类',
-        '由你来分',
-        '我有自己的分法…',
-      ];
-    }
     if (_looksLikeTagInventory(content) || message.inventoryTags.isNotEmpty) {
       return const [
-        '整理归类',
         '查找关于…',
+        '最近收藏了哪些内容？',
       ];
     }
     if (message.citations.isNotEmpty) {
@@ -1694,7 +1685,7 @@ class _AgentPresetRules {
         if (short.isNotEmpty) '深入解读《$short》',
         '对照这几篇',
         '查找关于…',
-        '整理归类',
+        '现在有哪些标签？',
       ];
     }
     if (focused) {
@@ -1706,16 +1697,10 @@ class _AgentPresetRules {
       ];
     }
     return const [
-      '整理归类',
       '现在有哪些标签？',
       '查找关于…',
       '最近收藏了哪些内容？',
     ];
-  }
-
-  static bool _looksLikeOrganizeAsk(String content) {
-    return content.contains('可以先听听你的分类意见') ||
-        content.contains('你更希望怎么分');
   }
 
   /// 仅认 list_tags 口吻；避免「按主题或标签筛选」+《标题》误判。

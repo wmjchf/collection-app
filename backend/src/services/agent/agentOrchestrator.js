@@ -164,14 +164,12 @@ async function runUserTurn({
     if (priorWasVerbalOrganizeProposal(history)) {
       if (emit) emit({ type: 'user', message: userMessage });
       if (emit) emit({ type: 'phase', phase: 'answering' });
-      return finishOrganizeAffirmTurn({
+      return finishOrganizeDisabledTurn({
         userId,
         conversationId,
         userMessage,
-        history,
         toolTrace,
         usageTotal,
-        ctx,
         emit,
         stream,
       });
@@ -352,29 +350,14 @@ async function runUserTurn({
     });
   }
 
-  // —— 建架/归类：先问分类意见，再出带确认条的预览 ——
+  // —— 建架/归类：暂下线，引导收藏页手建 ——
   if (plan.intent === 'organize') {
-    if (shouldAskOrganizePreference(text, history)) {
-      return finishOrganizeAskTurn({
-        userId,
-        conversationId,
-        userMessage,
-        toolTrace,
-        usageTotal,
-        emit,
-        stream,
-      });
-    }
-    return finishOrganizeTurn({
+    return finishOrganizeDisabledTurn({
       userId,
       conversationId,
       userMessage,
-      text,
-      plan,
-      history,
       toolTrace,
       usageTotal,
-      ctx,
       emit,
       stream,
     });
@@ -791,7 +774,7 @@ async function finishTagInventoryTurn({
     ];
     if (obs.data.truncated && obs.data.remaining > 0) {
       lines.push(
-        `完整标签请到收藏页浏览；也可以直接说「整理归类」。`,
+        `完整标签请到收藏页浏览。`,
       );
     }
     contentOut = lines.join('\n');
@@ -995,6 +978,36 @@ function parseForgotCount(text) {
   if (/四个/.test(t)) return 4;
   if (/五个/.test(t)) return 5;
   return 0;
+}
+
+/** 助手暂下线 AI 归类：引导去收藏页手建 */
+async function finishOrganizeDisabledTurn({
+  userId,
+  conversationId,
+  userMessage,
+  toolTrace,
+  usageTotal,
+  emit,
+  stream,
+}) {
+  const contentOut =
+    'AI助手暂时不做归类整理。请到收藏页手建归类，并把标签拖进去。';
+  toolTrace.push({ tool: 'organize_disabled', ok: true, args: {} });
+  if (stream && emit) emit({ type: 'token', text: contentOut });
+  const assistantMessage = await conversationService.insertMessage({
+    conversationId,
+    role: 'assistant',
+    content: contentOut,
+    citations: null,
+    toolTrace,
+  });
+  return emitDone({
+    userId,
+    userMessage,
+    assistantMessage,
+    usageTotal,
+    emit,
+  });
 }
 
 /** 归类第一步：先问分法，不出预览/确认条 */
@@ -3262,7 +3275,7 @@ async function finishTagBrowseHintTurn({
   stream,
 }) {
   const contentOut =
-    '助手里只展示部分标签。完整标签请到收藏页浏览；点已展示的标签可看对应收藏，或直接说「整理归类」。';
+    '助手里只展示部分标签。完整标签请到收藏页浏览；点已展示的标签可看对应收藏。';
   toolTrace.push({ tool: 'tag_browse_hint', ok: true });
   if (stream && emit) emit({ type: 'token', text: contentOut });
   const assistantMessage = await conversationService.insertMessage({
