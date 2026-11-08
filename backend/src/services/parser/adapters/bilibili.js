@@ -1,7 +1,7 @@
 const { fetchBilibili } = require('../fetchBilibili');
 
 /**
- * B站：服务端 view + playurl，不依赖页面 HTML。
+ * B站：视频走 view + playurl；图文 opus 走页面 __INITIAL_STATE__。
  * @type {import('./registry').PlatformAdapter}
  */
 module.exports = {
@@ -11,7 +11,9 @@ module.exports = {
     return (
       typeof html === 'string' &&
       (/bilibili\.com/i.test(html) || /b23\.tv/i.test(html)) &&
-      (/\bBV[\w]+/i.test(html) || /__INITIAL_STATE__/i.test(html))
+      (/\bBV[\w]+/i.test(html) ||
+        /\/opus\/\d+/i.test(html) ||
+        /__INITIAL_STATE__/i.test(html))
     );
   },
   async fetchParsed(url) {
