@@ -5,6 +5,7 @@ const {
   bindFilterParams,
   todayRange,
 } = require('../../systemFilterService');
+const { citationMediaFields } = require('../agentCitationFields');
 
 const DEFAULT_LIMIT = 3;
 const HARD_MAX = 8;
@@ -103,8 +104,8 @@ const tool = {
     // 多取一些再滤排除项，保证还能凑满 limit
     const fetchLimit = Math.min(limit + excludeIds.length, HARD_MAX);
     const [rows] = await pool.execute(
-      `SELECT i.id, i.title, i.url, i.summary, i.cover_image_url, i.platform,
-              i.created_at, i.last_read_at
+      `SELECT i.id, i.title, i.url, i.canonical_url, i.summary,
+              i.cover_image_url, i.platform, i.created_at, i.last_read_at
        FROM items i
        WHERE ${whereSql}
        ORDER BY ${orderSql}
@@ -121,12 +122,14 @@ const tool = {
       const itemId = Number(row.id);
       const title = row.title || row.url || `条目 ${itemId}`;
       const snippet = pickSnippet(row);
+      const media = citationMediaFields(row);
       return {
         itemId,
         title,
         snippet,
         tagNames: tagsByItem.get(itemId) || [],
-        coverImageUrl: row.cover_image_url || null,
+        coverImageUrl: media.coverImageUrl,
+        pageUrl: media.pageUrl,
         platform: row.platform || null,
         createdAt: formatCreatedAt(row.created_at),
         lastReadAt: formatCreatedAt(row.last_read_at),
@@ -152,6 +155,7 @@ const tool = {
         snippet: h.snippet,
         tagNames: h.tagNames,
         coverImageUrl: h.coverImageUrl,
+        pageUrl: h.pageUrl,
       })),
     };
   },

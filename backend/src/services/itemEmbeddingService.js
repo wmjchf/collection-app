@@ -271,7 +271,7 @@ async function searchSimilar(userId, query, {
 
   const [rows] = await pool.execute(
     `SELECT e.item_id, e.chunk_text, e.embedding,
-            i.title, i.cover_image_url, i.url
+            i.title, i.cover_image_url, i.url, i.canonical_url, i.platform
      FROM item_embeddings e
      INNER JOIN items i
        ON i.id = e.item_id
@@ -282,6 +282,8 @@ async function searchSimilar(userId, query, {
     { userId, guidePlatform: guideItemService.GUIDE_PLATFORM },
   );
 
+  const { citationMediaFields } = require('./agent/agentCitationFields');
+
   const bestByItem = new Map();
   for (const row of rows) {
     const itemId = Number(row.item_id);
@@ -290,12 +292,14 @@ async function searchSimilar(userId, query, {
     if (score < minScore) continue;
     const prev = bestByItem.get(itemId);
     if (!prev || score > prev.score) {
+      const media = citationMediaFields(row);
       bestByItem.set(itemId, {
         itemId,
         score,
         chunkText: String(row.chunk_text || ''),
         title: row.title || row.url || `条目 ${itemId}`,
-        coverImageUrl: row.cover_image_url || null,
+        coverImageUrl: media.coverImageUrl,
+        pageUrl: media.pageUrl,
       });
     }
   }

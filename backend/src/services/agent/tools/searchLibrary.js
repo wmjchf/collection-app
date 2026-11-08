@@ -1,6 +1,7 @@
 const itemService = require('../../itemService');
 const itemEmbeddingService = require('../../itemEmbeddingService');
 const { clampSearchLimit } = require('../agentPolicy');
+const { citationMediaFields } = require('../agentCitationFields');
 
 const tool = {
   name: 'search_library',
@@ -93,6 +94,7 @@ const tool = {
         snippet: h.snippet,
         tagNames: h.tagNames,
         coverImageUrl: h.coverImageUrl,
+        pageUrl: h.pageUrl || null,
       })),
     };
   },
@@ -122,6 +124,7 @@ function mergeHits({ semanticHits, keywordItems, limit, q }) {
       snippet: String(h.chunkText || '').slice(0, 160),
       tagNames: h.tagNames || [],
       coverImageUrl: h.coverImageUrl || null,
+      pageUrl: h.pageUrl || null,
       match: 'semantic',
       matchedFields: ['semantic'],
       score: h.score,
@@ -134,12 +137,14 @@ function mergeHits({ semanticHits, keywordItems, limit, q }) {
     if (!id || seen.has(id)) continue;
     seen.add(id);
     const tags = Array.isArray(item.tags) ? item.tags : [];
+    const media = citationMediaFields(item);
     out.push({
       itemId: id,
       title: item.title || item.url || `条目 ${id}`,
       snippet: pickSnippet(item, q),
       tagNames: tags.map((t) => t.name).filter(Boolean).slice(0, 6),
-      coverImageUrl: item.coverImageUrl || null,
+      coverImageUrl: media.coverImageUrl,
+      pageUrl: media.pageUrl,
       match: item._match || 'strong',
       matchedFields: item.matchedFields || [],
     });

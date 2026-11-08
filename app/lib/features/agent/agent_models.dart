@@ -69,6 +69,7 @@ class AgentCitation {
     this.snippet = '',
     this.tagNames = const [],
     this.coverImageUrl,
+    this.pageUrl,
   });
 
   final int itemId;
@@ -76,6 +77,8 @@ class AgentCitation {
   final String snippet;
   final List<String> tagNames;
   final String? coverImageUrl;
+  /// 源站页，封面 CDN Referer 用（小红书等防盗链）
+  final String? pageUrl;
 
   factory AgentCitation.fromJson(Map<String, dynamic> json) {
     final tags = <String>[];
@@ -94,6 +97,7 @@ class AgentCitation {
       snippet: (json['snippet'] as String?)?.trim() ?? '',
       tagNames: tags,
       coverImageUrl: json['coverImageUrl'] as String?,
+      pageUrl: json['pageUrl'] as String?,
     );
   }
 
@@ -103,6 +107,7 @@ class AgentCitation {
         'snippet': snippet,
         'tagNames': tagNames,
         'coverImageUrl': coverImageUrl,
+        if (pageUrl != null) 'pageUrl': pageUrl,
       };
 }
 

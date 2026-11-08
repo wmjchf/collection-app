@@ -195,6 +195,7 @@ async function confirmTagEdit({
           : '已清空用户标签',
         tagNames,
         coverImageUrl: pending.coverImageUrl || null,
+        pageUrl: pending.pageUrl || null,
       },
     ],
     toolTrace: {

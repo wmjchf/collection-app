@@ -1930,6 +1930,7 @@ async function finishTagEditTurn({
       remove: data.remove || [],
       willCreate: data.willCreate || [],
       coverImageUrl: data.coverImageUrl || null,
+      pageUrl: data.pageUrl || null,
     };
   }
 
@@ -2159,6 +2160,7 @@ function latestCitationBatch(history) {
         snippet: c.snippet || '',
         tagNames: Array.isArray(c.tagNames) ? c.tagNames : [],
         coverImageUrl: c.coverImageUrl || null,
+        pageUrl: c.pageUrl || null,
       });
     }
     if (batch.length) return batch;
@@ -3569,6 +3571,7 @@ function rememberCitation(map, c) {
       snippet: c.snippet || '',
       tagNames: Array.isArray(c.tagNames) ? c.tagNames : [],
       coverImageUrl: c.coverImageUrl || null,
+      pageUrl: c.pageUrl || null,
     });
     return;
   }
@@ -3576,6 +3579,10 @@ function rememberCitation(map, c) {
   if ((!prev.tagNames || !prev.tagNames.length) && c.tagNames) {
     prev.tagNames = c.tagNames;
   }
+  if (!prev.coverImageUrl && c.coverImageUrl) {
+    prev.coverImageUrl = c.coverImageUrl;
+  }
+  if (!prev.pageUrl && c.pageUrl) prev.pageUrl = c.pageUrl;
 }
 
 function uniqueIds(ids) {

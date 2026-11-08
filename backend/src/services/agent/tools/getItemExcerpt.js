@@ -1,6 +1,7 @@
 const { pool } = require('../../../db');
 const { buildInputText, hasAiInput } = require('../../aiInput');
 const { EXCERPT_MAX_CHARS } = require('../agentPolicy');
+const { citationMediaFields } = require('../agentCitationFields');
 
 const tool = {
   name: 'get_item_excerpt',
@@ -75,6 +76,7 @@ const tool = {
     const snippet =
       (row.summary && String(row.summary).trim()) ||
       excerpt.replace(/^标题：[^\n]*\n*/, '').slice(0, 160);
+    const media = citationMediaFields(row);
 
     return {
       ok: true,
@@ -83,7 +85,8 @@ const tool = {
         title,
         excerpt,
         tagNames,
-        coverImageUrl: row.cover_image_url || null,
+        coverImageUrl: media.coverImageUrl,
+        pageUrl: media.pageUrl,
       },
       citations: [
         {
@@ -91,7 +94,8 @@ const tool = {
           title,
           snippet: String(snippet).replace(/\s+/g, ' ').trim().slice(0, 160),
           tagNames,
-          coverImageUrl: row.cover_image_url || null,
+          coverImageUrl: media.coverImageUrl,
+          pageUrl: media.pageUrl,
         },
       ],
     };

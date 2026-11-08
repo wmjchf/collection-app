@@ -88,6 +88,7 @@ function mapItem(row) {
       mediaProxy.rewriteMediaUrlList(imageUrls),
     ),
     videoUrl: row.video_url || null,
+    mediaKind: row.media_kind || null,
     transcriptSegments: transcriptSegments.mapSegmentsForApi(
       transcriptSegments.parseSegments(row.transcript_segments),
     ),
