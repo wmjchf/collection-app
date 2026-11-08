@@ -295,24 +295,9 @@ async function runUserTurn({
     });
   }
 
-  // —— 全局会话：不做深挖 / 对照；转文须先打开一篇 ——
+  // —— 全局会话：不做深挖（对照可用）；转文须先打开一篇 ——
   if (!focused && looksLikeGlobalDeepDiveAsk(text)) {
     return finishGlobalDeepDiveDisabledTurn({
-      userId,
-      conversationId,
-      userMessage,
-      toolTrace,
-      usageTotal,
-      emit,
-      stream,
-    });
-  }
-
-  if (
-    !focused &&
-    (plan.intent === 'compare' || looksLikeGlobalCompareAsk(text))
-  ) {
-    return finishGlobalCompareDisabledTurn({
       userId,
       conversationId,
       userMessage,
@@ -765,7 +750,7 @@ async function finishGlobalFocusNeededTurn({
   stream,
 }) {
   let contentOut =
-    '请先打开一篇收藏再来；全局助手可做意图搜索。';
+    '请先打开一篇收藏再来；全局助手可做意图搜索与对照。';
   if (intent === 'compose') {
     contentOut =
       '根据转写写文章请先打开一篇视频，再在助手里说「根据转写写一篇文章」。';
@@ -833,38 +818,8 @@ async function finishGlobalDeepDiveDisabledTurn({
   stream,
 }) {
   const contentOut =
-    '深挖原文请先打开一篇收藏，再从阅读页进入助手。全局助手可做意图搜索。';
+    '深挖原文请先打开一篇收藏，再从阅读页进入助手。全局助手可做意图搜索与对照。';
   toolTrace.push({ tool: 'global_deep_dive_disabled', ok: true, args: {} });
-  if (stream && emit) emit({ type: 'token', text: contentOut });
-  const assistantMessage = await conversationService.insertMessage({
-    conversationId,
-    role: 'assistant',
-    content: contentOut,
-    citations: null,
-    toolTrace,
-  });
-  return emitDone({
-    userId,
-    userMessage,
-    assistantMessage,
-    usageTotal,
-    emit,
-  });
-}
-
-/** 全局助手不做对照：引导从阅读页打开 */
-async function finishGlobalCompareDisabledTurn({
-  userId,
-  conversationId,
-  userMessage,
-  toolTrace,
-  usageTotal,
-  emit,
-  stream,
-}) {
-  const contentOut =
-    '对照内容请先打开一篇收藏，再从阅读页进入助手。全局助手可做意图搜索。';
-  toolTrace.push({ tool: 'global_compare_disabled', ok: true, args: {} });
   if (stream && emit) emit({ type: 'token', text: contentOut });
   const assistantMessage = await conversationService.insertMessage({
     conversationId,
@@ -2469,7 +2424,7 @@ function fallbackAnswer({ intent, observations, citationMap, excerptIds }) {
     return '可以再说具体一点吗？比如主题、作者，或你记得的一句话。';
   }
   if (intent === 'chitchat') {
-    return '我是你的AI助手，可以帮你在收藏库里做意图搜索。想对照或深挖请先打开一篇再进助手。想找哪类内容？';
+    return '我是你的AI助手，可以帮你在收藏库里做意图搜索与对照。想深挖某篇请先打开它再进助手。想找哪类内容？';
   }
   if (intent === 'list') {
     for (const obs of observations || []) {
@@ -3599,19 +3554,6 @@ function looksLikeGlobalDeepDiveAsk(text) {
   ) {
     return true;
   }
-  return false;
-}
-
-/** 全局会话明确要对照（勿与普通「比较好」检索混淆） */
-function looksLikeGlobalCompareAsk(text) {
-  const t = String(text || '').trim();
-  if (!t) return false;
-  if (/对照|异同/.test(t)) return true;
-  if (/(对比|比较).{0,12}(篇|收藏|文章|内容|这|那)/.test(t)) return true;
-  if (/(这|那|两|几).{0,8}(篇|收藏).{0,10}(对比|比较|对照)/.test(t)) {
-    return true;
-  }
-  if (/刚才那?[两几]篇|那两篇|两篇都|都对比/.test(t)) return true;
   return false;
 }
 

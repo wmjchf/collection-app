@@ -117,15 +117,15 @@ async function suggestPresets({
 
   const composePreset = '根据转写写一篇文章';
   const globalOnly = !focusId;
-  // 全局助手：仅意图搜索预设（无对照/深挖），不调模型
+  // 全局助手：意图搜索 + 对照预设（无深挖），不调模型
   if (globalOnly) {
     return {
       presets: [
         '查找关于…',
         '类似××的内容有哪些',
-        '今天收藏了什么',
+        '对照这几篇的异同',
       ],
-      source: 'global_search_only',
+      source: 'global_search_compare',
     };
   }
   // 视频尚未转写：只留转文一条，引导先去阅读页转写（点了走既有 compose 提示）

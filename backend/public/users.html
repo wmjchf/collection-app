@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="robots" content="noindex,nofollow" />
+  <title>奏折 · 用户收藏数</title>
+  <style>
+    :root {
+      --text: #1f242e;
+      --muted: #737a85;
+      --bg: #f4f5f7;
+      --card: #ffffff;
+      --line: #e5e5eb;
+      --blue: #2f6fed;
+      --ok: #1a7f4b;
+      --bad: #c0392b;
+      --font: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+        "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: var(--font);
+      color: var(--text);
+      background: var(--bg);
+      line-height: 1.45;
+    }
+    .wrap { max-width: 960px; margin: 0 auto; padding: 28px 20px 64px; }
+    header {
+      display: flex; flex-wrap: wrap; gap: 12px;
+      align-items: flex-end; justify-content: space-between;
+      margin-bottom: 20px;
+    }
+    h1 { margin: 0; font-size: 22px; font-weight: 700; }
+    .sub { color: var(--muted); font-size: 13px; margin-top: 4px; }
+    .sub a { color: var(--blue); text-decoration: none; }
+    .controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+    input, button {
+      font: inherit; font-size: 14px; border-radius: 10px;
+      border: 1px solid var(--line); padding: 8px 12px;
+      background: #fff; color: var(--text);
+    }
+    input[type="password"] { min-width: 180px; }
+    input[type="search"] { min-width: 160px; }
+    button {
+      background: var(--blue); color: #fff; border-color: var(--blue);
+      cursor: pointer; font-weight: 500;
+    }
+    button.ghost { background: #fff; color: var(--text); border-color: var(--line); }
+    button:disabled { opacity: 0.55; cursor: default; }
+    .err {
+      background: #fdecea; color: var(--bad); padding: 12px 14px;
+      border-radius: 12px; margin-bottom: 16px; font-size: 14px;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+      gap: 12px;
+      margin-bottom: 20px;
+    }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 14px 16px;
+    }
+    .card .label { font-size: 12px; color: var(--muted); }
+    .card .value {
+      font-size: 28px; font-weight: 700; margin-top: 4px;
+      letter-spacing: -0.02em; font-variant-numeric: tabular-nums;
+    }
+    .panel {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 4px 12px 8px;
+      overflow-x: auto;
+    }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th, td {
+      text-align: left; padding: 10px 8px;
+      border-bottom: 1px solid var(--line);
+      white-space: nowrap;
+    }
+    th { color: var(--muted); font-weight: 500; font-size: 12px; }
+    td.num { font-variant-numeric: tabular-nums; font-weight: 600; }
+    .muted { color: var(--muted); }
+    .badge {
+      display: inline-block; padding: 2px 8px; border-radius: 999px;
+      background: #eef0f4; color: var(--muted); font-size: 12px;
+    }
+    .badge.disabled { background: #fdecea; color: var(--bad); }
+    .empty { text-align: center; color: var(--muted); padding: 40px 12px; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <div>
+        <h1>用户收藏数</h1>
+        <div class="sub">
+          在库条数（不含软删）·
+          <a href="/internal/analytics">埋点看板</a>
+          ·
+          <a href="/internal/feedback">反馈后台</a>
+        </div>
+      </div>
+      <div class="controls">
+        <input id="token" type="password" placeholder="看板 Token" autocomplete="off" />
+        <input id="q" type="search" placeholder="搜 ID / 昵称 / 手机尾号" />
+        <button type="button" class="ghost" id="saveToken">记住 Token</button>
+        <button type="button" id="load">刷新</button>
+      </div>
+    </header>
+    <div id="err" class="err" hidden></div>
+    <div id="stats" class="grid" hidden></div>
+    <div class="panel">
+      <table>
+        <thead>
+          <tr>
+            <th>用户 ID</th>
+            <th>昵称</th>
+            <th>手机</th>
+            <th>收藏数</th>
+            <th>状态</th>
+            <th>注册</th>
+            <th>最近登录</th>
+          </tr>
+        </thead>
+        <tbody id="tbody">
+          <tr><td colspan="7" class="empty">输入 Token 后刷新</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+  <script>
+    const TOKEN_KEY = 'conflux_analytics_token';
+    const $ = (id) => document.getElementById(id);
+    let cache = [];
+
+    function token() { return $('token').value.trim(); }
+
+    function showErr(text) {
+      const el = $('err');
+      if (!text) { el.hidden = true; el.textContent = ''; return; }
+      el.hidden = false;
+      el.textContent = text;
+    }
+
+    function fmtTime(v) {
+      if (!v) return '—';
+      try { return new Date(v).toLocaleString(); } catch { return String(v); }
+    }
+
+    function escapeHtml(s) {
+      return String(s ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+
+    function renderStats(stats) {
+      const root = $('stats');
+      root.hidden = false;
+      root.innerHTML = `
+        <div class="card"><div class="label">用户数</div><div class="value">${stats.totalUsers}</div></div>
+        <div class="card"><div class="label">有收藏</div><div class="value">${stats.usersWithItems}</div></div>
+        <div class="card"><div class="label">收藏总数</div><div class="value">${stats.totalItems}</div></div>
+      `;
+    }
+
+    function filteredUsers() {
+      const q = $('q').value.trim().toLowerCase();
+      if (!q) return cache;
+      return cache.filter((u) => {
+        const id = String(u.userId);
+        const nick = String(u.nickname || '').toLowerCase();
+        const phone = String(u.phoneMasked || '').toLowerCase();
+        return id.includes(q) || nick.includes(q) || phone.includes(q);
+      });
+    }
+
+    function renderTable() {
+      const users = filteredUsers();
+      const body = $('tbody');
+      if (!users.length) {
+        body.innerHTML = '<tr><td colspan="7" class="empty">暂无用户</td></tr>';
+        return;
+      }
+      body.innerHTML = users.map((u) => {
+        const st = u.status === 'disabled'
+          ? '<span class="badge disabled">停用</span>'
+          : '<span class="badge">正常</span>';
+        return `<tr>
+          <td class="num">${u.userId}</td>
+          <td>${escapeHtml(u.nickname || '—')}</td>
+          <td class="muted">${escapeHtml(u.phoneMasked || '****')}</td>
+          <td class="num">${u.itemCount}</td>
+          <td>${st}</td>
+          <td class="muted">${escapeHtml(fmtTime(u.createdAt))}</td>
+          <td class="muted">${escapeHtml(fmtTime(u.lastLoginAt))}</td>
+        </tr>`;
+      }).join('');
+    }
+
+    async function load() {
+      const t = token();
+      if (!t) { showErr('请填写看板 Token'); return; }
+      $('load').disabled = true;
+      showErr('');
+      try {
+        const res = await fetch('/api/admin/users/item-counts', {
+          headers: { 'X-Analytics-Token': t },
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          throw new Error(data.message || `请求失败 ${res.status}`);
+        }
+        cache = Array.isArray(data.users) ? data.users : [];
+        renderStats(data.stats || { totalUsers: 0, usersWithItems: 0, totalItems: 0 });
+        renderTable();
+      } catch (e) {
+        showErr(e.message || String(e));
+      } finally {
+        $('load').disabled = false;
+      }
+    }
+
+    $('token').value = localStorage.getItem(TOKEN_KEY) || '';
+    $('saveToken').addEventListener('click', () => {
+      localStorage.setItem(TOKEN_KEY, token());
+      showErr('');
+    });
+    $('load').addEventListener('click', load);
+    $('q').addEventListener('input', renderTable);
+    $('token').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') load();
+    });
+    if (token()) load();
+  </script>
+</body>
+</html>
