@@ -1720,6 +1720,31 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
       return;
     }
 
+    var remainHint = '';
+    try {
+      final usage = await UsageRefresh.ensure();
+      final left = usage.transcriptRemainingMinutes;
+      if (left >= 0 && usage.transcriptLimitMinutes > 0) {
+        final leftLabel = left >= 10 || left == left.roundToDouble()
+            ? '${left.round()}'
+            : left.toStringAsFixed(1);
+        remainHint = '\n本月大约还剩 $leftLabel 分钟。';
+      }
+    } catch (_) {
+      // 额度展示失败不挡转写确认
+    }
+    if (!mounted) return;
+    final confirmed = await showAppConfirmDialog(
+      context,
+      title: '开始转写？',
+      message:
+          '转写会按音视频实际时长扣减本月转写分钟；例如 12 分钟的视频约消耗 12 分钟额度。单次最长支持约 2 小时。确定后开始处理。$remainHint',
+      cancelLabel: '取消',
+      confirmLabel: '开始转写',
+      dangerConfirm: false,
+    );
+    if (confirmed != true || !mounted) return;
+
     try {
       String? mediaUrl;
       if (chosen.needsClientResolve) {
