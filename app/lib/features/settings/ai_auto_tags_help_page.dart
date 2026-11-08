@@ -170,7 +170,7 @@ class _IntroCard extends StatelessWidget {
           Text(
             '一篇好内容常有多个突出点，不宜只塞进一个死文件夹。'
             '奏折用「标签」标记内容，再用你自建的「归类」把标签分格摆放；'
-            '太子+ 解析/转写后会自动打标签；需要建架或批量整理时，用 AI助手说明偏好并确认后写入。',
+            '太子+ 解析/转写后会自动打标签；归类请到收藏页手建，并把标签拖进去。',
             style: TextStyle(fontSize: 15, color: AiAutoTagsHelpPage._text, height: 1.55),
           ),
           SizedBox(height: 16),
@@ -223,7 +223,7 @@ class _ExampleBlock extends StatelessWidget {
           AiAutoTagsHelpPage._tag('赶海'),
           const TextSpan(text: '放进旅游，'),
           AiAutoTagsHelpPage._tag('美食'),
-          const TextSpan(text: '放进生活；也可在 AI助手里说明偏好，确认后再整理。\n\n'),
+          const TextSpan(text: '放进生活。\n\n'),
           const TextSpan(
             text: '尚未归类的标签会留在上方未归类区，对不上的可先放着。',
           ),

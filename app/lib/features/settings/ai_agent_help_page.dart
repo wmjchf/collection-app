@@ -52,28 +52,19 @@ class AiAgentHelpPage extends StatelessWidget {
               const _CapabilityCard(
                 title: '意图搜索',
                 desc:
-                    '按你的意思在库里找，不只关键词硬匹配。例如「类似这篇文章的」「关于××的有哪些」。',
+                    '首页或收藏打开时，按你的意思在库里找，不只关键词硬匹配。例如「类似这篇文章的」「关于××的有哪些」。',
               ),
               const SizedBox(height: 12),
               const _CapabilityCard(
-                title: '对照内容',
-                desc: '勾选或点名几篇，让助手比较异同、梳理要点。',
-              ),
-              const SizedBox(height: 12),
-              const _CapabilityCard(
-                title: '深挖原文',
-                desc: '围绕一篇追问观点、原话或细节；阅读页打开时默认围绕当前篇。',
-              ),
-              const SizedBox(height: 12),
-              const _CapabilityCard(
-                title: '改标签',
-                desc: '说明想怎么改标签；助手给出预览，确认后才写入。归类请到收藏页手建。',
+                title: '对照与深挖',
+                desc:
+                    '从阅读页打开助手后：可对照几篇异同，或围绕当前篇追问观点、原话。全局助手不做对照与深挖。',
               ),
               const SizedBox(height: 12),
               const _CapabilityCard(
                 title: '转写写文章',
                 desc:
-                    '对已转写的视频说「根据转写写一篇文章」：整理成可读长文，并把「这节课」等口播说法改成文章语体。暂不支持用正文生成，也不做图文创作。',
+                    '从阅读页打开已转写视频，说「根据转写写一篇文章」：整理成可读长文。暂不支持用正文生成，也不做图文创作。',
               ),
               const SizedBox(height: 24),
               const _SectionHeading('从哪里打开'),
@@ -110,7 +101,7 @@ class AiAgentHelpPage extends StatelessWidget {
               ),
               const SizedBox(height: 12),
               const _TipCard(
-                '改标签会先出预览；点确认后才写入。归类请到收藏页手建与拖动。',
+                '添加或删除标签请到阅读页；归类请到收藏页手建与拖动。',
               ),
               const SizedBox(height: 12),
               const _TipCard(
@@ -158,7 +149,7 @@ class _ScreenshotCard extends StatelessWidget {
           const Padding(
             padding: EdgeInsets.symmetric(horizontal: 4),
             child: Text(
-              '可按意图在库里找；点选出处后再深入解读或对照。',
+              '可按意图在库里找；从阅读页打开后还可对照或深挖。',
               style: TextStyle(
                 fontSize: 13,
                 color: AiAgentHelpPage._muted,
@@ -219,9 +210,9 @@ class _IntroCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            '太子Pro 的核心能力之一：在你的收藏库里做意图搜索、对照、深挖，'
-            '也可改标签；还能根据已转写视频写文章。'
-            '另一核心能力是音视频转写。归类请到收藏页手建。',
+            '太子Pro 的核心能力之一：在你的收藏库里做意图搜索；'
+            '从阅读页打开还可对照、深挖当前篇、根据已转写视频写文章。'
+            '另一核心能力是音视频转写。标签请到阅读页添加或删除；归类请到收藏页手建。',
             style: TextStyle(
               fontSize: 15,
               color: AiAgentHelpPage._text,

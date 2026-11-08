@@ -116,6 +116,18 @@ async function suggestPresets({
   }
 
   const composePreset = '根据转写写一篇文章';
+  const globalOnly = !focusId;
+  // 全局助手：仅意图搜索预设（无对照/深挖），不调模型
+  if (globalOnly) {
+    return {
+      presets: [
+        '查找关于…',
+        '类似××的内容有哪些',
+        '今天收藏了什么',
+      ],
+      source: 'global_search_only',
+    };
+  }
   // 视频尚未转写：只留转文一条，引导先去阅读页转写（点了走既有 compose 提示）
   if (focusIsVideo && !canCompose) {
     return { presets: [composePreset], source: 'video_need_transcript' };
@@ -138,7 +150,7 @@ async function suggestPresets({
 规则：
 - 只输出 JSON：{"presets":["短句1","短句2","短句3"]}
 - 每条 6～20 个汉字为宜，口语、可直接当用户消息；不要编号、不要解释
-- 贴合当前阅读篇与上一轮回复；可含意图搜索、对照、深挖、改标签等；不要出现归类/整理分类类预设
+- 贴合当前阅读篇与上一轮回复；可含意图搜索、对照、深挖、推荐标签等；不要出现加上/去掉/调整标签（写入）类预设，不要归类/整理分类，也不要「现在有哪些标签」类全库盘点预设
 - ${composeHint}
 - 不要输出与确认写入冲突的话（如「确认整理」）
 - 不要编造库外事实`,
@@ -166,6 +178,12 @@ ${lastBlock}
         (p) => !/转写|写一篇文章|写篇文章/.test(p),
       );
     }
+    presets = presets.filter(
+      (p) =>
+        !/改(这篇|本篇)?标签|调整标签|加上标签|去掉标签|打上标签|改一下标签/.test(
+          p,
+        ) || /推荐|建议/.test(p),
+    );
     if (!presets.length) {
       return { presets: [], source: 'empty' };
     }

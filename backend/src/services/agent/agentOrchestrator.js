@@ -175,48 +175,31 @@ async function runUserTurn({
       });
     }
 
-    // 上文模型手写了改标预览（无 pendingAction）→ 解析后挂真正确认条
+    // 上文模型手写了改标预览 → 改标已下线，引导阅读页
     const verbalTag = parseVerbalTagEditProposal(history);
     if (verbalTag?.itemId && verbalTag.replace?.length) {
       if (emit) emit({ type: 'user', message: userMessage });
       if (emit) emit({ type: 'phase', phase: 'answering' });
-      return finishTagEditTurn({
+      return finishTagEditDisabledTurn({
         userId,
         conversationId,
         userMessage,
-        text,
-        plan: {
-          intent: 'tag_edit',
-          tagEdit: {
-            itemId: verbalTag.itemId,
-            add: [],
-            remove: [],
-            replace: verbalTag.replace,
-          },
-        },
-        focusItem: null,
-        priorCitations,
-        history,
         toolTrace,
-        citationMap,
         usageTotal,
-        ctx,
         emit,
         stream,
       });
     }
 
-    // 正在问怎么改标签，用户只表态未给加删 → 请说明具体标签
+    // 正在问怎么改标签 → 改标已下线
     const awaitingNow = resolveAwaiting(history);
     if (awaitingNow?.kind === AWAITING.TAG_EDIT_PREFERENCE) {
       if (emit) emit({ type: 'user', message: userMessage });
       if (emit) emit({ type: 'phase', phase: 'answering' });
-      return finishTagEditNeedOpsTurn({
+      return finishTagEditDisabledTurn({
         userId,
         conversationId,
         userMessage,
-        itemId: Number(awaitingNow.meta?.itemId) || null,
-        title: awaitingNow.meta?.title || '',
         toolTrace,
         usageTotal,
         emit,
@@ -294,6 +277,65 @@ async function runUserTurn({
     });
   }
 
+  const focused =
+    focusItem &&
+    Number(focusItem.itemId) > 0 &&
+    Number.isFinite(Number(focusItem.itemId));
+
+  // —— 改标签写入：暂下线；推荐标签在 normalizePlan 已改钉本篇 search ——
+  if (plan.intent === 'tag_edit') {
+    return finishTagEditDisabledTurn({
+      userId,
+      conversationId,
+      userMessage,
+      toolTrace,
+      usageTotal,
+      emit,
+      stream,
+    });
+  }
+
+  // —— 全局会话：不做深挖 / 对照；转文须先打开一篇 ——
+  if (!focused && looksLikeGlobalDeepDiveAsk(text)) {
+    return finishGlobalDeepDiveDisabledTurn({
+      userId,
+      conversationId,
+      userMessage,
+      toolTrace,
+      usageTotal,
+      emit,
+      stream,
+    });
+  }
+
+  if (
+    !focused &&
+    (plan.intent === 'compare' || looksLikeGlobalCompareAsk(text))
+  ) {
+    return finishGlobalCompareDisabledTurn({
+      userId,
+      conversationId,
+      userMessage,
+      toolTrace,
+      usageTotal,
+      emit,
+      stream,
+    });
+  }
+
+  if (!focused && plan.intent === 'compose') {
+    return finishGlobalFocusNeededTurn({
+      userId,
+      conversationId,
+      userMessage,
+      intent: plan.intent,
+      toolTrace,
+      usageTotal,
+      emit,
+      stream,
+    });
+  }
+
   // —— 视频转写 → 文章 ——
   if (plan.intent === 'compose') {
     return finishComposeTurn({
@@ -313,41 +355,25 @@ async function runUserTurn({
     });
   }
 
-  // —— 改标签预览（确认前不写库）——
-  if (plan.intent === 'tag_edit') {
-    return finishTagEditTurn({
-      userId,
-      conversationId,
-      userMessage,
-      text,
-      plan,
-      focusItem,
-      priorCitations,
-      history,
-      toolTrace,
-      citationMap,
-      usageTotal,
-      ctx,
-      emit,
-      stream,
-    });
-  }
-
-  // —— 盘点库内标签（非归类）——
+  // —— 盘点库内标签：暂下线；阅读锚定问标签则改成本篇摘录 ——
   if (plan.intent === 'list_tags') {
-    return finishTagInventoryTurn({
-      userId,
-      conversationId,
-      userMessage,
-      text,
-      plan,
-      history,
-      toolTrace,
-      usageTotal,
-      ctx,
-      emit,
-      stream,
-    });
+    if (focused && !looksLikeAskGlobalTags(text)) {
+      plan.intent = 'search';
+      plan.followUp = true;
+      plan.focusBound = true;
+      plan.excerptItemIds = [Number(focusItem.itemId)];
+      plan.queries = [];
+    } else {
+      return finishTagInventoryDisabledTurn({
+        userId,
+        conversationId,
+        userMessage,
+        toolTrace,
+        usageTotal,
+        emit,
+        stream,
+      });
+    }
   }
 
   // —— 建架/归类：暂下线，引导收藏页手建 ——
@@ -493,12 +519,12 @@ async function runUserTurn({
     }
   }
 
-  // 普通检索只靠 search hits；对照 / 深挖 / 点名第N篇 / 确认「是」→ 拉摘录
+  // 普通检索只靠 search hits；对照 / 阅读锚定深挖 / 点名第N篇 → 拉摘录（全局不因深挖词拉长摘录）
   const needsExcerpt =
     !shouldList &&
     (plan.intent === 'compare' ||
       plan.followUp ||
-      looksDeepDive(text) ||
+      (looksDeepDive(text) && Boolean(focusItem)) ||
       plan.excerptItemIds.length > 0 ||
       (Boolean(focusItem) && plan.intent === 'search'));
 
@@ -718,6 +744,165 @@ async function runUserTurn({
     toolTrace,
   });
 
+  return emitDone({
+    userId,
+    userMessage,
+    assistantMessage,
+    usageTotal,
+    emit,
+  });
+}
+
+/** 全局助手：转文须先打开一篇（意图搜索可用） */
+async function finishGlobalFocusNeededTurn({
+  userId,
+  conversationId,
+  userMessage,
+  intent,
+  toolTrace,
+  usageTotal,
+  emit,
+  stream,
+}) {
+  let contentOut =
+    '请先打开一篇收藏再来；全局助手可做意图搜索。';
+  if (intent === 'compose') {
+    contentOut =
+      '根据转写写文章请先打开一篇视频，再在助手里说「根据转写写一篇文章」。';
+  }
+  toolTrace.push({
+    tool: 'global_focus_needed',
+    ok: true,
+    args: { intent: String(intent || '') },
+  });
+  if (stream && emit) emit({ type: 'token', text: contentOut });
+  const assistantMessage = await conversationService.insertMessage({
+    conversationId,
+    role: 'assistant',
+    content: contentOut,
+    citations: null,
+    toolTrace,
+  });
+  return emitDone({
+    userId,
+    userMessage,
+    assistantMessage,
+    usageTotal,
+    emit,
+  });
+}
+
+/** 助手暂下线改标签：引导去阅读页手改 */
+async function finishTagEditDisabledTurn({
+  userId,
+  conversationId,
+  userMessage,
+  toolTrace,
+  usageTotal,
+  emit,
+  stream,
+}) {
+  const contentOut =
+    'AI助手暂时不改标签。请到阅读页添加或删除标签。';
+  toolTrace.push({ tool: 'tag_edit_disabled', ok: true, args: {} });
+  if (stream && emit) emit({ type: 'token', text: contentOut });
+  const assistantMessage = await conversationService.insertMessage({
+    conversationId,
+    role: 'assistant',
+    content: contentOut,
+    citations: null,
+    toolTrace,
+  });
+  return emitDone({
+    userId,
+    userMessage,
+    assistantMessage,
+    usageTotal,
+    emit,
+  });
+}
+
+/** 全局助手不做深挖：引导从阅读页打开 */
+async function finishGlobalDeepDiveDisabledTurn({
+  userId,
+  conversationId,
+  userMessage,
+  toolTrace,
+  usageTotal,
+  emit,
+  stream,
+}) {
+  const contentOut =
+    '深挖原文请先打开一篇收藏，再从阅读页进入助手。全局助手可做意图搜索。';
+  toolTrace.push({ tool: 'global_deep_dive_disabled', ok: true, args: {} });
+  if (stream && emit) emit({ type: 'token', text: contentOut });
+  const assistantMessage = await conversationService.insertMessage({
+    conversationId,
+    role: 'assistant',
+    content: contentOut,
+    citations: null,
+    toolTrace,
+  });
+  return emitDone({
+    userId,
+    userMessage,
+    assistantMessage,
+    usageTotal,
+    emit,
+  });
+}
+
+/** 全局助手不做对照：引导从阅读页打开 */
+async function finishGlobalCompareDisabledTurn({
+  userId,
+  conversationId,
+  userMessage,
+  toolTrace,
+  usageTotal,
+  emit,
+  stream,
+}) {
+  const contentOut =
+    '对照内容请先打开一篇收藏，再从阅读页进入助手。全局助手可做意图搜索。';
+  toolTrace.push({ tool: 'global_compare_disabled', ok: true, args: {} });
+  if (stream && emit) emit({ type: 'token', text: contentOut });
+  const assistantMessage = await conversationService.insertMessage({
+    conversationId,
+    role: 'assistant',
+    content: contentOut,
+    citations: null,
+    toolTrace,
+  });
+  return emitDone({
+    userId,
+    userMessage,
+    assistantMessage,
+    usageTotal,
+    emit,
+  });
+}
+
+/** 助手暂下线全库标签盘点：引导去收藏页 */
+async function finishTagInventoryDisabledTurn({
+  userId,
+  conversationId,
+  userMessage,
+  toolTrace,
+  usageTotal,
+  emit,
+  stream,
+}) {
+  const contentOut =
+    'AI助手暂时不盘点全库标签。请到收藏页浏览标签；单篇标签请在阅读页添加或删除。';
+  toolTrace.push({ tool: 'list_tags_disabled', ok: true, args: {} });
+  if (stream && emit) emit({ type: 'token', text: contentOut });
+  const assistantMessage = await conversationService.insertMessage({
+    conversationId,
+    role: 'assistant',
+    content: contentOut,
+    citations: null,
+    toolTrace,
+  });
   return emitDone({
     userId,
     userMessage,
@@ -2284,7 +2469,7 @@ function fallbackAnswer({ intent, observations, citationMap, excerptIds }) {
     return '可以再说具体一点吗？比如主题、作者，或你记得的一句话。';
   }
   if (intent === 'chitchat') {
-    return '我是你的AI助手，可以帮你检索收藏、对照内容或深挖原文。想找哪类内容？';
+    return '我是你的AI助手，可以帮你在收藏库里做意图搜索。想对照或深挖请先打开一篇再进助手。想找哪类内容？';
   }
   if (intent === 'list') {
     for (const obs of observations || []) {
@@ -2560,6 +2745,28 @@ function normalizePlan(
     }
   }
 
+  // 阅读锚定：问本篇标签 / 推荐标签 → 钉本篇摘录（误判 tag_edit 的推荐也改道；写入改标仍留给下线）
+  if (focusItem?.itemId && intent !== 'compose') {
+    const fid = Number(focusItem.itemId);
+    const t = String(userContent || '');
+    const writeTagEdit = looksLikeTagEdit(t);
+    const recommendOnly = looksLikeTagRecommend(t) && !writeTagEdit;
+    const askItemTags =
+      intent === 'list_tags' ||
+      looksLikeTagInventory(t) ||
+      /(这篇|本篇|当前).{0,10}标签|标签.{0,10}(这篇|本篇|当前)/.test(t);
+    const bindFocusTags =
+      recommendOnly ||
+      (askItemTags && !looksLikeAskGlobalTags(t) && !writeTagEdit);
+    if (Number.isFinite(fid) && fid > 0 && bindFocusTags) {
+      intent = 'search';
+      excerptItemIds = [fid];
+      followUp = true;
+      focusBound = true;
+      queries = [];
+    }
+  }
+
   if (intent === 'list' || intent === 'list_tags') {
     queries = [];
     excerptItemIds = [];
@@ -2602,6 +2809,17 @@ function looksLikeTagInventory(text) {
     /标签.{0,6}(有哪些|有什么|有啥|列表)/.test(t) ||
     /列出.{0,6}标签/.test(t) ||
     /^(我的)?标签[？?]?$/.test(t)
+  );
+}
+
+/** 明确要盘全库标签（非阅读本篇） */
+function looksLikeAskGlobalTags(text) {
+  const t = String(text || '').trim();
+  if (!t) return false;
+  return (
+    /(现在|库里|全部|所有|整个库).{0,10}标签/.test(t) ||
+    /标签.{0,10}(现在|库里|全部|所有|整个库)/.test(t) ||
+    /我的(全部|所有)标签/.test(t)
   );
 }
 
@@ -2884,6 +3102,18 @@ function looksLikeTagEdit(text) {
     /(改成|换成|改用)\s*[「"']?[^」"'\s，。]{1,24}/.test(t) ||
     /^(用|改成|换成)\s*[「"'].+[」"']\s*$/.test(t.trim()) ||
     /^(用|改成|换成).{1,24}$/.test(t.trim());
+}
+
+/** 「推荐一下其他标签」等：只建议，不写入 */
+function looksLikeTagRecommend(text) {
+  const t = String(text || '').trim();
+  if (!t) return false;
+  return (
+    /(推荐|建议).{0,12}标签/.test(t) ||
+    /标签.{0,12}(推荐|建议)/.test(t) ||
+    /(其他|别的|换几个|还有什么|还能).{0,10}标签/.test(t) ||
+    /还能(打|加|用).{0,8}(什么|哪些)?标签/.test(t)
+  );
 }
 
 /** 从短指令里抠标签名（模型漏填时兜底） */
@@ -3341,13 +3571,48 @@ function resolveCitationIdsFromContent(content, citationMap, allowedIds, max) {
   return uniqueIds(scored.map((s) => s.id)).slice(0, max);
 }
 
-/** 需要读正文再答：观点 / 原话 / 总结 / 展开等 */
+/** 需要读正文再答：观点 / 原话 / 总结 / 展开等（阅读锚定用） */
 function looksDeepDive(text) {
   const t = String(text || '').trim();
   if (!t) return false;
   return /观点|原话|论证|总结|解读|讲了什么|说了什么|主要内容|展开|深挖|详细讲|详细说|提炼|核心论点/.test(
     t,
   );
+}
+
+/** 全局会话明确要深挖（勿与「搜某观点」混淆） */
+function looksLikeGlobalDeepDiveAsk(text) {
+  const t = String(text || '').trim();
+  if (!t) return false;
+  if (
+    /深挖|深入解读|再展开|详细讲讲|详细说说|解读一下|核心论点|核心观点/.test(t)
+  ) {
+    return true;
+  }
+  if (/^(展开|再展开|详细讲|详细说)(说明|一下|下)?[？?]?$/.test(t)) {
+    return true;
+  }
+  if (/解读(刚才|上面|这篇|那篇)/.test(t)) return true;
+  if (
+    /(刚才|上面)那篇/.test(t) &&
+    /解读|展开|深挖|详细|观点|原话|讲了什么|说了什么/.test(t)
+  ) {
+    return true;
+  }
+  return false;
+}
+
+/** 全局会话明确要对照（勿与普通「比较好」检索混淆） */
+function looksLikeGlobalCompareAsk(text) {
+  const t = String(text || '').trim();
+  if (!t) return false;
+  if (/对照|异同/.test(t)) return true;
+  if (/(对比|比较).{0,12}(篇|收藏|文章|内容|这|那)/.test(t)) return true;
+  if (/(这|那|两|几).{0,8}(篇|收藏).{0,10}(对比|比较|对照)/.test(t)) {
+    return true;
+  }
+  if (/刚才那?[两几]篇|那两篇|两篇都|都对比/.test(t)) return true;
+  return false;
 }
 
 function rememberCitation(map, c) {

@@ -784,6 +784,7 @@ class _AgentPageState extends State<AgentPage> {
                                         citations: m.citations,
                                         inventoryTags: m.inventoryTags,
                                         pendingAction: m.pendingAction,
+                                        focusItemId: _focusItemId,
                                         pickedIds: _pickedCitations.keys.toSet(),
                                         onOpen: _openCitation,
                                         onOpenTag: _openInventoryTag,
@@ -1138,7 +1139,7 @@ class _EmptyState extends StatelessWidget {
             ),
             const SizedBox(height: 12),
             const Text(
-              '意图搜索、对照、深挖；也可改标签。',
+              '在收藏库里做意图搜索。',
               textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: 15,
@@ -1471,6 +1472,7 @@ class _AssistantBlock extends StatelessWidget {
     required this.onOpenTag,
     required this.onPick,
     required this.contextMenuBuilder,
+    this.focusItemId,
     this.pendingAction,
     this.pickEnabled = true,
     this.confirmEnabled = true,
@@ -1481,6 +1483,7 @@ class _AssistantBlock extends StatelessWidget {
   final List<AgentCitation> citations;
   final List<AgentTagChip> inventoryTags;
   final AgentPendingAction? pendingAction;
+  final int? focusItemId;
   final Set<int> pickedIds;
   final ValueChanged<AgentCitation> onOpen;
   final ValueChanged<AgentTagChip> onOpenTag;
@@ -1491,6 +1494,14 @@ class _AssistantBlock extends StatelessWidget {
   final ValueChanged<bool>? onConfirmAction;
 
   static const _brand = Color(0xFF2F6FED);
+
+  /// 阅读锚定且出处全是当前篇时不重复展示「出处」。
+  bool get _showCitations {
+    if (citations.isEmpty) return false;
+    final fid = focusItemId;
+    if (fid == null || fid <= 0) return true;
+    return citations.any((c) => c.itemId != fid);
+  }
 
   Future<void> _copyAll(BuildContext context) async {
     final body = text.trim();
@@ -1542,7 +1553,7 @@ class _AssistantBlock extends StatelessWidget {
               ),
             ),
           ),
-        if (citations.isNotEmpty) ...[
+        if (_showCitations) ...[
           const SizedBox(height: 12),
           const Text(
             '出处',
@@ -1656,9 +1667,9 @@ class _AgentPresetRules {
       ];
     }
     return const [
-      '最近收藏了哪些内容？',
-      '现在有哪些标签？',
       '查找关于…',
+      '类似××的内容有哪些',
+      '今天收藏了什么',
     ];
   }
 
@@ -1671,13 +1682,6 @@ class _AgentPresetRules {
       return const [];
     }
 
-    final content = message.content;
-    if (_looksLikeTagInventory(content) || message.inventoryTags.isNotEmpty) {
-      return const [
-        '查找关于…',
-        '最近收藏了哪些内容？',
-      ];
-    }
     if (message.citations.isNotEmpty) {
       final title = message.citations.first.title.trim();
       final short = title.length > 12 ? '${title.substring(0, 12)}…' : title;
@@ -1685,7 +1689,6 @@ class _AgentPresetRules {
         if (short.isNotEmpty) '深入解读《$short》',
         '对照这几篇',
         '查找关于…',
-        '现在有哪些标签？',
       ];
     }
     if (focused) {
@@ -1696,19 +1699,12 @@ class _AgentPresetRules {
         '调整这篇的标签',
       ];
     }
+    // 全局助手：仅意图搜索
     return const [
-      '现在有哪些标签？',
       '查找关于…',
-      '最近收藏了哪些内容？',
+      '类似××的内容有哪些',
+      '今天收藏了什么',
     ];
-  }
-
-  /// 仅认 list_tags 口吻；避免「按主题或标签筛选」+《标题》误判。
-  static bool _looksLikeTagInventory(String content) {
-    if (RegExp(r'现在共\s*\d+\s*个标签').hasMatch(content)) return true;
-    if (content.contains('点标签可查看')) return true;
-    if (content.contains('有标签的文章')) return true;
-    return false;
   }
 }
 
