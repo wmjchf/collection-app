@@ -50,12 +50,12 @@ module.exports = {
     asrSpeakerGapMs: Number(process.env.ALIYUN_ASR_SPEAKER_GAP_MS) || 600,
     asrSpeakerOrphanMaxChars:
       Number(process.env.ALIYUN_ASR_SPEAKER_ORPHAN_MAX_CHARS) || 15,
-    /** 转写时长硬上限（秒）；默认 2 小时；设 0 关闭硬限 */
+    /** 转写时长硬上限（秒）；默认 1 小时；设 0 关闭硬限 */
     asrMaxDurationSec:
       process.env.ALIYUN_ASR_MAX_DURATION_SEC != null &&
       String(process.env.ALIYUN_ASR_MAX_DURATION_SEC).trim() !== ''
         ? Number(process.env.ALIYUN_ASR_MAX_DURATION_SEC)
-        : 7200,
+        : 3600,
     /** 百炼 DashScope（AI 标签/导图） */
     dashScopeApiKey: process.env.DASHSCOPE_API_KEY || '',
     dashScopeBaseUrl:

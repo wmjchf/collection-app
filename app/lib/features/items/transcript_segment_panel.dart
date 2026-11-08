@@ -5,6 +5,146 @@ import 'package:super_collection/features/items/item_transcript_page.dart';
 import 'package:super_collection/features/items/reading_font_prefs.dart';
 import 'package:super_collection/features/items/transcript_models.dart';
 
+class _PendingTranscriptProgress extends StatefulWidget {
+  const _PendingTranscriptProgress({required this.segment});
+
+  final TranscriptSegment segment;
+
+  @override
+  State<_PendingTranscriptProgress> createState() =>
+      _PendingTranscriptProgressState();
+}
+
+class _PendingTranscriptProgressState extends State<_PendingTranscriptProgress> {
+  static const _muted = Color(0xFF737A85);
+  static const _brand = Color(0xFF2F6FED);
+
+  Timer? _tick;
+
+  @override
+  void initState() {
+    super.initState();
+    _tick = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    _tick?.cancel();
+    super.dispose();
+  }
+
+  int get _stepIndex {
+    switch (widget.segment.phase) {
+      case 'queued':
+      case 'checking':
+      case 'downloading':
+      case 'uploading':
+        return 0;
+      case 'submitting':
+        return 1;
+      case 'queueing':
+      case 'recognizing':
+        return 2;
+      default:
+        return 0;
+    }
+  }
+
+  String _elapsedLabel() {
+    final at = widget.segment.phaseAt;
+    if (at == null) return '';
+    final sec = DateTime.now().difference(at.toLocal()).inSeconds;
+    if (sec < 0) return '';
+    final m = sec ~/ 60;
+    final s = sec % 60;
+    if (m <= 0) return '本阶段已等待 ${s}s';
+    return '本阶段已等待 $m:${s.toString().padLeft(2, '0')}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final seg = widget.segment;
+    final label = (seg.phaseLabel ?? '').trim();
+    final title = label.isEmpty ? '文稿转写中…' : label;
+    final hint = (seg.phaseHint ?? '').trim();
+    final elapsed = _elapsedLabel();
+    final steps = const ['准备', '提交', '识别'];
+    final active = _stepIndex;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            SizedBox(
+              width: 18,
+              height: 18,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: _brand.withValues(alpha: 0.85),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                title,
+                style: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: _muted,
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        Row(
+          children: [
+            for (var i = 0; i < steps.length; i++) ...[
+              if (i > 0)
+                Expanded(
+                  child: Container(
+                    height: 1,
+                    margin: const EdgeInsets.symmetric(horizontal: 4),
+                    color: i <= active
+                        ? _brand.withValues(alpha: 0.35)
+                        : const Color(0xFFE6E8EC),
+                  ),
+                ),
+              Text(
+                steps[i],
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: i == active ? FontWeight.w600 : FontWeight.w400,
+                  color: i <= active
+                      ? _brand
+                      : _muted.withValues(alpha: 0.55),
+                ),
+              ),
+            ],
+          ],
+        ),
+        if (hint.isNotEmpty || elapsed.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          Text(
+            [
+              if (hint.isNotEmpty) hint,
+              if (elapsed.isNotEmpty) elapsed,
+            ].join('\n'),
+            style: TextStyle(
+              fontSize: 12,
+              color: _muted.withValues(alpha: 0.9),
+              height: 1.4,
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
 /// 挂在播放器下方：loading / 失败提示；成功态为可点击预览，底部滑出文稿
 class TranscriptSegmentPanel extends StatelessWidget {
   const TranscriptSegmentPanel({
@@ -55,47 +195,9 @@ class TranscriptSegmentPanel extends StatelessWidget {
 
     if (seg.isPending) {
       if (hidePendingLoading) return const SizedBox.shrink();
-      final label = (seg.phaseLabel ?? '').trim();
-      final title = label.isEmpty ? '文稿转写中…' : label;
       return Padding(
         padding: const EdgeInsets.only(top: 12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                SizedBox(
-                  width: 18,
-                  height: 18,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    color: _brand.withValues(alpha: 0.85),
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    title,
-                    style: const TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                      color: _muted,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Text(
-              '转写进度仅显示在当前视频下方',
-              style: TextStyle(
-                fontSize: 12,
-                color: _muted.withValues(alpha: 0.85),
-                height: 1.4,
-              ),
-            ),
-          ],
-        ),
+        child: _PendingTranscriptProgress(segment: seg),
       );
     }
 

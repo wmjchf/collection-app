@@ -49,7 +49,46 @@ function isOssConfigured() {
   );
 }
 
-function needsOssProxy(mediaUrl) {
+/** 源站防盗链：CDN host 常变，不能只靠 bilivideo/hdslb 白名单 */
+const HOTLINK_PLATFORMS = new Set([
+  'bilibili',
+  'xiaohongshu',
+  'weibo',
+  'douyin',
+  'kuaishou',
+]);
+
+function pageLooksHotlink(pageUrl) {
+  const page = String(pageUrl || '').toLowerCase();
+  if (!page) return false;
+  return (
+    page.includes('bilibili.com') ||
+    page.includes('b23.tv') ||
+    page.includes('xiaohongshu.com') ||
+    page.includes('xhslink.com') ||
+    page.includes('weibo.com') ||
+    page.includes('weibo.cn') ||
+    page.includes('douyin.com') ||
+    page.includes('iesdouyin.com') ||
+    page.includes('v.douyin.com') ||
+    page.includes('kuaishou.com') ||
+    page.includes('gifshow.com')
+  );
+}
+
+/**
+ * Fun-ASR 直拉无 Referer；防盗链 CDN 须先下到 OSS。
+ * @param {string} mediaUrl
+ * @param {{ platform?: string, pageUrl?: string, force?: boolean }} [opts]
+ */
+function needsOssProxy(mediaUrl, opts = {}) {
+  if (opts.force) return true;
+  const platform = String(opts.platform || '')
+    .toLowerCase()
+    .trim();
+  if (HOTLINK_PLATFORMS.has(platform)) return true;
+  if (pageLooksHotlink(opts.pageUrl)) return true;
+
   const lower = String(mediaUrl || '').toLowerCase();
   return (
     lower.includes('bilivideo') ||
@@ -351,19 +390,25 @@ async function resolveAsrFileLink({
   segmentKey,
   userId,
   onPhase,
+  platform,
+  forceOss,
 }) {
   const url = String(mediaUrl || '').trim();
   if (!url) {
     throw Object.assign(new Error('没有可转写的音视频直链'), { status: 400 });
   }
 
-  const notify = async (phase, phaseLabel) => {
+  const notify = async (phase, phaseLabel, meta) => {
     if (typeof onPhase === 'function') {
-      await onPhase(phase, phaseLabel);
+      await onPhase(phase, phaseLabel, meta);
     }
   };
 
-  const viaOss = needsOssProxy(url);
+  const viaOss = needsOssProxy(url, {
+    platform,
+    pageUrl,
+    force: !!forceOss,
+  });
   if (viaOss && !isOssConfigured()) {
     throw Object.assign(
       new Error(
@@ -380,7 +425,7 @@ async function resolveAsrFileLink({
   };
 
   try {
-    await notify('checking', '校验时长中');
+    await notify('checking', '正在确认时长与额度');
     let durationSec = null;
     let probeMs = 0;
     let probeBytes = 0;
@@ -416,6 +461,9 @@ async function resolveAsrFileLink({
 
       if (durationSec != null) {
         await assertDurationAndQuota(durationSec, userId);
+        await notify('checking', '时长与额度已确认', {
+          mediaDurationSec: durationSec,
+        });
       }
     }
 
@@ -439,7 +487,9 @@ async function resolveAsrFileLink({
     // 需要全文：开放直链测不到时长 / 防盗链 / 或 probe 已是全文
     let downloaded = fullAlready;
     if (!downloaded) {
-      await notify('downloading', '下载媒体中');
+      await notify('downloading', '正在下载音视频', {
+        mediaDurationSec: durationSec,
+      });
       downloaded = await downloadMediaToTempFile({
         mediaUrl: url,
         pageUrl,
@@ -453,13 +503,18 @@ async function resolveAsrFileLink({
     ext = downloaded.ext;
 
     if (durationSec == null) {
-      await notify('checking', '校验时长中');
+      await notify('checking', '正在确认时长与额度');
       durationSec = await probeMediaDurationSec(downloaded.tmpPath);
       console.log(
         `[transcriptMediaOss] full duration item=${itemId} segment=${segmentKey} ` +
           `viaOss=${viaOss} sec=${durationSec == null ? 'unknown' : durationSec.toFixed(1)}`,
       );
       await assertDurationAndQuota(durationSec, userId);
+      if (durationSec != null) {
+        await notify('checking', '时长与额度已确认', {
+          mediaDurationSec: durationSec,
+        });
+      }
     }
 
     const downloadMs = (fullAlready ? 0 : downloaded.downloadMs) + probeMs;
@@ -481,7 +536,9 @@ async function resolveAsrFileLink({
       };
     }
 
-    await notify('uploading', '上传中');
+    await notify('uploading', '正在上传以便识别', {
+      mediaDurationSec: durationSec,
+    });
     const key = objectKey(itemId, segmentKey, url, ext);
     const uploaded = await uploadTempFileToOss({
       tmpPath: downloaded.tmpPath,

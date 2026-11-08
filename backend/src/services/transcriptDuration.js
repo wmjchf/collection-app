@@ -1,7 +1,7 @@
 /**
  * 转写媒体时长探测。
  * 纯 JS：`music-metadata` 读本地文件容器元数据，不依赖 ffmpeg。
- * 默认硬上限 2 小时（`ALIYUN_ASR_MAX_DURATION_SEC`）；≤0 关闭硬限。额度仍按实际时长校验。
+ * 默认硬上限 1 小时（`ALIYUN_ASR_MAX_DURATION_SEC`）；≤0 关闭硬限。额度仍按实际时长校验。
  */
 const { parseFile } = require('music-metadata');
 const config = require('../config');
