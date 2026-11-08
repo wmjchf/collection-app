@@ -1139,7 +1139,7 @@ class _EmptyState extends StatelessWidget {
             ),
             const SizedBox(height: 12),
             const Text(
-              '在收藏库里做意图搜索。',
+              '意图搜索与对照。',
               textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: 15,
@@ -1669,7 +1669,7 @@ class _AgentPresetRules {
     return const [
       '查找关于…',
       '类似××的内容有哪些',
-      '今天收藏了什么',
+      '对照几篇收藏',
     ];
   }
 
@@ -1699,11 +1699,11 @@ class _AgentPresetRules {
         '调整这篇的标签',
       ];
     }
-    // 全局助手：仅意图搜索
+    // 全局助手：意图搜索 + 对照（无深挖）
     return const [
       '查找关于…',
       '类似××的内容有哪些',
-      '今天收藏了什么',
+      '对照几篇收藏',
     ];
   }
 }

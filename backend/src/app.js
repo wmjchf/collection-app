@@ -99,6 +99,14 @@ function sendFeedbackAdmin(_req, res) {
 }
 app.get('/internal/feedback', sendFeedbackAdmin);
 
+/** 用户收藏数后台（需 ANALYTICS_DASHBOARD_TOKEN；不链到官网） */
+function sendUsersAdmin(_req, res) {
+  res.setHeader('X-Robots-Tag', 'noindex, nofollow');
+  res.setHeader('Cache-Control', 'no-store');
+  res.sendFile(path.join(publicDir, 'users.html'));
+}
+app.get('/internal/users', sendUsersAdmin);
+
 app.use('/api', healthRouter);
 app.use('/api/app', require('./routes/appVersion'));
 app.use('/api/auth', authRouter);
@@ -113,6 +121,7 @@ app.use('/api/usage', usageRouter);
 app.use('/api/agent', require('./routes/agent'));
 app.use('/api/billing', billingRouter);
 app.use('/api/analytics', analyticsRouter);
+app.use('/api/admin', require('./routes/admin'));
 app.use('/api/help', require('./routes/help'));
 app.use('/api', require('./routes/mediaProxy'));
 
