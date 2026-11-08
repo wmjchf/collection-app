@@ -105,10 +105,6 @@ class AiAgentHelpPage extends StatelessWidget {
               ),
               const SizedBox(height: 12),
               const _TipCard(
-                '添加或删除标签请到阅读页；归类请到收藏页手建与拖动。',
-              ),
-              const SizedBox(height: 12),
-              const _TipCard(
                 '划选助手回复可复制，或做成分享海报。',
               ),
               const SizedBox(height: 20),
@@ -216,7 +212,7 @@ class _IntroCard extends StatelessWidget {
           Text(
             '太子Pro 的核心能力之一：在你的收藏库里做意图搜索与对照；'
             '从阅读页打开还可深挖当前篇、根据已转写视频写文章。'
-            '另一核心能力是音视频转写。标签请到阅读页添加或删除；归类请到收藏页手建。',
+            '另一核心能力是音视频转写。',
             style: TextStyle(
               fontSize: 15,
               color: AiAgentHelpPage._text,
