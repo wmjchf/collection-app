@@ -73,74 +73,121 @@ class _PendingTranscriptProgressState extends State<_PendingTranscriptProgress> 
     final steps = const ['准备', '提交', '识别'];
     final active = _stepIndex;
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            SizedBox(
-              width: 18,
-              height: 18,
-              child: CircularProgressIndicator(
-                strokeWidth: 2,
-                color: _brand.withValues(alpha: 0.85),
-              ),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Text(
-                title,
-                style: const TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: _muted,
+    const text = Color(0xFF1F242E);
+    return Container(
+      decoration: BoxDecoration(
+        color: const Color(0xFFEEF3FB),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: _brand.withValues(alpha: 0.22)),
+      ),
+      padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: _brand.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(10),
                 ),
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 10),
-        Row(
-          children: [
-            for (var i = 0; i < steps.length; i++) ...[
-              if (i > 0)
-                Expanded(
-                  child: Container(
-                    height: 1,
-                    margin: const EdgeInsets.symmetric(horizontal: 4),
-                    color: i <= active
-                        ? _brand.withValues(alpha: 0.35)
-                        : const Color(0xFFE6E8EC),
+                alignment: Alignment.center,
+                child: SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: _brand.withValues(alpha: 0.85),
                   ),
                 ),
-              Text(
-                steps[i],
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: i == active ? FontWeight.w600 : FontWeight.w400,
-                  color: i <= active
-                      ? _brand
-                      : _muted.withValues(alpha: 0.55),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      '文稿转写中',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                        color: text,
+                        height: 1.2,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      title,
+                      style: const TextStyle(
+                        fontSize: 13,
+                        color: _muted,
+                        height: 1.25,
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ],
-          ],
-        ),
-        if (hint.isNotEmpty || elapsed.isNotEmpty) ...[
-          const SizedBox(height: 8),
-          Text(
-            [
-              if (hint.isNotEmpty) hint,
-              if (elapsed.isNotEmpty) elapsed,
-            ].join('\n'),
-            style: TextStyle(
-              fontSize: 12,
-              color: _muted.withValues(alpha: 0.9),
-              height: 1.4,
+          ),
+          const SizedBox(height: 12),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.fromLTRB(12, 11, 12, 11),
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.85),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    for (var i = 0; i < steps.length; i++) ...[
+                      if (i > 0)
+                        Expanded(
+                          child: Container(
+                            height: 1,
+                            margin: const EdgeInsets.symmetric(horizontal: 4),
+                            color: i <= active
+                                ? _brand.withValues(alpha: 0.35)
+                                : const Color(0xFFE6E8EC),
+                          ),
+                        ),
+                      Text(
+                        steps[i],
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight:
+                              i == active ? FontWeight.w600 : FontWeight.w400,
+                          color: i <= active
+                              ? _brand
+                              : _muted.withValues(alpha: 0.55),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+                if (hint.isNotEmpty || elapsed.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    [
+                      if (hint.isNotEmpty) hint,
+                      if (elapsed.isNotEmpty) elapsed,
+                    ].join('\n'),
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: _muted.withValues(alpha: 0.9),
+                      height: 1.4,
+                    ),
+                  ),
+                ],
+              ],
             ),
           ),
         ],
-      ],
+      ),
     );
   }
 }
@@ -196,7 +243,7 @@ class TranscriptSegmentPanel extends StatelessWidget {
     if (seg.isPending) {
       if (hidePendingLoading) return const SizedBox.shrink();
       return Padding(
-        padding: const EdgeInsets.only(top: 12),
+        padding: const EdgeInsets.only(top: 14),
         child: _PendingTranscriptProgress(segment: seg),
       );
     }
@@ -205,10 +252,18 @@ class TranscriptSegmentPanel extends StatelessWidget {
       final err = (seg.error ?? '').trim();
       if (err.isEmpty) return const SizedBox.shrink();
       return Padding(
-        padding: const EdgeInsets.only(top: 12),
-        child: Text(
-          '文稿转写失败：$err',
-          style: const TextStyle(fontSize: 13, color: _muted, height: 1.4),
+        padding: const EdgeInsets.only(top: 14),
+        child: Container(
+          decoration: BoxDecoration(
+            color: const Color(0xFFEEF3FB),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: _brand.withValues(alpha: 0.22)),
+          ),
+          padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
+          child: Text(
+            '文稿转写失败：$err',
+            style: const TextStyle(fontSize: 13, color: _muted, height: 1.4),
+          ),
         ),
       );
     }
