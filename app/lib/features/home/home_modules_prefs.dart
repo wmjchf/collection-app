@@ -40,7 +40,7 @@ class HomeModulesPrefs extends ChangeNotifier {
   static const _keyRoamLegacy = 'home_module_roam';
   static const _keyMediaKind = 'home_module_media_kind';
 
-  HomeLayoutMode _mode = HomeLayoutMode.library;
+  HomeLayoutMode _mode = HomeLayoutMode.unreadAndRoam;
   String? _mediaKind;
   bool _loaded = false;
   Future<void>? _loading;
@@ -69,22 +69,16 @@ class HomeModulesPrefs extends ChangeNotifier {
       if (prefs.containsKey(_keyMode)) {
         _mode = HomeLayoutModeX.fromStorage(prefs.getString(_keyMode));
       } else {
-        // 兼容上一版独立开关：开过 library → 整库；否则未读+漫游
+        // 新用户默认未读+漫游；兼容上一版：显式开过 library → 整库
         final lib = prefs.getBool(_keyLibraryLegacy);
-        final unread = prefs.getBool(_keyUnreadLegacy);
-        final roam = prefs.getBool(_keyRoamLegacy);
-        if (lib == true || (lib == null && unread == null && roam == null)) {
-          _mode = HomeLayoutMode.library;
-        } else if (lib == false) {
-          _mode = HomeLayoutMode.unreadAndRoam;
-        } else {
-          _mode = HomeLayoutMode.library;
-        }
+        _mode = lib == true
+            ? HomeLayoutMode.library
+            : HomeLayoutMode.unreadAndRoam;
       }
       final kind = prefs.getString(_keyMediaKind);
       _mediaKind = (kind == null || kind.isEmpty || kind == 'all') ? null : kind;
     } catch (_) {
-      _mode = HomeLayoutMode.library;
+      _mode = HomeLayoutMode.unreadAndRoam;
       _mediaKind = null;
     }
     _loaded = true;

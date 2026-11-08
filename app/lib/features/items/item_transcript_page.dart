@@ -426,6 +426,14 @@ class _ItemTranscriptPageState extends State<ItemTranscriptPage> {
     AppToast.show(context, '已复制');
   }
 
+  Future<void> _copyAll() async {
+    final text = _body;
+    if (text.isEmpty) return;
+    await Clipboard.setData(ClipboardData(text: text));
+    if (!mounted) return;
+    AppToast.show(context, '已复制');
+  }
+
   Future<void> _shareExistingQuote(
     String quote,
     Rect? shareOrigin, {
@@ -581,7 +589,43 @@ class _ItemTranscriptPageState extends State<ItemTranscriptPage> {
                 ),
               ),
             ),
-            const SizedBox(height: 8),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(22, 10, 10, 4),
+              child: Row(
+                children: [
+                  const Expanded(
+                    child: Text(
+                      '转写文稿',
+                      style: TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.w600,
+                        color: _text,
+                      ),
+                    ),
+                  ),
+                  TextButton(
+                    onPressed: body.isEmpty ? null : _copyAll,
+                    style: TextButton.styleFrom(
+                      foregroundColor: const Color(0xFF2F6FED),
+                      disabledForegroundColor: _muted,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 8,
+                      ),
+                      minimumSize: Size.zero,
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    ),
+                    child: const Text(
+                      '复制',
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
             Expanded(child: content),
           ],
         ),

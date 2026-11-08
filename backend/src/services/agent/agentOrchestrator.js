@@ -18,6 +18,7 @@ const {
   toolPayload,
 } = require('./agentAwaiting');
 const { executeTool } = require('./agentRegistry');
+const draftArticleTool = require('./tools/draftFromTranscript');
 const {
   buildPlanMessages,
   buildAnswerMessages,
@@ -288,9 +289,29 @@ async function runUserTurn({
         plan.intent === 'clarify' ||
         plan.intent === 'tag_edit' ||
         plan.intent === 'organize' ||
-        plan.intent === 'list_tags'
+        plan.intent === 'list_tags' ||
+        plan.intent === 'compose'
           ? 'answering'
           : 'searching',
+    });
+  }
+
+  // —— 视频转写 → 文章 ——
+  if (plan.intent === 'compose') {
+    return finishComposeTurn({
+      userId,
+      conversationId,
+      userMessage,
+      text,
+      plan,
+      focusItem,
+      priorCitations,
+      history,
+      toolTrace,
+      usageTotal,
+      ctx,
+      emit,
+      stream,
     });
   }
 
@@ -1399,6 +1420,197 @@ async function finishTagEditAskTurn({
   });
 }
 
+function resolveComposeItemId({
+  plan,
+  focusItem,
+  priorCitations,
+  history,
+  text,
+}) {
+  const fromPlan = Number(plan?.excerptItemIds?.[0]);
+  if (Number.isFinite(fromPlan) && fromPlan > 0) return fromPlan;
+  if (focusItem?.itemId) {
+    const fid = Number(focusItem.itemId);
+    if (Number.isFinite(fid) && fid > 0) return fid;
+  }
+  const titleIds = resolveTitlePickItemIds(
+    text,
+    history,
+    priorCitations,
+  );
+  if (titleIds.length === 1) return titleIds[0];
+  if (priorCitations?.length === 1) {
+    const id = Number(priorCitations[0].itemId);
+    if (Number.isFinite(id) && id > 0) return id;
+  }
+  return null;
+}
+
+async function finishComposeTurn({
+  userId,
+  conversationId,
+  userMessage,
+  text,
+  plan,
+  focusItem,
+  priorCitations,
+  history,
+  toolTrace,
+  usageTotal,
+  ctx,
+  emit,
+  stream,
+}) {
+  const itemId = resolveComposeItemId({
+    plan,
+    focusItem,
+    priorCitations,
+    history,
+    text,
+  });
+
+  if (!itemId) {
+    const contentOut =
+      '要根据转写写文章，请先打开一篇已转写的视频，或勾选出处后再说「根据转写写一篇文章」。';
+    if (stream && emit) emit({ type: 'token', text: contentOut });
+    const assistantMessage = await conversationService.insertMessage({
+      conversationId,
+      role: 'assistant',
+      content: contentOut,
+      citations: null,
+      toolTrace,
+    });
+    return emitDone({
+      userId,
+      userMessage,
+      assistantMessage,
+      usageTotal,
+      emit,
+    });
+  }
+
+  const prepared = await draftArticleTool.prepareDraftSource(ctx, itemId);
+  if (!prepared.ok) {
+    toolTrace.push({
+      tool: 'draft_article',
+      ok: false,
+      args: { itemId },
+      error: prepared.error || null,
+    });
+    const contentOut =
+      String(prepared.message || '').trim() ||
+      (prepared.error === 'need_transcript'
+        ? '这篇视频还没有转写文稿。请先在阅读页「更多」里完成转写，再让我写文章。'
+        : prepared.error === 'not_video'
+          ? '目前只支持根据视频转写写文章。请打开一篇已转写的视频后再试。'
+          : '未能生成文章，请稍后重试。');
+    if (stream && emit) emit({ type: 'token', text: contentOut });
+    const assistantMessage = await conversationService.insertMessage({
+      conversationId,
+      role: 'assistant',
+      content: contentOut,
+      citations: null,
+      toolTrace,
+    });
+    return emitDone({
+      userId,
+      userMessage,
+      assistantMessage,
+      usageTotal,
+      emit,
+    });
+  }
+
+  let contentOut = '';
+  let citations = (prepared.citations || []).slice(0, MAX_ANSWER_CITATIONS);
+
+  if (stream) {
+    const messages = draftArticleTool.composeMessages({
+      titleHint: prepared.titleHint,
+      transcript: prepared.transcript,
+      json: false,
+    });
+    await usageService.assertAiQuota(userId, {
+      estimatedTokens: usageService.estimateAiTokens({
+        messages,
+        feature: 'agent',
+      }),
+    });
+    let raw = '';
+    for await (const chunk of aliyunDashScope.chatTextStream({
+      messages,
+      model: draftArticleTool.agentModel(),
+      temperature: 0.4,
+    })) {
+      if (chunk.delta) {
+        raw += chunk.delta;
+        if (emit) emit({ type: 'token', text: chunk.delta });
+      }
+      if (chunk.usage) {
+        usageTotal = mergeUsage(usageTotal, chunk.usage);
+      }
+    }
+    contentOut = raw.trim();
+    toolTrace.push({
+      tool: 'draft_article',
+      ok: Boolean(contentOut),
+      args: { itemId, mode: 'stream' },
+      error: contentOut ? null : 'empty_draft',
+    });
+    if (!contentOut) {
+      contentOut = '未能生成文章，请稍后重试。';
+      if (emit) emit({ type: 'token', text: contentOut });
+      citations = null;
+    } else {
+      const snippet = contentOut.replace(/\s+/g, ' ').trim().slice(0, 160);
+      citations = [
+        {
+          ...citations[0],
+          snippet,
+        },
+      ];
+    }
+  } else {
+    const obs = await executeTool('draft_article', ctx, { itemId });
+    toolTrace.push({
+      tool: 'draft_article',
+      ok: Boolean(obs?.ok),
+      args: { itemId, mode: 'json' },
+      error: obs?.error || null,
+    });
+    if (obs?.usage) {
+      usageTotal = mergeUsage(usageTotal, obs.usage);
+    }
+    if (!obs?.ok) {
+      contentOut =
+        String(obs?.message || '').trim() || '未能生成文章，请稍后重试。';
+      citations = null;
+    } else {
+      const data = obs.data || {};
+      contentOut =
+        String(data.content || '').trim() ||
+        draftArticleTool.wrapArticleContent(data.title, data.body);
+      citations = (obs.citations || []).slice(0, MAX_ANSWER_CITATIONS);
+    }
+  }
+
+  const assistantMessage = await conversationService.insertMessage({
+    conversationId,
+    role: 'assistant',
+    content: contentOut,
+    citations,
+    toolTrace,
+  });
+
+  return emitDone({
+    userId,
+    userMessage,
+    assistantMessage,
+    usageTotal,
+    emit,
+  });
+}
+
 async function finishTagEditTurn({
   userId,
   conversationId,
@@ -2183,11 +2395,14 @@ function normalizePlan(
     'compare',
     'tag_edit',
     'organize',
+    'compose',
+    'compose_video', // 旧名 → 下方归一为 compose
     'chitchat',
     'clarify',
   ].includes(intentRaw)
     ? intentRaw
     : 'search';
+  if (intent === 'compose_video') intent = 'compose';
   let queries = Array.isArray(json?.queries)
     ? json.queries.map((q) => String(q || '').trim()).filter(Boolean)
     : [];
@@ -2330,6 +2545,7 @@ function normalizePlan(
       intent !== 'compare' &&
       intent !== 'tag_edit' &&
       intent !== 'organize' &&
+      intent !== 'compose' &&
       intent !== 'chitchat' &&
       intent !== 'clarify' &&
       queries.length === 0
@@ -2343,6 +2559,18 @@ function normalizePlan(
         followUp = true;
         focusBound = true;
       }
+    }
+  }
+
+  // 明确「根据转写写文章」时强制 compose，避免被上面 focus→search 或模型误判冲掉
+  const askCompose = /根据转写\s*写|转写写一篇|把转写整理成|整理成一篇文章/.test(
+    String(userContent || ''),
+  );
+  if (askCompose) {
+    intent = 'compose';
+    if (!excerptItemIds.length && focusItem?.itemId) {
+      const fid = Number(focusItem.itemId);
+      if (Number.isFinite(fid) && fid > 0) excerptItemIds = [fid];
     }
   }
 

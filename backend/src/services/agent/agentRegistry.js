@@ -4,6 +4,7 @@ const listLibrary = require('./tools/listLibrary');
 const listTags = require('./tools/listTags');
 const proposeItemTagEdit = require('./tools/proposeItemTagEdit');
 const proposeOrganize = require('./tools/proposeOrganize');
+const draftFromTranscript = require('./tools/draftFromTranscript');
 
 const ALL_TOOLS = [
   searchLibrary,
@@ -12,6 +13,7 @@ const ALL_TOOLS = [
   listTags,
   proposeItemTagEdit,
   proposeOrganize,
+  draftFromTranscript,
 ];
 
 /**
@@ -24,7 +26,12 @@ function listTools(opts = {}) {
 }
 
 function getTool(name) {
-  return ALL_TOOLS.find((t) => t.name === name) || null;
+  const key = String(name || '');
+  // 旧名兼容：draft_from_transcript → draft_article
+  if (key === 'draft_from_transcript') {
+    return ALL_TOOLS.find((t) => t.name === 'draft_article') || null;
+  }
+  return ALL_TOOLS.find((t) => t.name === key) || null;
 }
 
 async function executeTool(name, ctx, args) {

@@ -384,10 +384,10 @@ img { max-width: 100%; height: auto; }
 .phone-front {
   z-index: 3;
   margin-left: -72px;
-  transform: translate(0, 12px) rotate(3deg) scale(1);
+  transform: translate(0, 12px) rotate(1.5deg);
   transform-origin: bottom center;
   animation-delay: 0.36s;
-  --phone-rest: translate(0, 12px) rotate(3deg) scale(1);
+  --phone-rest: translate(0, 12px) rotate(1.5deg);
 }
 
 /* —— Sections —— */
@@ -509,14 +509,19 @@ img { max-width: 100%; height: auto; }
 .journey-panel[hidden] { display: none !important; }
 
 /* —— Phone —— */
+/* 圆角/边框/侧键随 --w 比例缩放，避免 hero 缩小后「胖圆角」变形 */
 .phone {
   --w: 268px;
+  --phone-pad: calc(var(--w) * 0.041);
+  --phone-radius: calc(var(--w) * 0.179);
+  --phone-screen-radius: calc(var(--w) * 0.142);
+  --phone-btn-w: max(2px, calc(var(--w) * 0.011));
   position: relative;
   margin: 0;
   width: var(--w);
-  padding: 11px;
+  padding: var(--phone-pad);
   background: linear-gradient(160deg, #3a3a3c 0%, #1c1c1e 42%, #0d0d0f 100%);
-  border-radius: 48px;
+  border-radius: var(--phone-radius);
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.22),
     0 0 0 1px rgba(0, 0, 0, 0.85),
@@ -526,7 +531,7 @@ img { max-width: 100%; height: auto; }
 
 .phone-screen {
   overflow: hidden;
-  border-radius: 38px;
+  border-radius: var(--phone-screen-radius);
   background: #000;
   line-height: 0;
 }
@@ -544,34 +549,34 @@ img { max-width: 100%; height: auto; }
 }
 
 .phone-btn.silent {
-  left: -3px;
-  top: 92px;
-  width: 3px;
-  height: 22px;
+  left: calc(var(--phone-btn-w) * -1);
+  top: calc(var(--w) * 0.343);
+  width: var(--phone-btn-w);
+  height: calc(var(--w) * 0.082);
   border-radius: 2px 0 0 2px;
 }
 
 .phone-btn.vol-up {
-  left: -3px;
-  top: 132px;
-  width: 3px;
-  height: 42px;
+  left: calc(var(--phone-btn-w) * -1);
+  top: calc(var(--w) * 0.493);
+  width: var(--phone-btn-w);
+  height: calc(var(--w) * 0.157);
   border-radius: 2px 0 0 2px;
 }
 
 .phone-btn.vol-down {
-  left: -3px;
-  top: 182px;
-  width: 3px;
-  height: 42px;
+  left: calc(var(--phone-btn-w) * -1);
+  top: calc(var(--w) * 0.679);
+  width: var(--phone-btn-w);
+  height: calc(var(--w) * 0.157);
   border-radius: 2px 0 0 2px;
 }
 
 .phone-btn.power {
-  right: -3px;
-  top: 160px;
-  width: 3px;
-  height: 64px;
+  right: calc(var(--phone-btn-w) * -1);
+  top: calc(var(--w) * 0.597);
+  width: var(--phone-btn-w);
+  height: calc(var(--w) * 0.239);
   border-radius: 0 2px 2px 0;
 }
 
@@ -913,7 +918,7 @@ img { max-width: 100%; height: auto; }
   transform: translateY(0);
 }
 
-/* 平板/手机：双机缩小叠放，完整露底 */
+/* 平板/手机：首屏只留一台 iPhone，避免双机叠放挤扁 */
 @media (max-width: 1100px) {
   .hero {
     min-height: auto;
@@ -922,27 +927,26 @@ img { max-width: 100%; height: auto; }
 
   .hero-devices {
     width: 100%;
-    max-width: 420px;
+    max-width: none;
     margin-top: 28px;
     padding: 12px 0 0;
     min-height: 0;
     justify-content: center;
+    align-items: center;
   }
 
   .tablet-hero {
-    --w: min(320px, 78vw);
-    --phone-rest: translate(8px, 0) rotate(-1.5deg);
-    transform: translate(8px, 0) rotate(-1.5deg);
+    display: none;
   }
 
   .phone-hero {
-    --w: min(118px, 28vw);
+    --w: min(280px, 72vw);
   }
 
   .phone-front {
-    margin-left: -48px;
-    --phone-rest: translate(0, 8px) rotate(2.5deg);
-    transform: translate(0, 8px) rotate(2.5deg);
+    margin-left: 0;
+    --phone-rest: none;
+    transform: none;
   }
 
   .inner,
@@ -1058,20 +1062,8 @@ img { max-width: 100%; height: auto; }
     margin-top: 14px;
   }
 
-  .hero-devices {
-    max-width: 360px;
-  }
-
-  .tablet-hero {
-    --w: min(280px, 82vw);
-  }
-
   .phone-hero {
-    --w: min(104px, 30vw);
-  }
-
-  .phone-front {
-    margin-left: -40px;
+    --w: min(260px, 70vw);
   }
 
   .section {
@@ -1138,12 +1130,8 @@ img { max-width: 100%; height: auto; }
     gap: 24px;
   }
 
-  .tablet-hero {
-    --w: min(250px, 86vw);
-  }
-
   .phone-hero {
-    --w: min(96px, 28vw);
+    --w: min(240px, 72vw);
   }
 
   .phone {
@@ -1168,7 +1156,7 @@ img { max-width: 100%; height: auto; }
     transform: translate(18px, 0) rotate(-2deg);
   }
   .phone-front {
-    transform: translate(0, 12px) rotate(3deg);
+    transform: translate(0, 12px) rotate(1.5deg);
   }
   .reveal,
   .reveal-stagger > * {
@@ -1178,10 +1166,10 @@ img { max-width: 100%; height: auto; }
   }
   @media (max-width: 1100px) {
     .tablet-hero {
-      transform: translate(8px, 0) rotate(-1.5deg);
+      display: none;
     }
     .phone-front {
-      transform: translate(0, 8px) rotate(2.5deg);
+      transform: none;
     }
   }
 }

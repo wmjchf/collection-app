@@ -12,7 +12,7 @@ class AboutHubPage extends StatelessWidget {
   static const _bg = Color(0xFFF7F7FA);
   static const _text = Color(0xFF1F242E);
   static const _muted = Color(0xFF737A85);
-  static const _version = 'v1.7.3';
+  static const _version = 'v1.7.4';
 
   void _open(BuildContext context, Widget page) {
     openSettingsPage<void>(context, page);

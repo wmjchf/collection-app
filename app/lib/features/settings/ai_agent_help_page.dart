@@ -50,8 +50,9 @@ class AiAgentHelpPage extends StatelessWidget {
               const _SectionHeading('能做什么'),
               const SizedBox(height: 10),
               const _CapabilityCard(
-                title: '检索收藏',
-                desc: '问「今天收藏了什么」「关于××的有哪些」，在你自己的库里找内容。',
+                title: '意图搜索',
+                desc:
+                    '按你的意思在库里找，不只关键词硬匹配。例如「类似这篇文章的」「关于××的有哪些」。',
               ),
               const SizedBox(height: 12),
               const _CapabilityCard(
@@ -67,6 +68,12 @@ class AiAgentHelpPage extends StatelessWidget {
               const _CapabilityCard(
                 title: '改标与归类',
                 desc: '说明想怎么改标签、怎么建归类；助手给出预览，确认后才写入。',
+              ),
+              const SizedBox(height: 12),
+              const _CapabilityCard(
+                title: '转写写文章',
+                desc:
+                    '对已转写的视频说「根据转写写一篇文章」：整理成可读长文，并把「这节课」等口播说法改成文章语体。暂不支持用正文生成，也不做图文创作。',
               ),
               const SizedBox(height: 24),
               const _SectionHeading('从哪里打开'),
@@ -151,7 +158,7 @@ class _ScreenshotCard extends StatelessWidget {
           const Padding(
             padding: EdgeInsets.symmetric(horizontal: 4),
             child: Text(
-              '可问最近收藏了什么；点选出处后再深入解读或对照。',
+              '可按意图在库里找；点选出处后再深入解读或对照。',
               style: TextStyle(
                 fontSize: 13,
                 color: AiAgentHelpPage._muted,
@@ -212,8 +219,9 @@ class _IntroCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            '太子Pro 的核心能力之一：在你的收藏库里检索、对照、深挖，'
-            '也可改标签与归类。另一核心能力是音视频转写。',
+            '太子Pro 的核心能力之一：在你的收藏库里做意图搜索、对照、深挖，'
+            '也可改标签与归类；还能根据已转写视频写文章。'
+            '另一核心能力是音视频转写。',
             style: TextStyle(
               fontSize: 15,
               color: AiAgentHelpPage._text,
@@ -241,7 +249,7 @@ class _HighlightStrip extends StatelessWidget {
         borderRadius: BorderRadius.circular(12),
       ),
       child: const Text(
-        '不是全网搜索，而是翻你自己存过的内容——找得到、对得上、用得上。',
+        '不是全网搜索，而是按意图翻你自己存过的内容——找得到、对得上、用得上。',
         style: TextStyle(
           fontSize: 14,
           color: AiAgentHelpPage._text,

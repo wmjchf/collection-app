@@ -11,6 +11,7 @@ import 'package:super_collection/features/agent/agent_chat_cache.dart';
 import 'package:super_collection/features/agent/agent_host.dart';
 import 'package:super_collection/features/agent/agent_markdown.dart';
 import 'package:super_collection/features/agent/agent_models.dart';
+import 'package:super_collection/features/agent/agent_preset_cache.dart';
 import 'package:super_collection/features/agent/agent_repository.dart';
 import 'package:super_collection/features/auth/auth_repository.dart';
 import 'package:super_collection/features/home/home_format.dart';
@@ -69,6 +70,10 @@ class _AgentPageState extends State<AgentPage> {
   /// 已勾选进输入区的出处（以 chip 展示，发送时拼进正文）
   final Map<int, AgentCitation> _pickedCitations = {};
   int? _cacheUserId;
+  /// 动态预设（LLM）；为空则用规则兜底
+  List<String>? _llmPresets;
+  String? _presetCacheKey;
+  int _presetFetchGen = 0;
 
   int? get _focusItemId =>
       widget.focusItemId ?? widget.focusItem?.id ?? _focusItem?.id;
@@ -110,6 +115,8 @@ class _AgentPageState extends State<AgentPage> {
       focusItemId: _focusItemId,
       conversationId: convId,
       messages: _messages,
+      presets: _llmPresets,
+      presetKey: _presetCacheKey,
     );
   }
 
@@ -132,6 +139,11 @@ class _AgentPageState extends State<AgentPage> {
           _messages
             ..clear()
             ..addAll(cached.messages.where((m) => m.isUser || m.isAssistant));
+          // 与会话一并恢复预设，避免杀进程后回落规则/重打模型
+          if (cached.presets.isNotEmpty) {
+            _llmPresets = cached.presets;
+            _presetCacheKey = cached.presetKey;
+          }
           _booting = false;
           _error = null;
         });
@@ -139,6 +151,7 @@ class _AgentPageState extends State<AgentPage> {
         if (_messages.isNotEmpty) {
           unawaited(_scrollToEndSettled());
         }
+        unawaited(_refreshLlmPresets());
       }
     }
 
@@ -175,6 +188,7 @@ class _AgentPageState extends State<AgentPage> {
         // 出处卡/Markdown 多帧才撑开高度，单次 jump 会停在半截
         unawaited(_scrollToEndSettled());
       }
+      unawaited(_refreshLlmPresets());
     } on ApiException catch (e) {
       if (!mounted) return;
       // 已有缓存可继续聊；无缓存才当错误页
@@ -224,6 +238,7 @@ class _AgentPageState extends State<AgentPage> {
       _sending = true;
       _streamLive = false;
       _pickedCitations.clear();
+      _llmPresets = null;
     });
     if (preset == null) _input.clear();
 
@@ -301,6 +316,7 @@ class _AgentPageState extends State<AgentPage> {
       });
       unawaited(_persistCache());
       _scrollToEnd();
+      unawaited(_refreshLlmPresets());
     } on ApiException catch (e) {
       if (!mounted) return;
       setState(() {
@@ -321,6 +337,85 @@ class _AgentPageState extends State<AgentPage> {
         _streamLive = false;
       });
       AppToast.show(context, '发送失败，请重试');
+    }
+  }
+
+  bool _hasSuccessfulTranscript() {
+    final item = _focusItem;
+    if (item == null) return false;
+    return item.transcriptSegments.values.any((s) => s.isSuccess && s.hasText);
+  }
+
+  /// 异步拉动态预设。不计用户额度（服务端约定）。
+  /// 全局空会话不请求；单篇或已有对话才拉。键未变则复用（含会话缓存里恢复的）。
+  Future<void> _refreshLlmPresets() async {
+    final convId = _conversationId;
+    final userId = _cacheUserId;
+    if (convId == null || userId == null || !mounted) return;
+    final focused = _focusItem != null || _focusItemId != null;
+    final hasMessages = _messages.isNotEmpty;
+    if (!focused && !hasMessages) {
+      if (mounted) {
+        setState(() {
+          _llmPresets = null;
+          _presetCacheKey = null;
+        });
+      }
+      return;
+    }
+    AgentMessage? lastAssistant;
+    for (var i = _messages.length - 1; i >= 0; i--) {
+      if (_messages[i].isAssistant) {
+        lastAssistant = _messages[i];
+        break;
+      }
+    }
+    if (lastAssistant?.pendingAction?.isPending == true) {
+      if (mounted) {
+        setState(() {
+          _llmPresets = const [];
+          _presetCacheKey = null;
+        });
+      }
+      return;
+    }
+
+    final cacheKey = AgentPresetCache.cacheKey(
+      userId: userId,
+      focusItemId: _focusItemId,
+      conversationId: convId,
+      lastAssistantId: lastAssistant?.id ?? 0,
+      hasSuccessfulTranscript: _hasSuccessfulTranscript(),
+    );
+    // 已与当前键一致（含刚从会话缓存恢复）→ 不调模型
+    if (_presetCacheKey == cacheKey &&
+        _llmPresets != null &&
+        _llmPresets!.isNotEmpty) {
+      return;
+    }
+
+    final gen = ++_presetFetchGen;
+    try {
+      final list = await _repo.fetchPresets(
+        conversationId: convId,
+        focusItemId: _focusItemId,
+        lastAssistantContent: lastAssistant?.content,
+        hasPendingAction: lastAssistant?.pendingAction?.isPending == true,
+      );
+      if (!mounted || gen != _presetFetchGen) return;
+      setState(() {
+        _llmPresets = list;
+        _presetCacheKey = cacheKey;
+      });
+      unawaited(_persistCache());
+    } catch (_) {
+      if (!mounted || gen != _presetFetchGen) return;
+      // 已有恢复的预设则保留，避免杀进程后闪没
+      if (_llmPresets != null && _llmPresets!.isNotEmpty) return;
+      setState(() {
+        _llmPresets = const [];
+        _presetCacheKey = null;
+      });
     }
   }
 
@@ -428,9 +523,11 @@ class _AgentPageState extends State<AgentPage> {
           _messages.add(next);
         }
         _confirmingAction = false;
+        _llmPresets = null;
       });
       unawaited(_persistCache());
       _scrollToEnd();
+      unawaited(_refreshLlmPresets());
     } on ApiException catch (e) {
       if (!mounted) return;
       setState(() => _confirmingAction = false);
@@ -493,10 +590,12 @@ class _AgentPageState extends State<AgentPage> {
       setState(() {
         _conversationId = conv.id;
         _messages.clear();
+        _llmPresets = null;
         _booting = false;
       });
       unawaited(_persistCache());
       AppToast.show(context, '已删除聊天记录');
+      unawaited(_refreshLlmPresets());
     } on ApiException catch (e) {
       if (!mounted) return;
       setState(() => _booting = false);
@@ -665,6 +764,7 @@ class _AgentPageState extends State<AgentPage> {
                                         text: m.content,
                                         citations: m.citations,
                                         pendingAction: m.pendingAction,
+                                        showCopyAll: m.isComposeArticleDraft,
                                         pickedIds: _pickedCitations.keys.toSet(),
                                         onOpen: _openCitation,
                                         onPick: _pickCitationIntoInput,
@@ -719,25 +819,21 @@ class _AgentPageState extends State<AgentPage> {
     );
   }
 
-  /// 空会话起步；有回复后按上一轮规则切换（不走 AI）。
+  /// 动态预设优先。
+  /// - 全局空会话：规则起步（不拉/不等动态）
+  /// - 单篇助手（即使尚无 message）或已有对话：只显示动态结果，未返回前不展示，避免布局跳动
   List<String> _resolvePresetItems() {
-    if (_messages.isEmpty) {
-      return _AgentPresetRules.starters(focused: _focusItem != null);
+    final focused = _focusItem != null || _focusItemId != null;
+    final hasMessages = _messages.isNotEmpty;
+    final needDynamic = focused || hasMessages;
+
+    if (needDynamic) {
+      final dynamic = _llmPresets;
+      if (dynamic != null && dynamic.isNotEmpty) return dynamic;
+      return const [];
     }
-    AgentMessage? lastAssistant;
-    for (var i = _messages.length - 1; i >= 0; i--) {
-      if (_messages[i].isAssistant) {
-        lastAssistant = _messages[i];
-        break;
-      }
-    }
-    if (lastAssistant == null) {
-      return _AgentPresetRules.starters(focused: _focusItem != null);
-    }
-    return _AgentPresetRules.fromAssistant(
-      lastAssistant,
-      focused: _focusItem != null,
-    );
+
+    return _AgentPresetRules.starters(focused: false);
   }
 
   /// 划选工具条：复制纯文本；分享走阅读页摘句海报（先定出处篇）。
@@ -1022,7 +1118,7 @@ class _EmptyState extends StatelessWidget {
             ),
             const SizedBox(height: 12),
             const Text(
-              '检索、对照、深挖；也可改标签与归类。',
+              '意图搜索、对照、深挖；也可改标签与归类。',
               textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: 15,
@@ -1354,6 +1450,7 @@ class _AssistantBlock extends StatelessWidget {
     required this.onPick,
     required this.contextMenuBuilder,
     this.pendingAction,
+    this.showCopyAll = false,
     this.pickEnabled = true,
     this.confirmEnabled = true,
     this.onConfirmAction,
@@ -1362,6 +1459,7 @@ class _AssistantBlock extends StatelessWidget {
   final String text;
   final List<AgentCitation> citations;
   final AgentPendingAction? pendingAction;
+  final bool showCopyAll;
   final Set<int> pickedIds;
   final ValueChanged<AgentCitation> onOpen;
   final ValueChanged<AgentCitation> onPick;
@@ -1372,9 +1470,21 @@ class _AssistantBlock extends StatelessWidget {
 
   static const _brand = Color(0xFF2F6FED);
 
+  Future<void> _copyAll(BuildContext context) async {
+    final body = text.trim();
+    if (body.isEmpty) return;
+    await Clipboard.setData(ClipboardData(text: body));
+    if (context.mounted) AppToast.show(context, '已复制');
+  }
+
   @override
   Widget build(BuildContext context) {
     final showConfirm = pendingAction?.isPending == true && onConfirmAction != null;
+    // 写文章草稿 / 长文 / 以一级标题开头的回复显示复制
+    final trimmed = text.trim();
+    final copyVisible = showCopyAll ||
+        trimmed.startsWith('# ') ||
+        trimmed.length >= 160;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1387,6 +1497,28 @@ class _AssistantBlock extends StatelessWidget {
             contextMenuBuilder: contextMenuBuilder,
           ),
         ),
+        if (copyVisible) ...[
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: () => _copyAll(context),
+              icon: const Icon(Icons.copy_rounded, size: 18),
+              label: const Text(
+                '复制全文',
+                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+              ),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: _brand,
+                side: const BorderSide(color: Color(0xFFB7C9F5)),
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+              ),
+            ),
+          ),
+        ],
         if (citations.isNotEmpty) ...[
           const SizedBox(height: 12),
           const Text(
@@ -1495,9 +1627,9 @@ class _AgentPresetRules {
     if (focused) {
       return const [
         '这篇的核心观点是什么？',
+        '根据转写写一篇文章',
         '还有哪些相关收藏？',
         '调整这篇的标签',
-        '整理归类',
       ];
     }
     return const [
@@ -1548,9 +1680,9 @@ class _AgentPresetRules {
     if (focused) {
       return const [
         '再展开说明',
+        '根据转写写一篇文章',
         '对照其它收藏',
         '调整这篇的标签',
-        '整理归类',
       ];
     }
     return const [
