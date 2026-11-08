@@ -1748,8 +1748,7 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
     final confirmed = await showAppConfirmDialog(
       context,
       title: '开始转写？',
-      message:
-          '转写会按音视频实际时长扣减本月转写分钟；例如 12 分钟的视频约消耗 12 分钟额度。单次最长支持约 1 小时。确定后开始处理。$remainHint',
+      message: '按实际时长扣减本月转写分钟，单次最长约 1 小时。$remainHint',
       cancelLabel: '取消',
       confirmLabel: '开始转写',
       dangerConfirm: false,
