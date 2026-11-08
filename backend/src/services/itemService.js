@@ -1309,6 +1309,17 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+/** Fun-ASR 直拉防盗链 CDN 常见失败码 */
+function isAsrHotlinkForbidden(errorMessage) {
+  const s = String(errorMessage || '').toUpperCase();
+  return (
+    s.includes('FILE_402') ||
+    s.includes('FILE_403') ||
+    s.includes('FILE_402_FORBIDDEN') ||
+    s.includes('FILE_403_FORBIDDEN')
+  );
+}
+
 async function listTranscriptTargetsForUser(userId, itemId) {
   const [rows] = await pool.execute(
     `SELECT * FROM items
@@ -1404,6 +1415,9 @@ async function beginTranscriptSegment(
     transcribedAt: null,
     phase: 'queued',
     phaseLabel: '排队等待中',
+    phaseHint: '即将开始准备音视频并提交识别',
+    phaseAt: new Date().toISOString(),
+    mediaDurationSec: null,
   });
 
   await pool.execute(
@@ -1488,8 +1502,7 @@ async function runTranscriptJob(itemId) {
     segments = transcriptSegments.setSegment(segments, segmentKey, {
       status: 'failed',
       error: '没有可转写的音视频直链',
-      phase: null,
-      phaseLabel: null,
+      ...clearTranscriptPhaseFields(),
     });
     await saveTranscriptSegments(itemId, segments);
     analyticsService.trackTranscriptOutcome(row, segmentKey, {
@@ -1502,145 +1515,190 @@ async function runTranscriptJob(itemId) {
   let taskId = seg.taskId;
   let ossKeyToDelete = null;
   let viaOss = false;
+  let forceOss = false;
+  let ossForbiddenRetried = false;
   let downloadMs = 0;
   let uploadMs = 0;
   let submitMs = 0;
   let pollMs = 0;
   let pollAttempts = 0;
   let lastStatus = '';
-  let probedDurationSec = null;
+  let probedDurationSec =
+    seg.mediaDurationSec != null && Number(seg.mediaDurationSec) > 0
+      ? Number(seg.mediaDurationSec)
+      : null;
+  const pageUrl = row.canonical_url || row.url;
 
-  const persistPhase = async (phase, phaseLabel) => {
-    segments = transcriptSegments.setSegment(segments, segmentKey, {
+  const persistPhase = async (phase, phaseLabel, meta = {}) => {
+    const prev = transcriptSegments.normalizeSegment(segments[segmentKey]);
+    const phaseChanged = prev.phase !== phase;
+    const patch = {
       phase,
       phaseLabel,
-    });
+      phaseHint:
+        meta.phaseHint != null
+          ? meta.phaseHint
+          : defaultTranscriptPhaseHint(phase),
+    };
+    // 同阶段只刷新文案时保留 phaseAt，避免「已等待」被重置
+    if (phaseChanged || !prev.phaseAt) {
+      patch.phaseAt = new Date().toISOString();
+    }
+    if (
+      meta.mediaDurationSec != null &&
+      Number.isFinite(Number(meta.mediaDurationSec)) &&
+      Number(meta.mediaDurationSec) > 0
+    ) {
+      patch.mediaDurationSec = Number(meta.mediaDurationSec);
+      probedDurationSec = Number(meta.mediaDurationSec);
+    }
+    segments = transcriptSegments.setSegment(segments, segmentKey, patch);
     await saveTranscriptSegments(itemId, segments);
   };
 
   console.log(
     `[runTranscriptJob] start item=${itemId} segment=${segmentKey} ` +
-      `platform=${row.platform} viaOssHint=${transcriptMediaOss.needsOssProxy(mediaUrl)} ` +
+      `platform=${row.platform} viaOssHint=${transcriptMediaOss.needsOssProxy(mediaUrl, {
+        platform: row.platform,
+        pageUrl,
+      })} ` +
       `mediaHost=${safeMediaHost(mediaUrl)}`,
   );
 
   try {
-    if (!taskId) {
-      const pageUrl = row.canonical_url || row.url;
-      const resolveT0 = Date.now();
-      const resolved = await transcriptMediaOss.resolveAsrFileLink({
-        mediaUrl,
-        pageUrl,
-        itemId,
-        segmentKey,
-        onPhase: persistPhase,
-      });
-      viaOss = !!resolved.viaOss;
-      downloadMs = resolved.downloadMs || 0;
-      uploadMs = resolved.uploadMs || 0;
-      ossKeyToDelete = resolved.ossKey;
-      if (
-        resolved.durationSec != null &&
-        Number.isFinite(Number(resolved.durationSec))
-      ) {
-        probedDurationSec = Number(resolved.durationSec);
-      }
-      console.log(
-        `[runTranscriptJob] file_link ready item=${itemId} viaOss=${viaOss} ` +
-          `resolveMs=${Date.now() - resolveT0} ` +
-          `downloadMs=${downloadMs} uploadMs=${uploadMs} ` +
-          `durationSec=${resolved.durationSec == null ? 'unknown' : Number(resolved.durationSec).toFixed(1)}`,
-      );
-
-      // 严格：探测到时长后、提交 ASR 前，按预估秒数校验转写额度
-      if (probedDurationSec != null && probedDurationSec > 0) {
-        const usageService = require('./usageService');
-        try {
-          await usageService.assertTranscriptQuota(row.user_id, {
-            estimatedSeconds: probedDurationSec,
-          });
-        } catch (quotaErr) {
-          if (quotaErr && quotaErr.code === 'QUOTA_EXCEEDED') {
-            console.warn(
-              `[runTranscriptJob] quota exceeded item=${itemId} ` +
-                `needSec=${probedDurationSec.toFixed(1)}: ${quotaErr.message}`,
-            );
-            segments = transcriptSegments.setSegment(segments, segmentKey, {
-              status: 'failed',
-              error: String(quotaErr.message || '转写额度不足').slice(0, 500),
-              taskId: null,
-              mediaUrl: null,
-              phase: null,
-              phaseLabel: null,
-            });
-            await saveTranscriptSegments(itemId, segments);
-            analyticsService.trackTranscriptOutcome(row, segmentKey, {
-              ok: false,
-              errorMessage: quotaErr.message,
-            });
-            return;
-          }
-          throw quotaErr;
-        }
-      }
-
-      await persistPhase('submitting', '提交识别中');
-      const submitT0 = Date.now();
-      const submitted = await aliyunAsr.submitFileTrans(resolved.fileLink);
-      submitMs = Date.now() - submitT0;
-      taskId = submitted.taskId;
-      console.log(
-        `[runTranscriptJob] submitted item=${itemId} taskId=${taskId} submitMs=${submitMs}`,
-      );
-      segments = transcriptSegments.setSegment(segments, segmentKey, {
-        taskId,
-        phase: 'queueing',
-        phaseLabel: '识别排队中',
-      });
-      await saveTranscriptSegments(itemId, segments);
-    } else {
-      await persistPhase('recognizing', '识别中');
-    }
-
     const maxAttempts = 180;
     const intervalMs = 10000;
-    const pollT0 = Date.now();
+    let pollT0 = Date.now();
     let lastPhase = '';
-    for (let i = 0; i < maxAttempts; i += 1) {
-      pollAttempts = i + 1;
+    let lastWaitBucket = -1;
+    let pollIndex = 0;
+
+    while (pollIndex < maxAttempts) {
+      if (!taskId) {
+        const resolveT0 = Date.now();
+        const resolved = await transcriptMediaOss.resolveAsrFileLink({
+          mediaUrl,
+          pageUrl,
+          itemId,
+          segmentKey,
+          userId: row.user_id,
+          platform: row.platform,
+          forceOss,
+          onPhase: persistPhase,
+        });
+        viaOss = !!resolved.viaOss;
+        downloadMs = resolved.downloadMs || 0;
+        uploadMs = resolved.uploadMs || 0;
+        ossKeyToDelete = resolved.ossKey;
+        if (
+          resolved.durationSec != null &&
+          Number.isFinite(Number(resolved.durationSec))
+        ) {
+          probedDurationSec = Number(resolved.durationSec);
+        }
+        console.log(
+          `[runTranscriptJob] file_link ready item=${itemId} viaOss=${viaOss} ` +
+            `forceOss=${!!forceOss} resolveMs=${Date.now() - resolveT0} ` +
+            `downloadMs=${downloadMs} uploadMs=${uploadMs} ` +
+            `durationSec=${resolved.durationSec == null ? 'unknown' : Number(resolved.durationSec).toFixed(1)}`,
+        );
+
+        await persistPhase('submitting', '正在提交识别任务', {
+          mediaDurationSec: probedDurationSec,
+        });
+        const submitT0 = Date.now();
+        const submitted = await aliyunAsr.submitFileTrans(resolved.fileLink);
+        submitMs = Date.now() - submitT0;
+        taskId = submitted.taskId;
+        console.log(
+          `[runTranscriptJob] submitted item=${itemId} taskId=${taskId} submitMs=${submitMs}`,
+        );
+        await persistPhase(
+          'queueing',
+          buildRecognizePhaseLabel('queueing', probedDurationSec, 0),
+          {
+            mediaDurationSec: probedDurationSec,
+            phaseHint: defaultTranscriptPhaseHint('queueing'),
+          },
+        );
+        segments = transcriptSegments.setSegment(segments, segmentKey, {
+          taskId,
+        });
+        await saveTranscriptSegments(itemId, segments);
+        pollT0 = Date.now();
+        pollIndex = 0;
+        lastPhase = '';
+        lastWaitBucket = -1;
+      } else if (pollIndex === 0 && !forceOss) {
+        // 续跑已有 task：直接进入识别态
+        await persistPhase(
+          'recognizing',
+          buildRecognizePhaseLabel('recognizing', probedDurationSec, 0),
+        );
+      }
+
+      pollAttempts = pollIndex + 1;
       const result = await aliyunAsr.getFileTransResult(taskId);
       lastStatus = result.statusText || '';
       if (!result.done) {
         const phase =
           lastStatus === 'QUEUEING' ? 'queueing' : 'recognizing';
-        const phaseLabel =
-          lastStatus === 'QUEUEING' ? '识别排队中' : '识别中';
-        if (phase !== lastPhase) {
+        const waitMin = Math.floor((Date.now() - pollT0) / 60000);
+        const waitBucket = waitMin; // 每满 1 分钟刷新一次文案
+        const phaseLabel = buildRecognizePhaseLabel(
+          phase,
+          probedDurationSec,
+          waitMin,
+        );
+        if (phase !== lastPhase || waitBucket !== lastWaitBucket) {
           lastPhase = phase;
-          await persistPhase(phase, phaseLabel);
+          lastWaitBucket = waitBucket;
+          await persistPhase(phase, phaseLabel, {
+            mediaDurationSec: probedDurationSec,
+          });
         }
-        if (i === 0 || i % 6 === 5) {
+        if (pollIndex === 0 || pollIndex % 6 === 5) {
           console.log(
             `[runTranscriptJob] polling item=${itemId} attempt=${pollAttempts} ` +
               `status=${lastStatus} elapsedMs=${Date.now() - pollT0}`,
           );
         }
         await sleep(intervalMs);
+        pollIndex += 1;
         continue;
       }
       pollMs = Date.now() - pollT0;
       if (!result.ok) {
+        const errMsg = String(result.errorMessage || '转写失败');
+        const canRetryOss =
+          !viaOss &&
+          !ossForbiddenRetried &&
+          isAsrHotlinkForbidden(errMsg) &&
+          transcriptMediaOss.isOssConfigured();
+        if (canRetryOss) {
+          console.warn(
+            `[runTranscriptJob] hotlink forbidden; retry via OSS item=${itemId} ` +
+              `err=${errMsg.slice(0, 120)}`,
+          );
+          ossForbiddenRetried = true;
+          forceOss = true;
+          taskId = null;
+          segments = transcriptSegments.setSegment(segments, segmentKey, {
+            taskId: null,
+          });
+          await saveTranscriptSegments(itemId, segments);
+          continue;
+        }
         console.warn(
           `[runTranscriptJob] failed item=${itemId} status=${lastStatus} ` +
             `pollMs=${pollMs} attempts=${pollAttempts} totalMs=${Date.now() - jobT0}`,
         );
         segments = transcriptSegments.setSegment(segments, segmentKey, {
           status: 'failed',
-          error: String(result.errorMessage || '转写失败').slice(0, 500),
+          error: errMsg.slice(0, 500),
           taskId: null,
           mediaUrl: null,
-          phase: null,
-          phaseLabel: null,
+          ...clearTranscriptPhaseFields(),
         });
         await saveTranscriptSegments(itemId, segments);
         analyticsService.trackTranscriptOutcome(row, segmentKey, {
@@ -1665,8 +1723,7 @@ async function runTranscriptJob(itemId) {
         taskId: null,
         mediaUrl: null,
         transcribedAt,
-        phase: null,
-        phaseLabel: null,
+        ...clearTranscriptPhaseFields(),
       });
       await saveTranscriptSegments(itemId, segments);
 
@@ -1705,8 +1762,7 @@ async function runTranscriptJob(itemId) {
       error: '转写超时，请稍后重试',
       taskId: null,
       mediaUrl: null,
-      phase: null,
-      phaseLabel: null,
+      ...clearTranscriptPhaseFields(),
     });
     await saveTranscriptSegments(itemId, segments);
     analyticsService.trackTranscriptOutcome(row, segmentKey, {
@@ -1724,8 +1780,7 @@ async function runTranscriptJob(itemId) {
       error: String(err.message || '转写异常').slice(0, 500),
       taskId: null,
       mediaUrl: null,
-      phase: null,
-      phaseLabel: null,
+      ...clearTranscriptPhaseFields(),
     });
     await saveTranscriptSegments(itemId, segments);
     analyticsService.trackTranscriptOutcome(row, segmentKey, {
@@ -1766,6 +1821,46 @@ async function runTranscriptJob(itemId) {
       );
     }
   }
+}
+
+function clearTranscriptPhaseFields() {
+  return {
+    phase: null,
+    phaseLabel: null,
+    phaseHint: null,
+    phaseAt: null,
+    mediaDurationSec: null,
+  };
+}
+
+function defaultTranscriptPhaseHint(phase) {
+  switch (String(phase || '')) {
+    case 'queued':
+      return '即将开始准备音视频并提交识别';
+    case 'checking':
+      return '确认时长是否超限、本月转写分钟是否足够';
+    case 'downloading':
+      return '正在拉取音视频，文件较大时会久一些';
+    case 'uploading':
+      return '防盗链资源需先上传到安全地址再识别';
+    case 'submitting':
+      return '正在把任务交给语音识别服务';
+    case 'queueing':
+      return '识别服务排队中，一般很快会开始';
+    case 'recognizing':
+      return '模型识别中，通常比完整播放更快，可先去做别的事';
+    default:
+      return '转写进行中，请稍候';
+  }
+}
+
+function buildRecognizePhaseLabel(phase, _durationSec, waitMin) {
+  const waitPart =
+    waitMin >= 1 ? ` · 已等待约 ${waitMin} 分钟` : '';
+  if (phase === 'queueing') {
+    return `识别排队中${waitPart}`;
+  }
+  return `正在识别文稿${waitPart}`;
 }
 
 function safeMediaHost(mediaUrl) {

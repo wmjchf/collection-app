@@ -32,6 +32,36 @@ class AgentConversation {
       };
 }
 
+class AgentTagChip {
+  const AgentTagChip({
+    required this.id,
+    required this.name,
+    this.itemCount = 0,
+    this.isSystem = false,
+  });
+
+  final int id;
+  final String name;
+  final int itemCount;
+  final bool isSystem;
+
+  factory AgentTagChip.fromJson(Map<String, dynamic> json) {
+    return AgentTagChip(
+      id: (json['id'] as num?)?.toInt() ?? 0,
+      name: (json['name'] as String?)?.trim() ?? '',
+      itemCount: (json['itemCount'] as num?)?.toInt() ?? 0,
+      isSystem: json['isSystem'] as bool? ?? false,
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'name': name,
+        'itemCount': itemCount,
+        'isSystem': isSystem,
+      };
+}
+
 class AgentCitation {
   const AgentCitation({
     required this.itemId,
@@ -180,6 +210,33 @@ class AgentMessage {
 
   bool get isUser => role == 'user';
   bool get isAssistant => role == 'assistant';
+
+  /// list_tags 盘点结果：用于 chip 展示（不列文章）
+  List<AgentTagChip> get inventoryTags {
+    final out = <AgentTagChip>[];
+    final seen = <int>{};
+    for (final step in toolTrace) {
+      if (step['tool']?.toString() != 'list_tags') continue;
+      final raw = step['tags'];
+      if (raw is! List) continue;
+      for (final e in raw) {
+        Map<String, dynamic>? map;
+        if (e is Map<String, dynamic>) {
+          map = e;
+        } else if (e is Map) {
+          map = Map<String, dynamic>.from(e);
+        }
+        if (map == null) continue;
+        final chip = AgentTagChip.fromJson(map);
+        if (chip.id <= 0 || chip.name.isEmpty || seen.contains(chip.id)) {
+          continue;
+        }
+        seen.add(chip.id);
+        out.add(chip);
+      }
+    }
+    return out;
+  }
 
   AgentMessage copyWith({
     int? id,

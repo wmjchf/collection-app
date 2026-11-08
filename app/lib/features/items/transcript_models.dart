@@ -54,6 +54,9 @@ class TranscriptSegment {
     this.transcribedAt,
     this.phase,
     this.phaseLabel,
+    this.phaseHint,
+    this.phaseAt,
+    this.mediaDurationSec,
   });
 
   final String status;
@@ -63,8 +66,14 @@ class TranscriptSegment {
   final DateTime? transcribedAt;
   /// pending 分阶段：queued / downloading / checking / uploading / submitting / queueing / recognizing
   final String? phase;
-  /// 展示文案，如「下载媒体中」
+  /// 展示文案，如「正在下载音视频」
   final String? phaseLabel;
+  /// 阶段补充说明
+  final String? phaseHint;
+  /// 当前阶段开始时间（用于「已等待」）
+  final DateTime? phaseAt;
+  /// 探测到的媒体时长（秒）
+  final double? mediaDurationSec;
 
   bool get isPending => status == 'pending';
   bool get isSuccess => status == 'success';
@@ -75,6 +84,8 @@ class TranscriptSegment {
   factory TranscriptSegment.fromJson(Map<String, dynamic> json) {
     final phase = (json['phase'] as String?)?.trim();
     final phaseLabel = (json['phaseLabel'] as String?)?.trim();
+    final phaseHint = (json['phaseHint'] as String?)?.trim();
+    final dur = json['mediaDurationSec'];
     return TranscriptSegment(
       status: json['status'] as String? ?? 'none',
       text: json['text'] as String?,
@@ -83,6 +94,9 @@ class TranscriptSegment {
       transcribedAt: _parseTime(json['transcribedAt']),
       phase: (phase == null || phase.isEmpty) ? null : phase,
       phaseLabel: (phaseLabel == null || phaseLabel.isEmpty) ? null : phaseLabel,
+      phaseHint: (phaseHint == null || phaseHint.isEmpty) ? null : phaseHint,
+      phaseAt: _parseTime(json['phaseAt']),
+      mediaDurationSec: dur is num ? dur.toDouble() : null,
     );
   }
 

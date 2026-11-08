@@ -12,13 +12,25 @@ const {
   probeMediaDurationSec,
   assertDurationWithinLimit,
 } = require('./transcriptDuration');
+const usageService = require('./usageService');
 
-const MAX_BYTES = Number(process.env.ALIYUN_OSS_TRANSCRIPT_MAX_MB || 512) * 1024 * 1024;
+/** ≤0 / 未配正数 = 不限制下载体积（Fun-ASR 侧仍可能有上限） */
+const MAX_MB = Number(process.env.ALIYUN_OSS_TRANSCRIPT_MAX_MB);
+const MAX_BYTES =
+  Number.isFinite(MAX_MB) && MAX_MB > 0 ? MAX_MB * 1024 * 1024 : 0;
 const SIGNED_URL_EXPIRES_SEC = Number(process.env.ALIYUN_OSS_TRANSCRIPT_URL_EXPIRES || 86400);
 const OSS_TIMEOUT_MS = Number(process.env.ALIYUN_OSS_TRANSCRIPT_TIMEOUT_MS || 900000);
 const DOWNLOAD_TIMEOUT_MS = Number(
   process.env.ALIYUN_OSS_TRANSCRIPT_DOWNLOAD_TIMEOUT_MS || 900000,
 );
+/** 轻量测时长：先 Range 拉取的前缀大小（默认 8MB） */
+const PROBE_PREFIX_MB = Number(process.env.ALIYUN_OSS_TRANSCRIPT_PROBE_MB);
+const PROBE_PREFIX_BYTES =
+  (Number.isFinite(PROBE_PREFIX_MB) && PROBE_PREFIX_MB > 0
+    ? PROBE_PREFIX_MB
+    : 8) *
+  1024 *
+  1024;
 const MULTIPART_PART_SIZE = 5 * 1024 * 1024;
 
 let ossClient = null;
@@ -37,7 +49,46 @@ function isOssConfigured() {
   );
 }
 
-function needsOssProxy(mediaUrl) {
+/** 源站防盗链：CDN host 常变，不能只靠 bilivideo/hdslb 白名单 */
+const HOTLINK_PLATFORMS = new Set([
+  'bilibili',
+  'xiaohongshu',
+  'weibo',
+  'douyin',
+  'kuaishou',
+]);
+
+function pageLooksHotlink(pageUrl) {
+  const page = String(pageUrl || '').toLowerCase();
+  if (!page) return false;
+  return (
+    page.includes('bilibili.com') ||
+    page.includes('b23.tv') ||
+    page.includes('xiaohongshu.com') ||
+    page.includes('xhslink.com') ||
+    page.includes('weibo.com') ||
+    page.includes('weibo.cn') ||
+    page.includes('douyin.com') ||
+    page.includes('iesdouyin.com') ||
+    page.includes('v.douyin.com') ||
+    page.includes('kuaishou.com') ||
+    page.includes('gifshow.com')
+  );
+}
+
+/**
+ * Fun-ASR 直拉无 Referer；防盗链 CDN 须先下到 OSS。
+ * @param {string} mediaUrl
+ * @param {{ platform?: string, pageUrl?: string, force?: boolean }} [opts]
+ */
+function needsOssProxy(mediaUrl, opts = {}) {
+  if (opts.force) return true;
+  const platform = String(opts.platform || '')
+    .toLowerCase()
+    .trim();
+  if (HOTLINK_PLATFORMS.has(platform)) return true;
+  if (pageLooksHotlink(opts.pageUrl)) return true;
+
   const lower = String(mediaUrl || '').toLowerCase();
   return (
     lower.includes('bilivideo') ||
@@ -88,12 +139,21 @@ function objectKey(itemId, segmentKey, mediaUrl, ext) {
   return `${prefix}${itemId}/${safeSeg}/${hash}.${ext}`;
 }
 
+function tmpMediaPath(itemId, segmentKey, mediaUrl, ext, suffix = '') {
+  const hash = crypto.createHash('sha256').update(String(mediaUrl)).digest('hex').slice(0, 12);
+  const safeSeg = String(segmentKey || 'seg').replace(/[^a-zA-Z0-9:_-]/g, '_');
+  return path.join(
+    os.tmpdir(),
+    `transcript-${itemId}-${safeSeg}-${hash}${suffix}.${ext}`,
+  );
+}
+
 function createMaxBytesGuard() {
   let total = 0;
   const guard = new Transform({
     transform(chunk, _enc, cb) {
       total += chunk.length;
-      if (total > MAX_BYTES) {
+      if (MAX_BYTES > 0 && total > MAX_BYTES) {
         cb(Object.assign(new Error('音视频过大，暂不支持转写'), { code: 'MEDIA_TOO_LARGE' }));
         return;
       }
@@ -104,8 +164,15 @@ function createMaxBytesGuard() {
   return guard;
 }
 
-async function downloadMediaToTempFile({ mediaUrl, pageUrl, itemId, segmentKey }) {
+async function fetchMediaResponse({
+  mediaUrl,
+  pageUrl,
+  rangeEnd = null,
+}) {
   const headers = fetchHeadersForMedia(mediaUrl, pageUrl);
+  if (rangeEnd != null && rangeEnd >= 0) {
+    headers.Range = `bytes=0-${rangeEnd}`;
+  }
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), DOWNLOAD_TIMEOUT_MS);
 
@@ -128,7 +195,7 @@ async function downloadMediaToTempFile({ mediaUrl, pageUrl, itemId, segmentKey }
     clearTimeout(timer);
   }
 
-  if (!res.ok) {
+  if (!res.ok && res.status !== 206) {
     throw Object.assign(
       new Error(`下载音视频失败（HTTP ${res.status}），请刷新视频后重试`),
       { status: 502, code: 'MEDIA_DOWNLOAD_FAILED' },
@@ -136,7 +203,7 @@ async function downloadMediaToTempFile({ mediaUrl, pageUrl, itemId, segmentKey }
   }
 
   const lenHeader = res.headers.get('content-length');
-  if (lenHeader) {
+  if (MAX_BYTES > 0 && lenHeader && rangeEnd == null) {
     const n = Number(lenHeader);
     if (Number.isFinite(n) && n > MAX_BYTES) {
       throw Object.assign(new Error('音视频过大，暂不支持转写'), {
@@ -150,20 +217,22 @@ async function downloadMediaToTempFile({ mediaUrl, pageUrl, itemId, segmentKey }
     throw Object.assign(new Error('下载音视频失败：空响应'), { status: 502 });
   }
 
+  return res;
+}
+
+async function writeResponseToTemp({
+  res,
+  mediaUrl,
+  itemId,
+  segmentKey,
+  suffix = '',
+}) {
   const contentType = res.headers.get('content-type') || 'application/octet-stream';
   const ext = extFromUrl(mediaUrl, contentType);
-  const hash = crypto.createHash('sha256').update(String(mediaUrl)).digest('hex').slice(0, 12);
-  const tmpPath = path.join(
-    os.tmpdir(),
-    `transcript-${itemId}-${segmentKey}-${hash}.${ext}`,
-  );
-
+  const tmpPath = tmpMediaPath(itemId, segmentKey, mediaUrl, ext, suffix);
   const guard = createMaxBytesGuard();
   const source = Readable.fromWeb(res.body);
   const t0 = Date.now();
-  console.log(
-    `[transcriptMediaOss] downloading item=${itemId} segment=${segmentKey} → ${tmpPath}`,
-  );
 
   try {
     await pipeline(source, guard, fs.createWriteStream(tmpPath));
@@ -175,12 +244,94 @@ async function downloadMediaToTempFile({ mediaUrl, pageUrl, itemId, segmentKey }
     throw err;
   }
 
-  const bytes = guard.bytesRead();
-  const ms = Date.now() - t0;
+  return {
+    tmpPath,
+    bytes: guard.bytesRead(),
+    contentType,
+    ext,
+    downloadMs: Date.now() - t0,
+    httpStatus: res.status,
+  };
+}
+
+/** 全量下载到临时文件（测时长失败或防盗链上传时用） */
+async function downloadMediaToTempFile({ mediaUrl, pageUrl, itemId, segmentKey }) {
   console.log(
-    `[transcriptMediaOss] downloaded item=${itemId} segment=${segmentKey} bytes=${bytes} ms=${ms}`,
+    `[transcriptMediaOss] downloading full item=${itemId} segment=${segmentKey}`,
   );
-  return { tmpPath, bytes, contentType, ext, downloadMs: ms };
+  const res = await fetchMediaResponse({ mediaUrl, pageUrl });
+  const written = await writeResponseToTemp({
+    res,
+    mediaUrl,
+    itemId,
+    segmentKey,
+  });
+  console.log(
+    `[transcriptMediaOss] downloaded full item=${itemId} segment=${segmentKey} ` +
+      `bytes=${written.bytes} ms=${written.downloadMs}`,
+  );
+  return written;
+}
+
+/**
+ * Range 拉取文件头，用于轻量测时长。
+ * @returns {Promise<{ tmpPath, bytes, contentType, ext, downloadMs, partial: boolean }|null>}
+ */
+async function downloadProbePrefix({ mediaUrl, pageUrl, itemId, segmentKey }) {
+  const rangeEnd = Math.max(0, PROBE_PREFIX_BYTES - 1);
+  console.log(
+    `[transcriptMediaOss] probing prefix item=${itemId} segment=${segmentKey} ` +
+      `range=0-${rangeEnd}`,
+  );
+  let res;
+  try {
+    res = await fetchMediaResponse({ mediaUrl, pageUrl, rangeEnd });
+  } catch (err) {
+    console.warn(
+      `[transcriptMediaOss] probe fetch fail item=${itemId}: ${err.message}`,
+    );
+    return null;
+  }
+
+  // 部分 CDN 忽略 Range 直接 200 回全文：当作全量下载结果，勿当「仅前缀」
+  if (res.status === 200) {
+    const written = await writeResponseToTemp({
+      res,
+      mediaUrl,
+      itemId,
+      segmentKey,
+      suffix: '-full',
+    });
+    console.log(
+      `[transcriptMediaOss] probe got full body item=${itemId} bytes=${written.bytes} ms=${written.downloadMs}`,
+    );
+    return { ...written, partial: false };
+  }
+
+  if (res.status !== 206) {
+    // 消耗掉 body 以免挂起
+    try {
+      await res.arrayBuffer();
+    } catch (_) {
+      /* ignore */
+    }
+    console.warn(
+      `[transcriptMediaOss] probe unexpected status=${res.status} item=${itemId}`,
+    );
+    return null;
+  }
+
+  const written = await writeResponseToTemp({
+    res,
+    mediaUrl,
+    itemId,
+    segmentKey,
+    suffix: '-probe',
+  });
+  console.log(
+    `[transcriptMediaOss] probe prefix ok item=${itemId} bytes=${written.bytes} ms=${written.downloadMs}`,
+  );
+  return { ...written, partial: true };
 }
 
 async function uploadTempFileToOss({ tmpPath, key, contentType, itemId, segmentKey }) {
@@ -214,29 +365,50 @@ async function deleteOssObject(ossKey) {
   await client.delete(ossKey);
 }
 
+async function assertDurationAndQuota(durationSec, userId) {
+  assertDurationWithinLimit(durationSec);
+  if (
+    userId != null &&
+    durationSec != null &&
+    Number.isFinite(durationSec) &&
+    durationSec > 0
+  ) {
+    await usageService.assertTranscriptQuota(userId, {
+      estimatedSeconds: durationSec,
+    });
+  }
+}
+
 /**
- * 所有转写媒体：先下载 → music-metadata 测时长 → 超限拒绝。
- * 防盗链 CDN 再上传 OSS 签名 URL；开放 CDN 校验通过后仍用原直链。
+ * 先 Range 轻量测时长 → 开放直链可跳过全量下载；防盗链通过后再全量下载上传 OSS。
+ * 测不到时长则回退全量下载再探测。
  */
 async function resolveAsrFileLink({
   mediaUrl,
   pageUrl,
   itemId,
   segmentKey,
+  userId,
   onPhase,
+  platform,
+  forceOss,
 }) {
   const url = String(mediaUrl || '').trim();
   if (!url) {
     throw Object.assign(new Error('没有可转写的音视频直链'), { status: 400 });
   }
 
-  const notify = async (phase, phaseLabel) => {
+  const notify = async (phase, phaseLabel, meta) => {
     if (typeof onPhase === 'function') {
-      await onPhase(phase, phaseLabel);
+      await onPhase(phase, phaseLabel, meta);
     }
   };
 
-  const viaOss = needsOssProxy(url);
+  const viaOss = needsOssProxy(url, {
+    platform,
+    pageUrl,
+    force: !!forceOss,
+  });
   if (viaOss && !isOssConfigured()) {
     throw Object.assign(
       new Error(
@@ -246,29 +418,111 @@ async function resolveAsrFileLink({
     );
   }
 
-  let tmpPath = null;
+  const temps = [];
+  const trackTemp = (p) => {
+    if (p) temps.push(p);
+    return p;
+  };
+
   try {
-    await notify('downloading', '下载媒体中');
-    const downloaded = await downloadMediaToTempFile({
+    await notify('checking', '正在确认时长与额度');
+    let durationSec = null;
+    let probeMs = 0;
+    let probeBytes = 0;
+    let contentType = 'application/octet-stream';
+    let ext = extFromUrl(url, contentType);
+    /** @type {null | { tmpPath: string, bytes: number, contentType: string, ext: string, downloadMs: number }} */
+    let fullAlready = null;
+
+    const probe = await downloadProbePrefix({
       mediaUrl: url,
       pageUrl,
       itemId,
       segmentKey,
     });
-    tmpPath = downloaded.tmpPath;
 
-    await notify('checking', '校验时长中');
-    const durationSec = await probeMediaDurationSec(downloaded.tmpPath);
-    console.log(
-      `[transcriptMediaOss] duration item=${itemId} segment=${segmentKey} ` +
-        `viaOss=${viaOss} sec=${durationSec == null ? 'unknown' : durationSec.toFixed(1)}`,
-    );
-    assertDurationWithinLimit(durationSec);
+    if (probe) {
+      trackTemp(probe.tmpPath);
+      probeMs = probe.downloadMs;
+      probeBytes = probe.bytes;
+      contentType = probe.contentType;
+      ext = probe.ext;
+      durationSec = await probeMediaDurationSec(probe.tmpPath);
+      console.log(
+        `[transcriptMediaOss] probe duration item=${itemId} segment=${segmentKey} ` +
+          `viaOss=${viaOss} partial=${probe.partial} ` +
+          `sec=${durationSec == null ? 'unknown' : durationSec.toFixed(1)}`,
+      );
+
+      if (!probe.partial) {
+        // CDN 忽略 Range，已拿到全文
+        fullAlready = probe;
+      }
+
+      if (durationSec != null) {
+        await assertDurationAndQuota(durationSec, userId);
+        await notify('checking', '时长与额度已确认', {
+          mediaDurationSec: durationSec,
+        });
+      }
+    }
+
+    // 开放直链且已测到时长：无需全量下载
+    if (!viaOss && durationSec != null && !fullAlready) {
+      console.log(
+        `[transcriptMediaOss] direct skip-full item=${itemId} segment=${segmentKey} ` +
+          `probeBytes=${probeBytes} probeMs=${probeMs} durationSec=${durationSec.toFixed(1)}`,
+      );
+      return {
+        fileLink: url,
+        ossKey: null,
+        viaOss: false,
+        bytes: probeBytes,
+        downloadMs: probeMs,
+        uploadMs: 0,
+        durationSec,
+      };
+    }
+
+    // 需要全文：开放直链测不到时长 / 防盗链 / 或 probe 已是全文
+    let downloaded = fullAlready;
+    if (!downloaded) {
+      await notify('downloading', '正在下载音视频', {
+        mediaDurationSec: durationSec,
+      });
+      downloaded = await downloadMediaToTempFile({
+        mediaUrl: url,
+        pageUrl,
+        itemId,
+        segmentKey,
+      });
+      trackTemp(downloaded.tmpPath);
+    }
+
+    contentType = downloaded.contentType;
+    ext = downloaded.ext;
+
+    if (durationSec == null) {
+      await notify('checking', '正在确认时长与额度');
+      durationSec = await probeMediaDurationSec(downloaded.tmpPath);
+      console.log(
+        `[transcriptMediaOss] full duration item=${itemId} segment=${segmentKey} ` +
+          `viaOss=${viaOss} sec=${durationSec == null ? 'unknown' : durationSec.toFixed(1)}`,
+      );
+      await assertDurationAndQuota(durationSec, userId);
+      if (durationSec != null) {
+        await notify('checking', '时长与额度已确认', {
+          mediaDurationSec: durationSec,
+        });
+      }
+    }
+
+    const downloadMs = (fullAlready ? 0 : downloaded.downloadMs) + probeMs;
 
     if (!viaOss) {
       console.log(
         `[transcriptMediaOss] direct ok item=${itemId} segment=${segmentKey} ` +
-          `bytes=${downloaded.bytes} downloadMs=${downloaded.downloadMs} ` +
+          `bytes=${downloaded.bytes} downloadMs=${downloadMs} ` +
           `durationSec=${durationSec == null ? 'unknown' : durationSec.toFixed(1)}`,
       );
       return {
@@ -276,18 +530,20 @@ async function resolveAsrFileLink({
         ossKey: null,
         viaOss: false,
         bytes: downloaded.bytes,
-        downloadMs: downloaded.downloadMs,
+        downloadMs,
         uploadMs: 0,
         durationSec,
       };
     }
 
-    await notify('uploading', '上传中');
-    const key = objectKey(itemId, segmentKey, url, downloaded.ext);
+    await notify('uploading', '正在上传以便识别', {
+      mediaDurationSec: durationSec,
+    });
+    const key = objectKey(itemId, segmentKey, url, ext);
     const uploaded = await uploadTempFileToOss({
-      tmpPath,
+      tmpPath: downloaded.tmpPath,
       key,
-      contentType: downloaded.contentType,
+      contentType,
       itemId,
       segmentKey,
     });
@@ -296,21 +552,21 @@ async function resolveAsrFileLink({
       `[transcriptMediaOss] proxy done item=${itemId} segment=${segmentKey} ` +
         `bytes=${downloaded.bytes} ` +
         `durationSec=${durationSec == null ? 'unknown' : durationSec.toFixed(1)} ` +
-        `downloadMs=${downloaded.downloadMs} uploadMs=${uploaded.uploadMs}`,
+        `downloadMs=${downloadMs} uploadMs=${uploaded.uploadMs}`,
     );
     return {
       fileLink: uploaded.fileLink,
       ossKey: key,
       viaOss: true,
       bytes: downloaded.bytes,
-      downloadMs: downloaded.downloadMs,
+      downloadMs,
       uploadMs: uploaded.uploadMs,
       durationSec,
     };
   } finally {
-    if (tmpPath) {
-      await fsp.unlink(tmpPath).catch((err) => {
-        console.warn(`[transcriptMediaOss] temp cleanup ${tmpPath}`, err.message);
+    for (const p of temps) {
+      await fsp.unlink(p).catch((err) => {
+        console.warn(`[transcriptMediaOss] temp cleanup ${p}`, err.message);
       });
     }
   }

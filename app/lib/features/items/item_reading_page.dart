@@ -121,6 +121,7 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
   bool _isPro = false;
   int _summaryPollGen = 0;
   int _mindmapPollGen = 0;
+  int _transcriptPollGen = 0;
   late final DateTime _openedAt;
   double _bodyFontSize = ReadingFontPrefs.defaultSize;
   bool _focusScrollDone = false;
@@ -257,9 +258,14 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
         _pageError = null;
       });
       _syncItemPolling(item);
-      if (item.isSuccess && !wasSuccess) {
-        _scheduleMarkReadIfNeeded();
-        _onItemReadyForReading(item);
+      if (item.isSuccess) {
+        if (!wasSuccess) {
+          _scheduleMarkReadIfNeeded();
+          _onItemReadyForReading(item);
+        } else {
+          // 重进已成功条目：列表可能仍是旧 segments，补拉转写/AI 进度
+          _ensureBackgroundPolling(item);
+        }
       }
       _scheduleOpenNoteOnLaunch();
     } on ApiException catch (e) {
@@ -307,6 +313,12 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
     _loadAnnotations();
     unawaited(_loadItemTags());
     unawaited(ReadingMediaController.ensureAudioSession());
+    _ensureBackgroundPolling(item);
+    _precacheShareCover(item);
+  }
+
+  /// 转写 / AI 进行中时拉起轮询（重进阅读页也要补上，否则步骤条停在旧态或不刷新）
+  void _ensureBackgroundPolling(CollectionItem item) {
     if (item.hasAnyTranscriptPending && !item.isAiAwaitingTranscript) {
       _pollTranscript();
     }
@@ -319,7 +331,6 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
     if (item.hasSummaryPending) {
       _pollSummary();
     }
-    _precacheShareCover(item);
   }
 
   void _precacheShareCover(CollectionItem item) {
@@ -1720,6 +1731,31 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
       return;
     }
 
+    var remainHint = '';
+    try {
+      final usage = await UsageRefresh.ensure();
+      final left = usage.transcriptRemainingMinutes;
+      if (left >= 0 && usage.transcriptLimitMinutes > 0) {
+        final leftLabel = left >= 10 || left == left.roundToDouble()
+            ? '${left.round()}'
+            : left.toStringAsFixed(1);
+        remainHint = '\n本月大约还剩 $leftLabel 分钟。';
+      }
+    } catch (_) {
+      // 额度展示失败不挡转写确认
+    }
+    if (!mounted) return;
+    final confirmed = await showAppConfirmDialog(
+      context,
+      title: '开始转写？',
+      message:
+          '转写会按音视频实际时长扣减本月转写分钟；例如 12 分钟的视频约消耗 12 分钟额度。单次最长支持约 1 小时。确定后开始处理。$remainHint',
+      cancelLabel: '取消',
+      confirmLabel: '开始转写',
+      dangerConfirm: false,
+    );
+    if (confirmed != true || !mounted) return;
+
     try {
       String? mediaUrl;
       if (chosen.needsClientResolve) {
@@ -1756,14 +1792,19 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
   }
 
   Future<void> _pollTranscript() async {
+    final gen = ++_transcriptPollGen;
     String? lastPhaseFingerprint;
     for (var i = 0; i < 90; i++) {
-      await Future<void>.delayed(const Duration(seconds: 4));
-      if (!mounted) return;
+      // 首轮立刻拉状态，重进页面马上恢复步骤条；之后再间隔轮询
+      if (i > 0) {
+        await Future<void>.delayed(const Duration(seconds: 4));
+      }
+      if (!mounted || gen != _transcriptPollGen) return;
       try {
         final st = await _repo.getTranscriptStatus(_item.id);
+        if (!mounted || gen != _transcriptPollGen) return;
         if (st.hasPending) {
-          // pending 期间合并 segments，让 phaseLabel 刷新到面板
+          // pending 期间合并 segments，让 phaseLabel / 步骤条刷新到面板
           final merged = Map<String, TranscriptSegment>.from(
             _item.transcriptSegments,
           );
@@ -1771,17 +1812,20 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
             merged[key] = seg;
           });
           final fp = st.segments.entries
-              .map((e) => '${e.key}:${e.value.phase}:${e.value.phaseLabel}')
+              .map(
+                (e) =>
+                    '${e.key}:${e.value.phase}:${e.value.phaseLabel}:${e.value.phaseHint}:${e.value.phaseAt?.toIso8601String()}',
+              )
               .join('|');
           if (fp != lastPhaseFingerprint) {
             lastPhaseFingerprint = fp;
-            if (!mounted) return;
+            if (!mounted || gen != _transcriptPollGen) return;
             setState(() => _item = _item.withTranscriptSegments(merged));
           }
           continue;
         }
         final item = await _repo.getItem(_item.id);
-        if (!mounted) return;
+        if (!mounted || gen != _transcriptPollGen) return;
         setState(() => _item = item);
         final anySuccess = st.segments.values.any((s) => s.isSuccess);
         if (anySuccess) {
