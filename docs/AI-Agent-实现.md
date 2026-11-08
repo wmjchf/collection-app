@@ -71,7 +71,8 @@
 
 | Tool | 阶段 | 说明 |
 | --- | --- | --- |
-| **`draft_article`（已落地）** | P3a | **视频转写 → 文章**；`intent=compose`（旧名 `compose_video` 归一）；须成功转写；口播→书面、独立成篇禁回指源材料；返回 title/body + citations；App「复制全文」；不用正文、不做图文 |
+| **`draft_article`（已落地）** | P3a | **视频转写 → 文章**；`intent=compose`；须成功转写；SSE 真流式 Markdown；口播→书面、禁回指；App「复制全文」；不用正文、不做图文 |
+| **动态预设（已落地）** | UX | `POST /api/agent/conversations/:id/presets`：按阅读篇/上一轮生成 3～4 条口语预设；**不计用户 AI 额度**；失败回退客户端规则预设 |
 | `draft_share_copy` | P3a 预留 | 基于 1～N 个 citation 写分享短文案 / 推荐语 |
 | `polish_quote` | P3a 预留 | 摘句润色（不改原意；可附原文对比） |
 | `compare_notes` | P3a 预留 | 两篇对照短评（强制两篇 itemId） |

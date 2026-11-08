@@ -18,6 +18,7 @@ const {
   toolPayload,
 } = require('./agentAwaiting');
 const { executeTool } = require('./agentRegistry');
+const draftArticleTool = require('./tools/draftFromTranscript');
 const {
   buildPlanMessages,
   buildAnswerMessages,
@@ -1488,24 +1489,19 @@ async function finishComposeTurn({
     });
   }
 
-  const obs = await executeTool('draft_article', ctx, { itemId });
-  toolTrace.push({
-    tool: 'draft_article',
-    ok: Boolean(obs?.ok),
-    args: { itemId },
-    error: obs?.error || null,
-  });
-  if (obs?.usage) {
-    usageTotal = mergeUsage(usageTotal, obs.usage);
-  }
-
-  let contentOut;
-  if (!obs?.ok) {
-    contentOut =
-      String(obs?.message || '').trim() ||
-      (obs?.error === 'need_transcript'
+  const prepared = await draftArticleTool.prepareDraftSource(ctx, itemId);
+  if (!prepared.ok) {
+    toolTrace.push({
+      tool: 'draft_article',
+      ok: false,
+      args: { itemId },
+      error: prepared.error || null,
+    });
+    const contentOut =
+      String(prepared.message || '').trim() ||
+      (prepared.error === 'need_transcript'
         ? '这篇视频还没有转写文稿。请先在阅读页「更多」里完成转写，再让我写文章。'
-        : obs?.error === 'not_video'
+        : prepared.error === 'not_video'
           ? '目前只支持根据视频转写写文章。请打开一篇已转写的视频后再试。'
           : '未能生成文章，请稍后重试。');
     if (stream && emit) emit({ type: 'token', text: contentOut });
@@ -1525,21 +1521,79 @@ async function finishComposeTurn({
     });
   }
 
-  const data = obs.data || {};
-  const title = String(data.title || '').trim() || '文章';
-  const body = String(data.body || '').trim();
-  contentOut = [
-    `# ${title}`,
-    '',
-    body,
-    '',
-    '---',
-    '已按转写整理成文章语体（课堂口吻已改写）。',
-  ].join('\n');
+  let contentOut = '';
+  let citations = (prepared.citations || []).slice(0, MAX_ANSWER_CITATIONS);
 
-  if (stream && emit) emit({ type: 'token', text: contentOut });
+  if (stream) {
+    const messages = draftArticleTool.composeMessages({
+      titleHint: prepared.titleHint,
+      transcript: prepared.transcript,
+      json: false,
+    });
+    await usageService.assertAiQuota(userId, {
+      estimatedTokens: usageService.estimateAiTokens({
+        messages,
+        feature: 'agent',
+      }),
+    });
+    let raw = '';
+    for await (const chunk of aliyunDashScope.chatTextStream({
+      messages,
+      model: draftArticleTool.agentModel(),
+      temperature: 0.4,
+    })) {
+      if (chunk.delta) {
+        raw += chunk.delta;
+        if (emit) emit({ type: 'token', text: chunk.delta });
+      }
+      if (chunk.usage) {
+        usageTotal = mergeUsage(usageTotal, chunk.usage);
+      }
+    }
+    contentOut = raw.trim();
+    toolTrace.push({
+      tool: 'draft_article',
+      ok: Boolean(contentOut),
+      args: { itemId, mode: 'stream' },
+      error: contentOut ? null : 'empty_draft',
+    });
+    if (!contentOut) {
+      contentOut = '未能生成文章，请稍后重试。';
+      if (emit) emit({ type: 'token', text: contentOut });
+      citations = null;
+    } else {
+      const snippet = contentOut.replace(/\s+/g, ' ').trim().slice(0, 160);
+      citations = [
+        {
+          ...citations[0],
+          snippet,
+        },
+      ];
+    }
+  } else {
+    const obs = await executeTool('draft_article', ctx, { itemId });
+    toolTrace.push({
+      tool: 'draft_article',
+      ok: Boolean(obs?.ok),
+      args: { itemId, mode: 'json' },
+      error: obs?.error || null,
+    });
+    if (obs?.usage) {
+      usageTotal = mergeUsage(usageTotal, obs.usage);
+    }
+    if (!obs?.ok) {
+      contentOut =
+        String(obs?.message || '').trim() || '未能生成文章，请稍后重试。';
+      citations = null;
+    } else {
+      const data = obs.data || {};
+      contentOut =
+        String(data.content || '').trim() ||
+        draftArticleTool.wrapArticleContent(data.title, data.body);
+      citations = (obs.citations || []).slice(0, MAX_ANSWER_CITATIONS);
+    }
+  }
 
-  const citations = (obs.citations || []).slice(0, MAX_ANSWER_CITATIONS);
   const assistantMessage = await conversationService.insertMessage({
     conversationId,
     role: 'assistant',

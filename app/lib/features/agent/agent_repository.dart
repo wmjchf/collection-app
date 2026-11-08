@@ -108,6 +108,31 @@ class AgentRepository {
     return (conversation: conv, messages: messages);
   }
 
+  /// 动态口语预设（服务端不计用户 AI 额度）
+  Future<List<String>> fetchPresets({
+    required int conversationId,
+    int? focusItemId,
+    String? lastAssistantContent,
+    bool hasPendingAction = false,
+  }) async {
+    final json = await _client.post(
+      '/api/agent/conversations/$conversationId/presets',
+      accessToken: await _token(),
+      body: {
+        'focusItemId': ?focusItemId,
+        if (lastAssistantContent != null && lastAssistantContent.isNotEmpty)
+          'lastAssistantContent': lastAssistantContent,
+        'hasPendingAction': hasPendingAction,
+      },
+    );
+    final raw = json['presets'];
+    if (raw is! List) return const [];
+    return [
+      for (final e in raw)
+        if ((e?.toString().trim() ?? '').isNotEmpty) e.toString().trim(),
+    ];
+  }
+
   Future<AgentTurnResult> sendMessage({
     required int conversationId,
     required String content,

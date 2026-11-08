@@ -37,6 +37,8 @@ class AgentChatCache {
     int? focusItemId,
     required int conversationId,
     required List<AgentMessage> messages,
+    List<String>? presets,
+    String? presetKey,
   }) async {
     final prefs = await SharedPreferences.getInstance();
     final trimmed = messages.length > _maxMessages
@@ -45,6 +47,8 @@ class AgentChatCache {
     final snap = AgentChatSnapshot(
       conversationId: conversationId,
       messages: trimmed,
+      presets: presets ?? const [],
+      presetKey: presetKey,
     );
     await prefs.setString(
       _key(userId: userId, focusItemId: focusItemId),
@@ -65,14 +69,20 @@ class AgentChatSnapshot {
   const AgentChatSnapshot({
     required this.conversationId,
     required this.messages,
+    this.presets = const [],
+    this.presetKey,
   });
 
   final int conversationId;
   final List<AgentMessage> messages;
+  final List<String> presets;
+  final String? presetKey;
 
   Map<String, dynamic> toJson() => {
         'conversationId': conversationId,
         'messages': [for (final m in messages) m.toJson()],
+        'presets': presets,
+        if (presetKey != null) 'presetKey': presetKey,
       };
 
   factory AgentChatSnapshot.fromJson(Map<String, dynamic> json) {
@@ -87,9 +97,19 @@ class AgentChatSnapshot {
         }
       }
     }
+    final presets = <String>[];
+    final rawPresets = json['presets'];
+    if (rawPresets is List) {
+      for (final e in rawPresets) {
+        final s = e?.toString().trim() ?? '';
+        if (s.isNotEmpty) presets.add(s);
+      }
+    }
     return AgentChatSnapshot(
       conversationId: (json['conversationId'] as num?)?.toInt() ?? 0,
       messages: messages,
+      presets: presets,
+      presetKey: json['presetKey'] as String?,
     );
   }
 }

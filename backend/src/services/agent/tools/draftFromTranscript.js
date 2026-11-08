@@ -68,9 +68,7 @@ function truncateSource(text) {
   return `${s.slice(0, TRANSCRIPT_MAX_CHARS)}\n…（转写过长，已截断）`;
 }
 
-const SYSTEM = `你是文章写手。根据「视频转写口播稿」整理成一篇结构清晰、可直接阅读或再编辑的文章。
-
-硬性要求：
+const RULES = `硬性要求：
 1. 忠于转写内容与知识点，不编造转写里没有的事实、数据、案例。
 2. 必须把课堂/口播语体改成文章语体，例如：
    - 「这节课/本节课/今天这堂课」→「这篇文章/本文」
@@ -79,9 +77,143 @@ const SYSTEM = `你是文章写手。根据「视频转写口播稿」整理成�
    - 「大家看屏幕/看这幅图」→改成文章能成立的表述，或略写
    - 「废话不多说，正式开始」等口头垫话删除或收成短过渡
 3. 输出必须是**独立成篇**的文章：禁止回指输入材料，不要写「正如文中所言」「原文指出」「该文提到」「如上所述」「转写里说」等；观点直接陈述即可。「本文/这篇文章」只可指你正在写的这篇，不可指转写稿。
-4. 结构清晰：标题 + 若干小标题 + 正文；可用 Markdown（# / ## / **加粗** / 列表），不要整篇包在代码块里。
-5. 文风像认真的书面长文，不要逐字课堂实录；不要写成特定平台专稿。
-6. 只输出 JSON：{"title":"文章标题","body":"正文（含小标题，Markdown）"}`;
+4. 文风像认真的书面长文，不要逐字课堂实录；不要写成特定平台专稿。`;
+
+const SYSTEM_JSON = `你是文章写手。根据「视频转写口播稿」整理成一篇结构清晰、可直接阅读或再编辑的文章。
+
+${RULES}
+5. 结构清晰：title 为总标题；body 从导语或二级小标题写起，**不要**在 body 开头再写一遍一级标题（# …）。
+6. 只输出 JSON：{"title":"文章标题","body":"正文（含 ## 小标题，Markdown）"}`;
+
+const SYSTEM_MARKDOWN = `你是文章写手。根据「视频转写口播稿」整理成一篇结构清晰、可直接阅读或再编辑的文章。
+
+${RULES}
+5. 直接输出 Markdown 正文（不要 JSON、不要代码块包裹全文）：
+   - 第一行必须是一级标题：# 文章标题
+   - 其后为导语与 ## 小标题分段
+6. 不要输出文末说明、不要解释你在做什么。`;
+
+/** 去掉 body 开头重复的一级标题，避免与外层 # title 叠两行 */
+function stripLeadingH1(body, title) {
+  let text = String(body || '').trim();
+  if (!text) return text;
+  const m = text.match(/^#\s+([^\n]+)\n*/);
+  if (!m) return text;
+  const heading = m[1].trim();
+  const t = String(title || '').trim();
+  if (!t || heading === t || heading.includes(t) || t.includes(heading)) {
+    text = text.slice(m[0].length).trim();
+  }
+  return text;
+}
+
+function buildUserPrompt(titleHint, transcript, { json } = { json: true }) {
+  if (json) {
+    return `视频标题（仅供参考）：${titleHint}
+
+以下是转写口播稿，请整理成文章 JSON：
+
+-----
+${transcript}
+-----`;
+  }
+  return `视频标题（仅供参考）：${titleHint}
+
+以下是转写口播稿，请整理成 Markdown 文章：
+
+-----
+${transcript}
+-----`;
+}
+
+function citationFromItem(item, itemId, snippet) {
+  const titleHint =
+    (item.title && String(item.title).trim()) || `条目 ${itemId}`;
+  const tagNames = Array.isArray(item.tags)
+    ? item.tags.map((t) => t.name).filter(Boolean)
+    : [];
+  return {
+    itemId,
+    title: titleHint,
+    snippet: String(snippet || '')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .slice(0, 160),
+    tagNames,
+    coverImageUrl: item.coverImageUrl || null,
+  };
+}
+
+/**
+ * 校验并取出写文章所需转写。
+ * @returns {Promise<{ ok: true, itemId, item, titleHint, transcript, citations } | { ok: false, error, message }>}
+ */
+async function prepareDraftSource(ctx, itemIdRaw) {
+  const itemId = Number(itemIdRaw);
+  if (!Number.isFinite(itemId) || itemId <= 0) {
+    return { ok: false, error: 'invalid_item_id' };
+  }
+
+  const item = await itemService.getByIdForUser(ctx.userId, itemId);
+  if (!item) {
+    return { ok: false, error: 'not_found' };
+  }
+
+  if (!isVideoItem(item)) {
+    return {
+      ok: false,
+      error: 'not_video',
+      message: '目前只支持根据视频转写写文章。请打开一篇已转写的视频后再试。',
+    };
+  }
+
+  if (!hasSuccessfulTranscript(item)) {
+    return {
+      ok: false,
+      error: 'need_transcript',
+      message:
+        '这篇视频还没有转写文稿。请先在阅读页「更多」里完成转写，再让我写文章。',
+    };
+  }
+
+  let transcript = loadTranscriptText(item).trim();
+  if (!transcript) {
+    return {
+      ok: false,
+      error: 'need_transcript',
+      message:
+        '这篇视频还没有转写文稿。请先在阅读页「更多」里完成转写，再让我写文章。',
+    };
+  }
+  transcript = truncateSource(transcript);
+  const titleHint =
+    (item.title && String(item.title).trim()) || `条目 ${itemId}`;
+
+  return {
+    ok: true,
+    itemId,
+    item,
+    titleHint,
+    transcript,
+    citations: [citationFromItem(item, itemId, '')],
+  };
+}
+
+function composeMessages({ titleHint, transcript, json }) {
+  return [
+    { role: 'system', content: json ? SYSTEM_JSON : SYSTEM_MARKDOWN },
+    {
+      role: 'user',
+      content: buildUserPrompt(titleHint, transcript, { json: Boolean(json) }),
+    },
+  ];
+}
+
+function wrapArticleContent(title, body) {
+  const t = String(title || '').trim() || '文章';
+  const b = stripLeadingH1(String(body || '').trim(), t);
+  return [`# ${t}`, '', b].join('\n');
+}
 
 const tool = {
   name: 'draft_article',
@@ -99,66 +231,30 @@ const tool = {
    * @param {{ itemId: number }} args
    */
   async execute(ctx, args) {
-    const itemId = Number(args?.itemId);
-    if (!Number.isFinite(itemId) || itemId <= 0) {
-      return { ok: false, error: 'invalid_item_id' };
-    }
-
-    const item = await itemService.getByIdForUser(ctx.userId, itemId);
-    if (!item) {
-      return { ok: false, error: 'not_found' };
-    }
-
-    if (!isVideoItem(item)) {
+    const prepared = await prepareDraftSource(ctx, args?.itemId);
+    if (!prepared.ok) {
       return {
         ok: false,
-        error: 'not_video',
-        message: '目前只支持根据视频转写写文章。请打开一篇已转写的视频后再试。',
+        error: prepared.error,
+        message: prepared.message,
       };
     }
 
-    if (!hasSuccessfulTranscript(item)) {
-      return {
-        ok: false,
-        error: 'need_transcript',
-        message:
-          '这篇视频还没有转写文稿。请先在阅读页「更多」里完成转写，再让我写文章。',
-      };
-    }
-
-    let transcript = loadTranscriptText(item).trim();
-    if (!transcript) {
-      return {
-        ok: false,
-        error: 'need_transcript',
-        message:
-          '这篇视频还没有转写文稿。请先在阅读页「更多」里完成转写，再让我写文章。',
-      };
-    }
-    transcript = truncateSource(transcript);
-
-    const titleHint =
-      (item.title && String(item.title).trim()) || `条目 ${itemId}`;
+    const messages = composeMessages({
+      titleHint: prepared.titleHint,
+      transcript: prepared.transcript,
+      json: true,
+    });
     const result = await aliyunDashScope.chatJson({
-      messages: [
-        { role: 'system', content: SYSTEM },
-        {
-          role: 'user',
-          content: `视频标题（仅供参考）：${titleHint}
-
-以下是转写口播稿，请整理成文章 JSON：
-
------
-${transcript}
------`,
-        },
-      ],
+      messages,
       model: agentModel(),
       temperature: 0.4,
     });
 
-    const title = String(result.json?.title || '').trim() || titleHint;
-    const body = String(result.json?.body || '').trim();
+    const title =
+      String(result.json?.title || '').trim() || prepared.titleHint;
+    let body = String(result.json?.body || '').trim();
+    body = stripLeadingH1(body, title);
     if (!body) {
       return {
         ok: false,
@@ -167,29 +263,22 @@ ${transcript}
       };
     }
 
-    const tagNames = Array.isArray(item.tags)
-      ? item.tags.map((t) => t.name).filter(Boolean)
-      : [];
-    const snippet = body.replace(/\s+/g, ' ').trim().slice(0, 160);
+    const content = wrapArticleContent(title, body);
+    const citations = [
+      citationFromItem(prepared.item, prepared.itemId, body),
+    ];
 
     return {
       ok: true,
       data: {
-        itemId,
+        itemId: prepared.itemId,
         title,
         body,
-        sourceTitle: titleHint,
+        content,
+        sourceTitle: prepared.titleHint,
         sourceKind: 'transcript',
       },
-      citations: [
-        {
-          itemId,
-          title: titleHint,
-          snippet,
-          tagNames,
-          coverImageUrl: item.coverImageUrl || null,
-        },
-      ],
+      citations,
       usage: result.usage,
     };
   },
@@ -198,4 +287,8 @@ ${transcript}
 module.exports = tool;
 module.exports.isVideoItem = isVideoItem;
 module.exports.hasSuccessfulTranscript = hasSuccessfulTranscript;
+module.exports.prepareDraftSource = prepareDraftSource;
+module.exports.composeMessages = composeMessages;
+module.exports.wrapArticleContent = wrapArticleContent;
+module.exports.agentModel = agentModel;
 module.exports.legacyName = 'draft_from_transcript';

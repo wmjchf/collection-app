@@ -183,7 +183,6 @@ class AgentMessage {
 
   /// 转写写文章草稿（可一键复制全文）
   bool get isComposeArticleDraft {
-    if (content.contains('已按转写整理成文章语体')) return true;
     for (final step in toolTrace) {
       final tool = step['tool']?.toString() ?? '';
       if (tool == 'draft_article' || tool == 'draft_from_transcript') {
