@@ -100,7 +100,7 @@ const tool = {
       remove: removed,
       willCreate,
       noop: Boolean(noop),
-      coverImageUrl: item.coverImageUrl || item.cover_image_url || null,
+      ...require('../agentCitationFields').citationMediaFields(item),
     };
 
     let snippet;
@@ -124,6 +124,7 @@ const tool = {
           snippet,
           tagNames: before,
           coverImageUrl: data.coverImageUrl,
+          pageUrl: data.pageUrl,
         },
       ],
     };

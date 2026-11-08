@@ -43,6 +43,13 @@ function refererForMediaUrl(mediaUrl, pageUrl) {
   ) {
     return 'https://www.douyin.com/';
   }
+  if (
+    lower.includes('xhscdn') ||
+    lower.includes('xiaohongshu.com') ||
+    lower.includes('xhslink.')
+  ) {
+    return 'https://www.xiaohongshu.com/';
+  }
   return null;
 }
 

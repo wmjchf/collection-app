@@ -45,5 +45,10 @@ String? mediaRefererFor(String mediaUrl, {String? pageUrl}) {
       lower.contains('akamaized.net')) {
     return 'https://www.bilibili.com/';
   }
+  if (lower.contains('xhscdn') ||
+      lower.contains('xiaohongshu.com') ||
+      lower.contains('xhslink.')) {
+    return 'https://www.xiaohongshu.com/';
+  }
   return null;
 }

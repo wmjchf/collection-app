@@ -2,6 +2,7 @@ const itemService = require('../../itemService');
 const transcriptSegments = require('../../transcriptSegments');
 const aliyunDashScope = require('../../aliyunDashScope');
 const config = require('../../../config');
+const itemMediaKind = require('../../itemMediaKind');
 
 /** 转写进模型的上限（留出 system / 指令空间） */
 const TRANSCRIPT_MAX_CHARS = 28000;
@@ -10,18 +11,30 @@ function agentModel() {
   return config.aliyun.aiModelAgent || 'qwen3.8-flash';
 }
 
+/** 映射条目字段 → itemMediaKind 用的 row 形态 */
+function toMediaRow(item) {
+  if (!item || typeof item !== 'object') return {};
+  return {
+    media_kind: item.mediaKind || item.media_kind,
+    video_url: item.videoUrl || item.video_url,
+    image_urls: item.imageUrls || item.image_urls,
+    content: item.content,
+    platform: item.platform,
+    url: item.url,
+    canonical_url: item.canonicalUrl || item.canonical_url,
+  };
+}
+
+/**
+ * 是否可按「已转写视频」写文章。
+ * 优先 mediaKind；无则与 App hasVideo / resolveMediaKind 对齐（图集/文章不算）。
+ */
 function isVideoItem(item) {
-  const kind = String(item?.mediaKind || item?.media_kind || '').toLowerCase();
+  const row = toMediaRow(item);
+  const kind = String(row.media_kind || '').toLowerCase();
+  if (kind === 'gallery' || kind === 'article') return false;
   if (kind === 'video') return true;
-  if (String(item?.videoUrl || item?.video_url || '').trim()) return true;
-  const platform = String(item?.platform || '').toLowerCase();
-  return (
-    platform === 'bilibili' ||
-    platform === 'douyin' ||
-    platform === 'xiaoyuzhou' ||
-    platform === 'channels' ||
-    platform === 'kuaishou'
-  );
+  return itemMediaKind.resolveMediaKind(row) === 'video';
 }
 
 function loadTranscriptText(item) {
@@ -127,11 +140,13 @@ ${transcript}
 }
 
 function citationFromItem(item, itemId, snippet) {
+  const { citationMediaFields } = require('../agentCitationFields');
   const titleHint =
     (item.title && String(item.title).trim()) || `条目 ${itemId}`;
   const tagNames = Array.isArray(item.tags)
     ? item.tags.map((t) => t.name).filter(Boolean)
     : [];
+  const media = citationMediaFields(item);
   return {
     itemId,
     title: titleHint,
@@ -140,7 +155,8 @@ function citationFromItem(item, itemId, snippet) {
       .trim()
       .slice(0, 160),
     tagNames,
-    coverImageUrl: item.coverImageUrl || null,
+    coverImageUrl: media.coverImageUrl,
+    pageUrl: media.pageUrl,
   };
 }
 

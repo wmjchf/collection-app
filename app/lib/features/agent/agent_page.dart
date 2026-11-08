@@ -348,6 +348,16 @@ class _AgentPageState extends State<AgentPage> {
     return item.transcriptSegments.values.any((s) => s.isSuccess && s.hasText);
   }
 
+  /// 与后端 isVideoItem 对齐：图集/文章不算；顶栏视频才算。
+  bool _focusIsVideo() {
+    final item = _focusItem;
+    if (item == null) return false;
+    if (item.isImageGallery) return false;
+    return item.hasVideo;
+  }
+
+  bool _focusCanCompose() => _focusIsVideo() && _hasSuccessfulTranscript();
+
   /// 异步拉动态预设。不计用户额度（服务端约定）。
   /// 全局空会话不请求；单篇或已有对话才拉。键未变则复用（含会话缓存里恢复的）。
   Future<void> _refreshLlmPresets() async {
@@ -570,6 +580,7 @@ class _AgentPageState extends State<AgentPage> {
       itemId: item.id,
       title: item.title?.trim().isNotEmpty == true ? item.title! : item.url,
       coverImageUrl: item.coverImageUrl,
+      pageUrl: item.sourcePageUrl,
       tagNames: [for (final t in item.tags) t.name],
     )));
   }
@@ -847,10 +858,18 @@ class _AgentPageState extends State<AgentPage> {
     final focused = _focusItem != null || _focusItemId != null;
     final hasMessages = _messages.isNotEmpty;
     final needDynamic = focused || hasMessages;
+    final isVideo = _focusIsVideo();
+    final canCompose = _focusCanCompose();
 
     if (needDynamic) {
       final dynamic = _llmPresets;
-      if (dynamic != null && dynamic.isNotEmpty) return dynamic;
+      if (dynamic != null && dynamic.isNotEmpty) {
+        return _AgentPresetRules.filterCompose(
+          dynamic,
+          isVideo: isVideo,
+          canCompose: canCompose,
+        );
+      }
       return const [];
     }
 
@@ -974,6 +993,7 @@ class _AgentPageState extends State<AgentPage> {
               ? focus.title!
               : focus.url,
           coverImageUrl: focus.coverImageUrl,
+          pageUrl: focus.sourcePageUrl,
           tagNames: [for (final t in focus.tags) t.name],
         );
       }
@@ -1088,7 +1108,7 @@ class _EmptyState extends StatelessWidget {
               ),
               SizedBox(height: 10),
               Text(
-                '问观点、原话，或对照其它收藏。',
+                '问观点、原话，或对照其它收藏',
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   fontSize: 15,
@@ -1139,7 +1159,7 @@ class _EmptyState extends StatelessWidget {
             ),
             const SizedBox(height: 12),
             const Text(
-              '意图搜索与对照。',
+              '意图搜索与对照',
               textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: 15,
@@ -1345,6 +1365,7 @@ class _ShareCitationPickerSheet extends StatelessWidget {
                   title: c.title,
                   subtitle: c.snippet.isNotEmpty ? c.snippet : '用作海报出处',
                   coverUrl: c.coverImageUrl,
+                  pageUrl: c.pageUrl,
                   coverKey: ValueKey('share-pick-${c.itemId}'),
                   tags: [
                     for (var i = 0; i < c.tagNames.length; i++)
@@ -1594,6 +1615,7 @@ class _AssistantBlock extends StatelessWidget {
                     title: c.title,
                     subtitle: c.snippet.isNotEmpty ? c.snippet : '打开阅读',
                     coverUrl: c.coverImageUrl,
+                    pageUrl: c.pageUrl,
                     coverKey: ValueKey('agent-cite-${c.itemId}'),
                     tags: [
                       for (var i = 0; i < c.tagNames.length; i++)
@@ -1657,14 +1679,45 @@ class _AssistantBlock extends StatelessWidget {
 /// 按上一轮助手回复用规则推断预设（不走模型）。
 /// 挂确认条的最后一步不展示预设，避免与「确认整理」抢决策。
 class _AgentPresetRules {
-  static List<String> starters({required bool focused}) {
+  static const _composePreset = '根据转写写一篇文章';
+
+  static bool _looksLikeCompose(String p) =>
+      RegExp(r'转写|写一篇文章|写篇文章').hasMatch(p);
+
+  /// 非视频去掉转文；视频未转写只保留转文引导；已转写可保留。
+  static List<String> filterCompose(
+    List<String> presets, {
+    required bool isVideo,
+    required bool canCompose,
+  }) {
+    if (!isVideo) {
+      return presets.where((p) => !_looksLikeCompose(p)).toList(growable: false);
+    }
+    if (!canCompose) {
+      final only = presets.where(_looksLikeCompose).toList();
+      return only.isNotEmpty ? only : const [_composePreset];
+    }
+    return presets;
+  }
+
+  static List<String> starters({
+    required bool focused,
+    bool isVideo = false,
+    bool canCompose = false,
+  }) {
     if (focused) {
-      return const [
-        '这篇的核心观点是什么？',
-        '根据转写写一篇文章',
-        '还有哪些相关收藏？',
-        '调整这篇的标签',
-      ];
+      if (isVideo && !canCompose) {
+        return const [_composePreset];
+      }
+      return filterCompose(
+        const [
+          '这篇的核心观点是什么？',
+          _composePreset,
+          '还有哪些相关收藏？',
+        ],
+        isVideo: isVideo,
+        canCompose: canCompose,
+      );
     }
     return const [
       '查找关于…',
@@ -1676,6 +1729,8 @@ class _AgentPresetRules {
   static List<String> fromAssistant(
     AgentMessage message, {
     required bool focused,
+    bool isVideo = false,
+    bool canCompose = false,
   }) {
     // 确认写入步骤：只用消息上的确认/取消，不再挂预设
     if (message.pendingAction?.isPending == true) {
@@ -1692,12 +1747,18 @@ class _AgentPresetRules {
       ];
     }
     if (focused) {
-      return const [
-        '再展开说明',
-        '根据转写写一篇文章',
-        '对照其它收藏',
-        '调整这篇的标签',
-      ];
+      if (isVideo && !canCompose) {
+        return const [_composePreset];
+      }
+      return filterCompose(
+        const [
+          '再展开说明',
+          _composePreset,
+          '对照其它收藏',
+        ],
+        isVideo: isVideo,
+        canCompose: canCompose,
+      );
     }
     // 全局助手：意图搜索 + 对照（无深挖）
     return const [

@@ -299,6 +299,7 @@ function collectPriorCitations(history) {
         snippet: c.snippet || '',
         tagNames: Array.isArray(c.tagNames) ? c.tagNames : [],
         coverImageUrl: c.coverImageUrl || null,
+        pageUrl: c.pageUrl || null,
       });
     }
   }
