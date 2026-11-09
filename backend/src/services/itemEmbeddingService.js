@@ -7,8 +7,6 @@ const config = require('../config');
 const aliyunDashScope = require('./aliyunDashScope');
 const guideItemService = require('./guideItemService');
 const itemMediaKind = require('./itemMediaKind');
-const planService = require('./planService');
-const subscriptionService = require('./subscriptionService');
 const usageService = require('./usageService');
 const {
   collectTranscriptText,
@@ -169,18 +167,9 @@ async function deleteForItems(userId, itemIds) {
   );
 }
 
-async function userCanImageEmbed(userId) {
-  if (!usageService.isEnforcing()) return true;
-  try {
-    const { plan } = await subscriptionService.getPlanForUser(userId);
-    return planService.hasPrince(plan);
-  } catch {
-    return false;
-  }
-}
-
 /**
  * 图集：为每张图写多模态向量行（chunk_index >= IMAGE_CHUNK_BASE）。
+ * 暂不按会员门控（与正文向量一致，先观察成本）。
  * @returns {Promise<{ rows: Array, usage: object, model: string }>}
  */
 async function buildImageEmbeddingRows(userId, itemId, row) {
@@ -190,7 +179,6 @@ async function buildImageEmbeddingRows(userId, itemId, row) {
     model: '',
   };
   if (itemMediaKind.resolveMediaKind(row) !== 'gallery') return empty;
-  if (!(await userCanImageEmbed(userId))) return empty;
 
   const rawCount = parseImageUrlList(row).length;
   if (!rawCount) return empty;
