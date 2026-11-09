@@ -234,10 +234,25 @@ async function* chatTextStream({ messages, model, temperature }) {
   }
 }
 
+function parseEmbeddingUsage(raw) {
+  if (!raw || typeof raw !== 'object') {
+    return { promptTokens: 0, totalTokens: 0, textTokens: 0, imageTokens: 0 };
+  }
+  const promptTokens = Math.round(
+    Number(raw.prompt_tokens ?? raw.input_tokens ?? 0) || 0,
+  );
+  const imageTokens = Math.round(Number(raw.image_tokens ?? 0) || 0);
+  const totalTokens = Math.round(
+    Number(raw.total_tokens ?? promptTokens + imageTokens) || 0,
+  );
+  const textTokens = Math.max(0, totalTokens - imageTokens) || promptTokens;
+  return { promptTokens, totalTokens, textTokens, imageTokens };
+}
+
 /**
  * 文本向量（百炼 OpenAI 兼容 /embeddings）
  * @param {string[]} texts
- * @returns {Promise<{ vectors: number[][], model: string, dims: number }>}
+ * @returns {Promise<{ vectors: number[][], model: string, dims: number, usage: object }>}
  */
 async function embedTexts(texts) {
   const apiKey = config.aliyun.dashScopeApiKey;
@@ -250,7 +265,12 @@ async function embedTexts(texts) {
     .map((t) => String(t || '').trim())
     .filter(Boolean);
   if (!list.length) {
-    return { vectors: [], model: '', dims: 0 };
+    return {
+      vectors: [],
+      model: '',
+      dims: 0,
+      usage: { promptTokens: 0, totalTokens: 0, textTokens: 0, imageTokens: 0 },
+    };
   }
 
   const baseUrl = (config.aliyun.dashScopeBaseUrl || '').replace(/\/$/, '');
@@ -312,6 +332,7 @@ async function embedTexts(texts) {
     vectors,
     model: modelId,
     dims: vectors[0]?.length || dims,
+    usage: parseEmbeddingUsage(body?.usage),
   };
 }
 
@@ -331,7 +352,7 @@ function getDashScopeApiRoot() {
 /**
  * 多模态向量（文 / 图同一语义空间）。原生 API，非 OpenAI 兼容。
  * @param {Array<{ text?: string, image?: string }>} contents
- * @returns {Promise<{ vectors: number[][], model: string, dims: number }>}
+ * @returns {Promise<{ vectors: number[][], model: string, dims: number, usage: object }>}
  */
 async function embedMultimodal(contents) {
   const apiKey = config.aliyun.dashScopeApiKey;
@@ -349,7 +370,12 @@ async function embedMultimodal(contents) {
     })
     .filter((c) => c && (c.image || c.text));
   if (!list.length) {
-    return { vectors: [], model: '', dims: 0 };
+    return {
+      vectors: [],
+      model: '',
+      dims: 0,
+      usage: { promptTokens: 0, totalTokens: 0, textTokens: 0, imageTokens: 0 },
+    };
   }
 
   const modelId =
@@ -390,6 +416,12 @@ async function embedMultimodal(contents) {
 
   const supportsDimension = !/^multimodal-embedding-v1$/i.test(modelId);
   const vectors = [];
+  const usageAcc = {
+    promptTokens: 0,
+    totalTokens: 0,
+    textTokens: 0,
+    imageTokens: 0,
+  };
   for (const batch of batches) {
     const payload = {
       model: modelId,
@@ -424,6 +456,11 @@ async function embedMultimodal(contents) {
         `多模态 Embedding 失败 (${res.status})`;
       throw Object.assign(new Error(String(msg)), { status: 502 });
     }
+    const usage = parseEmbeddingUsage(body?.usage || body?.output?.usage);
+    usageAcc.promptTokens += usage.promptTokens;
+    usageAcc.totalTokens += usage.totalTokens;
+    usageAcc.textTokens += usage.textTokens;
+    usageAcc.imageTokens += usage.imageTokens;
     const embeddings =
       body?.output?.embeddings ||
       body?.embeddings ||
@@ -457,6 +494,7 @@ async function embedMultimodal(contents) {
     vectors,
     model: modelId,
     dims: vectors[0]?.length || dimsWanted || 1024,
+    usage: usageAcc,
   };
 }
 

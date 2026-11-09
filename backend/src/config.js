@@ -90,6 +90,15 @@ module.exports = {
       Number(process.env.ALIYUN_MULTIMODAL_EMBEDDING_DIMS) || 1024,
     /** false 时助手检索仍只用关键词 */
     agentKbEnabled: process.env.AGENT_KB_ENABLED !== 'false',
+    /**
+     * 看板 embedding 费用估（元 / 百万 token，华北2 目录价；可 env 覆盖）
+     * text = qwen3.7-text-embedding；vl* = qwen3-vl-embedding
+     */
+    embeddingCostYuanPerMillion: {
+      text: Number(process.env.EMBEDDING_COST_TEXT_PER_M) || 0.5,
+      vlText: Number(process.env.EMBEDDING_COST_VL_TEXT_PER_M) || 0.7,
+      vlImage: Number(process.env.EMBEDDING_COST_VL_IMAGE_PER_M) || 1.8,
+    },
   },
   /**
    * 月额度：free / basic / prince / emperor；USAGE_ENFORCING 控制触顶（默认 true）

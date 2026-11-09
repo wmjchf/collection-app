@@ -155,6 +155,15 @@
         </div>
       </div>
 
+      <div class="card section" id="embeddingCostSection">
+        <h2>本月 Embedding 费用估</h2>
+        <p class="muted" style="margin:0 0 10px;font-size:13px" id="embeddingCostHint">
+          自然月 Asia/Shanghai · 不计用户月额度 · 按百炼目录价估算
+        </p>
+        <div id="embeddingCostStats" style="margin-bottom:12px"></div>
+        <div id="embeddingCostDetail" class="muted" style="font-size:13px"></div>
+      </div>
+
       <div class="card section">
         <h2>DAU（app_open）</h2>
         <div id="dau"></div>
@@ -349,6 +358,14 @@
       return Number(n).toLocaleString('zh-CN');
     }
 
+    function fmtYuan(n) {
+      if (n == null || !Number.isFinite(Number(n))) return '—';
+      const v = Number(n);
+      if (v === 0) return '¥0';
+      if (v < 0.01) return `¥${v.toFixed(4)}`;
+      return `¥${v.toFixed(2)}`;
+    }
+
     function usageTable(data) {
       const usage = data.usage || {};
       const stats = usage.stats || {};
@@ -413,6 +430,45 @@
           load();
         });
       });
+    }
+
+    function embeddingCostSection(data) {
+      const emb = data.embeddingCost || {};
+      const stats = emb.stats || {};
+      const period = emb.period || {};
+      const rates = emb.ratesYuanPerMillion || {};
+      const byMod = emb.byModality || {};
+
+      $('embeddingCostHint').textContent =
+        `${period.yearMonth || '本月'} · Asia/Shanghai · 不计用户月额度 · ` +
+        `目录价 text ¥${rates.text ?? 0.5}/百万 · VL 文 ¥${rates.vlText ?? 0.7}/百万 · VL 图 ¥${rates.vlImage ?? 1.8}/百万` +
+        (emb.note ? ` · ${emb.note}` : '');
+
+      $('embeddingCostStats').innerHTML = [
+        kpi('费用估', fmtYuan(stats.estimatedYuan), '本月合计'),
+        kpi('索引', fmtYuan(stats.indexYuan), '入库向量'),
+        kpi('检索', fmtYuan(stats.searchYuan), '查询向量'),
+        kpi('Token', fmtNum(stats.totalTokens ?? 0), '全部 modality'),
+        kpi('调用次数', fmtNum(stats.events ?? 0), 'usage_events'),
+      ].join('');
+      $('embeddingCostStats').className = 'grid';
+
+      const modLabels = {
+        text: '正文 text',
+        vl_image: '图集 VL 图',
+        vl_text: 'VL 文',
+        vl_mixed: 'VL 混合',
+        query_text: '检索 text',
+        query_mm: '检索 VL 文',
+        image: '图（旧）',
+      };
+      const parts = Object.entries(byMod).map(([k, v]) => {
+        const label = modLabels[k] || k;
+        return `${label} ${fmtYuan(v.estimatedYuan)}（${fmtNum(v.tokens)} tok / ${fmtNum(v.events)} 次）`;
+      });
+      $('embeddingCostDetail').textContent = parts.length
+        ? `分项：${parts.join(' · ')}`
+        : '本月暂无 embedding 记账（新索引/检索后会写入 usage_events.kind=embedding）';
     }
 
     function kpi(label, value, hint) {
@@ -604,6 +660,7 @@
         ].join('');
 
         usageTable(data);
+        embeddingCostSection(data);
 
         $('journeyFunnel').innerHTML = funnelSteps(journey.funnel || [], singleUser);
 

@@ -181,14 +181,19 @@ async function userCanImageEmbed(userId) {
 
 /**
  * 图集：为每张图写多模态向量行（chunk_index >= IMAGE_CHUNK_BASE）。
- * @returns {Promise<Array<{ chunkIndex: number, chunkText: string, embedding: number[], model: string, dims: number }>>}
+ * @returns {Promise<{ rows: Array, usage: object, model: string }>}
  */
 async function buildImageEmbeddingRows(userId, itemId, row) {
-  if (itemMediaKind.resolveMediaKind(row) !== 'gallery') return [];
-  if (!(await userCanImageEmbed(userId))) return [];
+  const empty = {
+    rows: [],
+    usage: { promptTokens: 0, totalTokens: 0, textTokens: 0, imageTokens: 0 },
+    model: '',
+  };
+  if (itemMediaKind.resolveMediaKind(row) !== 'gallery') return empty;
+  if (!(await userCanImageEmbed(userId))) return empty;
 
   const rawCount = parseImageUrlList(row).length;
-  if (!rawCount) return [];
+  if (!rawCount) return empty;
 
   let signedUrls = [];
   try {
@@ -209,23 +214,36 @@ async function buildImageEmbeddingRows(userId, itemId, row) {
       .filter((u) => /^https?:\/\//i.test(u))
       .slice(0, MAX_IMAGE_EMBEDS);
   }
-  if (!signedUrls.length) return [];
+  if (!signedUrls.length) return empty;
 
   const title = String(row.title || '').trim() || `条目 ${itemId}`;
   const out = [];
+  let usage = {
+    promptTokens: 0,
+    totalTokens: 0,
+    textTokens: 0,
+    imageTokens: 0,
+  };
+  let model = '';
   for (let i = 0; i < signedUrls.length; i += 1) {
     const url = signedUrls[i];
     try {
-      const { vectors, model, dims } =
-        await aliyunDashScope.embedMultimodalImage(url);
-      if (!vectors[0]?.length) continue;
+      const emb = await aliyunDashScope.embedMultimodalImage(url);
+      if (!emb.vectors[0]?.length) continue;
+      model = emb.model || model;
+      if (emb.usage) {
+        usage.promptTokens += Number(emb.usage.promptTokens) || 0;
+        usage.totalTokens += Number(emb.usage.totalTokens) || 0;
+        usage.textTokens += Number(emb.usage.textTokens) || 0;
+        usage.imageTokens += Number(emb.usage.imageTokens) || 0;
+      }
       out.push({
         chunkIndex: IMAGE_CHUNK_BASE + i,
         // 勿写「第 n/m 张」：助手观察里会复读成「系统识别第几张」
         chunkText: `${title}\n（图集）`.slice(0, 1200),
-        embedding: vectors[0],
-        model,
-        dims,
+        embedding: emb.vectors[0],
+        model: emb.model,
+        dims: emb.dims,
       });
     } catch (err) {
       console.warn(
@@ -234,7 +252,7 @@ async function buildImageEmbeddingRows(userId, itemId, row) {
       );
     }
   }
-  return out;
+  return { rows: out, usage, model };
 }
 
 /**
@@ -274,7 +292,10 @@ async function indexItem(userId, itemId) {
   }
 
   const chunks = buildChunks(row);
-  const imageRows = await buildImageEmbeddingRows(uid, iid, row);
+  const imagePack = await buildImageEmbeddingRows(uid, iid, row);
+  const imageRows = imagePack?.rows || [];
+  const imageUsage = imagePack?.usage || null;
+  const imageModel = imagePack?.model || '';
   if (!chunks.length && !imageRows.length) {
     await deleteForItem(uid, iid);
     return { skipped: true, reason: 'no_chunks' };
@@ -283,11 +304,13 @@ async function indexItem(userId, itemId) {
   let textModel = '';
   let textDims = 0;
   let textVectors = [];
+  let textUsage = null;
   if (chunks.length) {
     const emb = await aliyunDashScope.embedTexts(chunks);
     textVectors = emb.vectors;
     textModel = emb.model;
     textDims = emb.dims;
+    textUsage = emb.usage || null;
   }
 
   const conn = await pool.getConnection();
@@ -341,6 +364,54 @@ async function indexItem(userId, itemId) {
   } finally {
     conn.release();
   }
+
+  const stamp = new Date().toISOString();
+  if (textUsage?.totalTokens > 0) {
+    usageService
+      .recordEmbeddingUsage({
+        userId: uid,
+        itemId: iid,
+        modality: 'text',
+        tokens: textUsage.totalTokens,
+        textTokens: textUsage.textTokens || textUsage.totalTokens,
+        model: textModel,
+        purpose: 'index',
+        generatedAt: `${stamp}:text`,
+      })
+      .catch((err) => {
+        console.warn(
+          '[itemEmbedding] record text usage fail:',
+          err?.message || err,
+        );
+      });
+  }
+  if (imageUsage && (imageUsage.totalTokens > 0 || imageUsage.imageTokens > 0)) {
+    const modality =
+      imageUsage.imageTokens > 0 && imageUsage.textTokens > 0
+        ? 'vl_mixed'
+        : imageUsage.imageTokens > 0
+          ? 'vl_image'
+          : 'vl_text';
+    usageService
+      .recordEmbeddingUsage({
+        userId: uid,
+        itemId: iid,
+        modality,
+        tokens: imageUsage.totalTokens || imageUsage.imageTokens,
+        textTokens: imageUsage.textTokens || 0,
+        imageTokens: imageUsage.imageTokens || 0,
+        model: imageModel,
+        purpose: 'index',
+        generatedAt: `${stamp}:img`,
+      })
+      .catch((err) => {
+        console.warn(
+          '[itemEmbedding] record image usage fail:',
+          err?.message || err,
+        );
+      });
+  }
+
   return {
     ok: true,
     chunks: chunks.length,
@@ -392,16 +463,53 @@ async function searchSimilar(userId, query, {
   const q = String(query || '').trim();
   if (!q) return [];
 
-  const { vectors: textVectors } = await aliyunDashScope.embedTexts([
-    q.slice(0, 2000),
-  ]);
-  const qTextVec = textVectors[0];
+  const textEmb = await aliyunDashScope.embedTexts([q.slice(0, 2000)]);
+  const qTextVec = textEmb.vectors[0];
   if (!qTextVec?.length) return [];
+
+  const stamp = new Date().toISOString();
+  if (textEmb.usage?.totalTokens > 0) {
+    usageService
+      .recordEmbeddingUsage({
+        userId: Number(userId),
+        modality: 'query_text',
+        tokens: textEmb.usage.totalTokens,
+        textTokens: textEmb.usage.textTokens || textEmb.usage.totalTokens,
+        model: textEmb.model,
+        purpose: 'search',
+        generatedAt: `${stamp}:qtext`,
+      })
+      .catch((err) => {
+        console.warn(
+          '[itemEmbedding] record search text usage fail:',
+          err?.message || err,
+        );
+      });
+  }
 
   let qMmVec = null;
   try {
     const mm = await aliyunDashScope.embedMultimodalText(q);
     if (mm.vectors[0]?.length) qMmVec = mm.vectors[0];
+    if (mm.usage?.totalTokens > 0) {
+      usageService
+        .recordEmbeddingUsage({
+          userId: Number(userId),
+          modality: 'query_mm',
+          tokens: mm.usage.totalTokens,
+          textTokens: mm.usage.textTokens || mm.usage.totalTokens,
+          imageTokens: mm.usage.imageTokens || 0,
+          model: mm.model,
+          purpose: 'search',
+          generatedAt: `${stamp}:qmm`,
+        })
+        .catch((err) => {
+          console.warn(
+            '[itemEmbedding] record search mm usage fail:',
+            err?.message || err,
+          );
+        });
+    }
   } catch (err) {
     console.warn(
       '[itemEmbedding] multimodal query embed fail:',
