@@ -72,12 +72,33 @@ module.exports = {
      * 解读已收束到助手，不再单独配置 SUMMARY 模型。
      */
     aiModelAgent: process.env.ALIYUN_AI_MODEL_AGENT || 'qwen3.8-flash',
+    /** 图集配图描述（旧路径，已改真图向量；保留配置以免环境变量报错） */
+    aiModelAgentVision:
+      process.env.ALIYUN_AI_MODEL_AGENT_VISION || 'qwen3-vl-plus',
     /** 收藏知识库 embedding（OpenAI 兼容 /embeddings） */
     embeddingModel:
-      process.env.ALIYUN_EMBEDDING_MODEL || 'text-embedding-v3',
+      process.env.ALIYUN_EMBEDDING_MODEL || 'qwen3.7-text-embedding',
     embeddingDims: Number(process.env.ALIYUN_EMBEDDING_DIMS) || 1024,
+    /**
+     * 图集真图向量（DashScope 原生 multimodal-embedding，与文本向量不同空间）。
+     * 查询时用同模型嵌文本，再与图片向量比余弦。默认 Qwen-VL-Embedding。
+     */
+    multimodalEmbeddingModel:
+      process.env.ALIYUN_MULTIMODAL_EMBEDDING_MODEL || 'qwen3-vl-embedding',
+    /** 多模态向量维度（qwen3-vl-embedding 支持；v1 固定 1024 忽略此参） */
+    multimodalEmbeddingDims:
+      Number(process.env.ALIYUN_MULTIMODAL_EMBEDDING_DIMS) || 1024,
     /** false 时助手检索仍只用关键词 */
     agentKbEnabled: process.env.AGENT_KB_ENABLED !== 'false',
+    /**
+     * 看板 embedding 费用估（元 / 百万 token，华北2 目录价；可 env 覆盖）
+     * text = qwen3.7-text-embedding；vl* = qwen3-vl-embedding
+     */
+    embeddingCostYuanPerMillion: {
+      text: Number(process.env.EMBEDDING_COST_TEXT_PER_M) || 0.5,
+      vlText: Number(process.env.EMBEDDING_COST_VL_TEXT_PER_M) || 0.7,
+      vlImage: Number(process.env.EMBEDDING_COST_VL_IMAGE_PER_M) || 1.8,
+    },
   },
   /**
    * 月额度：free / basic / prince / emperor；USAGE_ENFORCING 控制触顶（默认 true）

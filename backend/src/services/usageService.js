@@ -7,6 +7,8 @@ const planService = require('./planService');
 const KIND_TRANSCRIPT = 'transcript';
 const KIND_AI = 'ai';
 const KIND_STORAGE = 'storage';
+/** 知识库向量：不计用户月额度，仅看板成本 */
+const KIND_EMBEDDING = 'embedding';
 
 const QUOTA_MESSAGES = {
   transcript: '本月转写分钟已用完，请下月再试或联系支持',
@@ -301,6 +303,208 @@ function billableAiTokensFromUsage(usage) {
  * AI助手（含改标/归类等）与遗留脑图等共用 token 池；解析后自动打标不记入。
  * @param {{ userId: number, itemId?: number|null, feature: 'tags'|'mindmap'|'summary'|'organize'|'agent', tokens: number, generatedAt?: string, meta?: object }} args
  */
+/**
+ * 估算 embedding 费用（元）。modality: text | vl_text | vl_image
+ */
+function estimateEmbeddingYuan({
+  modality,
+  tokens = 0,
+  textTokens = 0,
+  imageTokens = 0,
+} = {}) {
+  const rates = config.aliyun?.embeddingCostYuanPerMillion || {};
+  const textRate = Number(rates.text) || 0.5;
+  const vlTextRate = Number(rates.vlText) || 0.7;
+  const vlImageRate = Number(rates.vlImage) || 1.8;
+  const m = String(modality || 'text');
+  if (m === 'vl_image' || m === 'image') {
+    const n = Number(imageTokens) > 0 ? Number(imageTokens) : Number(tokens);
+    return Math.round((Math.max(0, n) / 1e6) * vlImageRate * 1e6) / 1e6;
+  }
+  if (m === 'vl_text' || m === 'query_mm') {
+    const n = Number(textTokens) > 0 ? Number(textTokens) : Number(tokens);
+    return Math.round((Math.max(0, n) / 1e6) * vlTextRate * 1e6) / 1e6;
+  }
+  if (m === 'mixed' || m === 'vl_mixed') {
+    const t = Math.max(0, Number(textTokens) || 0);
+    const i = Math.max(0, Number(imageTokens) || 0);
+    const yuan = (t / 1e6) * vlTextRate + (i / 1e6) * vlImageRate;
+    return Math.round(yuan * 1e6) / 1e6;
+  }
+  const n = Number(tokens) || 0;
+  return Math.round((Math.max(0, n) / 1e6) * textRate * 1e6) / 1e6;
+}
+
+/**
+ * 记录向量调用（kind=embedding）。不计用户 AI 池。
+ * @param {{
+ *   userId: number,
+ *   itemId?: number|null,
+ *   modality: 'text'|'vl_text'|'vl_image'|'vl_mixed'|'query_text'|'query_mm',
+ *   tokens: number,
+ *   textTokens?: number,
+ *   imageTokens?: number,
+ *   model?: string,
+ *   purpose?: 'index'|'search',
+ *   generatedAt?: string,
+ *   meta?: object,
+ * }} args
+ */
+async function recordEmbeddingUsage({
+  userId,
+  itemId = null,
+  modality,
+  tokens,
+  textTokens = 0,
+  imageTokens = 0,
+  model = null,
+  purpose = 'index',
+  generatedAt,
+  meta = null,
+}) {
+  const total = Math.round(Number(tokens) || 0);
+  const tTok = Math.round(Number(textTokens) || 0);
+  const iTok = Math.round(Number(imageTokens) || 0);
+  const billable = total > 0 ? total : tTok + iTok;
+  if (!Number.isFinite(billable) || billable <= 0) {
+    return { recorded: false, reason: 'no_tokens' };
+  }
+  const mod = String(modality || 'text');
+  const yuan = estimateEmbeddingYuan({
+    modality: mod,
+    tokens: billable,
+    textTokens: tTok,
+    imageTokens: iTok,
+  });
+  const key = `emb:${purpose}:${mod}:${userId}:${itemId || 0}:${generatedAt || Date.now()}:${billable}`;
+  return recordEvent({
+    userId,
+    itemId: itemId != null ? Number(itemId) : null,
+    kind: KIND_EMBEDDING,
+    amount: billable,
+    unit: 'tokens',
+    idempotencyKey: key.slice(0, 160),
+    meta: {
+      feature: 'embedding',
+      modality: mod,
+      purpose: String(purpose || 'index'),
+      model: model != null ? String(model) : null,
+      textTokens: tTok || null,
+      imageTokens: iTok || null,
+      estimatedYuan: yuan,
+      billableToUser: false,
+      ...(meta && typeof meta === 'object' ? meta : {}),
+    },
+  });
+}
+
+/**
+ * 看板：本月 embedding token / 费用估（Asia/Shanghai 自然月）
+ */
+async function getEmbeddingCostSummary({ userId = null } = {}) {
+  const { yearMonth, start, end } = periodBounds();
+  const uid = userId != null && userId !== '' ? Number(userId) : null;
+  const params = { start, end, kind: KIND_EMBEDDING };
+  let userFilter = '';
+  if (uid != null && Number.isFinite(uid) && uid > 0) {
+    userFilter = ' AND user_id = :userId';
+    params.userId = uid;
+  }
+
+  const [rows] = await pool.execute(
+    `SELECT JSON_UNQUOTE(JSON_EXTRACT(meta, '$.modality')) AS modality,
+            JSON_UNQUOTE(JSON_EXTRACT(meta, '$.purpose')) AS purpose,
+            SUM(amount) AS tokens,
+            SUM(COALESCE(
+              CAST(JSON_UNQUOTE(JSON_EXTRACT(meta, '$.estimatedYuan')) AS DECIMAL(18,6)),
+              0
+            )) AS yuan,
+            SUM(COALESCE(
+              CAST(JSON_UNQUOTE(JSON_EXTRACT(meta, '$.textTokens')) AS SIGNED),
+              0
+            )) AS text_tokens,
+            SUM(COALESCE(
+              CAST(JSON_UNQUOTE(JSON_EXTRACT(meta, '$.imageTokens')) AS SIGNED),
+              0
+            )) AS image_tokens,
+            COUNT(*) AS events
+     FROM usage_events
+     WHERE kind = :kind
+       AND created_at >= :start
+       AND created_at < :end
+       ${userFilter}
+     GROUP BY modality, purpose`,
+    params,
+  );
+
+  const rates = config.aliyun?.embeddingCostYuanPerMillion || {};
+  const byModality = {};
+  const byPurpose = { index: 0, search: 0 };
+  let totalTokens = 0;
+  let totalYuan = 0;
+  let totalEvents = 0;
+
+  for (const r of rows) {
+    const mod = String(r.modality || 'text');
+    const purpose = String(r.purpose || 'index');
+    const tokens = Number(r.tokens) || 0;
+    let yuan = Number(r.yuan) || 0;
+    // 旧数据无 estimatedYuan 时按当前目录价回算
+    if (yuan <= 0 && tokens > 0) {
+      yuan = estimateEmbeddingYuan({
+        modality: mod,
+        tokens,
+        textTokens: Number(r.text_tokens) || 0,
+        imageTokens: Number(r.image_tokens) || 0,
+      });
+    }
+    totalTokens += tokens;
+    totalYuan += yuan;
+    totalEvents += Number(r.events) || 0;
+    if (!byModality[mod]) {
+      byModality[mod] = { tokens: 0, yuan: 0, events: 0 };
+    }
+    byModality[mod].tokens += tokens;
+    byModality[mod].yuan += yuan;
+    byModality[mod].events += Number(r.events) || 0;
+    if (purpose === 'search') byPurpose.search += yuan;
+    else byPurpose.index += yuan;
+  }
+
+  const round6 = (n) => Math.round(Number(n || 0) * 1e6) / 1e6;
+  return {
+    period: {
+      yearMonth,
+      start: start.toISOString(),
+      end: end.toISOString(),
+      timeZone: 'Asia/Shanghai',
+    },
+    ratesYuanPerMillion: {
+      text: Number(rates.text) || 0.5,
+      vlText: Number(rates.vlText) || 0.7,
+      vlImage: Number(rates.vlImage) || 1.8,
+    },
+    note: '不计用户月额度；费用按百炼目录价估算，以控制台实扣为准',
+    stats: {
+      events: totalEvents,
+      totalTokens: Math.round(totalTokens),
+      estimatedYuan: round6(totalYuan),
+      indexYuan: round6(byPurpose.index),
+      searchYuan: round6(byPurpose.search),
+    },
+    byModality: Object.fromEntries(
+      Object.entries(byModality).map(([k, v]) => [
+        k,
+        {
+          tokens: Math.round(v.tokens),
+          estimatedYuan: round6(v.yuan),
+          events: v.events,
+        },
+      ]),
+    ),
+  };
+}
+
 async function recordAiTokenUsage({
   userId,
   itemId,
@@ -899,15 +1103,19 @@ module.exports = {
   KIND_TRANSCRIPT,
   KIND_AI,
   KIND_STORAGE,
+  KIND_EMBEDDING,
   freeQuotas,
   quotasForPlan,
   planQuotasTable,
   periodBounds,
   durationSecFromCues,
   estimateAiTokens,
+  estimateEmbeddingYuan,
   recordEvent,
   recordTranscriptUsage,
   recordAiTokenUsage,
+  recordEmbeddingUsage,
+  getEmbeddingCostSummary,
   billableAiTokensFromUsage,
   tokensToCredits,
   creditsFromModelUsage,

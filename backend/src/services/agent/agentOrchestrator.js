@@ -2702,6 +2702,27 @@ function normalizePlan(
     }
   }
 
+  // 库内找图：强制 search，避免被「不支持图文」误判成 chitchat
+  const askFindImage =
+    !askCompose &&
+    /(找|搜|有没有|有木有).{0,12}(图|照片|图片|截图|封面)|画面里|配图里|这组图/.test(
+      String(userContent || ''),
+    );
+  if (askFindImage && intent !== 'compose' && intent !== 'compare') {
+    intent = 'search';
+    if (!queries.length) {
+      const q = String(userContent || '')
+        .replace(
+          /^(帮我|请|麻烦)?(找|搜|有没有|有木有)(一张|一张图|几张|一些)?/g,
+          '',
+        )
+        .replace(/(的)?(图|照片|图片|截图|封面)[吗麼么]?[。.!！？?]*$/g, '')
+        .trim()
+        .slice(0, 24);
+      if (q) queries = [q];
+    }
+  }
+
   // 阅读锚定：问本篇标签 / 推荐标签 → 钉本篇摘录（误判 tag_edit 的推荐也改道；写入改标仍留给下线）
   if (focusItem?.itemId && intent !== 'compose') {
     const fid = Number(focusItem.itemId);

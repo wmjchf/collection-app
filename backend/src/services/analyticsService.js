@@ -1017,13 +1017,15 @@ async function getSummary(days = 7, userId = null) {
   const saveFail = byName.item_save_fail || 0;
   const parseReady = byName.parse_ready || 0;
   const parseFail = byName.parse_fail || 0;
-  const [journey, selectedUser, trial, usage, retention] = await Promise.all([
-    journeyPromise,
-    uid ? getUserMeta(uid, start) : Promise.resolve(null),
-    subscriptionService.getTrialStats({ userId: uid }),
-    usageService.getUsageLeaderboard({ userId: uid, limit: uid ? 1 : 100 }),
-    getRetention(start, uid),
-  ]);
+  const [journey, selectedUser, trial, usage, embeddingCost, retention] =
+    await Promise.all([
+      journeyPromise,
+      uid ? getUserMeta(uid, start) : Promise.resolve(null),
+      subscriptionService.getTrialStats({ userId: uid }),
+      usageService.getUsageLeaderboard({ userId: uid, limit: uid ? 1 : 100 }),
+      usageService.getEmbeddingCostSummary({ userId: uid }),
+      getRetention(start, uid),
+    ]);
 
   return {
     days: d,
@@ -1033,6 +1035,7 @@ async function getSummary(days = 7, userId = null) {
     selectedUser,
     trial,
     usage,
+    embeddingCost,
     retention,
     byName,
     dau: dauRows.map((r) => ({
