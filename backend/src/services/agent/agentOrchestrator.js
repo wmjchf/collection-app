@@ -19,7 +19,6 @@ const {
 } = require('./agentAwaiting');
 const { executeTool } = require('./agentRegistry');
 const draftArticleTool = require('./tools/draftFromTranscript');
-const draftGalleryTool = require('./tools/draftFromGallery');
 const {
   buildPlanMessages,
   buildAnswerMessages,
@@ -754,7 +753,7 @@ async function finishGlobalFocusNeededTurn({
     '请先打开一篇收藏再来；全局助手可做意图搜索与对照。';
   if (intent === 'compose') {
     contentOut =
-      '写文章请先打开一篇已转写视频或图集，再在助手里说「根据转写写一篇文章」或「把这组图整理成一篇文章」。';
+      '根据转写写文章请先打开一篇视频，再在助手里说「根据转写写一篇文章」。';
   }
   toolTrace.push({
     tool: 'global_focus_needed',
@@ -1598,7 +1597,7 @@ async function finishComposeTurn({
 
   if (!itemId) {
     const contentOut =
-      '要整理成文章，请先打开一篇已转写的视频或一篇图集，再说「根据转写写一篇文章」或「把这组图整理成一篇文章」。';
+      '要根据转写写文章，请先打开一篇已转写的视频，或勾选出处后再说「根据转写写一篇文章」。';
     if (stream && emit) emit({ type: 'token', text: contentOut });
     const assistantMessage = await conversationService.insertMessage({
       conversationId,
@@ -1616,25 +1615,10 @@ async function finishComposeTurn({
     });
   }
 
-  // 先判图集，再走视频转写
-  let sourceKind = null;
-  let prepared = await draftGalleryTool.prepareGalleryDraft(ctx, itemId);
-  if (prepared.ok) {
-    sourceKind = 'gallery';
-  } else if (prepared.error === 'not_gallery') {
-    prepared = await draftArticleTool.prepareDraftSource(ctx, itemId);
-    if (prepared.ok) sourceKind = 'transcript';
-  }
-
-  if (!prepared.ok || !sourceKind) {
-    const toolName =
-      prepared.error === 'need_transcript' || prepared.error === 'not_video'
-        ? 'draft_article'
-        : prepared.error === 'empty_gallery' || prepared.error === 'not_gallery'
-          ? 'draft_gallery_article'
-          : 'draft_article';
+  const prepared = await draftArticleTool.prepareDraftSource(ctx, itemId);
+  if (!prepared.ok) {
     toolTrace.push({
-      tool: toolName,
+      tool: 'draft_article',
       ok: false,
       args: { itemId },
       error: prepared.error || null,
@@ -1643,9 +1627,9 @@ async function finishComposeTurn({
       String(prepared.message || '').trim() ||
       (prepared.error === 'need_transcript'
         ? '这篇视频还没有转写文稿。请先在阅读页「更多」里完成转写，再让我写文章。'
-        : prepared.error === 'empty_gallery'
-          ? '这篇图集没有可用的图片或文案，暂时无法整理成文章。'
-          : '目前支持：已转写视频根据转写写文章，或图集整理成文章。请打开对应篇目后再试。');
+        : prepared.error === 'not_video'
+          ? '目前只支持根据视频转写写文章。请打开一篇已转写的视频后再试。'
+          : '未能生成文章，请稍后重试。');
     if (stream && emit) emit({ type: 'token', text: contentOut });
     const assistantMessage = await conversationService.insertMessage({
       conversationId,
@@ -1665,42 +1649,23 @@ async function finishComposeTurn({
 
   let contentOut = '';
   let citations = (prepared.citations || []).slice(0, MAX_ANSWER_CITATIONS);
-  const toolName =
-    sourceKind === 'gallery' ? 'draft_gallery_article' : 'draft_article';
 
   if (stream) {
-    const messages =
-      sourceKind === 'gallery'
-        ? draftGalleryTool.composeMessages({
-            titleHint: prepared.titleHint,
-            caption: prepared.caption,
-            imageUrls: prepared.imageUrls,
-            json: false,
-          })
-        : draftArticleTool.composeMessages({
-            titleHint: prepared.titleHint,
-            transcript: prepared.transcript,
-            json: false,
-          });
-    const model =
-      sourceKind === 'gallery'
-        ? draftGalleryTool.modelForDraft(prepared.imageUrls)
-        : draftArticleTool.agentModel();
-    const imageExtra =
-      sourceKind === 'gallery' && Array.isArray(prepared.imageUrls)
-        ? prepared.imageUrls.length * 1200
-        : 0;
+    const messages = draftArticleTool.composeMessages({
+      titleHint: prepared.titleHint,
+      transcript: prepared.transcript,
+      json: false,
+    });
     await usageService.assertAiQuota(userId, {
       estimatedTokens: usageService.estimateAiTokens({
         messages,
         feature: 'agent',
-        extraChars: imageExtra,
       }),
     });
     let raw = '';
     for await (const chunk of aliyunDashScope.chatTextStream({
       messages,
-      model,
+      model: draftArticleTool.agentModel(),
       temperature: 0.4,
     })) {
       if (chunk.delta) {
@@ -1712,13 +1677,10 @@ async function finishComposeTurn({
       }
     }
     contentOut = raw.trim();
-    if (sourceKind === 'gallery') {
-      contentOut = contentOut.replace(/!\[[^\]]*\]\([^)]+\)/g, '').trim();
-    }
     toolTrace.push({
-      tool: toolName,
+      tool: 'draft_article',
       ok: Boolean(contentOut),
-      args: { itemId, mode: 'stream', sourceKind },
+      args: { itemId, mode: 'stream' },
       error: contentOut ? null : 'empty_draft',
     });
     if (!contentOut) {
@@ -1735,11 +1697,11 @@ async function finishComposeTurn({
       ];
     }
   } else {
-    const obs = await executeTool(toolName, ctx, { itemId });
+    const obs = await executeTool('draft_article', ctx, { itemId });
     toolTrace.push({
-      tool: toolName,
+      tool: 'draft_article',
       ok: Boolean(obs?.ok),
-      args: { itemId, mode: 'json', sourceKind },
+      args: { itemId, mode: 'json' },
       error: obs?.error || null,
     });
     if (obs?.usage) {
@@ -1751,12 +1713,9 @@ async function finishComposeTurn({
       citations = null;
     } else {
       const data = obs.data || {};
-      const wrap =
-        sourceKind === 'gallery'
-          ? draftGalleryTool.wrapArticleContent
-          : draftArticleTool.wrapArticleContent;
       contentOut =
-        String(data.content || '').trim() || wrap(data.title, data.body);
+        String(data.content || '').trim() ||
+        draftArticleTool.wrapArticleContent(data.title, data.body);
       citations = (obs.citations || []).slice(0, MAX_ANSWER_CITATIONS);
     }
   }
@@ -2731,16 +2690,36 @@ function normalizePlan(
     }
   }
 
-  // 明确「转写写文章 / 图集整理成文」时强制 compose，避免被 focus→search 或模型误判冲掉
-  const askCompose =
-    /根据转写\s*写|转写写一篇|把转写整理成|整理成一篇文章|把这组图整理|把这组图写成|图集整理成/.test(
-      String(userContent || ''),
-    );
+  // 明确「根据转写写文章」时强制 compose，避免被上面 focus→search 或模型误判冲掉
+  const askCompose = /根据转写\s*写|转写写一篇|把转写整理成|整理成一篇文章/.test(
+    String(userContent || ''),
+  );
   if (askCompose) {
     intent = 'compose';
     if (!excerptItemIds.length && focusItem?.itemId) {
       const fid = Number(focusItem.itemId);
       if (Number.isFinite(fid) && fid > 0) excerptItemIds = [fid];
+    }
+  }
+
+  // 库内找图：强制 search，避免被「不支持图文」误判成 chitchat
+  const askFindImage =
+    !askCompose &&
+    /(找|搜|有没有|有木有).{0,12}(图|照片|图片|截图|封面)|画面里|配图里|这组图/.test(
+      String(userContent || ''),
+    );
+  if (askFindImage && intent !== 'compose' && intent !== 'compare') {
+    intent = 'search';
+    if (!queries.length) {
+      const q = String(userContent || '')
+        .replace(
+          /^(帮我|请|麻烦)?(找|搜|有没有|有木有)(一张|一张图|几张|一些)?/g,
+          '',
+        )
+        .replace(/(的)?(图|照片|图片|截图|封面)[吗麼么]?[。.!！？?]*$/g, '')
+        .trim()
+        .slice(0, 24);
+      if (q) queries = [q];
     }
   }
 

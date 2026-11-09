@@ -1,16 +1,20 @@
 /**
- * 收藏知识库：切片 → DashScope embedding → MySQL JSON 存向量；
- * 检索时按 user 拉全量切片做余弦近邻（人少库够用；后续可换向量库）。
+ * 收藏知识库：正文文本向量 + 图集真图向量（多模态 embedding）。
+ * 文本 / 图片分属不同模型空间；检索时分别嵌查询再合并打分。
  */
 const { pool } = require('../db');
 const config = require('../config');
 const aliyunDashScope = require('./aliyunDashScope');
 const guideItemService = require('./guideItemService');
+const itemMediaKind = require('./itemMediaKind');
+const planService = require('./planService');
+const subscriptionService = require('./subscriptionService');
+const usageService = require('./usageService');
 const {
-  buildInputText,
   collectTranscriptText,
   computeContentHash,
   hasAiInput,
+  parseImageUrlList,
   stripMarkdown,
 } = require('./aiInput');
 
@@ -20,8 +24,16 @@ const MAX_CHUNKS = 8;
 const META_MAX = 900;
 const BODY_MAX = 12000;
 const DEFAULT_TOP_K = 8;
-/** 余弦阈值：过低会把几乎整库都算「相关」 */
+/** 图片向量 chunk_index 起点，避免与正文切片冲突 */
+const IMAGE_CHUNK_BASE = 1000;
+const MAX_IMAGE_EMBEDS = 6;
+/** 正文文本向量阈值（qwen3.7-text-embedding 等） */
 const MIN_SCORE = 0.45;
+/**
+ * 真图向量文搜图阈值：多模态余弦分普遍低于纯文本（实测相关约 0.15～0.35），
+ * 不可沿用 0.45，否则库内有图也召不回。
+ */
+const MIN_SCORE_MULTIMODAL = 0.15;
 /** 相对头名分差超过此值的丢掉，避免「8 篇都沾边」 */
 const SCORE_GAP = 0.1;
 
@@ -29,6 +41,21 @@ function isEnabled() {
   return (
     Boolean(config.aliyun.agentKbEnabled) &&
     aliyunDashScope.isConfigured()
+  );
+}
+
+function multimodalModelId() {
+  return config.aliyun.multimodalEmbeddingModel || 'qwen3-vl-embedding';
+}
+
+function isMultimodalRow(model) {
+  const m = String(model || '');
+  const expect = multimodalModelId();
+  return (
+    m === expect ||
+    m.startsWith('multimodal-embedding') ||
+    m.includes('embedding-vision') ||
+    m.includes('vl-embedding')
   );
 }
 
@@ -92,13 +119,17 @@ function buildChunks(row) {
     }
   }
   if (!chunks.length && title) chunks.push(title);
+  // 仅图集且无文字时，占位一条，避免 index 因 no_chunks 删库（真图向量另写）
+  if (!chunks.length && parseImageUrlList(row).length) {
+    chunks.push(title || '图集');
+  }
   return chunks.slice(0, MAX_CHUNKS);
 }
 
 async function loadItemRow(userId, itemId) {
   const [rows] = await pool.execute(
     `SELECT id, user_id, title, summary, content, platform, canonical_url,
-            transcript_segments
+            transcript_segments, ai_meta, image_urls, video_url, media_kind, url
      FROM items
      WHERE id = :itemId AND user_id = :userId AND deleted_at IS NULL
      LIMIT 1`,
@@ -138,6 +169,74 @@ async function deleteForItems(userId, itemIds) {
   );
 }
 
+async function userCanImageEmbed(userId) {
+  if (!usageService.isEnforcing()) return true;
+  try {
+    const { plan } = await subscriptionService.getPlanForUser(userId);
+    return planService.hasPrince(plan);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * 图集：为每张图写多模态向量行（chunk_index >= IMAGE_CHUNK_BASE）。
+ * @returns {Promise<Array<{ chunkIndex: number, chunkText: string, embedding: number[], model: string, dims: number }>>}
+ */
+async function buildImageEmbeddingRows(userId, itemId, row) {
+  if (itemMediaKind.resolveMediaKind(row) !== 'gallery') return [];
+  if (!(await userCanImageEmbed(userId))) return [];
+
+  const rawCount = parseImageUrlList(row).length;
+  if (!rawCount) return [];
+
+  let signedUrls = [];
+  try {
+    const itemService = require('./itemService');
+    const item = await itemService.getByIdForUser(userId, itemId);
+    signedUrls = (item?.imageUrls || [])
+      .map((u) => String(u || '').trim())
+      .filter((u) => /^https?:\/\//i.test(u))
+      .slice(0, MAX_IMAGE_EMBEDS);
+  } catch (err) {
+    console.warn(
+      `[itemEmbedding] sign image urls fail item=${itemId}:`,
+      err?.message || err,
+    );
+  }
+  if (!signedUrls.length) {
+    signedUrls = parseImageUrlList(row)
+      .filter((u) => /^https?:\/\//i.test(u))
+      .slice(0, MAX_IMAGE_EMBEDS);
+  }
+  if (!signedUrls.length) return [];
+
+  const title = String(row.title || '').trim() || `条目 ${itemId}`;
+  const out = [];
+  for (let i = 0; i < signedUrls.length; i += 1) {
+    const url = signedUrls[i];
+    try {
+      const { vectors, model, dims } =
+        await aliyunDashScope.embedMultimodalImage(url);
+      if (!vectors[0]?.length) continue;
+      out.push({
+        chunkIndex: IMAGE_CHUNK_BASE + i,
+        // 勿写「第 n/m 张」：助手观察里会复读成「系统识别第几张」
+        chunkText: `${title}\n（图集）`.slice(0, 1200),
+        embedding: vectors[0],
+        model,
+        dims,
+      });
+    } catch (err) {
+      console.warn(
+        `[itemEmbedding] image embed fail item=${itemId} i=${i}:`,
+        err?.message || err,
+      );
+    }
+  }
+  return out;
+}
+
 /**
  * 为单篇重建向量；内容未变则跳过。
  */
@@ -154,7 +253,6 @@ async function indexItem(userId, itemId) {
     await deleteForItem(uid, iid);
     return { skipped: true, reason: 'missing' };
   }
-  // 使用指引：永不进知识库（含新用户种子篇）
   if (guideItemService.isGuideItem(row)) {
     await deleteForItem(uid, iid);
     return { skipped: true, reason: 'guide' };
@@ -176,12 +274,22 @@ async function indexItem(userId, itemId) {
   }
 
   const chunks = buildChunks(row);
-  if (!chunks.length) {
+  const imageRows = await buildImageEmbeddingRows(uid, iid, row);
+  if (!chunks.length && !imageRows.length) {
     await deleteForItem(uid, iid);
     return { skipped: true, reason: 'no_chunks' };
   }
 
-  const { vectors, model, dims } = await aliyunDashScope.embedTexts(chunks);
+  let textModel = '';
+  let textDims = 0;
+  let textVectors = [];
+  if (chunks.length) {
+    const emb = await aliyunDashScope.embedTexts(chunks);
+    textVectors = emb.vectors;
+    textModel = emb.model;
+    textDims = emb.dims;
+  }
+
   const conn = await pool.getConnection();
   try {
     await conn.beginTransaction();
@@ -202,9 +310,27 @@ async function indexItem(userId, itemId) {
           chunkIndex: i,
           chunkText: chunks[i].slice(0, 1200),
           contentHash,
-          embedding: JSON.stringify(vectors[i]),
-          model,
-          dims,
+          embedding: JSON.stringify(textVectors[i]),
+          model: textModel,
+          dims: textDims,
+        },
+      );
+    }
+    for (const img of imageRows) {
+      await conn.execute(
+        `INSERT INTO item_embeddings
+           (user_id, item_id, chunk_index, chunk_text, content_hash, embedding, model, dims)
+         VALUES
+           (:userId, :itemId, :chunkIndex, :chunkText, :contentHash, CAST(:embedding AS JSON), :model, :dims)`,
+        {
+          userId: uid,
+          itemId: iid,
+          chunkIndex: img.chunkIndex,
+          chunkText: img.chunkText,
+          contentHash,
+          embedding: JSON.stringify(img.embedding),
+          model: img.model,
+          dims: img.dims,
         },
       );
     }
@@ -215,7 +341,13 @@ async function indexItem(userId, itemId) {
   } finally {
     conn.release();
   }
-  return { ok: true, chunks: chunks.length, model, dims };
+  return {
+    ok: true,
+    chunks: chunks.length,
+    images: imageRows.length,
+    model: textModel,
+    dims: textDims,
+  };
 }
 
 function parseEmbedding(raw) {
@@ -254,14 +386,28 @@ async function searchSimilar(userId, query, {
   limit = DEFAULT_TOP_K,
   excludeItemIds = [],
   minScore = MIN_SCORE,
+  minScoreMultimodal = MIN_SCORE_MULTIMODAL,
 } = {}) {
   if (!isEnabled()) return [];
   const q = String(query || '').trim();
   if (!q) return [];
 
-  const { vectors } = await aliyunDashScope.embedTexts([q.slice(0, 2000)]);
-  const qVec = vectors[0];
-  if (!qVec?.length) return [];
+  const { vectors: textVectors } = await aliyunDashScope.embedTexts([
+    q.slice(0, 2000),
+  ]);
+  const qTextVec = textVectors[0];
+  if (!qTextVec?.length) return [];
+
+  let qMmVec = null;
+  try {
+    const mm = await aliyunDashScope.embedMultimodalText(q);
+    if (mm.vectors[0]?.length) qMmVec = mm.vectors[0];
+  } catch (err) {
+    console.warn(
+      '[itemEmbedding] multimodal query embed fail:',
+      err?.message || err,
+    );
+  }
 
   const exclude = new Set(
     (Array.isArray(excludeItemIds) ? excludeItemIds : [])
@@ -270,7 +416,7 @@ async function searchSimilar(userId, query, {
   );
 
   const [rows] = await pool.execute(
-    `SELECT e.item_id, e.chunk_text, e.embedding,
+    `SELECT e.item_id, e.chunk_text, e.embedding, e.model, e.dims,
             i.title, i.cover_image_url, i.url, i.canonical_url, i.platform
      FROM item_embeddings e
      INNER JOIN items i
@@ -288,8 +434,14 @@ async function searchSimilar(userId, query, {
   for (const row of rows) {
     const itemId = Number(row.item_id);
     if (!itemId || exclude.has(itemId)) continue;
-    const score = cosine(qVec, parseEmbedding(row.embedding));
-    if (score < minScore) continue;
+    const embVec = parseEmbedding(row.embedding);
+    const mm = isMultimodalRow(row.model);
+    const qVec = mm ? qMmVec : qTextVec;
+    if (!qVec?.length) continue;
+    if (embVec.length !== qVec.length) continue;
+    const score = cosine(qVec, embVec);
+    const floor = mm ? minScoreMultimodal : minScore;
+    if (score < floor) continue;
     const prev = bestByItem.get(itemId);
     if (!prev || score > prev.score) {
       const media = citationMediaFields(row);
@@ -300,6 +452,7 @@ async function searchSimilar(userId, query, {
         title: row.title || row.url || `条目 ${itemId}`,
         coverImageUrl: media.coverImageUrl,
         pageUrl: media.pageUrl,
+        via: mm ? 'image' : 'text',
       });
     }
   }
@@ -360,7 +513,9 @@ module.exports = {
   deleteForItems,
   searchSimilar,
   buildChunks,
-  // test helpers
+  IMAGE_CHUNK_BASE,
+  MIN_SCORE,
+  MIN_SCORE_MULTIMODAL,
   cosine,
-  _buildInputText: buildInputText,
+  _buildInputText: require('./aiInput').buildInputText,
 };

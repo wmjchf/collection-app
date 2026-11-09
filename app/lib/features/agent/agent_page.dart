@@ -356,12 +356,7 @@ class _AgentPageState extends State<AgentPage> {
     return item.hasVideo;
   }
 
-  bool _focusIsGallery() => _focusItem?.isImageGallery == true;
-
-  bool _focusCanComposeVideo() =>
-      _focusIsVideo() && _hasSuccessfulTranscript();
-
-  bool _focusCanComposeGallery() => _focusIsGallery();
+  bool _focusCanCompose() => _focusIsVideo() && _hasSuccessfulTranscript();
 
   /// 异步拉动态预设。不计用户额度（服务端约定）。
   /// 全局空会话不请求；单篇或已有对话才拉。键未变则复用（含会话缓存里恢复的）。
@@ -864,9 +859,7 @@ class _AgentPageState extends State<AgentPage> {
     final hasMessages = _messages.isNotEmpty;
     final needDynamic = focused || hasMessages;
     final isVideo = _focusIsVideo();
-    final isGallery = _focusIsGallery();
-    final canComposeVideo = _focusCanComposeVideo();
-    final canComposeGallery = _focusCanComposeGallery();
+    final canCompose = _focusCanCompose();
 
     if (needDynamic) {
       final dynamic = _llmPresets;
@@ -874,9 +867,7 @@ class _AgentPageState extends State<AgentPage> {
         return _AgentPresetRules.filterCompose(
           dynamic,
           isVideo: isVideo,
-          isGallery: isGallery,
-          canComposeVideo: canComposeVideo,
-          canComposeGallery: canComposeGallery,
+          canCompose: canCompose,
         );
       }
       return const [];
@@ -1688,77 +1679,44 @@ class _AssistantBlock extends StatelessWidget {
 /// 按上一轮助手回复用规则推断预设（不走模型）。
 /// 挂确认条的最后一步不展示预设，避免与「确认整理」抢决策。
 class _AgentPresetRules {
-  static const _composeVideoPreset = '根据转写写一篇文章';
-  static const _composeGalleryPreset = '把这组图整理成一篇文章';
+  static const _composePreset = '根据转写写一篇文章';
 
-  static bool _looksLikeVideoCompose(String p) =>
-      RegExp(r'转写|根据转写').hasMatch(p);
+  static bool _looksLikeCompose(String p) =>
+      RegExp(r'转写|写一篇文章|写篇文章').hasMatch(p);
 
-  static bool _looksLikeGalleryCompose(String p) =>
-      RegExp(r'这组图|图集整理|把.*图.*整理成').hasMatch(p);
-
-  /// 视频：未转写只留转文；图集：可留整理成文；互斥滤掉对方的 compose 预设。
+  /// 非视频去掉转文；视频未转写只保留转文引导；已转写可保留。
   static List<String> filterCompose(
     List<String> presets, {
     required bool isVideo,
-    required bool isGallery,
-    required bool canComposeVideo,
-    required bool canComposeGallery,
+    required bool canCompose,
   }) {
-    if (isVideo && !canComposeVideo) {
-      final only = presets.where(_looksLikeVideoCompose).toList();
-      return only.isNotEmpty ? only : const [_composeVideoPreset];
+    if (!isVideo) {
+      return presets.where((p) => !_looksLikeCompose(p)).toList(growable: false);
     }
-    var out = presets.toList();
-    if (!canComposeVideo) {
-      out = out.where((p) => !_looksLikeVideoCompose(p)).toList();
+    if (!canCompose) {
+      final only = presets.where(_looksLikeCompose).toList();
+      return only.isNotEmpty ? only : const [_composePreset];
     }
-    if (!canComposeGallery) {
-      out = out.where((p) => !_looksLikeGalleryCompose(p)).toList();
-    }
-    if (isGallery && canComposeGallery) {
-      final hasGallery = out.any(_looksLikeGalleryCompose);
-      if (!hasGallery) {
-        out = [_composeGalleryPreset, ...out];
-      }
-    }
-    return List<String>.unmodifiable(out);
+    return presets;
   }
 
   static List<String> starters({
     required bool focused,
     bool isVideo = false,
-    bool isGallery = false,
-    bool canComposeVideo = false,
-    bool canComposeGallery = false,
+    bool canCompose = false,
   }) {
     if (focused) {
-      if (isVideo && !canComposeVideo) {
-        return const [_composeVideoPreset];
-      }
-      if (isGallery && canComposeGallery) {
-        return filterCompose(
-          const [
-            _composeGalleryPreset,
-            '这篇的核心观点是什么？',
-            '还有哪些相关收藏？',
-          ],
-          isVideo: isVideo,
-          isGallery: isGallery,
-          canComposeVideo: canComposeVideo,
-          canComposeGallery: canComposeGallery,
-        );
+      if (isVideo && !canCompose) {
+        return const [_composePreset];
       }
       return filterCompose(
         const [
           '这篇的核心观点是什么？',
-          _composeVideoPreset,
+          _composePreset,
           '还有哪些相关收藏？',
         ],
         isVideo: isVideo,
-        isGallery: isGallery,
-        canComposeVideo: canComposeVideo,
-        canComposeGallery: canComposeGallery,
+        canCompose: canCompose,
       );
     }
     return const [
@@ -1772,9 +1730,7 @@ class _AgentPresetRules {
     AgentMessage message, {
     required bool focused,
     bool isVideo = false,
-    bool isGallery = false,
-    bool canComposeVideo = false,
-    bool canComposeGallery = false,
+    bool canCompose = false,
   }) {
     // 确认写入步骤：只用消息上的确认/取消，不再挂预设
     if (message.pendingAction?.isPending == true) {
@@ -1791,32 +1747,17 @@ class _AgentPresetRules {
       ];
     }
     if (focused) {
-      if (isVideo && !canComposeVideo) {
-        return const [_composeVideoPreset];
-      }
-      if (isGallery && canComposeGallery) {
-        return filterCompose(
-          const [
-            '再展开说明',
-            _composeGalleryPreset,
-            '对照其它收藏',
-          ],
-          isVideo: isVideo,
-          isGallery: isGallery,
-          canComposeVideo: canComposeVideo,
-          canComposeGallery: canComposeGallery,
-        );
+      if (isVideo && !canCompose) {
+        return const [_composePreset];
       }
       return filterCompose(
         const [
           '再展开说明',
-          _composeVideoPreset,
+          _composePreset,
           '对照其它收藏',
         ],
         isVideo: isVideo,
-        isGallery: isGallery,
-        canComposeVideo: canComposeVideo,
-        canComposeGallery: canComposeGallery,
+        canCompose: canCompose,
       );
     }
     // 全局助手：意图搜索 + 对照（无深挖）

@@ -254,7 +254,7 @@ async function embedTexts(texts) {
   }
 
   const baseUrl = (config.aliyun.dashScopeBaseUrl || '').replace(/\/$/, '');
-  const modelId = config.aliyun.embeddingModel || 'text-embedding-v3';
+  const modelId = config.aliyun.embeddingModel || 'qwen3.7-text-embedding';
   const dims = Number(config.aliyun.embeddingDims) || 1024;
 
   const payload = {
@@ -315,9 +315,174 @@ async function embedTexts(texts) {
   };
 }
 
+function getDashScopeApiRoot() {
+  const raw = (
+    config.aliyun.dashScopeApiRoot ||
+    config.aliyun.dashScopeBaseUrl ||
+    'https://dashscope.aliyuncs.com/compatible-mode/v1'
+  ).replace(/\/$/, '');
+  if (raw.includes('/compatible-mode/v1')) {
+    return raw.replace(/\/compatible-mode\/v1$/, '');
+  }
+  if (raw.endsWith('/v1')) return raw.slice(0, -3);
+  return raw || 'https://dashscope.aliyuncs.com';
+}
+
+/**
+ * 多模态向量（文 / 图同一语义空间）。原生 API，非 OpenAI 兼容。
+ * @param {Array<{ text?: string, image?: string }>} contents
+ * @returns {Promise<{ vectors: number[][], model: string, dims: number }>}
+ */
+async function embedMultimodal(contents) {
+  const apiKey = config.aliyun.dashScopeApiKey;
+  if (!apiKey) {
+    throw Object.assign(new Error('AI 未配置：请设置 DASHSCOPE_API_KEY'), {
+      status: 503,
+    });
+  }
+  const list = (Array.isArray(contents) ? contents : [])
+    .map((c) => {
+      if (!c || typeof c !== 'object') return null;
+      if (c.image) return { image: String(c.image).trim() };
+      if (c.text) return { text: String(c.text).trim() };
+      return null;
+    })
+    .filter((c) => c && (c.image || c.text));
+  if (!list.length) {
+    return { vectors: [], model: '', dims: 0 };
+  }
+
+  const modelId =
+    config.aliyun.multimodalEmbeddingModel || 'qwen3-vl-embedding';
+  const dimsWanted = Number(config.aliyun.multimodalEmbeddingDims) || 1024;
+  const root = getDashScopeApiRoot();
+  const url = `${root}/api/v1/services/embeddings/multimodal-embedding/multimodal-embedding`;
+
+  // multimodal-embedding-v1：单次最多 1 张图；qwen3-vl-embedding 等可多图独立向量
+  const oneImagePerBatch = /^multimodal-embedding-v1$/i.test(modelId);
+  const maxImagesPerBatch = oneImagePerBatch ? 1 : 10;
+  const batches = [];
+  let textBuf = [];
+  let imageBuf = [];
+  const flushTexts = () => {
+    if (!textBuf.length) return;
+    batches.push([...textBuf]);
+    textBuf = [];
+  };
+  const flushImages = () => {
+    if (!imageBuf.length) return;
+    batches.push([...imageBuf]);
+    imageBuf = [];
+  };
+  for (const item of list) {
+    if (item.image) {
+      flushTexts();
+      imageBuf.push(item);
+      if (imageBuf.length >= maxImagesPerBatch) flushImages();
+    } else {
+      flushImages();
+      textBuf.push(item);
+      if (textBuf.length >= 16) flushTexts();
+    }
+  }
+  flushImages();
+  flushTexts();
+
+  const supportsDimension = !/^multimodal-embedding-v1$/i.test(modelId);
+  const vectors = [];
+  for (const batch of batches) {
+    const payload = {
+      model: modelId,
+      input: { contents: batch },
+    };
+    if (supportsDimension && dimsWanted > 0) {
+      payload.parameters = { dimension: dimsWanted };
+    }
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    });
+    const text = await res.text();
+    let body;
+    try {
+      body = JSON.parse(text);
+    } catch {
+      throw Object.assign(
+        new Error(`多模态 Embedding 响应解析失败：${text.slice(0, 200)}`),
+        { status: 502 },
+      );
+    }
+    if (!res.ok) {
+      const msg =
+        body?.message ||
+        body?.code ||
+        body?.error?.message ||
+        `多模态 Embedding 失败 (${res.status})`;
+      throw Object.assign(new Error(String(msg)), { status: 502 });
+    }
+    const embeddings =
+      body?.output?.embeddings ||
+      body?.embeddings ||
+      body?.data ||
+      [];
+    const arr = Array.isArray(embeddings) ? embeddings : [];
+    const sorted = [...arr].sort(
+      (a, b) => Number(a?.index ?? 0) - Number(b?.index ?? 0),
+    );
+    for (const row of sorted) {
+      const emb = row?.embedding;
+      if (!Array.isArray(emb) || !emb.length) {
+        throw Object.assign(new Error('多模态 Embedding 返回空向量'), {
+          status: 502,
+        });
+      }
+      vectors.push(emb.map((n) => Number(n) || 0));
+    }
+  }
+
+  if (vectors.length !== list.length) {
+    throw Object.assign(
+      new Error(
+        `多模态 Embedding 条数不匹配：${vectors.length}/${list.length}`,
+      ),
+      { status: 502 },
+    );
+  }
+
+  return {
+    vectors,
+    model: modelId,
+    dims: vectors[0]?.length || dimsWanted || 1024,
+  };
+}
+
+/** 查询文本 → 多模态空间向量（用于文搜图） */
+async function embedMultimodalText(text) {
+  const t = String(text || '').trim().slice(0, 500);
+  if (!t) return { vectors: [], model: '', dims: 0 };
+  return embedMultimodal([{ text: t }]);
+}
+
+/** 单张图片 URL → 向量 */
+async function embedMultimodalImage(imageUrl) {
+  const url = String(imageUrl || '').trim();
+  if (!/^https?:\/\//i.test(url)) {
+    return { vectors: [], model: '', dims: 0 };
+  }
+  return embedMultimodal([{ image: url }]);
+}
+
 module.exports = {
   isConfigured,
   chatJson,
   chatTextStream,
   embedTexts,
+  embedMultimodal,
+  embedMultimodalText,
+  embedMultimodalImage,
+  getDashScopeApiRoot,
 };

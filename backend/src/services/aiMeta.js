@@ -33,6 +33,16 @@ const DEFAULT_SUMMARY = {
   creditsUsed: null,
 };
 
+/** 图集画面描述（供知识库文本向量；不对 App 强依赖） */
+const DEFAULT_IMAGE_CAPTIONS = {
+  status: 'none',
+  text: null,
+  imageHash: null,
+  error: null,
+  generatedAt: null,
+  model: null,
+};
+
 const {
   normalizeRegenerateFrom,
 } = require('./aiRegeneratePrompt');
@@ -69,6 +79,7 @@ function defaultAiMeta() {
     tags: { ...DEFAULT_TAGS, items: [] },
     mindmap: { ...DEFAULT_MINDMAP },
     summary: { ...DEFAULT_SUMMARY },
+    imageCaptions: { ...DEFAULT_IMAGE_CAPTIONS },
     model: null,
   };
 }
@@ -92,6 +103,11 @@ function parseAiMeta(raw) {
   const summary = obj.summary && typeof obj.summary === 'object' ? obj.summary : {};
   const summaryText = normalizeSummaryDisplayText(summary.text);
   const summaryBrief = normalizeSummaryDisplayText(summary.brief);
+  const imageCaptions =
+    obj.imageCaptions && typeof obj.imageCaptions === 'object'
+      ? obj.imageCaptions
+      : {};
+  const captionText = normalizeSummaryDisplayText(imageCaptions.text);
 
   return {
     tags: {
@@ -132,6 +148,17 @@ function parseAiMeta(raw) {
       regenerateFrom: normalizeRegenerateFrom(summary.regenerateFrom),
       creditsUsed: parseCreditsUsed(summary.creditsUsed),
     },
+    imageCaptions: {
+      status: imageCaptions.status || 'none',
+      text: captionText,
+      imageHash:
+        imageCaptions.imageHash != null
+          ? String(imageCaptions.imageHash)
+          : null,
+      error: imageCaptions.error != null ? String(imageCaptions.error) : null,
+      generatedAt: imageCaptions.generatedAt || null,
+      model: imageCaptions.model != null ? String(imageCaptions.model) : null,
+    },
     model: obj.model != null ? String(obj.model) : null,
   };
 }
@@ -171,6 +198,7 @@ function mapAiMetaForApi(meta) {
       awaitTranscript: m.summary.awaitTranscript,
       creditsUsed: m.summary.creditsUsed,
     },
+    // 画面描述仅服务端索引用，不对外暴露全文
     model: m.model,
   };
 }
@@ -205,6 +233,17 @@ function withSummaryState(meta, patch) {
   return m;
 }
 
+function withImageCaptionsState(meta, patch) {
+  const m = parseAiMeta(meta);
+  m.imageCaptions = { ...m.imageCaptions, ...patch };
+  return m;
+}
+
+function imageCaptionsText(metaOrRaw) {
+  const m = parseAiMeta(metaOrRaw);
+  return String(m.imageCaptions?.text || '').trim();
+}
+
 module.exports = {
   defaultAiMeta,
   normalizeSummaryDisplayText,
@@ -217,4 +256,6 @@ module.exports = {
   withTagsState,
   withMindmapState,
   withSummaryState,
+  withImageCaptionsState,
+  imageCaptionsText,
 };

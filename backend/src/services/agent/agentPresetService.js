@@ -5,14 +5,10 @@ const itemService = require('../itemService');
 const conversationService = require('./agentConversationService');
 const { hasSuccessfulTranscript, isVideoItem } =
   require('./tools/draftFromTranscript');
-const { isGalleryItem } = require('./tools/draftFromGallery');
 
 const MAX_PRESETS = 4;
 const ASSISTANT_SNIPPET = 1200;
 const CONTENT_SNIPPET = 800;
-
-const COMPOSE_VIDEO_PRESET = '根据转写写一篇文章';
-const COMPOSE_GALLERY_PRESET = '把这组图整理成一篇文章';
 
 function agentModel() {
   return config.aliyun.aiModelAgent || 'qwen3.8-flash';
@@ -45,14 +41,6 @@ function normalizePresets(raw) {
     if (out.length >= MAX_PRESETS) break;
   }
   return out;
-}
-
-function looksLikeVideoCompose(p) {
-  return /转写|根据转写/.test(String(p || ''));
-}
-
-function looksLikeGalleryCompose(p) {
-  return /这组图|图集整理|把.*图.*整理成/.test(String(p || ''));
 }
 
 /**
@@ -98,10 +86,8 @@ async function suggestPresets({
         : null;
 
   let focusBlock = '无当前阅读篇。';
-  let canComposeVideo = false;
-  let canComposeGallery = false;
+  let canCompose = false;
   let focusIsVideo = false;
-  let focusIsGallery = false;
   if (focusId && Number.isFinite(focusId) && focusId > 0) {
     try {
       const item = await itemService.getByIdForUser(userId, focusId);
@@ -111,15 +97,12 @@ async function suggestPresets({
         const summary = clip(item.summary || '', 240);
         const content = clip(item.content || '', CONTENT_SNIPPET);
         const video = isVideoItem(item);
-        const gallery = isGalleryItem(item);
         const transcribed = video && hasSuccessfulTranscript(item);
         focusIsVideo = video;
-        focusIsGallery = gallery;
-        canComposeVideo = transcribed;
-        canComposeGallery = gallery;
+        canCompose = transcribed;
         focusBlock = [
           `当前阅读篇：${title}`,
-          video ? '类型：音视频' : gallery ? '类型：图集' : '类型：图文',
+          video ? '类型：音视频' : '类型：图文',
           transcribed ? '转写：已有成功文稿' : video ? '转写：无' : '',
           summary ? `摘要：${summary}` : '',
           content && !summary ? `正文摘录：${content}` : '',
@@ -132,6 +115,7 @@ async function suggestPresets({
     }
   }
 
+  const composePreset = '根据转写写一篇文章';
   const globalOnly = !focusId;
   // 全局助手：意图搜索 + 对照预设（无深挖），不调模型
   if (globalOnly) {
@@ -145,22 +129,8 @@ async function suggestPresets({
     };
   }
   // 视频尚未转写：只留转文一条，引导先去阅读页转写（点了走既有 compose 提示）
-  if (focusIsVideo && !canComposeVideo) {
-    return { presets: [COMPOSE_VIDEO_PRESET], source: 'video_need_transcript' };
-  }
-  // 图集：固定带整理成文，再视情况补动态预设
-  if (focusIsGallery && canComposeGallery) {
-    // 空会话起步：直接给整理 + 两条常用，少一次 LLM
-    if (!clip(lastAssistantContent, ASSISTANT_SNIPPET)) {
-      return {
-        presets: [
-          COMPOSE_GALLERY_PRESET,
-          '这篇的核心观点是什么？',
-          '还有哪些相关收藏？',
-        ],
-        source: 'gallery_starters',
-      };
-    }
+  if (focusIsVideo && !canCompose) {
+    return { presets: [composePreset], source: 'video_need_transcript' };
   }
 
   const last = clip(lastAssistantContent, ASSISTANT_SNIPPET);
@@ -168,11 +138,9 @@ async function suggestPresets({
     ? `上一轮助手回复摘录：\n${last}`
     : '上一轮助手回复：无（空会话起步）。';
 
-  const composeHint = canComposeVideo
-    ? `当前篇已有转写时，可出现「${COMPOSE_VIDEO_PRESET}」类预设。`
-    : canComposeGallery
-      ? `当前篇是图集时，可出现「${COMPOSE_GALLERY_PRESET}」类预设；不要出现转写写文章。`
-      : `当前没有可用转写、也不是图集时，不要出现「写一篇文章 / 转写 / 整理成文章」类预设。`;
+  const composeHint = canCompose
+    ? `当前篇已有转写时，可出现「${composePreset}」类预设。`
+    : `当前没有可用转写时，不要出现「${composePreset}」类预设。`;
 
   const messages = [
     {
@@ -205,18 +173,10 @@ ${lastBlock}
     });
     // 明确不计额度：此处不调用 recordAiTokenUsage / assertAiQuota
     let presets = normalizePresets(result.json);
-    if (!canComposeVideo) {
-      presets = presets.filter((p) => !looksLikeVideoCompose(p));
-    }
-    if (!canComposeGallery) {
-      presets = presets.filter((p) => !looksLikeGalleryCompose(p));
-    }
-    if (canComposeGallery) {
-      // 确保图集整理预设靠前出现
-      presets = [
-        COMPOSE_GALLERY_PRESET,
-        ...presets.filter((p) => !looksLikeGalleryCompose(p)),
-      ].slice(0, MAX_PRESETS);
+    if (!canCompose) {
+      presets = presets.filter(
+        (p) => !/转写|写一篇文章|写篇文章/.test(p),
+      );
     }
     presets = presets.filter(
       (p) =>
@@ -230,18 +190,10 @@ ${lastBlock}
     return { presets, source: 'llm' };
   } catch (err) {
     console.warn('[agentPresets] failed:', err?.message || err);
-    if (canComposeGallery) {
-      return {
-        presets: [COMPOSE_GALLERY_PRESET],
-        source: 'error_gallery_fallback',
-      };
-    }
     return { presets: [], source: 'error' };
   }
 }
 
 module.exports = {
   suggestPresets,
-  COMPOSE_VIDEO_PRESET,
-  COMPOSE_GALLERY_PRESET,
 };

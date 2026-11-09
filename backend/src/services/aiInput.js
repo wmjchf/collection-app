@@ -21,12 +21,32 @@ function collectTranscriptText(row) {
   return parts.join('\n\n');
 }
 
+function parseImageUrlList(row) {
+  const raw = row?.image_urls ?? row?.imageUrls;
+  if (raw == null) return [];
+  let arr = raw;
+  if (typeof raw === 'string') {
+    try {
+      arr = JSON.parse(raw);
+    } catch {
+      return [];
+    }
+  }
+  if (!Array.isArray(arr)) return [];
+  return arr.map((u) => String(u || '').trim()).filter(Boolean);
+}
+
+function imageUrlsFingerprint(row) {
+  return parseImageUrlList(row).join('\n');
+}
+
 function hasAiInput(row) {
   const title = (row.title || '').trim();
   const content = stripMarkdown(row.content || '');
   const summary = (row.summary || '').trim();
   const transcript = collectTranscriptText(row);
-  return Boolean(title || content || summary || transcript);
+  const images = parseImageUrlList(row);
+  return Boolean(title || content || summary || transcript || images.length);
 }
 
 function buildInputText(row) {
@@ -45,11 +65,9 @@ function buildInputText(row) {
 }
 
 function computeContentHash(row) {
-  return crypto
-    .createHash('sha256')
-    .update(buildInputText(row))
-    .digest('hex')
-    .slice(0, 24);
+  const images = imageUrlsFingerprint(row);
+  const payload = `${buildInputText(row)}\n#images\n${images}`;
+  return crypto.createHash('sha256').update(payload).digest('hex').slice(0, 24);
 }
 
 /**
@@ -116,6 +134,8 @@ function buildAiTaskMessages(inputText, taskParts) {
 module.exports = {
   stripMarkdown,
   collectTranscriptText,
+  parseImageUrlList,
+  imageUrlsFingerprint,
   hasAiInput,
   buildInputText,
   computeContentHash,
