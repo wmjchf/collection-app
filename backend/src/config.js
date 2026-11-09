@@ -72,6 +72,9 @@ module.exports = {
      * 解读已收束到助手，不再单独配置 SUMMARY 模型。
      */
     aiModelAgent: process.env.ALIYUN_AI_MODEL_AGENT || 'qwen3.8-flash',
+    /** 图集整理文章看图（多模态）；无图时仍用 aiModelAgent */
+    aiModelAgentVision:
+      process.env.ALIYUN_AI_MODEL_AGENT_VISION || 'qwen3-vl-plus',
     /** 收藏知识库 embedding（OpenAI 兼容 /embeddings） */
     embeddingModel:
       process.env.ALIYUN_EMBEDDING_MODEL || 'text-embedding-v3',

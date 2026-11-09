@@ -179,7 +179,8 @@ async function prepareDraftSource(ctx, itemIdRaw) {
     return {
       ok: false,
       error: 'not_video',
-      message: '目前只支持根据视频转写写文章。请打开一篇已转写的视频后再试。',
+      message:
+        '目前支持：已转写视频根据转写写文章，或图集整理成文章。请打开对应篇目后再试。',
     };
   }
 

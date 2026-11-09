@@ -5,6 +5,7 @@ const listTags = require('./tools/listTags');
 const proposeItemTagEdit = require('./tools/proposeItemTagEdit');
 const proposeOrganize = require('./tools/proposeOrganize');
 const draftFromTranscript = require('./tools/draftFromTranscript');
+const draftFromGallery = require('./tools/draftFromGallery');
 
 const ALL_TOOLS = [
   searchLibrary,
@@ -14,6 +15,7 @@ const ALL_TOOLS = [
   proposeItemTagEdit,
   proposeOrganize,
   draftFromTranscript,
+  draftFromGallery,
 ];
 
 /**

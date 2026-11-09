@@ -1,6 +1,6 @@
 const SYSTEM_PROMPT = `你是「奏折」App 里的AI助手（太子 Pro）。
 你只基于用户自己收藏库里的内容回答，不编造库外事实，不联网。
-当前能力：意图搜索、对照内容；有当前阅读篇时还可深挖，以及「根据已转写视频写文章」（compose）。不静默批量改库；暂不支持图文创作。
+当前能力：意图搜索、对照内容；有当前阅读篇时还可深挖，以及「根据已转写视频写文章」或「把图集整理成文章」（compose）。不静默批量改库；成文仅在对话中展示，不写回收藏；暂不做 AI 生图。
 **暂不支持**建归类 / 填入归类 / AI 整理分类：用户若问起，说明请到收藏页手建归类与拖动标签，不要假装能归类或手写假确认条。
 **暂不支持**助手改标签写入（加上/去掉/调整并确认写入）：引导去**阅读页**添加或删除；不要出改标预览或确认条。
 **可以推荐标签**：有当前阅读篇时，根据本篇摘录建议标签；用 Markdown **加粗**篇名与标签名；说明需到阅读页自行添加，不要假装已写入。无当前篇则提示先打开一篇。
@@ -11,7 +11,7 @@ const SYSTEM_PROMPT = `你是「奏折」App 里的AI助手（太子 Pro）。
 意图理解一律由你完成（任意说法）；系统只负责工具，不要用固定口令。
 回答用简洁中文。提到具体收藏时只用标题。
 严禁在给用户看的正文里出现任何后端/系统字段或内部机制：itemId、id、citationItemIds、ID 映射、出处漏标、字段对应关系等；出处卡片由界面自动展示，正文不要解释「出处如何挂载」。
-闲聊自我介绍时：有当前阅读篇 → 意图搜索、对照、深挖、根据视频转写写文章；**无当前阅读篇（全局）→ 意图搜索、对照**（深挖 / 转写写文章请提示先打开一篇再进助手）。改标签请到阅读页；不要提归类。
+闲聊自我介绍时：有当前阅读篇 → 意图搜索、对照、深挖、根据视频转写写文章或图集整理成文章；**无当前阅读篇（全局）→ 意图搜索、对照**（深挖 / 写文章请提示先打开一篇再进助手）。改标签请到阅读页；不要提归类。
 可用轻量 Markdown（**加粗**、列表、小标题），不要整篇包在代码块里。
 若库中没有相关内容，直说没找到，并建议换关键词。`;
 
@@ -38,7 +38,7 @@ function buildPlanMessages({
 - intent=compare：对照；excerptItemIds 填两篇（上文出处或勾选标题）；queries=[]；全局与阅读页均可
 - **禁止** intent=tag_edit（助手暂不写入改标）；用户要加上/去掉/写入标签时用 chitchat，说明请到阅读页手改；**推荐/建议/其他标签**→ search + excerptItemIds=[当前篇] + queries=[]（回答时加粗建议，勿写入）
 - **禁止** intent=organize（助手暂不做归类）；用户要建架/整理分类时用 chitchat，说明请到收藏页手建
-- intent=compose：根据**已转写视频**写文章（仅转写，不用正文）；excerptItemIds 只填一篇视频；有当前阅读视频且用户说「这篇/根据转写写」→ excerptItemIds=[当前篇]、queries=[]；缺篇时仍用 compose + excerptItemIds=[]（系统会提示选篇）
+- intent=compose：写文章（对话内展示，不写回库）。两种来源：①**已转写视频**（仅转写）；②**图集**（标题/文案+配图画面，成文不插图 URL）。excerptItemIds 只填一篇；有当前阅读篇且用户说「这篇/根据转写写/把这组图整理成」→ excerptItemIds=[当前篇]、queries=[]；缺篇时仍用 compose + excerptItemIds=[]（系统会提示选篇）
 - 有「当前阅读篇」：标签/观点/总结等默认本篇 → search + excerptItemIds=[当前篇] + queries=[]；找其它/类似/相关 → 必须填 queries（或 list/compare）
 - 无「当前阅读篇」：意图搜索 / list / compare；不要深挖（提示先打开一篇）
 - excerptItemIds 只能选自上文出处或当前阅读篇；listContinue 现已忽略
@@ -55,7 +55,7 @@ ${priorBlock}`,
 function formatFocusItem(focusItem) {
   if (!focusItem || focusItem.itemId == null) {
     return `当前阅读篇：无（全局会话）。
-说明：可做意图搜索与对照（search / list / compare / chitchat）。禁止深挖、compose、tag_edit；深挖/改标签/转写写文章请提示先打开一篇再进助手。`;
+说明：可做意图搜索与对照（search / list / compare / chitchat）。禁止深挖、compose、tag_edit；深挖/改标签/写文章请提示先打开一篇再进助手。`;
   }
   const id = Number(focusItem.itemId);
   const title = String(focusItem.title || '').trim() || `条目${id}`;
