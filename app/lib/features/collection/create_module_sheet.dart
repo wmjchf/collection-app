@@ -4,7 +4,7 @@ import 'package:super_collection/core/ui/app_bottom_sheet.dart';
 import 'package:super_collection/features/collection/tag_module_models.dart';
 import 'package:super_collection/features/collection/tag_modules_repository.dart';
 
-/// 弹出「新建归类」弹框；成功返回 [TagModule]。
+/// 弹出「创建归类」弹框；成功返回 [TagModule]。
 Future<TagModule?> showCreateModuleSheet(BuildContext context) {
   return _showModuleNameSheet(context);
 }
@@ -164,7 +164,7 @@ class _ModuleNameSheetState extends State<_ModuleNameSheet> {
               child: Align(
                 alignment: Alignment.centerLeft,
                 child: Text(
-                  _isRename ? '修改名称' : '新建归类',
+                  _isRename ? '修改名称' : '创建归类',
                   style: const TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.w700,

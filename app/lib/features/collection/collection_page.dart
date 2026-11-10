@@ -784,40 +784,40 @@ class _EntityGroup extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // 与「归类标签」标题区同构：行高 36 + 标题下 4 + 描述
+          // 标题左、说明右，同一行
           Padding(
-            padding: const EdgeInsets.only(left: 2, right: 4),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                SizedBox(
-                  height: 36,
-                  child: Align(
-                    alignment: Alignment.centerLeft,
+            padding: const EdgeInsets.only(left: 2, right: 4, bottom: 12),
+            child: SizedBox(
+              height: 36,
+              child: Row(
+                children: [
+                  Text(
+                    title,
+                    style: const TextStyle(
+                      fontSize: 17,
+                      fontWeight: FontWeight.w600,
+                      letterSpacing: 0.6,
+                      height: 1.2,
+                      color: _ink,
+                    ),
+                  ),
+                  const Spacer(),
+                  Flexible(
                     child: Text(
-                      title,
-                      style: const TextStyle(
-                        fontSize: 17,
-                        fontWeight: FontWeight.w600,
-                        letterSpacing: 0.6,
-                        height: 1.2,
-                        color: _ink,
+                      subtitle,
+                      textAlign: TextAlign.right,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 12,
+                        height: 1.35,
+                        letterSpacing: 0.2,
+                        color: _muted.withValues(alpha: 0.9),
                       ),
                     ),
                   ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  subtitle,
-                  style: TextStyle(
-                    fontSize: 12,
-                    height: 1.35,
-                    letterSpacing: 0.2,
-                    color: _muted.withValues(alpha: 0.9),
-                  ),
-                ),
-                const SizedBox(height: 12),
-              ],
+                ],
+              ),
             ),
           ),
           LayoutBuilder(

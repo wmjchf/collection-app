@@ -235,7 +235,7 @@ class _SectionHeader extends StatelessWidget {
           ),
           const SizedBox(height: 4),
           Text(
-            '创建归类 · 长按拖动；也可在 AI 助手里整理',
+            '长按标签可拖动',
             style: TextStyle(
               fontSize: 12,
               height: 1.35,
@@ -251,7 +251,7 @@ class _SectionHeader extends StatelessWidget {
   }
 }
 
-/// 归类标签标题旁：新建归类。
+/// 归类标签标题旁：创建归类（胶囊按钮）。
 class CollectionCreateModuleButton extends StatelessWidget {
   const CollectionCreateModuleButton({
     super.key,
@@ -262,27 +262,44 @@ class CollectionCreateModuleButton extends StatelessWidget {
 
   final VoidCallback onPressed;
   final EdgeInsetsGeometry iconPadding;
-  /// 图标贴右，与下方匣右缘对齐。
+  /// 贴右，与下方匣右缘对齐。
   final bool alignEnd;
 
   @override
   Widget build(BuildContext context) {
     return Padding(
       padding: iconPadding,
-      child: IconButton(
-        tooltip: '新建归类',
-        onPressed: onPressed,
-        visualDensity: VisualDensity.compact,
-        padding: EdgeInsets.zero,
+      child: Align(
         alignment: alignEnd ? Alignment.centerRight : Alignment.center,
-        constraints: BoxConstraints(
-          minWidth: alignEnd ? 24 : 36,
-          minHeight: 36,
-        ),
-        icon: const Icon(
-          Icons.add_circle_outline_rounded,
-          size: 24,
-          color: CollectionTagModulesSection.brand,
+        child: TextButton(
+          onPressed: () {
+            HapticFeedback.selectionClick();
+            onPressed();
+          },
+          style: TextButton.styleFrom(
+            foregroundColor: CollectionTagModulesSection.brand,
+            backgroundColor: CollectionTagModulesSection.brandSoft,
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            minimumSize: Size.zero,
+            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            shape: const StadiumBorder(
+              side: BorderSide(color: Color(0xFFD0DFFC)),
+            ),
+          ),
+          child: const Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.add_rounded, size: 16),
+              SizedBox(width: 2),
+              Text(
+                '创建归类',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

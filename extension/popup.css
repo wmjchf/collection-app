@@ -1155,6 +1155,12 @@ button {
   padding: 0 2px 0 2px;
 }
 
+.modules-header--filter {
+  align-items: center;
+  min-height: 36px;
+  margin-bottom: 12px;
+}
+
 .modules-titles {
   flex: 1;
   min-width: 0;
@@ -1175,6 +1181,20 @@ button {
   line-height: 1.35;
   letter-spacing: 0.2px;
   color: rgba(139, 146, 156, 0.9);
+}
+
+.modules-header-aside {
+  margin: 0 0 0 auto;
+  padding-left: 12px;
+  font-size: 12px;
+  line-height: 1.35;
+  letter-spacing: 0.2px;
+  color: rgba(139, 146, 156, 0.9);
+  text-align: right;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
 }
 
 .modules-create {

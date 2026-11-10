@@ -52,7 +52,7 @@ class AiAutoTagsHelpPage extends StatelessWidget {
               title: '标签与归类一览',
               desc:
                   '在「我的收藏」进入归类标签：顶部是未归类的标签，'
-                  '下方是你建好的归类；点右上角 + 新建归类，点归类或标签可查看对应内容。',
+                  '下方是你建好的归类；点右上角 + 创建归类，点归类或标签可查看对应内容。',
             ),
             const SizedBox(height: 12),
             _GuideStepCard(
@@ -76,7 +76,7 @@ class AiAutoTagsHelpPage extends StatelessWidget {
               child: Text(
                 '太子Pro / 帝王Pro：粘贴链接解析完成后，文章会自动打标签；'
                 '视频在转写成功后同样自动打标；图集不自动打标。'
-                '打标后不会自动归类；可在收藏页新建归类并拖动标签。'
+                '打标后不会自动归类；可在收藏页创建归类并拖动标签。'
                 '点进内容可在上方看到标签。',
                 style: TextStyle(
                   fontSize: 15,
@@ -170,7 +170,7 @@ class _IntroCard extends StatelessWidget {
           Text(
             '一篇好内容常有多个突出点，不宜只塞进一个死文件夹。'
             '奏折用「标签」标记内容，再用你自建的「归类」把标签分格摆放；'
-            '太子+ 解析/转写后会自动打标签；可在收藏页新建归类，并把标签拖进去。',
+            '太子+ 解析/转写后会自动打标签；可在收藏页创建归类，并把标签拖进去。',
             style: TextStyle(fontSize: 15, color: AiAutoTagsHelpPage._text, height: 1.55),
           ),
           SizedBox(height: 16),

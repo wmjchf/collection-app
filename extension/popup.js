@@ -1498,19 +1498,13 @@ function filterPanel({ title, subtitle, filters }) {
   const panel = document.createElement('section');
   panel.className = 'modules-panel';
   const header = document.createElement('div');
-  header.className = 'modules-header';
-  const titles = document.createElement('div');
-  titles.className = 'modules-titles';
+  header.className = 'modules-header modules-header--filter';
   const h = document.createElement('h2');
   h.textContent = title;
   const sub = document.createElement('p');
+  sub.className = 'modules-header-aside';
   sub.textContent = subtitle;
-  titles.append(h, sub);
-  // 占位与归类标题行右侧 ＋ 同宽，两块标题基线对齐
-  const spacer = document.createElement('span');
-  spacer.className = 'modules-create is-spacer';
-  spacer.setAttribute('aria-hidden', 'true');
-  header.append(titles, spacer);
+  header.append(h, sub);
   const grid = document.createElement('div');
   grid.className = 'filter-grid';
   for (const f of filters) grid.append(filterTile(f));
@@ -1749,8 +1743,8 @@ function renderCollection() {
   const createMod = document.createElement('button');
   createMod.type = 'button';
   createMod.className = 'modules-create';
-  createMod.title = '新建归类';
-  createMod.setAttribute('aria-label', '新建归类');
+  createMod.title = '创建归类';
+  createMod.setAttribute('aria-label', '创建归类');
   createMod.textContent = '＋';
   createMod.addEventListener('click', openCreateModule);
   header.append(titles, createMod);
@@ -1998,7 +1992,7 @@ function openCreateTag({ afterCreate, moduleId } = {}) {
 
 function openCreateModule() {
   openNameSheet({
-    title: '新建归类',
+    title: '创建归类',
     label: '名称',
     placeholder: '请输入归类名称',
     onSubmit: async (name) => {
