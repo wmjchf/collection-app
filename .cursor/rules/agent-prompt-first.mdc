@@ -1,0 +1,12 @@
+---
+description: 助手语义判断优先改 prompt，少堆口令强制
+alwaysApply: true
+---
+
+# 助手语义判断：prompt 优先
+
+处理 AI 助手意图误判、误拒、乱推能力边界时（如「类似收藏」「找图」「阅读页能不能搜库」）：
+
+1. **优先改** `backend/src/services/agent/agentPrompt.js`（SYSTEM / plan / answer / `formatFocusItem` 等），把能力边界与正确 intent 写清楚
+2. **不要默认加** `agentOrchestrator` 口令正则强制改 intent；仅当 prompt 反复无效、且用户明确同意兜底时再加
+3. 方案里先说清「只改 prompt」还是「prompt + 兜底」，按用户选择落地

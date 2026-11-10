@@ -1091,6 +1091,28 @@ async function updateNote(userId, itemId, note) {
 }
 
 const CONTENT_MAX_LEN = 512000;
+const TITLE_MAX_LEN = 500;
+
+/** 用户手工修改标题 */
+async function updateTitle(userId, itemId, title) {
+  const existing = await getByIdForUser(userId, itemId);
+  if (!existing) {
+    throw Object.assign(new Error('条目不存在'), { status: 404 });
+  }
+  const value = String(title ?? '').trim().slice(0, TITLE_MAX_LEN);
+  if (!value) {
+    throw Object.assign(new Error('标题不能为空'), { status: 400 });
+  }
+  await pool.execute(
+    `UPDATE items
+     SET title = :title,
+         updated_at = CURRENT_TIMESTAMP(3)
+     WHERE id = :itemId AND user_id = :userId AND deleted_at IS NULL`,
+    { itemId, userId, title: value },
+  );
+  require('./itemEmbeddingService').scheduleIndexItem(userId, itemId);
+  return getByIdForUser(userId, itemId);
+}
 
 /** 用户手工更新正文（Markdown 原文）；保留已有 AI 标签/思维导图（微调场景） */
 async function updateContent(userId, itemId, content) {
@@ -2106,6 +2128,7 @@ module.exports = {
   markAsUnread,
   setStarred,
   updateNote,
+  updateTitle,
   updateContent,
   deleteItem,
   deleteItems,

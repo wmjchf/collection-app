@@ -7,21 +7,30 @@ import 'package:just_audio/just_audio.dart';
 /// 阅读页级音频播放（小宇宙等播客）：不依赖 ListView 内 Platform View；前台可续播（未声明 iOS 后台 audio）。
 class ReadingMediaController extends ChangeNotifier {
   ReadingMediaController() {
-    player.playerStateStream.listen((_) => notifyListeners());
-    player.positionStream.listen((_) => notifyListeners());
-    player.durationStream.listen((_) => notifyListeners());
+    _playerStateSub = player.playerStateStream.listen((_) => _safeNotify());
+    _positionSub = player.positionStream.listen((_) => _safeNotify());
+    _durationSub = player.durationStream.listen((_) => _safeNotify());
   }
 
   final AudioPlayer player = AudioPlayer();
+  StreamSubscription<PlayerState>? _playerStateSub;
+  StreamSubscription<Duration>? _positionSub;
+  StreamSubscription<Duration?>? _durationSub;
   String? _loadedUrl;
   bool initializing = false;
   String? error;
+  bool _disposed = false;
 
   static var _sessionConfigured = false;
 
   bool get isPlaying => player.playing;
   Duration get position => player.position;
   Duration? get duration => player.duration;
+
+  void _safeNotify() {
+    if (_disposed) return;
+    notifyListeners();
+  }
 
   static Future<void> ensureAudioSession() async {
     if (_sessionConfigured) return;
@@ -49,35 +58,40 @@ class ReadingMediaController extends ChangeNotifier {
     final trimmed = url.trim();
     if (trimmed.isEmpty) {
       error = '音频链接无效';
-      notifyListeners();
+      _safeNotify();
       return;
     }
     if (_loadedUrl == trimmed && player.audioSource != null) {
       error = null;
-      notifyListeners();
+      _safeNotify();
       return;
     }
 
     initializing = true;
     error = null;
-    notifyListeners();
+    _safeNotify();
 
     try {
       await ensureAudioSession();
+      if (_disposed) return;
       await player.setAudioSource(
         AudioSource.uri(Uri.parse(trimmed), headers: headers),
       );
+      if (_disposed) return;
       _loadedUrl = trimmed;
     } catch (_) {
+      if (_disposed) return;
       _loadedUrl = null;
       error = '无法播放（链接失效或网络异常，可点重试）';
     }
 
+    if (_disposed) return;
     initializing = false;
-    notifyListeners();
+    _safeNotify();
   }
 
   Future<void> togglePlay() async {
+    if (_disposed) return;
     if (player.playing) {
       await player.pause();
     } else {
@@ -86,11 +100,19 @@ class ReadingMediaController extends ChangeNotifier {
   }
 
   Future<void> seek(Duration position) async {
+    if (_disposed) return;
     await player.seek(position);
   }
 
   @override
   void dispose() {
+    _disposed = true;
+    unawaited(_playerStateSub?.cancel());
+    unawaited(_positionSub?.cancel());
+    unawaited(_durationSub?.cancel());
+    _playerStateSub = null;
+    _positionSub = null;
+    _durationSub = null;
     unawaited(player.dispose());
     super.dispose();
   }

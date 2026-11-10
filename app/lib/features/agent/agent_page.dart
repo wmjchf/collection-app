@@ -17,6 +17,7 @@ import 'package:super_collection/features/auth/auth_repository.dart';
 import 'package:super_collection/features/collection/items_browse_page.dart';
 import 'package:super_collection/features/collection/tags_repository.dart';
 import 'package:super_collection/features/home/home_format.dart';
+import 'package:super_collection/features/items/cover_image.dart';
 import 'package:super_collection/features/items/item_list_tile.dart';
 import 'package:super_collection/features/items/item_models.dart';
 import 'package:super_collection/features/items/item_reading_page.dart';
@@ -356,7 +357,39 @@ class _AgentPageState extends State<AgentPage> {
     return item.hasVideo;
   }
 
-  bool _focusCanCompose() => _focusIsVideo() && _hasSuccessfulTranscript();
+  bool _focusIsGallery() => _focusItem?.isImageGallery == true;
+
+  bool _focusCanComposeVideo() =>
+      _focusIsVideo() && _hasSuccessfulTranscript();
+
+  /// 与后端 looksLikeKnowledgeGallery 对齐：生活向图集不推成文预设。
+  bool _focusLooksLikeKnowledgeGallery() {
+    final item = _focusItem;
+    if (item == null) return false;
+    final text = [
+      item.title ?? '',
+      item.summary ?? '',
+      item.content ?? '',
+    ].join('\n');
+    final stripped = text
+        .replaceAll(RegExp(r'#[^\s#]+'), ' ')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+    final lifestyle = RegExp(
+      r'穿搭|ootd|oootd|自拍|妆造|美甲|探店|打卡|风景|旅游|旅行|出片|拍照|写真|咖啡馆|咖啡店|氛围感|好物分享|种草|瘦身|减肥|护肤|发型',
+      caseSensitive: false,
+    ).hasMatch(text);
+    final knowledge = RegExp(
+      r'教程|笔记|学习|课件|讲义|原理|步骤|方法论|知识点|干货|总结|框架|流程图|白皮书|指南|入门|导论|概念|公式|算法|模型|llm|gpt|agent|skill|提示词|prompt|复盘|清单|checklist|how\s*to|手册',
+      caseSensitive: false,
+    ).hasMatch(text);
+    if (knowledge) return true;
+    if (lifestyle) return false;
+    return stripped.length >= 120;
+  }
+
+  bool _focusCanComposeGallery() =>
+      _focusIsGallery() && _focusLooksLikeKnowledgeGallery();
 
   /// 异步拉动态预设。不计用户额度（服务端约定）。
   /// 全局空会话不请求；单篇或已有对话才拉。键未变则复用（含会话缓存里恢复的）。
@@ -859,7 +892,9 @@ class _AgentPageState extends State<AgentPage> {
     final hasMessages = _messages.isNotEmpty;
     final needDynamic = focused || hasMessages;
     final isVideo = _focusIsVideo();
-    final canCompose = _focusCanCompose();
+    final isGallery = _focusIsGallery();
+    final canComposeVideo = _focusCanComposeVideo();
+    final canComposeGallery = _focusCanComposeGallery();
 
     if (needDynamic) {
       final dynamic = _llmPresets;
@@ -867,7 +902,9 @@ class _AgentPageState extends State<AgentPage> {
         return _AgentPresetRules.filterCompose(
           dynamic,
           isVideo: isVideo,
-          canCompose: canCompose,
+          isGallery: isGallery,
+          canComposeVideo: canComposeVideo,
+          canComposeGallery: canComposeGallery,
         );
       }
       return const [];
@@ -1026,7 +1063,7 @@ class _AgentPageState extends State<AgentPage> {
   }
 }
 
-/// 阅读锚定：顶栏下方固定展示当前篇（与出处同款 ItemListTile）。
+/// 阅读锚定：顶栏下紧凑上下文条（无底部分割线）。
 class _FocusItemBanner extends StatelessWidget {
   const _FocusItemBanner({
     required this.item,
@@ -1036,39 +1073,95 @@ class _FocusItemBanner extends StatelessWidget {
   final CollectionItem item;
   final VoidCallback onTap;
 
+  static const _brand = Color(0xFF2F6FED);
+  static const _soft = Color(0xFFE8F0FF);
+  static const _title = Color(0xFF1F242E);
+  static const _muted = Color(0xFF737A85);
+  static const _pageBg = Color(0xFFFFFFFF);
+
   @override
   Widget build(BuildContext context) {
     final pageUrl = (item.canonicalUrl?.trim().isNotEmpty == true)
         ? item.canonicalUrl!
         : item.url;
-    final subtitle =
-        '${platformLabel(item.platform, url: pageUrl)} · ${formatRelativeDay(item.createdAt)}';
+    final platform = platformLabel(item.platform, url: pageUrl);
+    final rawTitle = (item.title ?? '').trim();
+    final title = rawTitle.isEmpty ? '未命名收藏' : rawTitle;
+
     return Material(
-      color: Colors.white,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          const Padding(
-            padding: EdgeInsets.fromLTRB(22, 10, 22, 0),
-            child: Text(
-              '当前这篇',
-              style: TextStyle(
-                fontSize: 13,
-                color: Color(0xFF737A85),
-                fontWeight: FontWeight.w500,
+      color: _pageBg,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(22, 8, 22, 8),
+        child: Material(
+          color: _soft,
+          borderRadius: BorderRadius.circular(12),
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(
+            onTap: onTap,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(8, 8, 10, 8),
+              child: Row(
+                children: [
+                  CoverImage(
+                    url: item.coverImageUrl,
+                    pageUrl: pageUrl,
+                    width: 40,
+                    height: 40,
+                    borderRadius: 8,
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Text(
+                          '这篇',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: _brand,
+                            height: 1.1,
+                            letterSpacing: 0.2,
+                          ),
+                        ),
+                        const SizedBox(height: 3),
+                        Text(
+                          title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w500,
+                            color: _title,
+                            height: 1.2,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (platform.isNotEmpty) ...[
+                    const SizedBox(width: 8),
+                    Text(
+                      platform,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: _muted,
+                        height: 1.2,
+                      ),
+                    ),
+                  ],
+                  const SizedBox(width: 2),
+                  const Icon(
+                    Icons.chevron_right_rounded,
+                    size: 18,
+                    color: _muted,
+                  ),
+                ],
               ),
             ),
           ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(22, 8, 22, 12),
-            child: ItemListTile.fromItem(
-              item,
-              subtitle: subtitle,
-              onTap: onTap,
-            ),
-          ),
-          const Divider(height: 1, color: Color(0xFFE6E8EB)),
-        ],
+        ),
       ),
     );
   }
@@ -1516,13 +1609,14 @@ class _AssistantBlock extends StatelessWidget {
 
   static const _brand = Color(0xFF2F6FED);
 
-  /// 阅读锚定且出处全是当前篇时不重复展示「出处」。
-  bool get _showCitations {
-    if (citations.isEmpty) return false;
+  /// 阅读锚定：出处列表去掉当前篇（顶栏已展示），只留其它篇。
+  List<AgentCitation> get _visibleCitations {
     final fid = focusItemId;
-    if (fid == null || fid <= 0) return true;
-    return citations.any((c) => c.itemId != fid);
+    if (fid == null || fid <= 0) return citations;
+    return citations.where((c) => c.itemId != fid).toList(growable: false);
   }
+
+  bool get _showCitations => _visibleCitations.isNotEmpty;
 
   Future<void> _copyAll(BuildContext context) async {
     final body = text.trim();
@@ -1585,7 +1679,7 @@ class _AssistantBlock extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 8),
-          for (final c in citations) ...[
+          for (final c in _visibleCitations) ...[
             Row(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
@@ -1679,44 +1773,78 @@ class _AssistantBlock extends StatelessWidget {
 /// 按上一轮助手回复用规则推断预设（不走模型）。
 /// 挂确认条的最后一步不展示预设，避免与「确认整理」抢决策。
 class _AgentPresetRules {
-  static const _composePreset = '根据转写写一篇文章';
+  static const _composeVideoPreset = '根据转写写一篇文章';
+  static const _composeGalleryPreset = '根据图片整理成文章';
 
-  static bool _looksLikeCompose(String p) =>
-      RegExp(r'转写|写一篇文章|写篇文章').hasMatch(p);
+  static bool _looksLikeVideoCompose(String p) =>
+      RegExp(r'转写|根据转写').hasMatch(p);
 
-  /// 非视频去掉转文；视频未转写只保留转文引导；已转写可保留。
+  static bool _looksLikeGalleryCompose(String p) =>
+      RegExp(r'这组图|图集整理|根据图片整理|把.*图.*整理成|整理成文章|整理成笔记')
+          .hasMatch(p);
+
+  /// 视频：未转写只留转文；图集：可留整理成文；互斥滤掉对方的 compose 预设。
   static List<String> filterCompose(
     List<String> presets, {
     required bool isVideo,
-    required bool canCompose,
+    required bool isGallery,
+    required bool canComposeVideo,
+    required bool canComposeGallery,
   }) {
-    if (!isVideo) {
-      return presets.where((p) => !_looksLikeCompose(p)).toList(growable: false);
+    if (isVideo && !canComposeVideo) {
+      final only = presets.where(_looksLikeVideoCompose).toList();
+      return only.isNotEmpty ? only : const [_composeVideoPreset];
     }
-    if (!canCompose) {
-      final only = presets.where(_looksLikeCompose).toList();
-      return only.isNotEmpty ? only : const [_composePreset];
+    var out = presets.toList();
+    if (!canComposeVideo) {
+      out = out.where((p) => !_looksLikeVideoCompose(p)).toList();
     }
-    return presets;
+    if (!canComposeGallery) {
+      out = out.where((p) => !_looksLikeGalleryCompose(p)).toList();
+    }
+    if (isGallery && canComposeGallery) {
+      final hasGallery = out.any(_looksLikeGalleryCompose);
+      if (!hasGallery) {
+        out = [_composeGalleryPreset, ...out];
+      }
+    }
+    return List<String>.unmodifiable(out);
   }
 
   static List<String> starters({
     required bool focused,
     bool isVideo = false,
-    bool canCompose = false,
+    bool isGallery = false,
+    bool canComposeVideo = false,
+    bool canComposeGallery = false,
   }) {
     if (focused) {
-      if (isVideo && !canCompose) {
-        return const [_composePreset];
+      if (isVideo && !canComposeVideo) {
+        return const [_composeVideoPreset];
+      }
+      if (isGallery && canComposeGallery) {
+        return filterCompose(
+          const [
+            _composeGalleryPreset,
+            '这篇的核心观点是什么？',
+            '还有哪些相关收藏？',
+          ],
+          isVideo: isVideo,
+          isGallery: isGallery,
+          canComposeVideo: canComposeVideo,
+          canComposeGallery: canComposeGallery,
+        );
       }
       return filterCompose(
         const [
           '这篇的核心观点是什么？',
-          _composePreset,
+          _composeVideoPreset,
           '还有哪些相关收藏？',
         ],
         isVideo: isVideo,
-        canCompose: canCompose,
+        isGallery: isGallery,
+        canComposeVideo: canComposeVideo,
+        canComposeGallery: canComposeGallery,
       );
     }
     return const [
@@ -1730,7 +1858,9 @@ class _AgentPresetRules {
     AgentMessage message, {
     required bool focused,
     bool isVideo = false,
-    bool canCompose = false,
+    bool isGallery = false,
+    bool canComposeVideo = false,
+    bool canComposeGallery = false,
   }) {
     // 确认写入步骤：只用消息上的确认/取消，不再挂预设
     if (message.pendingAction?.isPending == true) {
@@ -1747,17 +1877,32 @@ class _AgentPresetRules {
       ];
     }
     if (focused) {
-      if (isVideo && !canCompose) {
-        return const [_composePreset];
+      if (isVideo && !canComposeVideo) {
+        return const [_composeVideoPreset];
+      }
+      if (isGallery && canComposeGallery) {
+        return filterCompose(
+          const [
+            '再展开说明',
+            _composeGalleryPreset,
+            '对照其它收藏',
+          ],
+          isVideo: isVideo,
+          isGallery: isGallery,
+          canComposeVideo: canComposeVideo,
+          canComposeGallery: canComposeGallery,
+        );
       }
       return filterCompose(
         const [
           '再展开说明',
-          _composePreset,
+          _composeVideoPreset,
           '对照其它收藏',
         ],
         isVideo: isVideo,
-        canCompose: canCompose,
+        isGallery: isGallery,
+        canComposeVideo: canComposeVideo,
+        canComposeGallery: canComposeGallery,
       );
     }
     // 全局助手：意图搜索 + 对照（无深挖）
@@ -1859,7 +2004,7 @@ class _AgentPresets extends StatelessWidget {
     return ColoredBox(
       color: Colors.white,
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(0, 0, 0, 8),
+        padding: const EdgeInsets.fromLTRB(0, 12, 0, 2),
         child: SizedBox(
           height: 32,
           child: ListView.separated(

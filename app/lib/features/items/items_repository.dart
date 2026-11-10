@@ -94,6 +94,17 @@ class ItemsRepository {
     return CollectionItem.fromJson(itemJson);
   }
 
+  Future<CollectionItem> updateTitle(int id, String title) async {
+    final token = await _token();
+    final json = await _api.patch(
+      '/api/items/$id',
+      body: {'title': title},
+      accessToken: token,
+    );
+    final itemJson = json['item'] as Map<String, dynamic>? ?? {};
+    return CollectionItem.fromJson(itemJson);
+  }
+
   Future<CollectionItem> reparse(
     int id, {
     bool forceOverwrite = false,

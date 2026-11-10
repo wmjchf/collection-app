@@ -379,7 +379,7 @@ router.post('/:id/star', async (req, res, next) => {
   }
 });
 
-/** PATCH /api/items/:id — body { note? } 或 { content? } */
+/** PATCH /api/items/:id — body { note? } 或 { content? } 或 { title? }（一次只改一项） */
 router.patch('/:id', async (req, res, next) => {
   try {
     const itemId = Number(req.params.id);
@@ -387,15 +387,21 @@ router.patch('/:id', async (req, res, next) => {
     const body = req.body || {};
     const hasNote = Object.prototype.hasOwnProperty.call(body, 'note');
     const hasContent = Object.prototype.hasOwnProperty.call(body, 'content');
-    if (!hasNote && !hasContent) {
-      return res.status(400).json({ message: '请提供 note 或 content' });
+    const hasTitle = Object.prototype.hasOwnProperty.call(body, 'title');
+    const flags = [hasNote, hasContent, hasTitle].filter(Boolean).length;
+    if (flags === 0) {
+      return res.status(400).json({ message: '请提供 note、content 或 title' });
     }
-    if (hasNote && hasContent) {
-      return res.status(400).json({ message: '请分别更新 note 或 content' });
+    if (flags > 1) {
+      return res
+        .status(400)
+        .json({ message: '请分别更新 note、content 或 title' });
     }
     let item;
     if (hasNote) {
       item = await itemService.updateNote(userId, itemId, body.note);
+    } else if (hasTitle) {
+      item = await itemService.updateTitle(userId, itemId, body.title);
     } else {
       item = await itemService.updateContent(userId, itemId, body.content);
     }

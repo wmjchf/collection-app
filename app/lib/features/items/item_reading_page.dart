@@ -41,6 +41,7 @@ import 'package:super_collection/features/items/reading_mindmap_sheet.dart';
 import 'package:super_collection/features/items/reading_note_sheet.dart';
 import 'package:super_collection/features/items/reading_quote_share.dart';
 import 'package:super_collection/features/items/reading_reparse_confirm_dialog.dart';
+import 'package:super_collection/features/items/reading_title_edit_dialog.dart';
 import 'package:super_collection/features/settings/quota_gate.dart';
 import 'package:super_collection/features/settings/usage_repository.dart';
 import 'package:super_collection/features/items/reading_tags_sheet.dart';
@@ -1418,6 +1419,18 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
     AppToast.show(context, '正文已更新');
   }
 
+  Future<void> _onEditTitle() async {
+    if (!_item.isSuccess) return;
+    final updated = await showReadingTitleEditDialog(
+      context,
+      itemId: _item.id,
+      initialTitle: (_item.title ?? '').trim(),
+    );
+    if (updated == null || !mounted) return;
+    setState(() => _item = updated);
+    AppToast.show(context, '标题已更新');
+  }
+
   Future<void> _onNote() async {
     final updated = await showReadingNoteSheet(
       context,
@@ -2022,6 +2035,7 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
               menuEnabled: false,
               editEnabled: false,
               onEditContent: _onEditContent,
+              onEditTitle: _onEditTitle,
               onCopyLink: _copyLink,
               onReparse: _reparseItem,
               onDelete: _confirmDelete,
@@ -2048,6 +2062,7 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
               menuEnabled: false,
               editEnabled: false,
               onEditContent: _onEditContent,
+              onEditTitle: _onEditTitle,
               onCopyLink: _copyLink,
               onReparse: _reparseItem,
               onDelete: _confirmDelete,
@@ -2225,6 +2240,7 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
                     showMarkUnread: !_item.isUnread,
                     isPro: _isPro,
                     onEditContent: _onEditContent,
+                    onEditTitle: _onEditTitle,
                     onCopyLink: _copyLink,
                     onReparse: _reparseItem,
                     onDelete: _confirmDelete,
@@ -3414,6 +3430,7 @@ class _ReadingTopBar extends StatelessWidget {
     required this.onReparse,
     required this.onDelete,
     required this.onEditContent,
+    required this.onEditTitle,
     required this.onFontSize,
     this.onMarkUnread,
     this.onHighlights,
@@ -3430,6 +3447,7 @@ class _ReadingTopBar extends StatelessWidget {
   final VoidCallback onReparse;
   final VoidCallback onDelete;
   final VoidCallback onEditContent;
+  final VoidCallback onEditTitle;
   final VoidCallback onFontSize;
   final VoidCallback? onMarkUnread;
   final VoidCallback? onHighlights;
@@ -3520,6 +3538,7 @@ class _ReadingTopBar extends StatelessWidget {
                   constraints:
                       const BoxConstraints(minWidth: 148, maxWidth: 168),
                   onSelected: (value) {
+                    if (value == 'editTitle') onEditTitle();
                     if (value == 'edit') onEditContent();
                     if (value == 'unread') onMarkUnread?.call();
                     if (value == 'copy') onCopyLink();
@@ -3527,6 +3546,19 @@ class _ReadingTopBar extends StatelessWidget {
                     if (value == 'delete') onDelete();
                   },
                   itemBuilder: (context) => [
+                    if (editEnabled)
+                      const PopupMenuItem<String>(
+                        value: 'editTitle',
+                        height: 44,
+                        child: Text(
+                          '修改标题',
+                          style: TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w500,
+                            color: _text,
+                          ),
+                        ),
+                      ),
                     if (editEnabled)
                       const PopupMenuItem<String>(
                         value: 'edit',

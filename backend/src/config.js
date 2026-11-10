@@ -72,9 +72,12 @@ module.exports = {
      * 解读已收束到助手，不再单独配置 SUMMARY 模型。
      */
     aiModelAgent: process.env.ALIYUN_AI_MODEL_AGENT || 'qwen3.8-flash',
-    /** 图集配图描述（旧路径，已改真图向量；保留配置以免环境变量报错） */
+    /** 图集成文 VL 看图（draft_gallery_article） */
     aiModelAgentVision:
       process.env.ALIYUN_AI_MODEL_AGENT_VISION || 'qwen3-vl-plus',
+    /** 图成文最多送入模型的图数（尽量全图；向量库仍单独限 6） */
+    galleryDraftMaxImages:
+      Number(process.env.GALLERY_DRAFT_MAX_IMAGES) || 24,
     /** 收藏知识库 embedding（OpenAI 兼容 /embeddings） */
     embeddingModel:
       process.env.ALIYUN_EMBEDDING_MODEL || 'qwen3.7-text-embedding',
