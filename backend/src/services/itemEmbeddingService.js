@@ -7,6 +7,8 @@ const config = require('../config');
 const aliyunDashScope = require('./aliyunDashScope');
 const guideItemService = require('./guideItemService');
 const itemMediaKind = require('./itemMediaKind');
+const planService = require('./planService');
+const subscriptionService = require('./subscriptionService');
 const usageService = require('./usageService');
 const {
   collectTranscriptText,
@@ -167,9 +169,19 @@ async function deleteForItems(userId, itemIds) {
   );
 }
 
+async function userCanImageEmbed(userId) {
+  if (!usageService.isEnforcing()) return true;
+  try {
+    const { plan } = await subscriptionService.getPlanForUser(userId);
+    return planService.hasPrince(plan);
+  } catch {
+    return false;
+  }
+}
+
 /**
  * 图集：为每张图写多模态向量行（chunk_index >= IMAGE_CHUNK_BASE）。
- * 暂不按会员门控（与正文向量一致，先观察成本）。
+ * 仅太子+（`USAGE_ENFORCING=false` 时本地放行）。
  * @returns {Promise<{ rows: Array, usage: object, model: string }>}
  */
 async function buildImageEmbeddingRows(userId, itemId, row) {
@@ -179,6 +191,7 @@ async function buildImageEmbeddingRows(userId, itemId, row) {
     model: '',
   };
   if (itemMediaKind.resolveMediaKind(row) !== 'gallery') return empty;
+  if (!(await userCanImageEmbed(userId))) return empty;
 
   const rawCount = parseImageUrlList(row).length;
   if (!rawCount) return empty;
@@ -455,6 +468,7 @@ async function searchSimilar(userId, query, {
   const qTextVec = textEmb.vectors[0];
   if (!qTextVec?.length) return [];
 
+  const canImage = await userCanImageEmbed(userId);
   const stamp = new Date().toISOString();
   if (textEmb.usage?.totalTokens > 0) {
     usageService
@@ -476,33 +490,35 @@ async function searchSimilar(userId, query, {
   }
 
   let qMmVec = null;
-  try {
-    const mm = await aliyunDashScope.embedMultimodalText(q);
-    if (mm.vectors[0]?.length) qMmVec = mm.vectors[0];
-    if (mm.usage?.totalTokens > 0) {
-      usageService
-        .recordEmbeddingUsage({
-          userId: Number(userId),
-          modality: 'query_mm',
-          tokens: mm.usage.totalTokens,
-          textTokens: mm.usage.textTokens || mm.usage.totalTokens,
-          imageTokens: mm.usage.imageTokens || 0,
-          model: mm.model,
-          purpose: 'search',
-          generatedAt: `${stamp}:qmm`,
-        })
-        .catch((err) => {
-          console.warn(
-            '[itemEmbedding] record search mm usage fail:',
-            err?.message || err,
-          );
-        });
+  if (canImage) {
+    try {
+      const mm = await aliyunDashScope.embedMultimodalText(q);
+      if (mm.vectors[0]?.length) qMmVec = mm.vectors[0];
+      if (mm.usage?.totalTokens > 0) {
+        usageService
+          .recordEmbeddingUsage({
+            userId: Number(userId),
+            modality: 'query_mm',
+            tokens: mm.usage.totalTokens,
+            textTokens: mm.usage.textTokens || mm.usage.totalTokens,
+            imageTokens: mm.usage.imageTokens || 0,
+            model: mm.model,
+            purpose: 'search',
+            generatedAt: `${stamp}:qmm`,
+          })
+          .catch((err) => {
+            console.warn(
+              '[itemEmbedding] record search mm usage fail:',
+              err?.message || err,
+            );
+          });
+      }
+    } catch (err) {
+      console.warn(
+        '[itemEmbedding] multimodal query embed fail:',
+        err?.message || err,
+      );
     }
-  } catch (err) {
-    console.warn(
-      '[itemEmbedding] multimodal query embed fail:',
-      err?.message || err,
-    );
   }
 
   const exclude = new Set(
@@ -532,6 +548,7 @@ async function searchSimilar(userId, query, {
     if (!itemId || exclude.has(itemId)) continue;
     const embVec = parseEmbedding(row.embedding);
     const mm = isMultimodalRow(row.model);
+    if (mm && !canImage) continue;
     const qVec = mm ? qMmVec : qTextVec;
     if (!qVec?.length) continue;
     if (embVec.length !== qVec.length) continue;
