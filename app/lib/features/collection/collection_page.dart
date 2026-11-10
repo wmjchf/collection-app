@@ -143,7 +143,7 @@ class _CollectionPageState extends State<CollectionPage> {
       setState(() {
         _modules = modulesResult.modules;
         _ungrouped = modulesResult.ungrouped;
-        // 与首页形态互补：首页「所有」→ 此处含未读；首页「未读+漫游」→ 此处含所有
+        // 首页「所有」→ 此处含未读；「所有」「批注」瓷砖已去掉
         final order = HomeModulesPrefs.instance.collectionSystemFilterOrder;
         _systemFilters = [
           for (final code in order)
@@ -598,7 +598,7 @@ class _CollectionPageState extends State<CollectionPage> {
                       if (_systemFilters.isNotEmpty)
                         _EntityGroup(
                           title: '系统分类',
-                          subtitle: '按状态快速筛选收藏',
+                          subtitle: '按时间与阅读进度浏览',
                           entries: [
                             for (final f in _systemFilters)
                               _EntityEntry(

@@ -1728,7 +1728,7 @@ function renderCollection() {
     collectionBody.append(
       filterPanel({
         title: '系统分类',
-        subtitle: '按状态快速筛选收藏',
+        subtitle: '按时间与阅读进度浏览',
         filters,
       }),
     );

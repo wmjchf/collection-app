@@ -12,14 +12,19 @@ import 'package:super_collection/core/ui/parse_progress_tracker.dart';
 import 'package:super_collection/features/agent/agent_host.dart';
 import 'package:super_collection/features/agent/agent_page.dart';
 import 'package:super_collection/features/agent/agent_panel_slot.dart';
+import 'package:super_collection/features/auth/auth_repository.dart';
 import 'package:super_collection/features/collection/collection_page.dart';
 import 'package:super_collection/features/home/home_modules_prefs.dart';
 import 'package:super_collection/features/home/home_page.dart';
 import 'package:super_collection/features/items/item_models.dart';
+import 'package:super_collection/features/onboarding/coach_prefs.dart';
+import 'package:super_collection/features/onboarding/home_coach_overlay.dart';
+import 'package:super_collection/features/onboarding/home_toggle_tip_prefs.dart';
 import 'package:super_collection/features/search/search_page.dart';
 import 'package:super_collection/features/settings/account_drawer.dart';
 import 'package:super_collection/features/settings/app_update_prompt.dart';
 import 'package:super_collection/features/settings/usage_repository.dart';
+import 'package:super_collection/core/ui/app_haptics.dart';
 import 'package:super_collection/core/ui/app_orientation.dart';
 import 'package:super_collection/features/shell/app_bottom_nav_bar.dart';
 import 'package:super_collection/features/shell/app_side_nav.dart';
@@ -40,10 +45,16 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
   int _index = 0;
   final _parseProgress = ParseProgressController.instance;
   final _scaffoldKey = GlobalKey<ScaffoldState>();
+  final _homeTabKey = GlobalKey();
+  final _auth = AuthRepository();
   int _homeRefreshTick = 0;
   ScreenDwellTracker? _tabDwell;
   ScreenDwellTracker? _drawerDwell;
   ScreenDwellTracker? _agentDwell;
+
+  OverlayEntry? _homeToggleTipOverlay;
+  bool _homeToggleTipChecking = false;
+  int? _homeToggleTipUserId;
 
   bool _agentOpen = false;
   /// 收起动画播完再卸面板，避免闪断。
@@ -76,7 +87,26 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
     _tabDwell = ScreenDwellTracker(_tabScreen(index))..start();
   }
 
+  void _onHomeModules() {
+    if (!mounted) return;
+    setState(() {});
+  }
+
+  Future<void> _toggleHomeLayout() async {
+    unawaited(AppHaptics.tap());
+    final prefs = HomeModulesPrefs.instance;
+    final next = prefs.showLibrary
+        ? HomeLayoutMode.unreadAndRoam
+        : HomeLayoutMode.library;
+    await prefs.setMode(next);
+  }
+
   void _switchTab(int next) {
+    // 已在阅读/首页：再点 → 未读 ↔ 所有
+    if (next == 0 && _index == 0) {
+      unawaited(_toggleHomeLayout());
+      return;
+    }
     if (next == _index) return;
     // 收藏枢纽半宽助手不要带到首页/搜索
     if (_index == 1 && (next == 0 || next == 2)) {
@@ -84,6 +114,107 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
     }
     _startTabDwell(next);
     setState(() => _index = next);
+    if (next == 0) {
+      unawaited(_maybeShowHomeToggleTip());
+    }
+  }
+
+  void _onHomeToggleTipPing() {
+    unawaited(_maybeShowHomeToggleTip());
+  }
+
+  void _removeHomeToggleTip() {
+    _homeToggleTipOverlay?.remove();
+    _homeToggleTipOverlay = null;
+  }
+
+  Future<void> _dismissHomeToggleTip({required bool tryToggle}) async {
+    _removeHomeToggleTip();
+    await HomeToggleTipPrefs.markSeen(userId: _homeToggleTipUserId);
+    if (tryToggle && mounted) {
+      await _toggleHomeLayout();
+    }
+  }
+
+  Future<void> _maybeShowHomeToggleTip() async {
+    if (!mounted ||
+        _homeToggleTipChecking ||
+        _homeToggleTipOverlay != null ||
+        _index != 0 ||
+        _agentOpen) {
+      return;
+    }
+    _homeToggleTipChecking = true;
+    try {
+      final session = await _auth.readSession();
+      _homeToggleTipUserId = session?.userId;
+      final tipSeen =
+          await HomeToggleTipPrefs.isSeen(userId: _homeToggleTipUserId);
+      if (!mounted || tipSeen) return;
+      // 等加链接新手引导结束后再出（升级用户早已看过）
+      final coachSeen =
+          await CoachPrefs.isSeen(userId: _homeToggleTipUserId);
+      if (!mounted || !coachSeen) return;
+
+      // 等布局/底栏稳定
+      await Future<void>.delayed(const Duration(milliseconds: 400));
+      if (!mounted ||
+          _index != 0 ||
+          _agentOpen ||
+          _homeToggleTipOverlay != null) {
+        return;
+      }
+
+      final raw = rectForKey(_homeTabKey);
+      if (raw == null) return;
+
+      final size = MediaQuery.sizeOf(context);
+      // Tab 占满左 1/3：镂空收成图标+文案；只左右避开屏幕边，竖直跟 Tab 对齐（勿上移）
+      const edge = 12.0;
+      const holeW = 72.0;
+      var hole = Rect.fromCenter(
+        center: raw.center,
+        width: holeW,
+        height: (raw.height - 6).clamp(44.0, 56.0),
+      );
+      if (hole.left < edge) {
+        hole = hole.translate(edge - hole.left, 0);
+      }
+      if (hole.right > size.width - edge) {
+        hole = hole.translate(size.width - edge - hole.right, 0);
+      }
+
+      const tipW = 300.0;
+      // 气泡实际高度约 200+，与镂空至少留 20，避免大框盖住小框
+      const tipH = 210.0;
+      const tipGap = 20.0;
+      final tipLeft =
+          ((size.width - tipW) / 2).clamp(16.0, size.width - tipW - 16);
+      final tipTop =
+          (hole.top - tipH - tipGap).clamp(48.0, hole.top - tipH - tipGap);
+
+      _homeToggleTipOverlay = OverlayEntry(
+        builder: (context) => CoachHoleOverlay(
+          hole: hole,
+          holeRadius: 14,
+          tooltipTop: tipTop,
+          tooltipLeft: tipLeft,
+          onHoleTap: () => unawaited(_dismissHomeToggleTip(tryToggle: true)),
+          tooltip: CoachTooltipCard(
+            stepLabel: '新功能',
+            title: '再点「首页」可切换视图',
+            message: '在「未读与漫游」和「所有」之间切换。左箭头蓝是未读，右箭头蓝是所有。',
+            skipLabel: '知道了',
+            confirmLabel: '试一下',
+            onSkip: () => unawaited(_dismissHomeToggleTip(tryToggle: false)),
+            onConfirm: () => unawaited(_dismissHomeToggleTip(tryToggle: true)),
+          ),
+        ),
+      );
+      Overlay.of(context).insert(_homeToggleTipOverlay!);
+    } finally {
+      _homeToggleTipChecking = false;
+    }
   }
 
   void _onDrawerChanged(bool opened) {
@@ -111,6 +242,8 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
     int? focusItemId,
     CollectionItem? focusItem,
   }) async {
+    // 引导未点完时拉开助手：先收起，稍后仍可再出
+    _removeHomeToggleTip();
     final nextFocusId = focusItemId ?? focusItem?.id;
     final sameSession = _agentPanelMounted &&
         _agentFocusItemId == nextFocusId &&
@@ -172,6 +305,9 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    HomeModulesPrefs.instance.addListener(_onHomeModules);
+    HomeToggleTipPrefs.checkPing.addListener(_onHomeToggleTipPing);
+    unawaited(HomeModulesPrefs.instance.ensureLoaded());
     unawaited(_trackAppOpen(coldStart: true));
     _startTabDwell(_index);
     unawaited(UsageRefresh.ensure());
@@ -195,11 +331,21 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
           await ClientWebViewFetch.warmup(context);
         }),
       );
+      // 升级用户：加链接引导已看过，稍晚出首页切换引导
+      unawaited(
+        Future<void>.delayed(const Duration(milliseconds: 1400), () async {
+          if (!mounted) return;
+          await _maybeShowHomeToggleTip();
+        }),
+      );
     });
   }
 
   @override
   void dispose() {
+    HomeToggleTipPrefs.checkPing.removeListener(_onHomeToggleTipPing);
+    _removeHomeToggleTip();
+    HomeModulesPrefs.instance.removeListener(_onHomeModules);
     WidgetsBinding.instance.removeObserver(this);
     _drawerDwell?.stop();
     _agentDwell?.stop();
@@ -271,6 +417,7 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
                     width: AppSideNav.width,
                     child: AppSideNav(
                       currentIndex: _index,
+                      homeTabKey: _homeTabKey,
                       onChanged: _switchTab,
                       onOpenAccount: _openAccountDrawer,
                     ),
@@ -416,6 +563,7 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
                 padding: EdgeInsets.zero,
                 child: AppBottomNavBar(
                   currentIndex: _index.clamp(0, 1),
+                  homeTabKey: _homeTabKey,
                   onChanged: _switchTab,
                   onSearch: _openSearch,
                 ),

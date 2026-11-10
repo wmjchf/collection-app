@@ -53,10 +53,10 @@ class HomeModulesPrefs extends ChangeNotifier {
   String? get mediaKind => _mediaKind;
   bool get loaded => _loaded;
 
-  /// 收藏页系统分类顺序（互补整库入口）
+  /// 收藏页系统分类顺序（首页「所有」时此处补「未读」；不再放「所有」「批注」）
   List<String> get collectionSystemFilterOrder => _mode.isLibrary
-      ? const ['unread', 'today', 'recent_read', 'annotated']
-      : const ['all', 'today', 'recent_read', 'annotated'];
+      ? const ['unread', 'today', 'recent_read']
+      : const ['today', 'recent_read'];
 
   Future<void> ensureLoaded() {
     if (_loaded) return Future.value();

@@ -16,6 +16,7 @@ class TabletItemsSplit extends StatefulWidget {
     super.key,
     required this.title,
     required this.loader,
+    this.titleWidget,
     this.openEntry = 'library',
     this.listWidth = 340,
     this.onBack,
@@ -28,6 +29,9 @@ class TabletItemsSplit extends StatefulWidget {
   });
 
   final String title;
+
+  /// 非空时替代左侧标题文案（如首页布局 Tab）
+  final Widget? titleWidget;
   final TabletItemsLoader loader;
   final String openEntry;
   final double listWidth;
@@ -226,6 +230,7 @@ class _TabletItemsSplitState extends State<TabletItemsSplit> {
       children: [
         _ListHeader(
           title: widget.title,
+          titleWidget: widget.titleWidget,
           onBack: widget.onBack,
           trailing: widget.trailing,
         ),
@@ -379,11 +384,13 @@ class _TabletItemsSplitState extends State<TabletItemsSplit> {
 class _ListHeader extends StatelessWidget {
   const _ListHeader({
     required this.title,
+    this.titleWidget,
     this.onBack,
     this.trailing,
   });
 
   final String title;
+  final Widget? titleWidget;
   final VoidCallback? onBack;
   final Widget? trailing;
 
@@ -405,16 +412,18 @@ class _ListHeader extends StatelessWidget {
             else
               const SizedBox(width: 8),
             Expanded(
-              child: Text(
-                title,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  fontSize: 17,
-                  fontWeight: FontWeight.w700,
-                  color: Color(0xFF1F242E),
-                ),
-              ),
+              child: titleWidget != null
+                  ? Center(child: titleWidget)
+                  : Text(
+                      title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.w700,
+                        color: Color(0xFF1F242E),
+                      ),
+                    ),
             ),
             if (trailing != null) trailing!,
           ],

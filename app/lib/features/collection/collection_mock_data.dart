@@ -17,7 +17,6 @@ class CollectionMockData {
     CollectionNavItem(title: '未读', countLabel: '2', code: 'unread'),
     CollectionNavItem(title: '今天', countLabel: '4', code: 'today'),
     CollectionNavItem(title: '最近阅读', countLabel: '2', code: 'recent_read'),
-    CollectionNavItem(title: '批注', countLabel: '1', code: 'annotated'),
   ];
 
   static const tags = [

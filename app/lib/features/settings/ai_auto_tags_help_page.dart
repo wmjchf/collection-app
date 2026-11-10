@@ -58,7 +58,7 @@ class AiAutoTagsHelpPage extends StatelessWidget {
             _GuideStepCard(
               urls: urls,
               figureIndex: 1,
-              title: '你建归类',
+              title: '创建归类',
               desc:
                   '归类名由你来定。归类旁的 ··· 可改名、往归类里加标签，或删除整个归类。',
             ),

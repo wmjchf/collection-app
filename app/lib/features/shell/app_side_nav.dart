@@ -5,6 +5,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'package:super_collection/core/config/app_brand.dart';
 import 'package:super_collection/features/agent/agent_host.dart';
 import 'package:super_collection/features/shell/app_bottom_nav_bar.dart';
+import 'package:super_collection/features/shell/home_nav_swap_icon.dart';
 
 /// iPad 横屏左侧导航：品牌 + 首页/收藏/搜索；底部 AI助手行 + 账户。
 class AppSideNav extends StatelessWidget {
@@ -13,12 +14,16 @@ class AppSideNav extends StatelessWidget {
     required this.currentIndex,
     required this.onChanged,
     required this.onOpenAccount,
+    this.homeTabKey,
   });
 
   /// 0=首页，1=收藏，2=搜索
   final int currentIndex;
   final ValueChanged<int> onChanged;
   final VoidCallback onOpenAccount;
+
+  /// 首页项（引导镂空用）
+  final GlobalKey? homeTabKey;
 
   static const width = 200.0;
   static const _ink = Color(0xFF1F242E);
@@ -47,9 +52,9 @@ class AppSideNav extends StatelessWidget {
             const _BrandRow(),
             const SizedBox(height: 8),
             _NavItem(
+              key: homeTabKey,
               label: '首页',
-              activeAsset: 'assets/icons/home_active.svg',
-              inactiveAsset: 'assets/icons/home_inactive.svg',
+              glyph: const HomeNavSwapIcon(size: 20),
               selected: currentIndex == 0,
               onTap: () => onChanged(0),
             ),
@@ -115,12 +120,14 @@ class _BrandRow extends StatelessWidget {
 
 class _NavItem extends StatelessWidget {
   const _NavItem({
+    super.key,
     required this.label,
     required this.selected,
     required this.onTap,
     this.activeAsset,
     this.inactiveAsset,
     this.icon,
+    this.glyph,
   });
 
   final String label;
@@ -129,11 +136,26 @@ class _NavItem extends StatelessWidget {
   final String? activeAsset;
   final String? inactiveAsset;
   final IconData? icon;
+  final Widget? glyph;
 
   @override
   Widget build(BuildContext context) {
     final color =
         selected ? AppBottomNavBar.active : AppSideNav._ink;
+    final Widget mark = glyph ??
+        (icon != null
+            ? Icon(
+                icon,
+                size: 20,
+                color: selected
+                    ? AppBottomNavBar.active
+                    : AppSideNav._muted,
+              )
+            : SvgPicture.asset(
+                selected ? activeAsset! : inactiveAsset!,
+                width: 20,
+                height: 20,
+              ));
     return Material(
       color: selected ? AppSideNav._brandSoft : Colors.transparent,
       borderRadius: BorderRadius.circular(12),
@@ -148,21 +170,9 @@ class _NavItem extends StatelessWidget {
             child: Row(
               children: [
                 SizedBox(
-                  width: 20,
+                  width: 22,
                   height: 20,
-                  child: icon != null
-                      ? Icon(
-                          icon,
-                          size: 20,
-                          color: selected
-                              ? AppBottomNavBar.active
-                              : AppSideNav._muted,
-                        )
-                      : SvgPicture.asset(
-                          selected ? activeAsset! : inactiveAsset!,
-                          width: 20,
-                          height: 20,
-                        ),
+                  child: Center(child: mark),
                 ),
                 const SizedBox(width: 10),
                 Expanded(

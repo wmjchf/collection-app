@@ -1,14 +1,16 @@
 import 'package:flutter/material.dart';
-import 'package:super_collection/core/config/app_brand.dart';
 import 'package:super_collection/features/auth/auth_repository.dart';
 import 'package:super_collection/features/auth/login_page.dart';
-import 'package:super_collection/features/settings/about_hub_page.dart';
+import 'package:super_collection/features/onboarding/shortcuts_help_page.dart';
 import 'package:super_collection/features/settings/account_page.dart';
+import 'package:super_collection/features/settings/ai_agent_help_page.dart';
+import 'package:super_collection/features/settings/ai_auto_tags_help_page.dart';
 import 'package:super_collection/features/settings/feedback_page.dart';
-import 'package:super_collection/features/settings/help_hub_page.dart';
-import 'package:super_collection/features/settings/home_modules_settings_page.dart';
+import 'package:super_collection/features/settings/how_to_add_link_page.dart';
+import 'package:super_collection/features/settings/legal_docs.dart';
 import 'package:super_collection/features/settings/logout_confirm_dialog.dart';
 import 'package:super_collection/features/settings/settings_modal.dart';
+import 'package:super_collection/features/settings/simple_doc_page.dart';
 
 /// 设置内容（设置页 / 账户抽屉共用）
 class SettingsPanel extends StatefulWidget {
@@ -23,6 +25,8 @@ class SettingsPanel extends StatefulWidget {
 
 class _SettingsPanelState extends State<SettingsPanel> {
   final _auth = AuthRepository();
+
+  static const _version = 'v1.7.6';
 
   Future<void> _logout() async {
     final ok = await showLogoutConfirmDialog(context);
@@ -59,26 +63,29 @@ class _SettingsPanelState extends State<SettingsPanel> {
                 ),
                 const SizedBox(height: 16),
               ],
-              const _SectionLabel('偏好'),
-              const SizedBox(height: 8),
-              _CardGroup(
-                children: [
-                  _SettingsRow(
-                    title: '首页模块',
-                    showChevron: true,
-                    onTap: () => _open(const HomeModulesSettingsPage()),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
               const _SectionLabel('支持'),
               const SizedBox(height: 8),
               _CardGroup(
                 children: [
                   _SettingsRow(
-                    title: '使用帮助',
+                    title: '如何添加链接',
                     showChevron: true,
-                    onTap: () => _open(const HelpHubPage()),
+                    onTap: () => _open(const HowToAddLinkPage()),
+                  ),
+                  _SettingsRow(
+                    title: 'AI助手',
+                    showChevron: true,
+                    onTap: () => _open(const AiAgentHelpPage()),
+                  ),
+                  _SettingsRow(
+                    title: 'AI自动标签方法',
+                    showChevron: true,
+                    onTap: () => _open(const AiAutoTagsHelpPage()),
+                  ),
+                  _SettingsRow(
+                    title: 'iOS 快捷指令说明',
+                    showChevron: true,
+                    onTap: () => _open(const ShortcutsHelpPage()),
                   ),
                   _SettingsRow(
                     title: '意见反馈',
@@ -93,9 +100,31 @@ class _SettingsPanelState extends State<SettingsPanel> {
               _CardGroup(
                 children: [
                   _SettingsRow(
-                    title: '关于 ${AppBrand.name}',
+                    title: '用户协议',
                     showChevron: true,
-                    onTap: () => _open(const AboutHubPage()),
+                    onTap: () => _open(
+                      const SimpleDocPage(
+                        title: '用户协议',
+                        body: LegalDocs.userAgreement,
+                      ),
+                    ),
+                  ),
+                  _SettingsRow(
+                    title: '隐私政策',
+                    showChevron: true,
+                    onTap: () => _open(
+                      const SimpleDocPage(
+                        title: '隐私政策',
+                        body: LegalDocs.privacyPolicy,
+                      ),
+                    ),
+                  ),
+                  const _SettingsRow(
+                    title: '版本',
+                    trailing: Text(
+                      _version,
+                      style: TextStyle(fontSize: 14, color: Color(0xFF737A85)),
+                    ),
                   ),
                 ],
               ),
@@ -176,42 +205,44 @@ class _SettingsRow extends StatelessWidget {
   const _SettingsRow({
     required this.title,
     this.showChevron = false,
+    this.trailing,
     this.onTap,
   });
 
   final String title;
   final bool showChevron;
+  final Widget? trailing;
   final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-        child: Row(
-          children: [
-            Expanded(
-              child: Text(
-                title,
-                style: const TextStyle(
-                  fontSize: 15,
-                  color: Color(0xFF1F242E),
-                ),
+    final row = Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              title,
+              style: const TextStyle(
+                fontSize: 15,
+                color: Color(0xFF1F242E),
               ),
             ),
-            if (showChevron)
-              const Padding(
-                padding: EdgeInsets.only(left: 4),
-                child: Icon(
-                  Icons.chevron_right,
-                  size: 22,
-                  color: Color(0xFF737A85),
-                ),
+          ),
+          if (trailing != null) trailing!,
+          if (showChevron)
+            const Padding(
+              padding: EdgeInsets.only(left: 4),
+              child: Icon(
+                Icons.chevron_right,
+                size: 22,
+                color: Color(0xFF737A85),
               ),
-          ],
-        ),
+            ),
+        ],
       ),
     );
+    if (onTap == null) return row;
+    return InkWell(onTap: onTap, child: row);
   }
 }

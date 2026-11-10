@@ -145,6 +145,7 @@ class CoachTooltipCard extends StatelessWidget {
     required this.confirmLabel,
     this.imageAsset,
     this.showSkip = true,
+    this.skipLabel = '跳过',
     this.onSkip,
     this.onConfirm,
   });
@@ -155,6 +156,7 @@ class CoachTooltipCard extends StatelessWidget {
   final String confirmLabel;
   final String? imageAsset;
   final bool showSkip;
+  final String skipLabel;
   final VoidCallback? onSkip;
   final VoidCallback? onConfirm;
 
@@ -219,14 +221,14 @@ class CoachTooltipCard extends StatelessWidget {
                   GestureDetector(
                     onTap: onSkip,
                     behavior: HitTestBehavior.opaque,
-                    child: const Padding(
-                      padding: EdgeInsets.symmetric(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
                         vertical: 10,
                         horizontal: 4,
                       ),
                       child: Text(
-                        '跳过',
-                        style: TextStyle(fontSize: 14, color: _muted),
+                        skipLabel,
+                        style: const TextStyle(fontSize: 14, color: _muted),
                       ),
                     ),
                   )

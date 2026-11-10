@@ -235,7 +235,7 @@ class _SectionHeader extends StatelessWidget {
           ),
           const SizedBox(height: 4),
           Text(
-            '你建归类 · 长按拖动；也可在 AI 助手里整理',
+            '创建归类 · 长按拖动；也可在 AI 助手里整理',
             style: TextStyle(
               fontSize: 12,
               height: 1.35,

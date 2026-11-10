@@ -31,6 +31,7 @@ import 'package:super_collection/features/items/item_reading_page.dart';
 import 'package:super_collection/features/items/items_repository.dart';
 import 'package:super_collection/features/onboarding/coach_prefs.dart';
 import 'package:super_collection/features/onboarding/home_coach_overlay.dart';
+import 'package:super_collection/features/onboarding/home_toggle_tip_prefs.dart';
 import 'package:super_collection/features/onboarding/shortcuts_help_page.dart';
 import 'package:super_collection/features/settings/settings_modal.dart';
 import 'package:super_collection/features/shell/tablet_items_split.dart';
@@ -39,7 +40,7 @@ import 'package:super_collection/features/settings/quota_gate.dart';
 import 'package:super_collection/features/settings/trial_expiry_banner.dart';
 import 'package:super_collection/features/settings/usage_repository.dart';
 
-/// 一级页：首页 — 「所有」整库，或「未读 + 漫游」（设置互斥）
+/// 一级页：首页 — 「所有」整库，或「未读 + 漫游」（底栏再点切换）
 class HomePage extends StatefulWidget {
   const HomePage({
     super.key,
@@ -250,6 +251,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     _removeCoachOverlays();
     _coachStep = null;
     await CoachPrefs.markSeen(userId: _coachUserId);
+    HomeToggleTipPrefs.requestCheck();
     if (mounted) unawaited(_maybeOfferClipboardLink());
   }
 

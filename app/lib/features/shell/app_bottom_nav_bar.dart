@@ -1,19 +1,24 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
+import 'package:super_collection/features/shell/home_nav_swap_icon.dart';
 
-/// 底部导航：阅读 | 搜索 | 收藏（齐平；搜索用原凸起圆钮样式，嵌入栏内）
+/// 底部导航：首页 | 搜索 | 收藏（齐平；搜索用原凸起圆钮样式，嵌入栏内）
 class AppBottomNavBar extends StatelessWidget {
   const AppBottomNavBar({
     super.key,
     required this.currentIndex,
     required this.onChanged,
     required this.onSearch,
+    this.homeTabKey,
   });
 
-  /// 0=阅读，1=收藏
+  /// 0=首页，1=收藏
   final int currentIndex;
   final ValueChanged<int> onChanged;
   final VoidCallback onSearch;
+
+  /// 首页 Tab（引导镂空用）
+  final GlobalKey? homeTabKey;
 
   static const active = Color(0xFF2F6FED);
   static const _inactive = Color(0xFF737A85);
@@ -33,9 +38,9 @@ class AppBottomNavBar extends StatelessWidget {
         children: [
           Expanded(
             child: _TabItem(
-              label: '阅读',
-              activeAsset: 'assets/icons/home_active.svg',
-              inactiveAsset: 'assets/icons/home_inactive.svg',
+              key: homeTabKey,
+              label: '首页',
+              glyph: const HomeNavSwapIcon(),
               selected: currentIndex == 0,
               onTap: () => onChanged(0),
             ),
@@ -95,16 +100,21 @@ class _SearchItem extends StatelessWidget {
 
 class _TabItem extends StatelessWidget {
   const _TabItem({
+    super.key,
     required this.label,
-    required this.activeAsset,
-    required this.inactiveAsset,
     required this.selected,
     required this.onTap,
-  });
+    this.activeAsset,
+    this.inactiveAsset,
+    this.glyph,
+  }) : assert(
+          glyph != null || (activeAsset != null && inactiveAsset != null),
+        );
 
   final String label;
-  final String activeAsset;
-  final String inactiveAsset;
+  final String? activeAsset;
+  final String? inactiveAsset;
+  final Widget? glyph;
   final bool selected;
   final VoidCallback onTap;
 
@@ -112,6 +122,13 @@ class _TabItem extends StatelessWidget {
   Widget build(BuildContext context) {
     final color =
         selected ? AppBottomNavBar.active : AppBottomNavBar._inactive;
+
+    final Widget mark = glyph ??
+        SvgPicture.asset(
+          selected ? activeAsset! : inactiveAsset!,
+          width: 24,
+          height: 24,
+        );
 
     return InkWell(
       onTap: onTap,
@@ -121,11 +138,7 @@ class _TabItem extends StatelessWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            SvgPicture.asset(
-              selected ? activeAsset : inactiveAsset,
-              width: 24,
-              height: 24,
-            ),
+            mark,
             const SizedBox(height: 3),
             Text(
               label,
