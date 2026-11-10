@@ -143,7 +143,6 @@ class _CollectionPageState extends State<CollectionPage> {
       setState(() {
         _modules = modulesResult.modules;
         _ungrouped = modulesResult.ungrouped;
-        // 首页「所有」→ 此处含未读；「所有」「批注」瓷砖已去掉
         final order = HomeModulesPrefs.instance.collectionSystemFilterOrder;
         _systemFilters = [
           for (final code in order)
