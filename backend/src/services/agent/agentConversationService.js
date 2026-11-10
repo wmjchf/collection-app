@@ -318,6 +318,16 @@ async function updateMessageCitations(messageId, citations) {
   );
 }
 
+async function updateMessageContent(messageId, content) {
+  await pool.execute(
+    `UPDATE agent_messages SET content = :content WHERE id = :id`,
+    {
+      id: messageId,
+      content: content == null ? '' : String(content),
+    },
+  );
+}
+
 async function touchTitleIfEmpty(userId, conversationId, seed) {
   const conv = await getConversationForUser(userId, conversationId);
   if (!conv || conv.title) return conv;
@@ -346,6 +356,7 @@ module.exports = {
   getMessageForUser,
   patchMessageToolPayload,
   updateMessageCitations,
+  updateMessageContent,
   touchTitleIfEmpty,
   mapMessage,
 };

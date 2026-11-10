@@ -5,17 +5,18 @@ import 'package:super_collection/features/items/item_transcript_page.dart';
 import 'package:super_collection/features/items/reading_font_prefs.dart';
 import 'package:super_collection/features/items/transcript_models.dart';
 
-class _PendingTranscriptProgress extends StatefulWidget {
-  const _PendingTranscriptProgress({required this.segment});
+/// 转写 pending 步骤条（准备 / 提交 / 识别）；阅读页与助手共用。
+class TranscriptPendingProgress extends StatefulWidget {
+  const TranscriptPendingProgress({super.key, required this.segment});
 
   final TranscriptSegment segment;
 
   @override
-  State<_PendingTranscriptProgress> createState() =>
-      _PendingTranscriptProgressState();
+  State<TranscriptPendingProgress> createState() =>
+      _TranscriptPendingProgressState();
 }
 
-class _PendingTranscriptProgressState extends State<_PendingTranscriptProgress> {
+class _TranscriptPendingProgressState extends State<TranscriptPendingProgress> {
   static const _muted = Color(0xFF737A85);
   static const _brand = Color(0xFF2F6FED);
 
@@ -244,7 +245,7 @@ class TranscriptSegmentPanel extends StatelessWidget {
       if (hidePendingLoading) return const SizedBox.shrink();
       return Padding(
         padding: const EdgeInsets.only(top: 14),
-        child: _PendingTranscriptProgress(segment: seg),
+        child: TranscriptPendingProgress(segment: seg),
       );
     }
 

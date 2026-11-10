@@ -188,7 +188,7 @@ async function prepareDraftSource(ctx, itemIdRaw) {
       ok: false,
       error: 'need_transcript',
       message:
-        '这篇视频还没有转写文稿。请先在阅读页「更多」里完成转写，再让我写文章。',
+        '这篇视频还没有转写文稿。我先帮你转写，完成后再整理成文章。',
     };
   }
 
@@ -198,7 +198,7 @@ async function prepareDraftSource(ctx, itemIdRaw) {
       ok: false,
       error: 'need_transcript',
       message:
-        '这篇视频还没有转写文稿。请先在阅读页「更多」里完成转写，再让我写文章。',
+        '这篇视频还没有转写文稿。我先帮你转写，完成后再整理成文章。',
     };
   }
   transcript = truncateSource(transcript);

@@ -1772,6 +1772,17 @@ async function runTranscriptJob(itemId) {
           usageErr.message,
         );
       }
+      try {
+        require('./itemEmbeddingService').scheduleIndexItem(
+          row.user_id,
+          itemId,
+        );
+      } catch (embErr) {
+        console.warn(
+          `[runTranscriptJob] embedding schedule failed item=${itemId}`,
+          embErr.message,
+        );
+      }
       return;
     }
 

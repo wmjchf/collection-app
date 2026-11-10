@@ -46,12 +46,11 @@ import 'package:super_collection/features/settings/quota_gate.dart';
 import 'package:super_collection/features/settings/usage_repository.dart';
 import 'package:super_collection/features/items/reading_tags_sheet.dart';
 import 'package:super_collection/features/items/transcript_models.dart';
-import 'package:super_collection/features/items/transcript_picker_sheet.dart';
 import 'package:super_collection/features/items/item_transcript_page.dart';
-import 'package:super_collection/features/items/transcript_segment_panel.dart';
+import 'package:super_collection/features/items/item_transcript_refresh.dart';
 
-/// 本地阅读页：标题 + 可读正文（含标注高亮）；底栏 助手 / 标签 / 感想 / 更多（思维导图、转写等）。
-/// 单篇解读改走助手「深挖原文」，不再单独挂 AI 解读入口。
+/// 本地阅读页：标题 + 可读正文（含标注高亮）；底栏 助手 / 标签 / 感想 / 更多（思维导图）。
+/// 单篇解读 / 转写改走助手；不再单独挂 AI 解读与「更多」转写入口。
 class ItemReadingPage extends StatefulWidget {
   const ItemReadingPage({
     super.key,
@@ -138,6 +137,7 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
   void initState() {
     super.initState();
     _openedAt = DateTime.now();
+    ItemTranscriptRefresh.version.addListener(_onExternalTranscriptRefresh);
     unawaited(_loadPro());
     unawaited(_loadBodyFontSize());
     final initial = widget.initialItem;
@@ -216,11 +216,60 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
         focusItem: _item,
       );
 
+  void _onExternalTranscriptRefresh() {
+    final id = ItemTranscriptRefresh.lastItemId;
+    if (id == null || id != widget.itemId) return;
+    unawaited(_refreshItemAfterExternalTranscript());
+  }
+
+  /// 助手等处转写成功后刷新本页文稿展示。
+  Future<void> _refreshItemAfterExternalTranscript() async {
+    try {
+      final item = await _repo.getItem(widget.itemId);
+      if (!mounted) return;
+      setState(() => _item = item);
+      _ensureBackgroundPolling(item);
+    } catch (_) {
+      // 刷新失败不打断阅读
+    }
+  }
+
   Future<void> _openFontSizeSheet() {
     return showReadingFontSizeSheet(
       context,
       fontSize: _bodyFontSize,
       onChanged: _onBodyFontSizeChanged,
+    );
+  }
+
+  /// 视频类顶栏「文稿」：有成功文稿则打开；否则提示去助手转写。
+  bool get _showTranscriptHeaderEntry => _item.hasVideo;
+
+  Future<void> _openTranscriptFromHeader() async {
+    var key = TranscriptTargets.segmentVideoUrl;
+    var seg = _item.segmentTranscript(key);
+    if (seg == null || !seg.hasText) {
+      for (final e in _item.transcriptSegments.entries) {
+        if (e.value.isSuccess && e.value.hasText) {
+          key = e.key;
+          seg = e.value;
+          break;
+        }
+      }
+    }
+    if (seg == null || !seg.hasText) {
+      if (!mounted) return;
+      AppToast.show(context, '暂无文稿，可在助手里转写');
+      return;
+    }
+    await showItemTranscriptSheet(
+      context,
+      text: seg.text!.trim(),
+      cues: seg.cues,
+      fontSize: _bodyFontSize,
+      itemId: _item.id,
+      segmentKey: key,
+      onShareQuote: _shareExistingQuote,
     );
   }
 
@@ -239,6 +288,7 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
       );
     }
     unawaited(Analytics.instance.flush());
+    ItemTranscriptRefresh.version.removeListener(_onExternalTranscriptRefresh);
     _markReadTimer?.cancel();
     _itemPollTimer?.cancel();
     _summaryPollGen++;
@@ -638,12 +688,10 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
           onFocusAnnotationRect: _onFocusAnnotationRect,
           itemId: _item.id,
           pageUrl: _item.sourcePageUrl,
-          transcriptSegments: _item.transcriptSegments,
           platform: _item.platform,
           pageAudio: _pageAudio,
           onRefreshInlineVideo:
               _platformNeedsVideoRefresh ? _refreshInlineVideo : null,
-          onShareQuote: _shareExistingQuote,
         ),
       ];
     }
@@ -783,17 +831,6 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
                 color: _tagSoftBlue,
               ),
             ],
-            const SizedBox(height: 14),
-            TranscriptSegmentPanel(
-              segment: _item.segmentTranscript(
-                TranscriptTargets.segmentVideoUrl,
-              ),
-              itemId: _item.id,
-              segmentKey: TranscriptTargets.segmentVideoUrl,
-              hidePendingLoading: _item.isAiAwaitingTranscript,
-              fontSize: _bodyFontSize,
-              onShareQuote: _shareExistingQuote,
-            ),
             if (_rawBody.isNotEmpty) ...[
               const SizedBox(height: 14),
               ..._buildBodyContent(
@@ -1444,24 +1481,16 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
     if (updated != null && mounted) setState(() => _item = updated);
   }
 
-  bool get _hasTranscriptEntry =>
-      _item.canRequestTranscript ||
-      _item.hasAnyTranscriptPending ||
-      _item.hasAnyTranscript;
-
   bool get _hasNote => _item.note != null && _item.note!.trim().isNotEmpty;
 
-  /// 更多操作 sheet（思维导图；有转写能力时另含转写文稿）。
+  /// 更多操作 sheet（思维导图）；转写请走助手。
   Future<void> _onMore() async {
     final action = await showReadingMoreSheet(
       context,
-      showTranscript: _hasTranscriptEntry,
       mindmapPending: _item.hasMindmapPending,
     );
     if (!mounted || action == null) return;
     switch (action) {
-      case ReadingMoreAction.transcript:
-        await _onTranscript();
       case ReadingMoreAction.mindmap:
         await _openMindmapSheet();
     }
@@ -1680,126 +1709,6 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
       } catch (_) {
         // ignore poll errors
       }
-    }
-  }
-
-  Future<void> _onTranscript() async {
-    final allowed = await ensurePlanFeatures(
-      context,
-      usageRepo: _usageRepo,
-      requirements: [
-        (has: (f) => f.transcript, tier: UsagePlan.prince),
-      ],
-    );
-    if (!allowed || !mounted) return;
-
-    if (_item.hasAnyTranscriptPending) {
-      AppToast.show(context, '请等当前转写完成');
-      return;
-    }
-
-    List<TranscriptTarget> targets;
-    try {
-      targets = await _repo.getTranscriptTargets(_item.id);
-    } on ApiException catch (e) {
-      if (!mounted) return;
-      AppToast.show(context, e.message);
-      return;
-    }
-
-    if (targets.isEmpty) {
-      if (!mounted) return;
-      AppToast.show(context, '该条目没有可转写的音视频');
-      return;
-    }
-
-    final pendingTargets =
-        targets.where((t) => t.status != 'success').toList(growable: false);
-    if (pendingTargets.isEmpty) {
-      if (!mounted) return;
-      AppToast.show(context, '本篇已有文稿，无需重复转写');
-      return;
-    }
-
-    TranscriptTarget? chosen;
-    if (pendingTargets.length == 1) {
-      chosen = pendingTargets.first;
-    } else {
-      if (!mounted) return;
-      chosen = await showTranscriptPickerSheet(
-        context,
-        targets: pendingTargets,
-      );
-    }
-    if (chosen == null || !mounted) return;
-
-    if (chosen.status == 'success') {
-      AppToast.show(context, '该段已有文稿，无需重复转写');
-      return;
-    }
-
-    final existing = _item.segmentTranscript(chosen.segmentKey);
-    if (existing != null && existing.isSuccess && existing.hasText) {
-      AppToast.show(context, '该段已有文稿，无需重复转写');
-      return;
-    }
-
-    var remainHint = '';
-    try {
-      final usage = await UsageRefresh.ensure();
-      final left = usage.transcriptRemainingMinutes;
-      if (left >= 0 && usage.transcriptLimitMinutes > 0) {
-        final leftLabel = left >= 10 || left == left.roundToDouble()
-            ? '${left.round()}'
-            : left.toStringAsFixed(1);
-        remainHint = '\n本月大约还剩 $leftLabel 分钟。';
-      }
-    } catch (_) {
-      // 额度展示失败不挡转写确认
-    }
-    if (!mounted) return;
-    final confirmed = await showAppConfirmDialog(
-      context,
-      title: '开始转写？',
-      message: '按实际时长扣减本月转写分钟，单次最长约 1 小时。$remainHint',
-      cancelLabel: '取消',
-      confirmLabel: '开始转写',
-      dangerConfirm: false,
-    );
-    if (confirmed != true || !mounted) return;
-
-    try {
-      String? mediaUrl;
-      if (chosen.needsClientResolve) {
-        if (chosen.segmentKey.startsWith('inline:')) {
-          final idx = int.tryParse(chosen.segmentKey.split(':').last);
-          if (idx != null) mediaUrl = await _refreshInlineVideo(idx);
-        } else {
-          mediaUrl = await _refreshVideoUrl();
-        }
-        if (mediaUrl == null || mediaUrl.trim().isEmpty) {
-          if (!mounted) return;
-          AppToast.show(context, '无法获取音视频直链，请先播放或刷新视频');
-          return;
-        }
-      }
-
-      final updated = await _repo.requestTranscript(
-        _item.id,
-        segmentKey: chosen.segmentKey,
-        mediaUrl: mediaUrl,
-      );
-      if (!mounted) return;
-      Analytics.instance.transcriptRequest(
-        itemId: _item.id,
-        segmentKey: chosen.segmentKey,
-      );
-      setState(() => _item = updated);
-      AppToast.show(context, '已开始转写，请稍候');
-      _pollTranscript();
-    } on ApiException catch (e) {
-      if (!mounted) return;
-      await handleApiException(context, e);
     }
   }
 
@@ -2192,16 +2101,6 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
                               ? _refreshVideoUrl
                               : null,
                         ),
-                        TranscriptSegmentPanel(
-                          segment: _item.segmentTranscript(
-                            TranscriptTargets.segmentVideoUrl,
-                          ),
-                          itemId: _item.id,
-                          segmentKey: TranscriptTargets.segmentVideoUrl,
-                          hidePendingLoading: _item.isAiAwaitingTranscript,
-                          fontSize: _bodyFontSize,
-                          onShareQuote: _shareExistingQuote,
-                        ),
                         const SizedBox(height: 18),
                       ],
                       ..._buildBodyContent(body, gallery: false),
@@ -2255,6 +2154,9 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
                             !_item.isImageGallery &&
                             !_isTopBarTrueVideo
                         ? _showNoteAnnotationList
+                        : null,
+                    onTranscript: canRead && _showTranscriptHeaderEntry
+                        ? () => unawaited(_openTranscriptFromHeader())
                         : null,
                   ),
                 ),
@@ -2442,11 +2344,9 @@ class _InlineArticleBody extends StatelessWidget {
     this.onFocusAnnotationRect,
     this.itemId,
     this.pageUrl,
-    this.transcriptSegments = const {},
     this.platform,
     this.pageAudio,
     this.onRefreshInlineVideo,
-    this.onShareQuote,
   });
 
   final List<ArticleBlock> blocks;
@@ -2461,11 +2361,9 @@ class _InlineArticleBody extends StatelessWidget {
   final void Function(Rect localRect, RenderBox stackBox)? onFocusAnnotationRect;
   final int? itemId;
   final String? pageUrl;
-  final Map<String, TranscriptSegment> transcriptSegments;
   final String? platform;
   final ReadingMediaController? pageAudio;
   final Future<String?> Function(int index)? onRefreshInlineVideo;
-  final Future<void> Function(String quote, Rect? shareOrigin)? onShareQuote;
 
   static const _text = Color(0xFF1F242E);
   static const _highlight = Color(0xFFFFF2C7);
@@ -2679,37 +2577,24 @@ class _InlineArticleBody extends StatelessWidget {
         flushIsland();
         if (children.isNotEmpty) children.add(const SizedBox(height: 18));
         final index = videoIndex++;
-        final segmentKey = 'inline:$index';
         children.add(
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              LayoutBuilder(
-                builder: (context, constraints) {
-                  final w = constraints.maxWidth;
-                  final h = (w * 9 / 16).clamp(180.0, 280.0);
-                  return ItemVideoPlayer(
-                    key: ValueKey('body-video-${itemId ?? 0}-$index'),
-                    url: block.url,
-                    coverUrl: block.posterUrl,
-                    pageUrl: pageUrl,
-                    platform: platform,
-                    pageAudio: pageAudio,
-                    height: h,
-                    onRefreshUrl: onRefreshInlineVideo == null
-                        ? null
-                        : () => onRefreshInlineVideo!(index),
-                  );
-                },
-              ),
-              TranscriptSegmentPanel(
-                segment: transcriptSegments[segmentKey],
-                itemId: itemId,
-                segmentKey: segmentKey,
-                fontSize: fontSize,
-                onShareQuote: onShareQuote,
-              ),
-            ],
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final w = constraints.maxWidth;
+              final h = (w * 9 / 16).clamp(180.0, 280.0);
+              return ItemVideoPlayer(
+                key: ValueKey('body-video-${itemId ?? 0}-$index'),
+                url: block.url,
+                coverUrl: block.posterUrl,
+                pageUrl: pageUrl,
+                platform: platform,
+                pageAudio: pageAudio,
+                height: h,
+                onRefreshUrl: onRefreshInlineVideo == null
+                    ? null
+                    : () => onRefreshInlineVideo!(index),
+              );
+            },
           ),
         );
         continue;
@@ -3435,6 +3320,7 @@ class _ReadingTopBar extends StatelessWidget {
     this.onMarkUnread,
     this.onHighlights,
     this.onAnnotations,
+    this.onTranscript,
     this.showBack = true,
     this.menuEnabled = true,
     this.editEnabled = false,
@@ -3452,6 +3338,8 @@ class _ReadingTopBar extends StatelessWidget {
   final VoidCallback? onMarkUnread;
   final VoidCallback? onHighlights;
   final VoidCallback? onAnnotations;
+  /// 视频类文稿入口
+  final VoidCallback? onTranscript;
   final bool showBack;
   final bool menuEnabled;
   final bool editEnabled;
@@ -3507,6 +3395,16 @@ class _ReadingTopBar extends StatelessWidget {
                     onPressed: onAnnotations,
                     icon: const Icon(
                       Icons.sticky_note_2_outlined,
+                      size: 22,
+                      color: _text,
+                    ),
+                  ),
+                if (onTranscript != null)
+                  IconButton(
+                    tooltip: '文稿',
+                    onPressed: onTranscript,
+                    icon: const Icon(
+                      Icons.article_outlined,
                       size: 22,
                       color: _text,
                     ),

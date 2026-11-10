@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:super_collection/core/analytics/analytics.dart';
 import 'package:super_collection/core/network/api_client.dart';
 import 'package:super_collection/core/ui/app_bottom_sheet.dart';
 import 'package:super_collection/core/ui/app_confirm_dialog.dart';
@@ -23,6 +24,10 @@ import 'package:super_collection/features/items/item_models.dart';
 import 'package:super_collection/features/items/item_reading_page.dart';
 import 'package:super_collection/features/items/items_repository.dart';
 import 'package:super_collection/features/items/reading_quote_share.dart';
+import 'package:super_collection/features/items/item_transcript_refresh.dart';
+import 'package:super_collection/features/items/transcript_models.dart';
+import 'package:super_collection/features/items/transcript_picker_sheet.dart';
+import 'package:super_collection/features/items/transcript_segment_panel.dart';
 import 'package:super_collection/features/settings/quota_gate.dart';
 import 'package:super_collection/features/settings/usage_repository.dart';
 
@@ -77,6 +82,12 @@ class _AgentPageState extends State<AgentPage> {
   List<String>? _llmPresets;
   String? _presetCacheKey;
   int _presetFetchGen = 0;
+  /// 助手内转写轮询世代；dispose / 新任务时递增以取消旧轮询
+  int _transcriptPollGen = 0;
+  /// 已准备过气泡确认文案的助手消息 id
+  final Set<int> _transcriptConfirmStarted = {};
+  /// 仅当次在气泡点过「开始转写」才允许转写成功后自动成文（进页续跑不成文）
+  bool _allowResumeComposeAfterTranscript = false;
 
   int? get _focusItemId =>
       widget.focusItemId ?? widget.focusItem?.id ?? _focusItem?.id;
@@ -90,6 +101,7 @@ class _AgentPageState extends State<AgentPage> {
 
   @override
   void dispose() {
+    _transcriptPollGen++;
     _input.dispose();
     _scroll.dispose();
     _focus.dispose();
@@ -155,6 +167,7 @@ class _AgentPageState extends State<AgentPage> {
           unawaited(_scrollToEndSettled());
         }
         unawaited(_refreshLlmPresets());
+        unawaited(_resumeActiveTranscriptJob());
       }
     }
 
@@ -192,6 +205,7 @@ class _AgentPageState extends State<AgentPage> {
         unawaited(_scrollToEndSettled());
       }
       unawaited(_refreshLlmPresets());
+      unawaited(_resumeActiveTranscriptJob());
     } on ApiException catch (e) {
       if (!mounted) return;
       // 已有缓存可继续聊；无缓存才当错误页
@@ -320,6 +334,7 @@ class _AgentPageState extends State<AgentPage> {
       unawaited(_persistCache());
       _scrollToEnd();
       unawaited(_refreshLlmPresets());
+      unawaited(_maybeHandleStartTranscript(result.assistantMessage));
     } on ApiException catch (e) {
       if (!mounted) return;
       setState(() {
@@ -341,6 +356,435 @@ class _AgentPageState extends State<AgentPage> {
       });
       AppToast.show(context, '发送失败，请重试');
     }
+  }
+
+  AgentMessage? _lastStartTranscriptMessage() {
+    for (var i = _messages.length - 1; i >= 0; i--) {
+      final m = _messages[i];
+      if (m.isAssistant && m.pendingAction?.isTranscriptJobActive == true) {
+        return m;
+      }
+    }
+    return null;
+  }
+
+  Future<void> _resumeActiveTranscriptJob() async {
+    final msg = _lastStartTranscriptMessage();
+    if (msg == null) return;
+    final pa = msg.pendingAction!;
+    if (pa.status == 'running') {
+      unawaited(_pollAgentTranscript(msg.id));
+      return;
+    }
+    if (pa.status == 'pending') {
+      final itemId = pa.itemId > 0 ? pa.itemId : (_focusItemId ?? 0);
+      if (itemId <= 0) return;
+      try {
+        final st = await _itemsRepo.getTranscriptStatus(itemId);
+        if (!mounted) return;
+        if (st.hasPending) {
+          // 服务端任务仍在跑：跳过确认直接续轮询
+          _patchAssistantMessage(
+            msg.id,
+            pending: pa.copyWith(
+              status: 'running',
+              segmentKey: st.pendingSegmentKey ?? pa.segmentKey,
+            ),
+          );
+          unawaited(_pollAgentTranscript(msg.id));
+          return;
+        }
+        final item = await _itemsRepo.getItem(itemId);
+        if (!mounted) return;
+        if (_focusItem?.id == itemId) {
+          setState(() => _focusItem = item);
+        }
+        final done = item.transcriptSegments.values
+            .any((s) => s.isSuccess && s.hasText);
+        if (done) {
+          // 离开期间已转写完：只结算成功态，不再自动成文（避免每次进页重发）
+          _patchAssistantMessage(
+            msg.id,
+            content: '转写完成。可以说「根据转写写一篇文章」，或到阅读页查看全文。',
+            pending: pa.copyWith(status: 'success', clearPhase: true),
+          );
+          ItemTranscriptRefresh.notify(itemId);
+          unawaited(_refreshLlmPresets());
+          return;
+        }
+      } catch (_) {
+        // 拉状态失败则走确认流程
+      }
+      unawaited(_maybeHandleStartTranscript(msg));
+    }
+  }
+
+  Future<void> _maybeHandleStartTranscript(AgentMessage assistant) async {
+    final pa = assistant.pendingAction;
+    if (pa == null || !pa.isStartTranscript) return;
+    if (pa.status == 'running') {
+      unawaited(_pollAgentTranscript(assistant.id));
+      return;
+    }
+    if (pa.status != 'pending') return;
+    // 只准备气泡内确认文案，不弹系统框；用户点「开始转写」再提交
+    await _prepareTranscriptConfirm(assistant);
+  }
+
+  /// 充实转写确认气泡（额度说明）；确认条由 pendingAction 驱动。
+  Future<void> _prepareTranscriptConfirm(AgentMessage message) async {
+    final pa = message.pendingAction;
+    if (pa == null || !pa.isTranscriptConfirmPending) return;
+    if (_transcriptConfirmStarted.contains(message.id)) return;
+    _transcriptConfirmStarted.add(message.id);
+
+    final allowed = await ensurePlanFeatures(
+      context,
+      requirements: [
+        (has: (f) => f.transcript, tier: UsagePlan.prince),
+      ],
+    );
+    if (!allowed || !mounted) {
+      _patchAssistantMessage(
+        message.id,
+        content: '转写需要太子Pro。开通后可再说「转写这篇」。',
+        pending: pa.copyWith(status: 'cancelled'),
+      );
+      return;
+    }
+
+    var remainHint = '';
+    try {
+      final usage = await UsageRefresh.ensure();
+      final left = usage.transcriptRemainingMinutes;
+      if (left >= 0 && usage.transcriptLimitMinutes > 0) {
+        final leftLabel = left >= 10 || left == left.roundToDouble()
+            ? '${left.round()}'
+            : left.toStringAsFixed(1);
+        remainHint = '\n本月大约还剩 $leftLabel 分钟。';
+      }
+    } catch (_) {}
+
+    if (!mounted) return;
+    final lead = pa.resumeCompose
+        ? '这篇还没有转写文稿。确认后我先转写，完成后再整理成文章。'
+        : '确认后开始转写这篇文稿。';
+    _patchAssistantMessage(
+      message.id,
+      content: '$lead\n按实际时长扣减本月转写分钟，单次最长约 1 小时。$remainHint',
+      pending: pa,
+    );
+  }
+
+  void _patchAssistantMessage(
+    int messageId, {
+    String? content,
+    AgentPendingAction? pending,
+  }) {
+    if (!mounted) return;
+    final idx = _messages.indexWhere((m) => m.id == messageId);
+    if (idx < 0) return;
+    final nextContent = content ?? _messages[idx].content;
+    setState(() {
+      _messages[idx] = _messages[idx].copyWith(
+        content: content,
+        pendingAction: pending,
+      );
+    });
+    unawaited(_persistCache());
+    final st = pending?.status;
+    if (pending != null &&
+        pending.isStartTranscript &&
+        messageId > 0 &&
+        (st == 'success' || st == 'failed' || st == 'cancelled')) {
+      unawaited(_settleTranscriptOnServer(
+        messageId: messageId,
+        status: st!,
+        content: nextContent,
+      ));
+    }
+  }
+
+  Future<void> _settleTranscriptOnServer({
+    required int messageId,
+    required String status,
+    String? content,
+  }) async {
+    final convId = _conversationId;
+    if (convId == null || messageId <= 0) return;
+    try {
+      await _repo.settleTranscriptAction(
+        conversationId: convId,
+        messageId: messageId,
+        status: status,
+        content: content,
+      );
+    } catch (_) {
+      // 结算失败不挡本轮 UI；下次进页仍可能再结算一次（幂等）
+    }
+  }
+
+  Future<void> _beginAgentTranscript(AgentMessage message) async {
+    final pa = message.pendingAction;
+    if (pa == null || !pa.isStartTranscript) return;
+    if (pa.status != 'pending') return;
+    final itemId = pa.itemId > 0 ? pa.itemId : (_focusItemId ?? 0);
+    if (itemId <= 0) {
+      _patchAssistantMessage(
+        message.id,
+        content: '转写失败：缺少当前篇目。请从阅读页打开助手后再试。',
+        pending: pa.copyWith(status: 'failed'),
+      );
+      return;
+    }
+
+    List<TranscriptTarget> targets;
+    try {
+      targets = await _itemsRepo.getTranscriptTargets(itemId);
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      await handleApiException(context, e);
+      _patchAssistantMessage(
+        message.id,
+        content: '转写失败：${e.message}',
+        pending: pa.copyWith(status: 'failed'),
+      );
+      return;
+    } catch (_) {
+      if (!mounted) return;
+      _patchAssistantMessage(
+        message.id,
+        content: '转写失败：无法获取可转写媒体。',
+        pending: pa.copyWith(status: 'failed'),
+      );
+      return;
+    }
+
+    final pendingTargets =
+        targets.where((t) => t.status != 'success').toList(growable: false);
+    if (pendingTargets.isEmpty) {
+      _patchAssistantMessage(
+        message.id,
+        content: '这篇已经有转写文稿了。可以说「根据转写写一篇文章」。',
+        pending: pa.copyWith(status: 'success'),
+      );
+      ItemTranscriptRefresh.notify(itemId);
+      if (pa.resumeCompose && _allowResumeComposeAfterTranscript) {
+        _allowResumeComposeAfterTranscript = false;
+        unawaited(_send('根据转写写一篇文章'));
+      } else {
+        _allowResumeComposeAfterTranscript = false;
+      }
+      return;
+    }
+
+    TranscriptTarget? chosen;
+    if (pendingTargets.length == 1) {
+      chosen = pendingTargets.first;
+    } else {
+      if (!mounted) return;
+      chosen = await showTranscriptPickerSheet(
+        context,
+        targets: pendingTargets,
+      );
+    }
+    if (!mounted) return;
+    if (chosen == null) {
+      _patchAssistantMessage(
+        message.id,
+        content: '已取消转写。需要时再说「转写这篇」。',
+        pending: pa.copyWith(status: 'cancelled'),
+      );
+      unawaited(_refreshLlmPresets());
+      return;
+    }
+
+    String? mediaUrl;
+    if (chosen.needsClientResolve) {
+      try {
+        final refreshed = await _itemsRepo.refreshVideo(itemId);
+        if (!mounted) return;
+        setState(() {
+          if (_focusItem?.id == itemId) _focusItem = refreshed;
+        });
+        mediaUrl = refreshed.videoUrl;
+        if (mediaUrl == null || mediaUrl.trim().isEmpty) {
+          _patchAssistantMessage(
+            message.id,
+            content: '无法获取音视频直链，请先到阅读页播放或刷新视频后再转写。',
+            pending: pa.copyWith(status: 'failed'),
+          );
+          return;
+        }
+      } on ApiException catch (e) {
+        if (!mounted) return;
+        await handleApiException(context, e);
+        _patchAssistantMessage(
+          message.id,
+          content: '无法获取音视频直链：${e.message}',
+          pending: pa.copyWith(status: 'failed'),
+        );
+        return;
+      } catch (_) {
+        if (!mounted) return;
+        _patchAssistantMessage(
+          message.id,
+          content: '无法获取音视频直链，请先到阅读页播放或刷新视频后再转写。',
+          pending: pa.copyWith(status: 'failed'),
+        );
+        return;
+      }
+    }
+
+    try {
+      final updated = await _itemsRepo.requestTranscript(
+        itemId,
+        segmentKey: chosen.segmentKey,
+        mediaUrl: mediaUrl,
+      );
+      if (!mounted) return;
+      Analytics.instance.transcriptRequest(
+        itemId: itemId,
+        segmentKey: chosen.segmentKey,
+      );
+      if (_focusItem?.id == itemId) {
+        setState(() => _focusItem = updated);
+      }
+      _patchAssistantMessage(
+        message.id,
+        content: pa.resumeCompose
+            ? '正在转写文稿，完成后会自动整理成文章。'
+            : '正在转写文稿，请稍候。',
+        pending: pa.copyWith(
+          status: 'running',
+          segmentKey: chosen.segmentKey,
+          phase: 'queued',
+          phaseLabel: '排队等待中',
+          phaseHint: '即将开始准备音视频并提交识别',
+          phaseAt: DateTime.now(),
+        ),
+      );
+      unawaited(_pollAgentTranscript(message.id));
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      await handleApiException(context, e);
+      _patchAssistantMessage(
+        message.id,
+        content: '转写失败：${e.message}',
+        pending: pa.copyWith(status: 'failed'),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      _patchAssistantMessage(
+        message.id,
+        content: '转写失败，请稍后重试。',
+        pending: pa.copyWith(status: 'failed'),
+      );
+    }
+  }
+
+  Future<void> _pollAgentTranscript(int messageId) async {
+    final gen = ++_transcriptPollGen;
+    for (var i = 0; i < 90; i++) {
+      if (i > 0) {
+        await Future<void>.delayed(const Duration(seconds: 4));
+      }
+      if (!mounted || gen != _transcriptPollGen) return;
+
+      final idx = _messages.indexWhere((m) => m.id == messageId);
+      if (idx < 0) return;
+      final msg = _messages[idx];
+      final pa = msg.pendingAction;
+      if (pa == null || !pa.isStartTranscript) return;
+      final itemId = pa.itemId > 0 ? pa.itemId : (_focusItemId ?? 0);
+      if (itemId <= 0) return;
+
+      try {
+        final st = await _itemsRepo.getTranscriptStatus(itemId);
+        if (!mounted || gen != _transcriptPollGen) return;
+
+        if (st.hasPending) {
+          final key = st.pendingSegmentKey ?? pa.segmentKey;
+          final seg = key != null ? st.segments[key] : null;
+          TranscriptSegment? active = seg;
+          if (active == null) {
+            for (final s in st.segments.values) {
+              if (s.isPending) {
+                active = s;
+                break;
+              }
+            }
+          }
+          _patchAssistantMessage(
+            messageId,
+            pending: pa.copyWith(
+              status: 'running',
+              segmentKey: key ?? pa.segmentKey,
+              phase: active?.phase ?? pa.phase,
+              phaseLabel: active?.phaseLabel ?? pa.phaseLabel,
+              phaseHint: active?.phaseHint ?? pa.phaseHint,
+              phaseAt: active?.phaseAt ?? pa.phaseAt,
+            ),
+          );
+          continue;
+        }
+
+        final item = await _itemsRepo.getItem(itemId);
+        if (!mounted || gen != _transcriptPollGen) return;
+        if (_focusItem?.id == itemId) {
+          setState(() => _focusItem = item);
+        }
+
+        final anySuccess = st.segments.values.any((s) => s.isSuccess);
+        if (anySuccess) {
+          final shouldCompose =
+              pa.resumeCompose && _allowResumeComposeAfterTranscript;
+          _allowResumeComposeAfterTranscript = false;
+          _patchAssistantMessage(
+            messageId,
+            content: shouldCompose
+                ? '转写完成，正在根据文稿整理成文章…'
+                : '转写完成。可以说「根据转写写一篇文章」，或到阅读页查看全文。',
+            pending: pa.copyWith(status: 'success', clearPhase: true),
+          );
+          ItemTranscriptRefresh.notify(itemId);
+          unawaited(_refreshLlmPresets());
+          if (shouldCompose) {
+            unawaited(_send('根据转写写一篇文章'));
+          }
+          return;
+        }
+
+        String? errMsg;
+        for (final s in st.segments.values) {
+          final e = s.error?.trim();
+          if (e != null && e.isNotEmpty) {
+            errMsg = e;
+            break;
+          }
+        }
+        _patchAssistantMessage(
+          messageId,
+          content: '转写失败：${errMsg ?? '请稍后重试'}',
+          pending: pa.copyWith(status: 'failed', clearPhase: true),
+        );
+        unawaited(_refreshLlmPresets());
+        return;
+      } catch (_) {
+        // ignore poll errors
+      }
+    }
+
+    if (!mounted || gen != _transcriptPollGen) return;
+    final idx = _messages.indexWhere((m) => m.id == messageId);
+    if (idx < 0) return;
+    final pa = _messages[idx].pendingAction;
+    if (pa == null || !pa.isTranscriptJobActive) return;
+    _patchAssistantMessage(
+      messageId,
+      content: '转写等待超时，请稍后在助手里再说「转写这篇」。',
+      pending: pa.copyWith(status: 'failed', clearPhase: true),
+    );
   }
 
   bool _hasSuccessfulTranscript() {
@@ -415,7 +859,9 @@ class _AgentPageState extends State<AgentPage> {
         break;
       }
     }
-    if (lastAssistant?.pendingAction?.isPending == true) {
+    final pendingBusy = lastAssistant?.pendingAction?.isPending == true ||
+        lastAssistant?.pendingAction?.isTranscriptJobActive == true;
+    if (pendingBusy) {
       if (mounted) {
         setState(() {
           _llmPresets = const [];
@@ -445,7 +891,8 @@ class _AgentPageState extends State<AgentPage> {
         conversationId: convId,
         focusItemId: _focusItemId,
         lastAssistantContent: lastAssistant?.content,
-        hasPendingAction: lastAssistant?.pendingAction?.isPending == true,
+        hasPendingAction: lastAssistant?.pendingAction?.isPending == true ||
+            lastAssistant?.pendingAction?.isTranscriptJobActive == true,
       );
       if (!mounted || gen != _presetFetchGen) return;
       setState(() {
@@ -554,12 +1001,38 @@ class _AgentPageState extends State<AgentPage> {
 
   Future<void> _confirmPendingAction(AgentMessage message, bool approve) async {
     final convId = _conversationId;
+    final pa = message.pendingAction;
     if (convId == null ||
         _confirmingAction ||
         _sending ||
-        message.pendingAction?.isPending != true) {
+        pa?.isPending != true) {
       return;
     }
+
+    // 转写：气泡内确认，本地提交，不走改标 confirm API
+    if (pa!.isTranscriptConfirmPending) {
+      if (!approve) {
+        _allowResumeComposeAfterTranscript = false;
+        _patchAssistantMessage(
+          message.id,
+          content: pa.resumeCompose
+              ? '已取消转写。需要时再说「根据转写写一篇文章」或「转写这篇」。'
+              : '已取消转写。需要时再说「转写这篇」。',
+          pending: pa.copyWith(status: 'cancelled'),
+        );
+        unawaited(_refreshLlmPresets());
+        return;
+      }
+      _allowResumeComposeAfterTranscript = pa.resumeCompose;
+      setState(() => _confirmingAction = true);
+      try {
+        await _beginAgentTranscript(message);
+      } finally {
+        if (mounted) setState(() => _confirmingAction = false);
+      }
+      return;
+    }
+
     setState(() => _confirmingAction = true);
     try {
       final result = await _repo.confirmAction(
@@ -1625,10 +2098,25 @@ class _AssistantBlock extends StatelessWidget {
     if (context.mounted) AppToast.show(context, '已复制');
   }
 
+  TranscriptSegment? get _transcriptProgressSegment {
+    final pa = pendingAction;
+    if (pa == null || !pa.isStartTranscript) return null;
+    // 待确认只显示确认条；步骤条仅在 running
+    if (pa.status != 'running') return null;
+    return TranscriptSegment(
+      status: 'pending',
+      phase: pa.phase ?? 'queued',
+      phaseLabel: pa.phaseLabel ?? '文稿转写中…',
+      phaseHint: pa.phaseHint,
+      phaseAt: pa.phaseAt,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final showConfirm = pendingAction?.isPending == true && onConfirmAction != null;
-    final canCopy = text.trim().isNotEmpty;
+    final progressSeg = _transcriptProgressSegment;
+    final canCopy = text.trim().isNotEmpty && progressSeg == null;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1641,6 +2129,10 @@ class _AssistantBlock extends StatelessWidget {
             contextMenuBuilder: contextMenuBuilder,
           ),
         ),
+        if (progressSeg != null) ...[
+          const SizedBox(height: 12),
+          TranscriptPendingProgress(segment: progressSeg),
+        ],
         if (inventoryTags.isNotEmpty) ...[
           const SizedBox(height: 12),
           Wrap(
@@ -1774,16 +2266,23 @@ class _AssistantBlock extends StatelessWidget {
 /// 挂确认条的最后一步不展示预设，避免与「确认整理」抢决策。
 class _AgentPresetRules {
   static const _composeVideoPreset = '根据转写写一篇文章';
+  static const _transcriptPreset = '转写这篇';
   static const _composeGalleryPreset = '根据图片整理成文章';
 
-  static bool _looksLikeVideoCompose(String p) =>
-      RegExp(r'转写|根据转写').hasMatch(p);
+  static bool _looksLikeVideoCompose(String p) {
+    final s = p.trim();
+    if (RegExp(r'^转写这篇$').hasMatch(s)) return false;
+    return RegExp(r'根据转写|转写写一篇').hasMatch(s);
+  }
+
+  static bool _looksLikeTranscriptOnly(String p) =>
+      RegExp(r'^转写这篇$|开始转写|生成文稿').hasMatch(p.trim());
 
   static bool _looksLikeGalleryCompose(String p) =>
       RegExp(r'这组图|图集整理|根据图片整理|把.*图.*整理成|整理成文章|整理成笔记')
           .hasMatch(p);
 
-  /// 视频：未转写只留转文；图集：可留整理成文；互斥滤掉对方的 compose 预设。
+  /// 视频：未转写留「转写这篇」+ 成文；图集：可留整理成文；互斥滤掉对方的 compose 预设。
   static List<String> filterCompose(
     List<String> presets, {
     required bool isVideo,
@@ -1792,12 +2291,34 @@ class _AgentPresetRules {
     required bool canComposeGallery,
   }) {
     if (isVideo && !canComposeVideo) {
-      final only = presets.where(_looksLikeVideoCompose).toList();
-      return only.isNotEmpty ? only : const [_composeVideoPreset];
+      final kept = presets
+          .where((p) => _looksLikeVideoCompose(p) || _looksLikeTranscriptOnly(p))
+          .toList();
+      if (kept.isEmpty) {
+        return const [_transcriptPreset, _composeVideoPreset];
+      }
+      final hasTranscript = kept.any(_looksLikeTranscriptOnly);
+      final hasCompose = kept.any(_looksLikeVideoCompose);
+      return List<String>.unmodifiable([
+        if (hasTranscript)
+          kept.firstWhere(_looksLikeTranscriptOnly)
+        else
+          _transcriptPreset,
+        if (hasCompose)
+          kept.firstWhere(_looksLikeVideoCompose)
+        else
+          _composeVideoPreset,
+      ]);
     }
     var out = presets.toList();
     if (!canComposeVideo) {
-      out = out.where((p) => !_looksLikeVideoCompose(p)).toList();
+      out = out
+          .where(
+            (p) => !_looksLikeVideoCompose(p) && !_looksLikeTranscriptOnly(p),
+          )
+          .toList();
+    } else {
+      out = out.where((p) => !_looksLikeTranscriptOnly(p)).toList();
     }
     if (!canComposeGallery) {
       out = out.where((p) => !_looksLikeGalleryCompose(p)).toList();
@@ -1820,7 +2341,7 @@ class _AgentPresetRules {
   }) {
     if (focused) {
       if (isVideo && !canComposeVideo) {
-        return const [_composeVideoPreset];
+        return const [_transcriptPreset, _composeVideoPreset];
       }
       if (isGallery && canComposeGallery) {
         return filterCompose(
@@ -1862,8 +2383,9 @@ class _AgentPresetRules {
     bool canComposeVideo = false,
     bool canComposeGallery = false,
   }) {
-    // 确认写入步骤：只用消息上的确认/取消，不再挂预设
-    if (message.pendingAction?.isPending == true) {
+    // 确认写入 / 转写进行中：不再挂预设
+    if (message.pendingAction?.isPending == true ||
+        message.pendingAction?.isTranscriptJobActive == true) {
       return const [];
     }
 
@@ -1878,7 +2400,7 @@ class _AgentPresetRules {
     }
     if (focused) {
       if (isVideo && !canComposeVideo) {
-        return const [_composeVideoPreset];
+        return const [_transcriptPreset, _composeVideoPreset];
       }
       if (isGallery && canComposeGallery) {
         return filterCompose(

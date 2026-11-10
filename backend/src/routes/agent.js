@@ -216,4 +216,34 @@ router.post('/actions/confirm', async (req, res, next) => {
   }
 });
 
+/**
+ * POST /api/agent/actions/settle-transcript
+ * body: { conversationId, messageId, status: success|failed|cancelled, content? }
+ */
+router.post('/actions/settle-transcript', async (req, res, next) => {
+  try {
+    const conversationId = Number(req.body?.conversationId);
+    const messageId = Number(req.body?.messageId);
+    const status = String(req.body?.status || '').trim();
+    const content =
+      req.body?.content == null ? null : String(req.body.content);
+    if (!Number.isFinite(conversationId) || conversationId <= 0) {
+      return res.status(400).json({ message: '无效的会话' });
+    }
+    if (!Number.isFinite(messageId) || messageId <= 0) {
+      return res.status(400).json({ message: '无效的消息' });
+    }
+    const result = await confirmActionService.settleTranscriptAction({
+      userId: req.auth.userId,
+      conversationId,
+      messageId,
+      status,
+      content,
+    });
+    return res.json(result);
+  } catch (err) {
+    return next(err);
+  }
+});
+
 module.exports = router;

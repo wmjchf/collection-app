@@ -327,6 +327,25 @@ class AgentRepository {
     );
     return AgentConfirmActionResult.fromJson(json);
   }
+
+  /// 结算助手内转写 pendingAction，避免重进页反复自动成文。
+  Future<void> settleTranscriptAction({
+    required int conversationId,
+    required int messageId,
+    required String status,
+    String? content,
+  }) async {
+    await _client.post(
+      '/api/agent/actions/settle-transcript',
+      accessToken: await _token(),
+      body: {
+        'conversationId': conversationId,
+        'messageId': messageId,
+        'status': status,
+        if (content != null) 'content': content,
+      },
+    );
+  }
 }
 
 class AgentConfirmActionResult {

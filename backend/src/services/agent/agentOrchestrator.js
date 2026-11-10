@@ -272,7 +272,8 @@ async function runUserTurn({
         plan.intent === 'tag_edit' ||
         plan.intent === 'organize' ||
         plan.intent === 'list_tags' ||
-        plan.intent === 'compose'
+        plan.intent === 'compose' ||
+        plan.intent === 'transcript'
           ? 'answering'
           : 'searching',
     });
@@ -309,7 +310,10 @@ async function runUserTurn({
     });
   }
 
-  if (!focused && plan.intent === 'compose') {
+  if (
+    !focused &&
+    (plan.intent === 'compose' || plan.intent === 'transcript')
+  ) {
     return finishGlobalFocusNeededTurn({
       userId,
       conversationId,
@@ -317,6 +321,25 @@ async function runUserTurn({
       intent: plan.intent,
       toolTrace,
       usageTotal,
+      emit,
+      stream,
+    });
+  }
+
+  // —— 单独转写文稿 ——
+  if (plan.intent === 'transcript') {
+    return finishTranscriptTurn({
+      userId,
+      conversationId,
+      userMessage,
+      text,
+      plan,
+      focusItem,
+      priorCitations,
+      history,
+      toolTrace,
+      usageTotal,
+      ctx,
       emit,
       stream,
     });
@@ -754,7 +777,9 @@ async function finishGlobalFocusNeededTurn({
     '请先打开一篇收藏再来；全局助手可做意图搜索与对照。';
   if (intent === 'compose') {
     contentOut =
-      '写文章请先打开一篇已转写视频或图集，再在助手里说「根据转写写一篇文章」或「根据图片整理成文章」。';
+      '写文章请先打开一篇视频或图集，再在助手里说「根据转写写一篇文章」或「根据图片整理成文章」。';
+  } else if (intent === 'transcript') {
+    contentOut = '转写请先打开一篇音视频收藏，再在助手里说「转写这篇」。';
   }
   toolTrace.push({
     tool: 'global_focus_needed',
@@ -1573,6 +1598,160 @@ function resolveComposeItemId({
   return null;
 }
 
+/** 助手内发起转写：下发 pendingAction，由 App 确认额度、提交并展示步骤条 */
+async function finishStartTranscriptPending({
+  userId,
+  conversationId,
+  userMessage,
+  itemId,
+  resumeCompose,
+  contentOut,
+  toolTrace,
+  usageTotal,
+  emit,
+  stream,
+  toolName = 'start_transcript',
+}) {
+  const pendingAction = {
+    type: 'start_transcript',
+    status: 'pending',
+    itemId: Number(itemId),
+    resumeCompose: Boolean(resumeCompose),
+  };
+  toolTrace.push({
+    tool: toolName,
+    ok: true,
+    args: {
+      itemId: Number(itemId),
+      resumeCompose: Boolean(resumeCompose),
+    },
+  });
+  if (stream && emit) emit({ type: 'token', text: contentOut });
+  const assistantMessage = await conversationService.insertMessage({
+    conversationId,
+    role: 'assistant',
+    content: contentOut,
+    citations: null,
+    toolTrace: toolPayload(toolTrace, { pendingAction }),
+  });
+  return emitDone({
+    userId,
+    userMessage,
+    assistantMessage,
+    usageTotal,
+    emit,
+  });
+}
+
+async function finishTranscriptTurn({
+  userId,
+  conversationId,
+  userMessage,
+  text,
+  plan,
+  focusItem,
+  priorCitations,
+  history,
+  toolTrace,
+  usageTotal,
+  ctx,
+  emit,
+  stream,
+}) {
+  const itemId = resolveComposeItemId({
+    plan,
+    focusItem,
+    priorCitations,
+    history,
+    text,
+  });
+
+  if (!itemId) {
+    const contentOut =
+      '转写请先打开一篇音视频收藏，再在助手里说「转写这篇」。';
+    if (stream && emit) emit({ type: 'token', text: contentOut });
+    const assistantMessage = await conversationService.insertMessage({
+      conversationId,
+      role: 'assistant',
+      content: contentOut,
+      citations: null,
+      toolTrace,
+    });
+    return emitDone({
+      userId,
+      userMessage,
+      assistantMessage,
+      usageTotal,
+      emit,
+    });
+  }
+
+  const item = await require('../itemService').getByIdForUser(userId, itemId);
+  if (!item || !draftArticleTool.isVideoItem(item)) {
+    const contentOut =
+      '目前只支持给音视频收藏转写文稿。请打开一篇视频或播客后再试。';
+    toolTrace.push({
+      tool: 'start_transcript',
+      ok: false,
+      args: { itemId },
+      error: 'not_video',
+    });
+    if (stream && emit) emit({ type: 'token', text: contentOut });
+    const assistantMessage = await conversationService.insertMessage({
+      conversationId,
+      role: 'assistant',
+      content: contentOut,
+      citations: null,
+      toolTrace,
+    });
+    return emitDone({
+      userId,
+      userMessage,
+      assistantMessage,
+      usageTotal,
+      emit,
+    });
+  }
+
+  if (draftArticleTool.hasSuccessfulTranscript(item)) {
+    const contentOut =
+      '这篇已经有转写文稿了。可以说「根据转写写一篇文章」，或到阅读页查看全文。';
+    toolTrace.push({
+      tool: 'start_transcript',
+      ok: true,
+      args: { itemId, alreadyDone: true },
+    });
+    if (stream && emit) emit({ type: 'token', text: contentOut });
+    const assistantMessage = await conversationService.insertMessage({
+      conversationId,
+      role: 'assistant',
+      content: contentOut,
+      citations: null,
+      toolTrace,
+    });
+    return emitDone({
+      userId,
+      userMessage,
+      assistantMessage,
+      usageTotal,
+      emit,
+    });
+  }
+
+  return finishStartTranscriptPending({
+    userId,
+    conversationId,
+    userMessage,
+    itemId,
+    resumeCompose: false,
+    contentOut: '好的，我先为这篇转写文稿。确认后开始，过程里会显示进度。',
+    toolTrace,
+    usageTotal,
+    emit,
+    stream,
+  });
+}
+
 async function finishComposeTurn({
   userId,
   conversationId,
@@ -1598,7 +1777,7 @@ async function finishComposeTurn({
 
   if (!itemId) {
     const contentOut =
-      '要整理成文章，请先打开一篇已转写的视频或一篇图集，再说「根据转写写一篇文章」或「根据图片整理成文章」。';
+      '要整理成文章，请先打开一篇视频或一篇图集，再说「根据转写写一篇文章」或「根据图片整理成文章」。';
     if (stream && emit) emit({ type: 'token', text: contentOut });
     const assistantMessage = await conversationService.insertMessage({
       conversationId,
@@ -1627,8 +1806,25 @@ async function finishComposeTurn({
   }
 
   if (!prepared.ok || !sourceKind) {
+    if (prepared.error === 'need_transcript') {
+      return finishStartTranscriptPending({
+        userId,
+        conversationId,
+        userMessage,
+        itemId,
+        resumeCompose: true,
+        contentOut:
+          String(prepared.message || '').trim() ||
+          '这篇视频还没有转写文稿。我先帮你转写，完成后再整理成文章。',
+        toolTrace,
+        usageTotal,
+        emit,
+        stream,
+        toolName: 'draft_article',
+      });
+    }
     const toolName =
-      prepared.error === 'need_transcript' || prepared.error === 'not_video'
+      prepared.error === 'not_video'
         ? 'draft_article'
         : prepared.error === 'empty_gallery' || prepared.error === 'not_gallery'
           ? 'draft_gallery_article'
@@ -1641,11 +1837,9 @@ async function finishComposeTurn({
     });
     const contentOut =
       String(prepared.message || '').trim() ||
-      (prepared.error === 'need_transcript'
-        ? '这篇视频还没有转写文稿。请先在阅读页「更多」里完成转写，再让我写文章。'
-        : prepared.error === 'empty_gallery'
-          ? '这篇图集没有可用的图片或文案，暂时无法整理成文章。'
-          : '目前支持：已转写视频根据转写写文章，或图集根据图片整理成文章。请打开对应篇目后再试。');
+      (prepared.error === 'empty_gallery'
+        ? '这篇图集没有可用的图片或文案，暂时无法整理成文章。'
+        : '目前支持：已转写视频根据转写写文章，或图集根据图片整理成文章。请打开对应篇目后再试。');
     if (stream && emit) emit({ type: 'token', text: contentOut });
     const assistantMessage = await conversationService.insertMessage({
       conversationId,
@@ -2577,6 +2771,7 @@ function normalizePlan(
     'organize',
     'compose',
     'compose_video', // 旧名 → 下方归一为 compose
+    'transcript',
     'chitchat',
     'clarify',
   ].includes(intentRaw)
@@ -2726,6 +2921,7 @@ function normalizePlan(
       intent !== 'tag_edit' &&
       intent !== 'organize' &&
       intent !== 'compose' &&
+      intent !== 'transcript' &&
       intent !== 'chitchat' &&
       intent !== 'clarify' &&
       queries.length === 0
@@ -2742,8 +2938,22 @@ function normalizePlan(
     }
   }
 
+  // 明确「转写这篇」强制 transcript（须先于 compose，避免「转写」字样误进成文）
+  const askTranscriptOnly =
+    /^(帮我|请|麻烦)?(把)?(这篇|本篇|当前)?(音视频|视频|播客)?(再)?(转写|转录)(这篇|本篇|一下|文稿)?$|转写这篇|转录这篇|开始转写|生成文稿|给(这篇|本篇)转写/.test(
+      String(userContent || '').trim(),
+    );
+  if (askTranscriptOnly) {
+    intent = 'transcript';
+    if (!excerptItemIds.length && focusItem?.itemId) {
+      const fid = Number(focusItem.itemId);
+      if (Number.isFinite(fid) && fid > 0) excerptItemIds = [fid];
+    }
+  }
+
   // 明确「转写写文章 / 图集整理成文」时强制 compose，避免被 focus→search 或模型误判冲掉
   const askCompose =
+    !askTranscriptOnly &&
     /根据转写\s*写|转写写一篇|把转写整理成|整理成一篇文章|根据图片整理|把这组图整理|把这组图写成|图集整理成|整理成文章|整理成笔记/.test(
       String(userContent || ''),
     );
@@ -2777,7 +2987,11 @@ function normalizePlan(
   }
 
   // 阅读锚定：问本篇标签 / 推荐标签 → 钉本篇摘录（误判 tag_edit 的推荐也改道；写入改标仍留给下线）
-  if (focusItem?.itemId && intent !== 'compose') {
+  if (
+    focusItem?.itemId &&
+    intent !== 'compose' &&
+    intent !== 'transcript'
+  ) {
     const fid = Number(focusItem.itemId);
     const t = String(userContent || '');
     const writeTagEdit = looksLikeTagEdit(t);
@@ -2802,7 +3016,13 @@ function normalizePlan(
     queries = [];
     excerptItemIds = [];
   }
-  if (intent === 'tag_edit' || intent === 'organize' || intent === 'list_tags') {
+  if (
+    intent === 'tag_edit' ||
+    intent === 'organize' ||
+    intent === 'list_tags' ||
+    intent === 'transcript' ||
+    intent === 'compose'
+  ) {
     queries = [];
   }
   if (intent === 'compare' || (intent === 'search' && followUp)) {

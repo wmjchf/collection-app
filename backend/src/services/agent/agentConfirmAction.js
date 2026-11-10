@@ -233,6 +233,76 @@ async function resolveTagIdsByNames(userId, names) {
   return ids;
 }
 
+/**
+ * 结算助手内转写 pendingAction（App 轮询结束后写回，避免重进页反复 resumeCompose）。
+ * @param {{ userId: number, conversationId: number, messageId: number, status: string, content?: string|null }}
+ */
+async function settleTranscriptAction({
+  userId,
+  conversationId,
+  messageId,
+  status,
+  content = null,
+}) {
+  const conv = await conversationService.getConversationForUser(
+    userId,
+    conversationId,
+  );
+  if (!conv || conv.status !== 'active') {
+    throw Object.assign(new Error('会话不存在'), { status: 404 });
+  }
+
+  const message = await conversationService.getMessageForUser(
+    userId,
+    conversationId,
+    messageId,
+  );
+  if (!message || message.role !== 'assistant') {
+    throw Object.assign(new Error('消息不存在'), { status: 404 });
+  }
+
+  const pending = message.pendingAction;
+  if (!pending || pending.type !== 'start_transcript') {
+    throw Object.assign(new Error('没有待结算的转写任务'), { status: 400 });
+  }
+
+  const nextStatus = String(status || '').trim().toLowerCase();
+  if (!['success', 'failed', 'cancelled'].includes(nextStatus)) {
+    throw Object.assign(new Error('无效的转写结算状态'), { status: 400 });
+  }
+
+  // 幂等：已是终态则直接返回
+  const cur = String(pending.status || '').toLowerCase();
+  if (['success', 'failed', 'cancelled'].includes(cur)) {
+    return {
+      pendingAction: pending,
+      alreadySettled: true,
+    };
+  }
+
+  const next = {
+    ...pending,
+    status: nextStatus,
+  };
+  delete next.phase;
+  delete next.phaseLabel;
+  delete next.phaseHint;
+  delete next.phaseAt;
+
+  await conversationService.patchMessageToolPayload(messageId, {
+    pendingAction: next,
+  });
+  if (content != null && String(content).trim()) {
+    await conversationService.updateMessageContent(messageId, String(content));
+  }
+
+  return {
+    pendingAction: next,
+    alreadySettled: false,
+  };
+}
+
 module.exports = {
   confirmAction,
+  settleTranscriptAction,
 };

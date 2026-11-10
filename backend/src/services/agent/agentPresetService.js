@@ -15,6 +15,7 @@ const ASSISTANT_SNIPPET = 1200;
 const CONTENT_SNIPPET = 800;
 
 const COMPOSE_VIDEO_PRESET = '根据转写写一篇文章';
+const TRANSCRIPT_PRESET = '转写这篇';
 const COMPOSE_GALLERY_PRESET = '根据图片整理成文章';
 
 function agentModel() {
@@ -155,9 +156,12 @@ async function suggestPresets({
       source: 'global_search_compare',
     };
   }
-  // 视频尚未转写：只留转文一条，引导先去阅读页转写（点了走既有 compose 提示）
+  // 视频尚未转写：转写 + 成文（成文会先转写再自动续跑）
   if (focusIsVideo && !canComposeVideo) {
-    return { presets: [COMPOSE_VIDEO_PRESET], source: 'video_need_transcript' };
+    return {
+      presets: [TRANSCRIPT_PRESET, COMPOSE_VIDEO_PRESET],
+      source: 'video_need_transcript',
+    };
   }
   // 知识向图集：空会话起步固定带整理成文
   if (focusIsGallery && canComposeGallery) {
@@ -179,12 +183,14 @@ async function suggestPresets({
     : '上一轮助手回复：无（空会话起步）。';
 
   const composeHint = canComposeVideo
-    ? `当前篇已有转写时，可出现「${COMPOSE_VIDEO_PRESET}」类预设。`
-    : canComposeGallery
-      ? `当前篇是知识向图集，可出现「${COMPOSE_GALLERY_PRESET}」类预设；不要出现转写写文章。`
-      : focusIsGallery
-        ? `当前篇是生活向/不适合成文的图集：不要出现「${COMPOSE_GALLERY_PRESET}」或根据图片整理类预设。`
-        : `当前没有可用转写、也不是适合成文的图集时，不要出现「写一篇文章 / 转写 / 根据图片整理」类预设。`;
+    ? `当前篇已有转写时，可出现「${COMPOSE_VIDEO_PRESET}」类预设；不要再推「${TRANSCRIPT_PRESET}」。`
+    : focusIsVideo
+      ? `当前篇音视频尚无文稿：可出现「${TRANSCRIPT_PRESET}」「${COMPOSE_VIDEO_PRESET}」；不要推图集整理。`
+      : canComposeGallery
+        ? `当前篇是知识向图集，可出现「${COMPOSE_GALLERY_PRESET}」类预设；不要出现转写写文章。`
+        : focusIsGallery
+          ? `当前篇是生活向/不适合成文的图集：不要出现「${COMPOSE_GALLERY_PRESET}」或根据图片整理类预设。`
+          : `当前没有可用转写、也不是适合成文的图集时，不要出现「写一篇文章 / 转写 / 根据图片整理」类预设。`;
 
   const messages = [
     {

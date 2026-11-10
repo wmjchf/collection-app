@@ -2,11 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:super_collection/core/ui/app_bottom_sheet.dart';
 import 'package:super_collection/core/ui/app_orientation.dart';
 
-enum ReadingMoreAction { transcript, mindmap }
+enum ReadingMoreAction { mindmap }
 
 Future<ReadingMoreAction?> showReadingMoreSheet(
   BuildContext context, {
-  bool showTranscript = false,
   bool mindmapPending = false,
 }) {
   return showAppBottomSheet<ReadingMoreAction>(
@@ -17,7 +16,6 @@ Future<ReadingMoreAction?> showReadingMoreSheet(
     includeSafeArea: false,
     isScrollControlled: false,
     builder: (context) => _ReadingMoreSheet(
-      showTranscript: showTranscript,
       mindmapPending: mindmapPending,
     ),
   );
@@ -25,11 +23,9 @@ Future<ReadingMoreAction?> showReadingMoreSheet(
 
 class _ReadingMoreSheet extends StatelessWidget {
   const _ReadingMoreSheet({
-    required this.showTranscript,
     required this.mindmapPending,
   });
 
-  final bool showTranscript;
   final bool mindmapPending;
 
   static const _text = Color(0xFF1F242E);
@@ -78,19 +74,12 @@ class _ReadingMoreSheet extends StatelessWidget {
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                  _GridItem(
-                    icon: Icons.account_tree_outlined,
-                    label: mindmapPending ? '生成中…' : '思维导图',
-                    color: mindmapPending ? _muted : _text,
-                    onTap: () =>
-                        Navigator.pop(context, ReadingMoreAction.mindmap),
-                  ),
-                  if (showTranscript)
                     _GridItem(
-                      icon: Icons.subtitles_outlined,
-                      label: '转写文稿',
+                      icon: Icons.account_tree_outlined,
+                      label: mindmapPending ? '生成中…' : '思维导图',
+                      color: mindmapPending ? _muted : _text,
                       onTap: () =>
-                          Navigator.pop(context, ReadingMoreAction.transcript),
+                          Navigator.pop(context, ReadingMoreAction.mindmap),
                     ),
                   ],
                 ),

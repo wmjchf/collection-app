@@ -123,6 +123,12 @@ class AgentPendingAction {
     this.remove = const [],
     this.willCreate = const [],
     this.willCreateModules = const [],
+    this.resumeCompose = false,
+    this.segmentKey,
+    this.phase,
+    this.phaseLabel,
+    this.phaseHint,
+    this.phaseAt,
   });
 
   final String type;
@@ -136,13 +142,38 @@ class AgentPendingAction {
   final List<String> willCreate;
   final List<String> willCreateModules;
 
-  bool get isPending =>
+  /// start_transcript：转写成功后是否自动续跑成文
+  final bool resumeCompose;
+  final String? segmentKey;
+  final String? phase;
+  final String? phaseLabel;
+  final String? phaseHint;
+  final DateTime? phaseAt;
+
+  /// 改标 / 归类确认条
+  bool get isTagConfirmPending =>
       status == 'pending' &&
       (type == 'item_tag_edit' || type == 'organize_tags');
 
+  /// 转写待确认（气泡内确认，不弹系统框）
+  bool get isTranscriptConfirmPending =>
+      isStartTranscript && status == 'pending';
+
+  /// 气泡确认条（改标 / 归类 / 转写）
+  bool get isPending => isTagConfirmPending || isTranscriptConfirmPending;
+
+  bool get isStartTranscript => type == 'start_transcript';
+
+  bool get isTranscriptJobActive =>
+      isStartTranscript && (status == 'pending' || status == 'running');
+
   bool get isOrganize => type == 'organize_tags';
 
-  String get confirmLabel => isOrganize ? '确认整理' : '确认调整';
+  String get confirmLabel {
+    if (isStartTranscript) return '开始转写';
+    if (isOrganize) return '确认整理';
+    return '确认调整';
+  }
 
   factory AgentPendingAction.fromJson(Map<String, dynamic> json) {
     List<String> names(dynamic raw) {
@@ -151,6 +182,12 @@ class AgentPendingAction {
         for (final e in raw)
           if ((e?.toString().trim() ?? '').isNotEmpty) e.toString().trim(),
       ];
+    }
+
+    DateTime? phaseAt;
+    final rawAt = json['phaseAt'];
+    if (rawAt is String && rawAt.isNotEmpty) {
+      phaseAt = DateTime.tryParse(rawAt);
     }
 
     return AgentPendingAction(
@@ -164,6 +201,12 @@ class AgentPendingAction {
       remove: names(json['remove']),
       willCreate: names(json['willCreate']),
       willCreateModules: names(json['willCreateModules']),
+      resumeCompose: json['resumeCompose'] == true,
+      segmentKey: (json['segmentKey'] as String?)?.trim(),
+      phase: (json['phase'] as String?)?.trim(),
+      phaseLabel: (json['phaseLabel'] as String?)?.trim(),
+      phaseHint: (json['phaseHint'] as String?)?.trim(),
+      phaseAt: phaseAt,
     );
   }
 
@@ -178,9 +221,26 @@ class AgentPendingAction {
         'remove': remove,
         'willCreate': willCreate,
         'willCreateModules': willCreateModules,
+        'resumeCompose': resumeCompose,
+        if (segmentKey != null && segmentKey!.isNotEmpty)
+          'segmentKey': segmentKey,
+        if (phase != null && phase!.isNotEmpty) 'phase': phase,
+        if (phaseLabel != null && phaseLabel!.isNotEmpty)
+          'phaseLabel': phaseLabel,
+        if (phaseHint != null && phaseHint!.isNotEmpty) 'phaseHint': phaseHint,
+        if (phaseAt != null) 'phaseAt': phaseAt!.toIso8601String(),
       };
 
-  AgentPendingAction copyWith({String? status}) {
+  AgentPendingAction copyWith({
+    String? status,
+    bool? resumeCompose,
+    String? segmentKey,
+    String? phase,
+    String? phaseLabel,
+    String? phaseHint,
+    DateTime? phaseAt,
+    bool clearPhase = false,
+  }) {
     return AgentPendingAction(
       type: type,
       status: status ?? this.status,
@@ -192,6 +252,12 @@ class AgentPendingAction {
       remove: remove,
       willCreate: willCreate,
       willCreateModules: willCreateModules,
+      resumeCompose: resumeCompose ?? this.resumeCompose,
+      segmentKey: segmentKey ?? this.segmentKey,
+      phase: clearPhase ? null : (phase ?? this.phase),
+      phaseLabel: clearPhase ? null : (phaseLabel ?? this.phaseLabel),
+      phaseHint: clearPhase ? null : (phaseHint ?? this.phaseHint),
+      phaseAt: clearPhase ? null : (phaseAt ?? this.phaseAt),
     );
   }
 }
