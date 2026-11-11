@@ -11,6 +11,7 @@ import 'package:super_collection/core/ui/pro_copy.dart';
 import 'package:super_collection/core/utils/clipboard_utils.dart';
 import 'package:super_collection/core/utils/link_utils.dart';
 import 'package:super_collection/features/agent/agent_host.dart';
+import 'package:super_collection/features/agent/agent_spark_label.dart';
 import 'package:super_collection/features/auth/auth_repository.dart';
 import 'package:super_collection/core/ui/app_orientation.dart';
 import 'package:super_collection/features/collection/system_filters_repository.dart';
@@ -397,7 +398,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       tooltip: CoachTooltipCard(
         stepLabel: '3 / 3',
         title: '标签与归类',
-        message: '可在收藏页创建归类，长按标签拖动整理；阅读页也可手动增删标签。',
+        message: '可在标签页创建归类，球上点选筛选、长按换归类；阅读页也可手动增删标签。',
         confirmLabel: '开始使用',
         showSkip: false,
         onConfirm: () => unawaited(_finishCoach()),
@@ -749,21 +750,11 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
               onPressed: _openAgent,
               style: TextButton.styleFrom(
                 foregroundColor: _blue,
-                backgroundColor: const Color(0xFFE8F0FF),
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                 minimumSize: Size.zero,
                 tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                shape: const StadiumBorder(
-                  side: BorderSide(color: Color(0xFFD0DFFC)),
-                ),
               ),
-              child: const Text(
-                '✦ AI助手',
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
+              child: const AgentSparkLabel(),
             ),
           ),
           Padding(

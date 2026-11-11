@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:super_collection/features/shell/home_nav_swap_icon.dart';
 
-/// 底部导航：首页 | 搜索 | 收藏（齐平；搜索用原凸起圆钮样式，嵌入栏内）
+/// 底部导航：首页 | 搜索 | 标签（齐平；搜索用原凸起圆钮样式，嵌入栏内）
 class AppBottomNavBar extends StatelessWidget {
   const AppBottomNavBar({
     super.key,
@@ -12,7 +12,7 @@ class AppBottomNavBar extends StatelessWidget {
     this.homeTabKey,
   });
 
-  /// 0=首页，1=收藏
+  /// 0=首页，1=标签
   final int currentIndex;
   final ValueChanged<int> onChanged;
   final VoidCallback onSearch;
@@ -50,9 +50,9 @@ class AppBottomNavBar extends StatelessWidget {
           ),
           Expanded(
             child: _TabItem(
-              label: '收藏',
-              activeAsset: 'assets/icons/collection_active.svg',
-              inactiveAsset: 'assets/icons/collection_inactive.svg',
+              label: '标签',
+              activeAsset: 'assets/icons/tags_active.svg',
+              inactiveAsset: 'assets/icons/tags_inactive.svg',
               selected: currentIndex == 1,
               onTap: () => onChanged(1),
             ),

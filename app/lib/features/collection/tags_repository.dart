@@ -116,9 +116,9 @@ class TagsRepository {
     return Tag.fromJson(tagJson);
   }
 
-  /// [description] 传空字符串可清空说明
-  Future<Tag> renameTag(int id, String name, {String description = ''}) async {
-    return updateTag(id, name: name, description: description);
+  /// 仅改名称；不改动已有说明字段。
+  Future<Tag> renameTag(int id, String name) async {
+    return updateTag(id, name: name);
   }
 
   Future<Tag> placeTag(

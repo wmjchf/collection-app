@@ -1,29 +1,25 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:super_collection/core/network/api_client.dart';
 import 'package:super_collection/core/ui/app_confirm_dialog.dart';
 import 'package:super_collection/core/ui/app_orientation.dart';
 import 'package:super_collection/core/ui/app_toast.dart';
-import 'package:super_collection/core/ui/pro_copy.dart';
 import 'package:super_collection/features/agent/agent_host.dart';
+import 'package:super_collection/features/agent/agent_spark_label.dart';
 import 'package:super_collection/features/collection/collection_tag_modules_section.dart';
 import 'package:super_collection/features/collection/create_module_sheet.dart';
 import 'package:super_collection/features/collection/create_tag_sheet.dart';
 import 'package:super_collection/features/collection/items_browse_page.dart';
-import 'package:super_collection/features/collection/system_filter_list_page.dart';
-import 'package:super_collection/features/collection/system_filter_models.dart';
-import 'package:super_collection/features/collection/system_filters_repository.dart';
 import 'package:super_collection/features/collection/tag_models.dart';
 import 'package:super_collection/features/collection/tag_module_models.dart';
 import 'package:super_collection/features/collection/tag_modules_repository.dart';
 import 'package:super_collection/features/collection/tags_repository.dart';
-import 'package:super_collection/features/home/home_modules_prefs.dart';
-import 'package:super_collection/features/settings/usage_repository.dart';
 import 'package:super_collection/features/shell/tablet_items_split.dart';
 import 'package:super_collection/features/shell/user_avatar_button.dart';
 
-/// 我的收藏（系统分类 + 标签）
+/// 标签（归类整理）
 class CollectionPage extends StatefulWidget {
   const CollectionPage({
     super.key,
@@ -51,61 +47,26 @@ class CollectionPage extends StatefulWidget {
 
 class _CollectionPageState extends State<CollectionPage> {
   static const _bg = Color(0xFFF7F7FA);
-  static const _text = Color(0xFF1F242E);
   static const _blue = Color(0xFF2F6FED);
 
   final _tagsRepo = TagsRepository();
   final _tagModulesRepo = TagModulesRepository();
-  final _systemFiltersRepo = SystemFiltersRepository();
-  final _scrollController = ScrollController();
-  final _tagsHeaderKey = GlobalKey();
 
   List<TagModule> _modules = const [];
   List<Tag> _ungrouped = const [];
-  List<SystemFilter> _systemFilters = const [];
   bool _loading = true;
-  bool _isPro = false;
   String? _error;
-  /// 归类标签收进顶栏：0 未贴顶，1 完全收起
-  final _tagsFocusT = ValueNotifier<double>(0);
 
   /// iPad 浏览态：点分类/标签后切三列；null=枢纽。
   _TabletBrowse? _tabletBrowse;
   int _tabletBrowseTick = 0;
 
+  bool get _hubEmpty => _modules.isEmpty && _ungrouped.isEmpty;
+
   @override
   void initState() {
     super.initState();
-    _scrollController.addListener(_onScrollForTagsFocus);
-    UsageRefresh.version.addListener(_onUsageRefresh);
-    HomeModulesPrefs.instance.addListener(_onHomeModules);
-    unawaited(HomeModulesPrefs.instance.ensureLoaded());
     _load();
-    _loadPro();
-  }
-
-  @override
-  void dispose() {
-    UsageRefresh.version.removeListener(_onUsageRefresh);
-    HomeModulesPrefs.instance.removeListener(_onHomeModules);
-    _scrollController.removeListener(_onScrollForTagsFocus);
-    _scrollController.dispose();
-    _tagsFocusT.dispose();
-    super.dispose();
-  }
-
-  void _onUsageRefresh() => _loadPro();
-
-  void _onHomeModules() {
-    if (mounted) unawaited(_load(quiet: true));
-  }
-
-  Future<void> _loadPro() async {
-    try {
-      final usage = await UsageRefresh.ensure();
-      if (!mounted) return;
-      setState(() => _isPro = usage.isPro);
-    } catch (_) {}
   }
 
   @override
@@ -120,7 +81,7 @@ class _CollectionPageState extends State<CollectionPage> {
   }
 
   Future<void> _load({bool quiet = false}) async {
-    final showSpinner = !quiet || _systemFilters.isEmpty;
+    final showSpinner = !quiet || _hubEmpty;
     if (showSpinner) {
       setState(() {
         _loading = true;
@@ -128,31 +89,13 @@ class _CollectionPageState extends State<CollectionPage> {
       });
     }
     try {
-      final results = await Future.wait([
-        _tagModulesRepo.listModules(),
-        _systemFiltersRepo.listFilters(),
-      ]);
+      final modulesResult = await _tagModulesRepo.listModules();
       if (!mounted) return;
-      final modulesResult =
-          results[0] as ({List<TagModule> modules, List<Tag> ungrouped});
-      final filterResult = results[1] as ({
-        List<SystemFilter> filters,
-        List<SystemFilter> mediaFilters,
-        List<SystemFilter> others,
-      });
       setState(() {
         _modules = modulesResult.modules;
         _ungrouped = modulesResult.ungrouped;
-        final order = HomeModulesPrefs.instance.collectionSystemFilterOrder;
-        _systemFilters = [
-          for (final code in order)
-            ...filterResult.filters.where((f) => f.code == code),
-        ];
         _loading = false;
         _error = null;
-      });
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) _onScrollForTagsFocus();
       });
     } on ApiException catch (e) {
       if (!mounted) return;
@@ -167,29 +110,6 @@ class _CollectionPageState extends State<CollectionPage> {
         if (!quiet) _error = '加载失败，请检查网络或后端是否启动';
       });
     }
-  }
-
-  void _onScrollForTagsFocus() {
-    final ctx = _tagsHeaderKey.currentContext;
-    if (ctx == null) return;
-    final box = ctx.findRenderObject() as RenderBox?;
-    if (box == null || !box.hasSize) return;
-    final top = box.localToGlobal(Offset.zero).dy;
-    final dock = MediaQuery.paddingOf(context).top + kToolbarHeight;
-    // 贴顶前约一栏高度内完成过渡，避免布尔切换的硬切
-    const range = 56.0;
-    final next = ((dock + 8 - top) / range).clamp(0.0, 1.0);
-    if ((next - _tagsFocusT.value).abs() < 0.008) return;
-    _tagsFocusT.value = next;
-  }
-
-  Future<void> _exitTagsFocus() async {
-    if (!_scrollController.hasClients) return;
-    await _scrollController.animateTo(
-      0,
-      duration: const Duration(milliseconds: 420),
-      curve: Curves.easeOutCubic,
-    );
   }
 
   Future<void> _createModule() async {
@@ -282,43 +202,6 @@ class _CollectionPageState extends State<CollectionPage> {
     }
   }
 
-  void _openSystemFilter(SystemFilter filter) {
-    final title = systemFilterDisplayName(
-      filter.code,
-      filter.name,
-      isPro: _isPro,
-    );
-    if (AppOrientation.isTablet(context)) {
-      _setTabletBrowse(
-        _TabletBrowse(
-          title: title,
-          openEntry: 'library',
-          showMediaKinds: true,
-          loader: ({required limit, required offset, mediaKind}) =>
-              _systemFiltersRepo.listItems(
-            filter: filter.code,
-            mediaKind: mediaKind,
-            limit: limit,
-            offset: offset,
-          ),
-        ),
-      );
-      return;
-    }
-    Navigator.of(context)
-        .push(
-      MaterialPageRoute<void>(
-        builder: (_) => SystemFilterListPage(
-          code: filter.code,
-          title: title,
-        ),
-      ),
-    )
-        .then((_) {
-      if (mounted) _load(quiet: true);
-    });
-  }
-
   void _openTag(Tag tag) {
     if (AppOrientation.isTablet(context)) {
       _setTabletBrowse(
@@ -409,8 +292,38 @@ class _CollectionPageState extends State<CollectionPage> {
 
   Future<void> _openAgent() => openAgent(context);
 
+  /// 与首页一致：蓝底圆「+」。
+  Widget _buildCreateModuleButton({EdgeInsetsGeometry? padding}) {
+    final button = IconButton(
+      tooltip: '创建归类',
+      padding: EdgeInsets.zero,
+      constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+      onPressed: () => unawaited(_createModule()),
+      icon: Container(
+        width: 32,
+        height: 32,
+        decoration: const BoxDecoration(
+          color: _blue,
+          shape: BoxShape.circle,
+        ),
+        alignment: Alignment.center,
+        child: SvgPicture.asset(
+          'assets/icons/add.svg',
+          width: 18,
+          height: 18,
+          colorFilter: const ColorFilter.mode(
+            Colors.white,
+            BlendMode.srcIn,
+          ),
+        ),
+      ),
+    );
+    if (padding == null) return button;
+    return Padding(padding: padding, child: button);
+  }
+
   PreferredSizeWidget _buildAppBar() {
-    // 头像放 leading，与阅读页同槽位，避免 Tab 切换时左右错位
+    // 头像放 leading；右上与首页同序：助手 → +
     return AppBar(
       backgroundColor: Colors.white,
       surfaceTintColor: Colors.transparent,
@@ -420,124 +333,106 @@ class _CollectionPageState extends State<CollectionPage> {
       titleSpacing: 0,
       actionsPadding: EdgeInsets.zero,
       automaticallyImplyLeading: false,
-      centerTitle: true,
       leadingWidth: 56,
-      leading: AnimatedBuilder(
-        animation: _tagsFocusT,
-        builder: (context, _) {
-          final t = Curves.easeInOutCubic.transform(_tagsFocusT.value);
-          return Stack(
-            alignment: Alignment.center,
-            children: [
-              IgnorePointer(
-                ignoring: t > 0.45,
-                child: Opacity(
-                  opacity: (1 - t).clamp(0.0, 1.0),
-                  child: Padding(
-                    padding: const EdgeInsets.only(left: 12),
-                    child: UserAvatarButton(
-                      onPressed: widget.onOpenAccount ?? () {},
-                    ),
-                  ),
-                ),
-              ),
-              IgnorePointer(
-                ignoring: t < 0.45,
-                child: Opacity(
-                  opacity: t,
-                  child: IconButton(
-                    tooltip: '返回',
-                    onPressed: _exitTagsFocus,
-                    icon: const Icon(
-                      Icons.arrow_back_ios_new_rounded,
-                      size: 20,
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          );
-        },
+      leading: Padding(
+        padding: const EdgeInsets.only(left: 12),
+        child: UserAvatarButton(
+          onPressed: widget.onOpenAccount ?? () {},
+        ),
       ),
-      title: AnimatedBuilder(
-        animation: _tagsFocusT,
-        builder: (context, _) {
-          final t = Curves.easeInOutCubic.transform(_tagsFocusT.value);
-          return IgnorePointer(
-            ignoring: t < 0.45,
-            child: Opacity(
-              opacity: t,
-              child: Transform.translate(
-                offset: Offset(0, 10 * (1 - t)),
-                child: const Text(
-                  '归类标签',
-                  style: TextStyle(
-                    fontSize: 17,
-                    fontWeight: FontWeight.w700,
-                    color: _text,
-                  ),
+      actions: [
+        Padding(
+          padding: const EdgeInsets.only(right: 4),
+          child: TextButton(
+            onPressed: () => unawaited(_openAgent()),
+            style: TextButton.styleFrom(
+              foregroundColor: _blue,
+              padding: const EdgeInsets.symmetric(
+                horizontal: 10,
+                vertical: 6,
+              ),
+              minimumSize: Size.zero,
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
+            child: const AgentSparkLabel(),
+          ),
+        ),
+        _buildCreateModuleButton(
+          padding: const EdgeInsets.only(right: 8),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildHubBody({required bool tablet}) {
+    return RefreshIndicator(
+      onRefresh: _load,
+      child: CustomScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        slivers: [
+          if (tablet)
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(8, 4, 8, 0),
+                child: Align(
+                  alignment: Alignment.centerRight,
+                  child: _buildCreateModuleButton(),
                 ),
               ),
             ),
-          );
-        },
-      ),
-      actions: [
-        AnimatedBuilder(
-          animation: _tagsFocusT,
-          builder: (context, _) {
-            final t = Curves.easeInOutCubic.transform(_tagsFocusT.value);
-            // 聚焦归类时：顶栏右侧出「+」；平时：助手
-            return Stack(
-              alignment: Alignment.centerRight,
-              children: [
-                IgnorePointer(
-                  ignoring: t > 0.45,
-                  child: Opacity(
-                    opacity: (1 - t).clamp(0.0, 1.0),
-                    child: Padding(
-                      padding: const EdgeInsets.only(right: 12),
-                      child: TextButton(
-                        onPressed: () => unawaited(_openAgent()),
-                        style: TextButton.styleFrom(
-                          foregroundColor: _blue,
-                          backgroundColor: const Color(0xFFE8F0FF),
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 10,
-                            vertical: 6,
-                          ),
-                          minimumSize: Size.zero,
-                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                          shape: const StadiumBorder(
-                            side: BorderSide(color: Color(0xFFD0DFFC)),
-                          ),
-                        ),
-                        child: const Text(
-                          '✦ AI助手',
-                          style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
+          if (_loading && _hubEmpty)
+            const SliverFillRemaining(
+              hasScrollBody: false,
+              child: Center(
+                child: SizedBox(
+                  width: 22,
+                  height: 22,
+                  child: CircularProgressIndicator(strokeWidth: 2.4),
+                ),
+              ),
+            )
+          else if (_error != null && _hubEmpty)
+            SliverFillRemaining(
+              hasScrollBody: false,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+                child: _ErrorCard(message: _error!, onRetry: _load),
+              ),
+            )
+          else
+            SliverLayoutBuilder(
+              builder: (context, constraints) {
+                const gapAboveNav = 28.0;
+                final bottomPad =
+                    gapAboveNav + MediaQuery.paddingOf(context).bottom;
+                final minH = (constraints.remainingPaintExtent - bottomPad)
+                    .clamp(0.0, double.infinity);
+                return SliverPadding(
+                  padding: EdgeInsets.fromLTRB(16, 12, 16, bottomPad),
+                  sliver: SliverToBoxAdapter(
+                    child: ConstrainedBox(
+                      constraints: BoxConstraints(minHeight: minH),
+                      child: CollectionTagModulesSection(
+                        modules: _modules,
+                        ungrouped: _ungrouped,
+                        showHeader: false,
+                        bodyOnly: false,
+                        fillRemaining: true,
+                        onOpenTag: _openTag,
+                        onOpenModule: _openModule,
+                        onAddTag: _addTagToModule,
+                        onRenameModule: _renameModule,
+                        onDeleteModule: _deleteModule,
+                        onCreateModule: _createModule,
+                        onPlaceTag: _placeTag,
                       ),
                     ),
                   ),
-                ),
-                IgnorePointer(
-                  ignoring: t < 0.45,
-                  child: Opacity(
-                    opacity: t,
-                    child: CollectionCreateModuleButton(
-                      onPressed: _createModule,
-                      iconPadding: const EdgeInsets.symmetric(horizontal: 12),
-                    ),
-                  ),
-                ),
-              ],
-            );
-          },
-        ),
-      ],
+                );
+              },
+            ),
+        ],
+      ),
     );
   }
 
@@ -553,7 +448,6 @@ class _CollectionPageState extends State<CollectionPage> {
         openEntry: browse.openEntry,
         onBack: _closeTabletBrowse,
         refreshTick: widget.refreshTick + _tabletBrowseTick,
-        showMediaKinds: browse.showMediaKinds,
       );
     }
 
@@ -562,388 +456,7 @@ class _CollectionPageState extends State<CollectionPage> {
       backgroundColor: _bg,
       resizeToAvoidBottomInset: false,
       appBar: tablet ? null : _buildAppBar(),
-      body: RefreshIndicator(
-        onRefresh: _load,
-        child: CustomScrollView(
-          controller: _scrollController,
-          physics: const AlwaysScrollableScrollPhysics(),
-          slivers: [
-            if (_loading && _systemFilters.isEmpty)
-              const SliverFillRemaining(
-                hasScrollBody: false,
-                child: Center(
-                  child: SizedBox(
-                    width: 22,
-                    height: 22,
-                    child: CircularProgressIndicator(strokeWidth: 2.4),
-                  ),
-                ),
-              )
-            else if (_error != null && _systemFilters.isEmpty)
-              SliverFillRemaining(
-                hasScrollBody: false,
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
-                  child: _ErrorCard(message: _error!, onRetry: _load),
-                ),
-              )
-            else ...[
-              SliverPadding(
-                padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-                sliver: SliverToBoxAdapter(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      if (_systemFilters.isNotEmpty)
-                        _EntityGroup(
-                          title: '系统分类',
-                          subtitle: '按时间与阅读进度浏览',
-                          entries: [
-                            for (final f in _systemFilters)
-                              _EntityEntry(
-                                title: systemFilterDisplayName(
-                                  f.code,
-                                  f.name,
-                                  isPro: _isPro,
-                                ),
-                                countLabel: f.countLabel,
-                                icon: _CollectionNavIcon.forSystemCode(f.code),
-                                onTap: () => _openSystemFilter(f),
-                              ),
-                          ],
-                        ),
-                      if (_systemFilters.isNotEmpty) const SizedBox(height: 12),
-                    ],
-                  ),
-                ),
-              ),
-              // remainingPaintExtent 已扣除上方系统分类；归类区只撑满余下可视高度。
-              SliverLayoutBuilder(
-                builder: (context, constraints) {
-                  final bottomPad =
-                      16.0 + MediaQuery.paddingOf(context).bottom;
-                  final minH = (constraints.remainingPaintExtent - bottomPad)
-                      .clamp(0.0, double.infinity);
-                  return SliverPadding(
-                    padding: EdgeInsets.fromLTRB(16, 0, 16, bottomPad),
-                    sliver: SliverToBoxAdapter(
-                      child: ConstrainedBox(
-                        constraints: BoxConstraints(minHeight: minH),
-                        child: CollectionTagModulesSection(
-                          headerKey: _tagsHeaderKey,
-                          modules: _modules,
-                          ungrouped: _ungrouped,
-                          headerCollapse: _tagsFocusT,
-                          fillRemaining: true,
-                          onOpenTag: _openTag,
-                          onOpenModule: _openModule,
-                          onAddTag: _addTagToModule,
-                          onRenameModule: _renameModule,
-                          onDeleteModule: _deleteModule,
-                          onCreateModule: _createModule,
-                          onPlaceTag: _placeTag,
-                        ),
-                      ),
-                    ),
-                  );
-                },
-              ),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _CollectionNavIcon {
-  const _CollectionNavIcon({
-    required this.icon,
-    required this.background,
-  });
-
-  final IconData icon;
-  final Color background;
-
-  static _CollectionNavIcon forSystemCode(String code) {
-    switch (code) {
-      case 'unread':
-        return const _CollectionNavIcon(
-          icon: Icons.adjust,
-          background: Color(0xFF5B8FF9),
-        );
-      case 'all':
-        return const _CollectionNavIcon(
-          icon: Icons.format_list_bulleted_rounded,
-          background: Color(0xFF6E788C),
-        );
-      case 'today':
-        return const _CollectionNavIcon(
-          icon: Icons.calendar_today_rounded,
-          background: Color(0xFFFF9F43),
-        );
-      case 'untagged':
-        return const _CollectionNavIcon(
-          icon: Icons.label_off_outlined,
-          background: Color(0xFF8B929C),
-        );
-      case 'annotated':
-        return const _CollectionNavIcon(
-          icon: Icons.edit_rounded,
-          background: Color(0xFFA270F5),
-        );
-      case 'recent_read':
-        return const _CollectionNavIcon(
-          icon: Icons.schedule_rounded,
-          background: Color(0xFF40BAC4),
-        );
-      case 'archived':
-        return const _CollectionNavIcon(
-          icon: Icons.inventory_2_rounded,
-          background: Color(0xFF96A0AF),
-        );
-      case 'article':
-        return const _CollectionNavIcon(
-          icon: Icons.article_outlined,
-          background: Color(0xFF5B8FF9),
-        );
-      case 'gallery':
-        return const _CollectionNavIcon(
-          icon: Icons.photo_library_outlined,
-          background: Color(0xFF52C41A),
-        );
-      case 'video':
-        return const _CollectionNavIcon(
-          icon: Icons.play_circle_outline_rounded,
-          background: Color(0xFFFF6B6B),
-        );
-      default:
-        return const _CollectionNavIcon(
-          icon: Icons.circle,
-          background: Color(0xFF5B8FF9),
-        );
-    }
-  }
-}
-
-class _EntityEntry {
-  const _EntityEntry({
-    required this.title,
-    required this.countLabel,
-    required this.icon,
-    required this.onTap,
-  });
-
-  final String title;
-  final String countLabel;
-  final _CollectionNavIcon icon;
-  final VoidCallback onTap;
-}
-
-class _EntityGroup extends StatelessWidget {
-  const _EntityGroup({
-    required this.title,
-    required this.subtitle,
-    required this.entries,
-  });
-
-  final String title;
-  final String subtitle;
-  final List<_EntityEntry> entries;
-
-  static const _panelRadius = 16.0;
-  static const _tileFill = Color(0xFFF4F6F9);
-  static const _ink = Color(0xFF1F242E);
-  static const _muted = Color(0xFF8B929C);
-
-  @override
-  Widget build(BuildContext context) {
-    if (entries.isEmpty) {
-      return Container(
-        width: double.infinity,
-        padding: const EdgeInsets.all(20),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(_panelRadius),
-        ),
-        child: const Text(
-          '暂无内容',
-          textAlign: TextAlign.center,
-          style: TextStyle(fontSize: 14, color: _CollectionColors.muted),
-        ),
-      );
-    }
-
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(_panelRadius),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          // 标题左、说明右，同一行
-          Padding(
-            padding: const EdgeInsets.only(left: 2, right: 4, bottom: 12),
-            child: SizedBox(
-              height: 36,
-              child: Row(
-                children: [
-                  Text(
-                    title,
-                    style: const TextStyle(
-                      fontSize: 17,
-                      fontWeight: FontWeight.w600,
-                      letterSpacing: 0.6,
-                      height: 1.2,
-                      color: _ink,
-                    ),
-                  ),
-                  const Spacer(),
-                  Flexible(
-                    child: Text(
-                      subtitle,
-                      textAlign: TextAlign.right,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 12,
-                        height: 1.35,
-                        letterSpacing: 0.2,
-                        color: _muted.withValues(alpha: 0.9),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          LayoutBuilder(
-            builder: (context, constraints) {
-              const gap = 8.0;
-              // 手机两列；iPad 横屏四枚一排，再多则换行。
-              final cols = constraints.maxWidth >= 720
-                  ? (entries.length >= 4 ? 4 : entries.length.clamp(1, 4))
-                  : 2;
-              final tileW =
-                  (constraints.maxWidth - gap * (cols - 1)) / cols;
-              return Wrap(
-                spacing: gap,
-                runSpacing: gap,
-                children: [
-                  for (final e in entries)
-                    SizedBox(
-                      width: tileW,
-                      child: _FilterTile(
-                        title: e.title,
-                        countLabel: e.countLabel,
-                        icon: e.icon,
-                        onTap: e.onTap,
-                        fill: _tileFill,
-                        ink: _ink,
-                        muted: _muted,
-                      ),
-                    ),
-                ],
-              );
-            },
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _FilterTile extends StatelessWidget {
-  const _FilterTile({
-    required this.title,
-    required this.countLabel,
-    required this.icon,
-    required this.onTap,
-    required this.fill,
-    required this.ink,
-    required this.muted,
-  });
-
-  final String title;
-  final String countLabel;
-  final _CollectionNavIcon icon;
-  final VoidCallback onTap;
-  final Color fill;
-  final Color ink;
-  final Color muted;
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: fill,
-      borderRadius: BorderRadius.circular(12),
-      child: InkWell(
-        onTap: onTap,
-        canRequestFocus: false,
-        borderRadius: BorderRadius.circular(12),
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(10, 10, 6, 10),
-          child: Row(
-            children: [
-              Container(
-                width: 28,
-                height: 28,
-                decoration: BoxDecoration(
-                  color: icon.background.withValues(alpha: 0.16),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                alignment: Alignment.center,
-                child: Icon(
-                  icon.icon,
-                  size: 15,
-                  color: icon.background,
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                        letterSpacing: 0.15,
-                        height: 1.2,
-                        color: ink.withValues(alpha: 0.9),
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      countLabel,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w400,
-                        height: 1.2,
-                        color: muted,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              Icon(
-                Icons.chevron_right_rounded,
-                size: 18,
-                color: ink.withValues(alpha: 0.28),
-              ),
-            ],
-          ),
-        ),
-      ),
+      body: _buildHubBody(tablet: tablet),
     );
   }
 }
@@ -986,11 +499,9 @@ class _TabletBrowse {
     required this.title,
     required this.loader,
     required this.openEntry,
-    this.showMediaKinds = false,
   });
 
   final String title;
   final TabletItemsLoader loader;
   final String openEntry;
-  final bool showMediaKinds;
 }

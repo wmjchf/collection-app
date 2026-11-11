@@ -152,23 +152,10 @@ class _ItemsBrowsePageState extends State<ItemsBrowsePage> with ScreenDwellMixin
     final tagId = widget.tagId;
     if (tagId == null || _busy) return;
 
-    String? description;
-    try {
-      final tags = await _tagsRepo.listTags();
-      for (final t in tags) {
-        if (t.id == tagId) {
-          description = t.description;
-          break;
-        }
-      }
-    } catch (_) {}
-
-    if (!mounted) return;
     final updated = await showRenameTagSheet(
       context,
       tagId: tagId,
       name: _title,
-      description: description,
     );
     if (updated == null || !mounted) return;
 

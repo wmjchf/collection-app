@@ -17,13 +17,11 @@ Future<Tag?> showRenameTagSheet(
   BuildContext context, {
   required int tagId,
   required String name,
-  String? description,
 }) {
   return _showTagNameSheet(
     context,
     tagId: tagId,
     initialName: name,
-    initialDescription: description,
   );
 }
 
@@ -32,7 +30,6 @@ Future<Tag?> _showTagNameSheet(
   int? moduleId,
   int? tagId,
   String? initialName,
-  String? initialDescription,
 }) {
   return showAppBottomSheet<Tag>(
     context: context,
@@ -40,7 +37,6 @@ Future<Tag?> _showTagNameSheet(
       moduleId: moduleId,
       tagId: tagId,
       initialName: initialName,
-      initialDescription: initialDescription,
     ),
   );
 }
@@ -50,13 +46,11 @@ class _TagNameSheet extends StatefulWidget {
     this.moduleId,
     this.tagId,
     this.initialName,
-    this.initialDescription,
   });
 
   final int? moduleId;
   final int? tagId;
   final String? initialName;
-  final String? initialDescription;
 
   @override
   State<_TagNameSheet> createState() => _TagNameSheetState();
@@ -68,12 +62,9 @@ class _TagNameSheetState extends State<_TagNameSheet> {
   static const _fieldBg = Color(0xFFF5F7FA);
   static const _blue = Color(0xFF2F6FED);
   static const _handle = Color(0xFFE5E8ED);
-  static const _descMax = 80;
 
   late final TextEditingController _controller;
-  late final TextEditingController _descController;
   final _nameFocus = FocusNode();
-  final _descFocus = FocusNode();
   final _tags = TagsRepository();
   String? _error;
   bool _submitting = false;
@@ -84,36 +75,24 @@ class _TagNameSheetState extends State<_TagNameSheet> {
   void initState() {
     super.initState();
     _controller = TextEditingController(text: widget.initialName ?? '');
-    _descController =
-        TextEditingController(text: widget.initialDescription ?? '');
-    _descController.addListener(() {
-      if (mounted) setState(() {});
-    });
   }
 
   @override
   void dispose() {
     _controller.dispose();
-    _descController.dispose();
     _nameFocus.dispose();
-    _descFocus.dispose();
     super.dispose();
   }
 
   Future<void> _onSubmit() async {
     if (_submitting) return;
     final name = _controller.text.trim();
-    final description = _descController.text.trim();
     if (name.isEmpty) {
       setState(() => _error = '请输入标签名称');
       return;
     }
     if (name.length > 64) {
       setState(() => _error = '名称最多 64 个字');
-      return;
-    }
-    if (description.length > _descMax) {
-      setState(() => _error = '说明最多 $_descMax 个字');
       return;
     }
 
@@ -125,17 +104,9 @@ class _TagNameSheetState extends State<_TagNameSheet> {
     try {
       final Tag tag;
       if (_isRename) {
-        tag = await _tags.renameTag(
-          widget.tagId!,
-          name,
-          description: description,
-        );
+        tag = await _tags.renameTag(widget.tagId!, name);
       } else {
-        tag = await _tags.createTag(
-          name,
-          moduleId: widget.moduleId,
-          description: description.isEmpty ? null : description,
-        );
+        tag = await _tags.createTag(name, moduleId: widget.moduleId);
       }
       if (!mounted) return;
       Navigator.of(context).pop(tag);
@@ -156,67 +127,8 @@ class _TagNameSheetState extends State<_TagNameSheet> {
     }
   }
 
-  InputDecoration _fieldDecoration({required String hint}) {
-    return InputDecoration(
-      hintText: hint,
-      hintStyle: const TextStyle(fontSize: 15, color: _muted),
-      filled: true,
-      fillColor: _fieldBg,
-      contentPadding: const EdgeInsets.all(14),
-      border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(12),
-        borderSide: BorderSide.none,
-      ),
-      enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(12),
-        borderSide: BorderSide.none,
-      ),
-      focusedBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(12),
-        borderSide: const BorderSide(color: _blue, width: 1.5),
-      ),
-      disabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(12),
-        borderSide: BorderSide.none,
-      ),
-    );
-  }
-
-  Widget _fieldLabel(String title, {String? trailing}) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Row(
-        children: [
-          Text(
-            title,
-            style: const TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w600,
-              color: _text,
-              height: 1.2,
-            ),
-          ),
-          if (trailing != null) ...[
-            const SizedBox(width: 6),
-            Text(
-              trailing,
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w500,
-                color: _muted.withValues(alpha: 0.9),
-                height: 1.2,
-              ),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
-    final descLen = _descController.text.characters.length;
-
     return Material(
       color: Colors.white,
       borderRadius: BorderRadius.circular(24),
@@ -247,73 +159,50 @@ class _TagNameSheetState extends State<_TagNameSheet> {
               ),
             ),
             const SizedBox(height: 16),
-            _fieldLabel('名称'),
+            const Text(
+              '名称',
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: _text,
+                height: 1.2,
+              ),
+            ),
+            const SizedBox(height: 8),
             TextField(
               controller: _controller,
               focusNode: _nameFocus,
               enabled: !_submitting,
               autofocus: true,
-              textInputAction: TextInputAction.next,
-              style: const TextStyle(fontSize: 15, color: _text),
-              onChanged: (_) {
-                if (_error != null) setState(() => _error = null);
-              },
-              onSubmitted: (_) => _descFocus.requestFocus(),
-              decoration: _fieldDecoration(hint: '例如：读书'),
-            ),
-            const SizedBox(height: 14),
-            Padding(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: Row(
-                children: [
-                  const Text(
-                    '说明',
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                      color: _text,
-                      height: 1.2,
-                    ),
-                  ),
-                  const SizedBox(width: 6),
-                  Text(
-                    '可选',
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w500,
-                      color: _muted.withValues(alpha: 0.9),
-                      height: 1.2,
-                    ),
-                  ),
-                  const Spacer(),
-                  Text(
-                    '$descLen/$_descMax',
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w500,
-                      color: descLen > _descMax
-                          ? const Color(0xFFD14343)
-                          : _muted.withValues(alpha: 0.75),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            TextField(
-              controller: _descController,
-              focusNode: _descFocus,
-              enabled: !_submitting,
-              maxLength: _descMax,
-              maxLines: 2,
               textInputAction: TextInputAction.done,
               style: const TextStyle(fontSize: 15, color: _text),
               onChanged: (_) {
                 if (_error != null) setState(() => _error = null);
               },
               onSubmitted: (_) => _onSubmit(),
-              decoration: _fieldDecoration(
-                hint: '可选说明，消除歧义（如：指产品设计而非视觉）',
-              ).copyWith(counterText: ''),
+              decoration: InputDecoration(
+                hintText: '例如：读书',
+                hintStyle: const TextStyle(fontSize: 15, color: _muted),
+                filled: true,
+                fillColor: _fieldBg,
+                contentPadding: const EdgeInsets.all(14),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide.none,
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide.none,
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: const BorderSide(color: _blue, width: 1.5),
+                ),
+                disabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide.none,
+                ),
+              ),
             ),
             if (_error != null) ...[
               const SizedBox(height: 10),
@@ -335,9 +224,9 @@ class _TagNameSheetState extends State<_TagNameSheet> {
                 style: FilledButton.styleFrom(
                   backgroundColor: _blue,
                   disabledBackgroundColor: _blue.withValues(alpha: 0.45),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14),
-                    ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
                   elevation: 0,
                 ),
                 child: _submitting

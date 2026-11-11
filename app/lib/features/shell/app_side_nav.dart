@@ -7,7 +7,7 @@ import 'package:super_collection/features/agent/agent_host.dart';
 import 'package:super_collection/features/shell/app_bottom_nav_bar.dart';
 import 'package:super_collection/features/shell/home_nav_swap_icon.dart';
 
-/// iPad 横屏左侧导航：品牌 + 首页/收藏/搜索；底部 AI助手行 + 账户。
+/// iPad 横屏左侧导航：品牌 + 首页/标签/搜索；底部 AI助手行 + 账户。
 class AppSideNav extends StatelessWidget {
   const AppSideNav({
     super.key,
@@ -17,7 +17,7 @@ class AppSideNav extends StatelessWidget {
     this.homeTabKey,
   });
 
-  /// 0=首页，1=收藏，2=搜索
+  /// 0=首页，1=标签，2=搜索
   final int currentIndex;
   final ValueChanged<int> onChanged;
   final VoidCallback onOpenAccount;
@@ -60,9 +60,9 @@ class AppSideNav extends StatelessWidget {
             ),
             const SizedBox(height: 2),
             _NavItem(
-              label: '我的收藏',
-              activeAsset: 'assets/icons/collection_active.svg',
-              inactiveAsset: 'assets/icons/collection_inactive.svg',
+              label: '标签',
+              activeAsset: 'assets/icons/tags_active.svg',
+              inactiveAsset: 'assets/icons/tags_inactive.svg',
               selected: currentIndex == 1,
               onTap: () => onChanged(1),
             ),
