@@ -365,74 +365,72 @@ class _CollectionPageState extends State<CollectionPage> {
   }
 
   Widget _buildHubBody({required bool tablet}) {
-    return RefreshIndicator(
-      onRefresh: _load,
-      child: CustomScrollView(
-        physics: const AlwaysScrollableScrollPhysics(),
-        slivers: [
-          if (tablet)
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(8, 4, 8, 0),
-                child: Align(
-                  alignment: Alignment.centerRight,
-                  child: _buildCreateModuleButton(),
-                ),
+    // 满屏画布优先：去掉下拉刷新，避免与 InteractiveViewer 纵向拖拽抢手势。
+    return CustomScrollView(
+      physics: const NeverScrollableScrollPhysics(),
+      slivers: [
+        if (tablet)
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(8, 4, 8, 0),
+              child: Align(
+                alignment: Alignment.centerRight,
+                child: _buildCreateModuleButton(),
               ),
             ),
-          if (_loading && _hubEmpty)
-            const SliverFillRemaining(
-              hasScrollBody: false,
-              child: Center(
-                child: SizedBox(
-                  width: 22,
-                  height: 22,
-                  child: CircularProgressIndicator(strokeWidth: 2.4),
-                ),
+          ),
+        if (_loading && _hubEmpty)
+          const SliverFillRemaining(
+            hasScrollBody: false,
+            child: Center(
+              child: SizedBox(
+                width: 22,
+                height: 22,
+                child: CircularProgressIndicator(strokeWidth: 2.4),
               ),
-            )
-          else if (_error != null && _hubEmpty)
-            SliverFillRemaining(
-              hasScrollBody: false,
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
-                child: _ErrorCard(message: _error!, onRetry: _load),
-              ),
-            )
-          else
-            SliverLayoutBuilder(
-              builder: (context, constraints) {
-                const gapAboveNav = 28.0;
-                final bottomPad =
-                    gapAboveNav + MediaQuery.paddingOf(context).bottom;
-                final minH = (constraints.remainingPaintExtent - bottomPad)
-                    .clamp(0.0, double.infinity);
-                return SliverPadding(
-                  padding: EdgeInsets.fromLTRB(16, 12, 16, bottomPad),
-                  sliver: SliverToBoxAdapter(
-                    child: ConstrainedBox(
-                      constraints: BoxConstraints(minHeight: minH),
-                      child: CollectionTagModulesSection(
-                        modules: _modules,
-                        ungrouped: _ungrouped,
-                        showHeader: false,
-                        bodyOnly: false,
-                        fillRemaining: true,
-                        onOpenTag: _openTag,
-                        onOpenModule: _openModule,
-                        onAddTag: _addTagToModule,
-                        onRenameModule: _renameModule,
-                        onDeleteModule: _deleteModule,
-                        onCreateModule: _createModule,
-                        onPlaceTag: _placeTag,
-                      ),
+            ),
+          )
+        else if (_error != null && _hubEmpty)
+          SliverFillRemaining(
+            hasScrollBody: false,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+              child: _ErrorCard(message: _error!, onRetry: _load),
+            ),
+          )
+        else
+          SliverLayoutBuilder(
+            builder: (context, constraints) {
+              const gapAboveNav = 28.0;
+              final bottomPad =
+                  gapAboveNav + MediaQuery.paddingOf(context).bottom;
+              final minH = (constraints.remainingPaintExtent - bottomPad)
+                  .clamp(0.0, double.infinity);
+              return SliverPadding(
+                padding: EdgeInsets.fromLTRB(16, 12, 16, bottomPad),
+                sliver: SliverToBoxAdapter(
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(minHeight: minH),
+                    child: CollectionTagModulesSection(
+                      modules: _modules,
+                      ungrouped: _ungrouped,
+                      showHeader: false,
+                      bodyOnly: false,
+                      fillRemaining: true,
+                      onOpenTag: _openTag,
+                      onOpenModule: _openModule,
+                      onAddTag: _addTagToModule,
+                      onRenameModule: _renameModule,
+                      onDeleteModule: _deleteModule,
+                      onCreateModule: _createModule,
+                      onPlaceTag: _placeTag,
                     ),
                   ),
-                );
-              },
-            ),
-        ],
-      ),
+                ),
+              );
+            },
+          ),
+      ],
     );
   }
 

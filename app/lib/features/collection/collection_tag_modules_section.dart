@@ -2,10 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:super_collection/core/ui/app_haptics.dart';
 import 'package:super_collection/features/collection/tag_canvas_view.dart';
+import 'package:super_collection/features/collection/tag_dot_colors.dart';
 import 'package:super_collection/features/collection/tag_models.dart';
 import 'package:super_collection/features/collection/tag_module_models.dart';
 
-/// 归类标签：顶栏归类 chip + 二维散落画布（可缩放）；点开 / 短拖改位置 / 长按拖到归类。
+/// 归类标签：顶栏归类 chip + 二维散落画布（可缩放）；
+/// 点开 / 短拖改位置 / 长按拖到归类；筛归类时其它标签半透明仍显示。
 class CollectionTagModulesSection extends StatefulWidget {
   const CollectionTagModulesSection({
     super.key,
@@ -70,16 +72,17 @@ class _CollectionTagModulesSectionState
     }
   }
 
-  List<Tag> _visibleTags() {
-    if (_filter == _filterUngrouped) return widget.ungrouped;
-    if (_filter != _filterAll) {
-      final m = widget.modules.where((e) => e.id == _filter).firstOrNull;
-      return m?.tags ?? const [];
-    }
+  List<Tag> _allTags() {
     return [
       ...widget.ungrouped,
       for (final m in widget.modules) ...m.tags,
     ];
+  }
+
+  bool _isEmphasized(Tag tag) {
+    if (_filter == _filterAll) return true;
+    if (_filter == _filterUngrouped) return tag.moduleId == null;
+    return tag.moduleId == _filter;
   }
 
   void _place(Tag tag, int? moduleId) {
@@ -108,12 +111,7 @@ class _CollectionTagModulesSectionState
                 : (constraints.minHeight.isFinite ? constraints.minHeight : 0.0);
         final fill = minH > 0;
 
-        final tags = _visibleTags();
-        final emptyLabel = _filter == _filterAll
-            ? '还没有标签'
-            : (_filter == _filterUngrouped
-                ? '还没有未归类的标签'
-                : '这个归类还没有标签');
+        final tags = _allTags();
 
         void onAdd() {
           if (_filter == _filterAll || _filter == _filterUngrouped) {
@@ -124,9 +122,10 @@ class _CollectionTagModulesSectionState
         }
 
         final canvas = tags.isEmpty
-            ? _EmptyTags(label: emptyLabel, onAdd: onAdd)
+            ? _EmptyTags(label: '还没有标签', onAdd: onAdd)
             : TagCanvasView(
                 tags: tags,
+                isEmphasized: _isEmphasized,
                 draggingTagId: _draggingTagId,
                 draggable: widget.onPlaceTag != null,
                 onTapTag: widget.onOpenTag,
@@ -473,6 +472,7 @@ class _ModuleFilterChips extends StatelessWidget {
               label: ungroupedCount > 0 ? '未归类 $ungroupedCount' : '未归类',
               selected: filter == filterUngrouped,
               dropTarget: dropHover == filterUngrouped,
+              dotColor: TagDotColors.ungrouped,
               onTap: () => onFilter(filterUngrouped),
             ),
           ),
@@ -488,6 +488,7 @@ class _ModuleFilterChips extends StatelessWidget {
                     label: count > 0 ? '${m.name} $count' : m.name,
                     selected: filter == m.id,
                     dropTarget: dropHover == m.id,
+                    dotColor: TagDotColors.forModule(m.id),
                     onTap: () => onFilter(m.id),
                     onLongPress: () {
                       HapticFeedback.selectionClick();
@@ -524,6 +525,7 @@ class _FilterChip extends StatelessWidget {
     required this.onTap,
     this.onLongPress,
     this.trailing,
+    this.dotColor,
     this.dropTarget = false,
     this.dimmed = false,
   });
@@ -533,6 +535,7 @@ class _FilterChip extends StatelessWidget {
   final VoidCallback onTap;
   final VoidCallback? onLongPress;
   final VoidCallback? trailing;
+  final Color? dotColor;
   final bool dropTarget;
   final bool dimmed;
 
@@ -584,6 +587,17 @@ class _FilterChip extends StatelessWidget {
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
+                if (dotColor != null) ...[
+                  Container(
+                    width: 7,
+                    height: 7,
+                    decoration: BoxDecoration(
+                      color: dotColor,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                ],
                 Text(
                   label,
                   style: TextStyle(

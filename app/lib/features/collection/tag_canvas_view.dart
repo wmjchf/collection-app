@@ -9,11 +9,13 @@ import 'package:super_collection/features/collection/tag_models.dart';
 
 /// 二维画布：标签上下排布（点上字下），按 id 稳定随机散落；
 /// 短拖改位置（本地记忆）、长按拖到归类；捏合缩放、空白处拖移画布。
+/// 归类色点；筛选时非当前归类半透明仍显示。白底点阵。
 class TagCanvasView extends StatefulWidget {
   const TagCanvasView({
     super.key,
     required this.tags,
     required this.onTapTag,
+    this.isEmphasized,
     this.onDragStarted,
     this.onDragEnded,
     this.draggable = true,
@@ -22,6 +24,10 @@ class TagCanvasView extends StatefulWidget {
 
   final List<Tag> tags;
   final ValueChanged<Tag> onTapTag;
+
+  /// `null` 或恒 true = 全部实色；筛归类时非匹配返回 false → 半透明。
+  final bool Function(Tag tag)? isEmphasized;
+
   final ValueChanged<Tag>? onDragStarted;
   final VoidCallback? onDragEnded;
   final bool draggable;
@@ -54,8 +60,8 @@ class _TagCanvasViewState extends State<TagCanvasView> {
 
   static const _minScale = 0.55;
   static const _maxScale = 2.4;
-  static const _itemW = 88.0;
-  static const _itemH = 44.0;
+  static const _itemW = 104.0;
+  static const _itemH = 52.0;
   static const _edge = 14.0;
   /// 散落参数变更时递增，强制重算默认坐标（用户拖位仍覆盖）。
   static const _layoutVersion = 'v2';
@@ -246,6 +252,12 @@ class _TagCanvasViewState extends State<TagCanvasView> {
     });
   }
 
+  bool _emphasized(Tag tag) {
+    final fn = widget.isEmphasized;
+    if (fn == null) return true;
+    return fn(tag);
+  }
+
   @override
   Widget build(BuildContext context) {
     return LayoutBuilder(
@@ -256,7 +268,15 @@ class _TagCanvasViewState extends State<TagCanvasView> {
             _repositionId == null &&
             widget.draggingTagId == null;
 
+        // 强调标签后绘，便于点中。
+        final ordered = [...widget.tags]..sort((a, b) {
+            final ae = _emphasized(a) ? 1 : 0;
+            final be = _emphasized(b) ? 1 : 0;
+            return ae.compareTo(be);
+          });
+
         // 外层可视区可能被下拉挤矮；内部仍按稳定尺寸排布，只裁剪不压缩。
+        // 点阵铺在视口层，按变换矩阵反算可见范围，平移/缩放始终铺满。
         return ClipRect(
           child: OverflowBox(
             alignment: Alignment.topCenter,
@@ -264,54 +284,71 @@ class _TagCanvasViewState extends State<TagCanvasView> {
             maxWidth: size.width,
             minHeight: size.height,
             maxHeight: size.height,
-            child: InteractiveViewer(
-              transformationController: _transform,
-              minScale: _minScale,
-              maxScale: _maxScale,
-              boundaryMargin: const EdgeInsets.all(120),
-              clipBehavior: Clip.hardEdge,
-              panEnabled: canvasPan,
-              scaleEnabled: true,
-              child: SizedBox(
-                width: size.width,
-                height: size.height,
-                child: Stack(
-                  clipBehavior: Clip.none,
-                  children: [
-                    for (final tag in widget.tags)
-                      Positioned(
-                        left: _pixelPos(tag.id, size).dx,
-                        top: _pixelPos(tag.id, size).dy,
-                        child: _CanvasTagNode(
-                          tag: tag,
-                          dimmed: widget.draggingTagId == tag.id,
-                          lifting: _repositionId == tag.id,
-                          draggable: widget.draggable,
-                          onTap: () => widget.onTapTag(tag),
-                          onDragStarted: widget.onDragStarted == null
-                              ? null
-                              : () {
-                                  _onTagPointerCancel();
-                                  widget.onDragStarted!(tag);
-                                },
-                          onDragEnded: widget.onDragEnded,
-                          onFingerDown: () {
-                            if (widget.draggingTagId != null) return;
-                            setState(() => _fingerOnTag = true);
-                          },
-                          onFingerUp: () {
-                            if (_repositionId != null) return;
-                            setState(() => _fingerOnTag = false);
-                          },
-                          onPanStart: () => _onRepositionStart(tag, size),
-                          onPanUpdate: (delta) =>
-                              _onRepositionUpdate(delta, size),
-                          onPanEnd: () => _onRepositionEnd(size),
-                        ),
-                      ),
-                  ],
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                Positioned.fill(
+                  child: ListenableBuilder(
+                    listenable: _transform,
+                    builder: (context, _) => CustomPaint(
+                      painter: _ViewportDotGridPainter(_transform.value),
+                    ),
+                  ),
                 ),
-              ),
+                InteractiveViewer(
+                  transformationController: _transform,
+                  minScale: _minScale,
+                  maxScale: _maxScale,
+                  boundaryMargin: const EdgeInsets.all(160),
+                  clipBehavior: Clip.none,
+                  panEnabled: canvasPan,
+                  scaleEnabled: true,
+                  child: SizedBox(
+                    width: size.width,
+                    height: size.height,
+                    child: Stack(
+                      clipBehavior: Clip.none,
+                      children: [
+                        for (final tag in ordered)
+                          Positioned(
+                            left: _pixelPos(tag.id, size).dx,
+                            top: _pixelPos(tag.id, size).dy,
+                            child: _CanvasTagNode(
+                              tag: tag,
+                              color: TagDotColors.forModule(tag.moduleId),
+                              dimmed: widget.draggingTagId == tag.id ||
+                                  !_emphasized(tag),
+                              softDim: widget.draggingTagId != tag.id &&
+                                  !_emphasized(tag),
+                              lifting: _repositionId == tag.id,
+                              draggable: widget.draggable,
+                              onTap: () => widget.onTapTag(tag),
+                              onDragStarted: widget.onDragStarted == null
+                                  ? null
+                                  : () {
+                                      _onTagPointerCancel();
+                                      widget.onDragStarted!(tag);
+                                    },
+                              onDragEnded: widget.onDragEnded,
+                              onFingerDown: () {
+                                if (widget.draggingTagId != null) return;
+                                setState(() => _fingerOnTag = true);
+                              },
+                              onFingerUp: () {
+                                if (_repositionId != null) return;
+                                setState(() => _fingerOnTag = false);
+                              },
+                              onPanStart: () => _onRepositionStart(tag, size),
+                              onPanUpdate: (delta) =>
+                                  _onRepositionUpdate(delta, size),
+                              onPanEnd: () => _onRepositionEnd(size),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
         );
@@ -320,12 +357,74 @@ class _TagCanvasViewState extends State<TagCanvasView> {
   }
 }
 
+/// 视口点阵：在屏幕坐标系铺满可见区，点位随变换矩阵对齐世界坐标。
+class _ViewportDotGridPainter extends CustomPainter {
+  const _ViewportDotGridPainter(this.matrix);
+
+  final Matrix4 matrix;
+
+  static const _step = 15.0;
+  static const _radius = 1.15;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final inv = Matrix4.tryInvert(Matrix4.copy(matrix));
+    if (inv == null) return;
+
+    Offset toWorld(Offset p) => MatrixUtils.transformPoint(inv, p);
+
+    final corners = <Offset>[
+      toWorld(Offset.zero),
+      toWorld(Offset(size.width, 0)),
+      toWorld(Offset(0, size.height)),
+      toWorld(Offset(size.width, size.height)),
+    ];
+    var minX = corners.first.dx;
+    var maxX = corners.first.dx;
+    var minY = corners.first.dy;
+    var maxY = corners.first.dy;
+    for (final c in corners) {
+      minX = math.min(minX, c.dx);
+      maxX = math.max(maxX, c.dx);
+      minY = math.min(minY, c.dy);
+      maxY = math.max(maxY, c.dy);
+    }
+    // 多铺一圈，避免边缘露白。
+    minX -= _step;
+    maxX += _step;
+    minY -= _step;
+    maxY += _step;
+
+    final paint = Paint()
+      ..color = const Color(0xFF6B7280).withValues(alpha: 0.28)
+      ..style = PaintingStyle.fill;
+
+    canvas.save();
+    canvas.transform(matrix.storage);
+
+    final startX = (minX / _step).floor() * _step + _step / 2;
+    final startY = (minY / _step).floor() * _step + _step / 2;
+    for (var x = startX; x <= maxX; x += _step) {
+      for (var y = startY; y <= maxY; y += _step) {
+        canvas.drawCircle(Offset(x, y), _radius, paint);
+      }
+    }
+    canvas.restore();
+  }
+
+  @override
+  bool shouldRepaint(covariant _ViewportDotGridPainter oldDelegate) =>
+      oldDelegate.matrix != matrix;
+}
+
 class _CanvasTagNode extends StatelessWidget {
   const _CanvasTagNode({
     required this.tag,
+    required this.color,
     required this.onTap,
     required this.draggable,
     required this.dimmed,
+    required this.softDim,
     required this.lifting,
     this.onDragStarted,
     this.onDragEnded,
@@ -337,9 +436,11 @@ class _CanvasTagNode extends StatelessWidget {
   });
 
   final Tag tag;
+  final Color color;
   final VoidCallback onTap;
   final bool draggable;
   final bool dimmed;
+  final bool softDim;
   final bool lifting;
   final VoidCallback? onDragStarted;
   final VoidCallback? onDragEnded;
@@ -350,22 +451,21 @@ class _CanvasTagNode extends StatelessWidget {
   final VoidCallback? onPanEnd;
 
   Widget _visual({required bool feedback}) {
-    final color = TagDotColors.forName(tag.name);
     final ink = Color.lerp(
-          const Color(0xFF5C6470),
+          softDim ? color : const Color(0xFF3A4452),
           color,
-          0.10,
+          softDim ? 0.55 : 0.22,
         )!
-        .withValues(alpha: feedback ? 0.92 : 0.82);
-    final core = feedback || lifting ? 6.5 : 5.5;
-    final halo = feedback || lifting ? 16.0 : 14.0;
+        .withValues(alpha: feedback ? 0.95 : (softDim ? 0.75 : 0.90));
+    final core = feedback || lifting ? 7.5 : 6.5;
+    final halo = feedback || lifting ? 18.0 : 16.0;
 
     return Material(
       color: Colors.transparent,
       elevation: feedback || lifting ? 4 : 0,
       shadowColor: Colors.black.withValues(alpha: feedback || lifting ? 0.10 : 0),
       child: SizedBox(
-        width: 88,
+        width: 104,
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -375,7 +475,7 @@ class _CanvasTagNode extends StatelessWidget {
               child: DecoratedBox(
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: color.withValues(alpha: 0.16),
+                  color: color.withValues(alpha: softDim ? 0.10 : 0.16),
                 ),
                 child: Center(
                   child: Container(
@@ -396,8 +496,8 @@ class _CanvasTagNode extends StatelessWidget {
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
-                fontSize: feedback ? 12 : 11,
-                fontWeight: FontWeight.w400,
+                fontSize: feedback ? 14 : 13,
+                fontWeight: softDim ? FontWeight.w500 : FontWeight.w600,
                 height: 1.15,
                 letterSpacing: 0.2,
                 color: ink,
@@ -411,6 +511,10 @@ class _CanvasTagNode extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final opacity = !dimmed
+        ? 1.0
+        : (softDim ? 0.26 : 0.28);
+
     final child = Listener(
       onPointerDown: (_) => onFingerDown?.call(),
       onPointerUp: (_) => onFingerUp?.call(),
@@ -428,7 +532,7 @@ class _CanvasTagNode extends StatelessWidget {
         onPanEnd: onPanEnd == null ? null : (_) => onPanEnd!(),
         onPanCancel: onPanEnd,
         child: Opacity(
-          opacity: dimmed ? 0.28 : 1,
+          opacity: opacity,
           child: Transform.scale(
             scale: lifting ? 1.06 : 1,
             child: _visual(feedback: lifting),

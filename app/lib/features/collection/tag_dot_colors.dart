@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 
-/// 标签色点：由名称哈希稳定取色，与归类无关。色板偏低饱和，收藏馆气质。
+/// 标签/归类色：按归类 id 稳定取色；未归类用中性色。
 abstract final class TagDotColors {
+  static const ungrouped = Color(0xFF5C6675);
+
   static const palette = <Color>[
     Color(0xFF5B7FB8),
     Color(0xFF5A9A90),
@@ -17,13 +19,9 @@ abstract final class TagDotColors {
     Color(0xFF6E8FA8),
   ];
 
-  static Color forName(String name) {
-    final s = name.trim();
-    var hash = 0;
-    for (final c in s.codeUnits) {
-      hash = 0x1fffffff & (hash * 31 + c);
-    }
-    if (hash < 0) hash = -hash;
-    return palette[hash % palette.length];
+  static Color forModule(int? moduleId) {
+    if (moduleId == null) return ungrouped;
+    final id = moduleId < 0 ? -moduleId : moduleId;
+    return palette[id % palette.length];
   }
 }
