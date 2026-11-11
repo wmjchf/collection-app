@@ -63,12 +63,23 @@ class _TagCanvasViewState extends State<TagCanvasView> {
   static const _itemW = 104.0;
   static const _itemH = 52.0;
   static const _edge = 14.0;
+  /// 首屏外可放置边距：平移画布后仍能把标签拖到可见区域。
+  static const _worldPad = 280.0;
   /// 散落参数变更时递增，强制重算默认坐标（用户拖位仍覆盖）。
   static const _layoutVersion = 'v2';
+
+  Matrix4 _homeTransform() =>
+      Matrix4.translationValues(-_worldPad, -_worldPad, 0);
+
+  void _resetToHome() {
+    _transform.value = _homeTransform();
+  }
 
   @override
   void initState() {
     super.initState();
+    // 世界坐标含 pad，首屏对齐中间「主视口」区域。
+    _transform.value = _homeTransform();
     _ensureNormLayout(widget.tags);
     _loadUserPositions();
   }
@@ -163,68 +174,76 @@ class _TagCanvasViewState extends State<TagCanvasView> {
     return Size(_stableW!, _stableH!);
   }
 
-  Offset _pixelPos(int tagId, Size size) {
+  /// 可放置世界：主视口 + 四周 pad。
+  Size _worldOf(Size home) =>
+      Size(home.width + _worldPad * 2, home.height + _worldPad * 2);
+
+  Offset _pixelPos(int tagId, Size home) {
     if (_repositionId == tagId && _repositionPixel != null) {
       return _repositionPixel!;
     }
     final n = _normById[tagId] ?? Offset.zero;
-    return _normToPixel(n, size);
+    return _normToPixel(n, home);
   }
 
-  Offset _normToPixel(Offset n, Size size) {
-    final maxX = math.max(_edge, size.width - _itemW - _edge);
-    final maxY = math.max(_edge, size.height - _itemH - _edge);
-    return Offset(
-      _edge + n.dx * (maxX - _edge).clamp(0.0, double.infinity),
-      _edge + n.dy * (maxY - _edge).clamp(0.0, double.infinity),
-    );
-  }
-
-  Offset _pixelToNorm(Offset pixel, Size size) {
-    final maxX = math.max(_edge, size.width - _itemW - _edge);
-    final maxY = math.max(_edge, size.height - _itemH - _edge);
+  /// 归一化相对主视口：默认散落在 [0,1]；拖出主视口后可 <0 或 >1。
+  Offset _normToPixel(Offset n, Size home) {
+    final maxX = math.max(_edge, home.width - _itemW - _edge);
+    final maxY = math.max(_edge, home.height - _itemH - _edge);
     final spanX = (maxX - _edge).clamp(1.0, double.infinity);
     final spanY = (maxY - _edge).clamp(1.0, double.infinity);
     return Offset(
-      ((pixel.dx - _edge) / spanX).clamp(0.0, 1.0),
-      ((pixel.dy - _edge) / spanY).clamp(0.0, 1.0),
+      _worldPad + _edge + n.dx * spanX,
+      _worldPad + _edge + n.dy * spanY,
     );
   }
 
-  Offset _clampPixel(Offset pixel, Size size) {
-    final maxX = math.max(_edge, size.width - _itemW - _edge);
-    final maxY = math.max(_edge, size.height - _itemH - _edge);
+  Offset _pixelToNorm(Offset pixel, Size home) {
+    final maxX = math.max(_edge, home.width - _itemW - _edge);
+    final maxY = math.max(_edge, home.height - _itemH - _edge);
+    final spanX = (maxX - _edge).clamp(1.0, double.infinity);
+    final spanY = (maxY - _edge).clamp(1.0, double.infinity);
+    return Offset(
+      (pixel.dx - _worldPad - _edge) / spanX,
+      (pixel.dy - _worldPad - _edge) / spanY,
+    );
+  }
+
+  Offset _clampPixel(Offset pixel, Size home) {
+    final world = _worldOf(home);
+    final maxX = math.max(_edge, world.width - _itemW - _edge);
+    final maxY = math.max(_edge, world.height - _itemH - _edge);
     return Offset(
       pixel.dx.clamp(_edge, maxX),
       pixel.dy.clamp(_edge, maxY),
     );
   }
 
-  void _onRepositionStart(Tag tag, Size size) {
+  void _onRepositionStart(Tag tag, Size home) {
     if (widget.draggingTagId != null) return;
     setState(() {
       _fingerOnTag = true;
       _repositionId = tag.id;
-      _repositionPixel = _pixelPos(tag.id, size);
+      _repositionPixel = _pixelPos(tag.id, home);
     });
   }
 
-  void _onRepositionUpdate(Offset delta, Size size) {
+  void _onRepositionUpdate(Offset delta, Size home) {
     if (_repositionId == null || _repositionPixel == null) return;
     if (widget.draggingTagId != null) return;
     setState(() {
-      _repositionPixel = _clampPixel(_repositionPixel! + delta, size);
+      _repositionPixel = _clampPixel(_repositionPixel! + delta, home);
     });
   }
 
-  void _onRepositionEnd(Size size) {
+  void _onRepositionEnd(Size home) {
     final id = _repositionId;
     final pixel = _repositionPixel;
     if (id == null || pixel == null) {
       setState(() => _fingerOnTag = false);
       return;
     }
-    final norm = _pixelToNorm(pixel, size);
+    final norm = _pixelToNorm(pixel, home);
     setState(() {
       _normById[id] = norm;
       _userNorm[id] = norm;
@@ -238,9 +257,9 @@ class _TagCanvasViewState extends State<TagCanvasView> {
   void _onTagPointerCancel() {
     if (_repositionId != null && _repositionPixel != null && _stableW != null) {
       // 长按归类抢手势时：仍提交已拖到的位置
-      final size = Size(_stableW!, _stableH ?? 280);
+      final home = Size(_stableW!, _stableH ?? 280);
       final id = _repositionId!;
-      final norm = _pixelToNorm(_repositionPixel!, size);
+      final norm = _pixelToNorm(_repositionPixel!, home);
       _normById[id] = norm;
       _userNorm[id] = norm;
       TagCanvasLayoutPrefs.save(_userNorm);
@@ -295,25 +314,29 @@ class _TagCanvasViewState extends State<TagCanvasView> {
                     ),
                   ),
                 ),
-                InteractiveViewer(
-                  transformationController: _transform,
-                  minScale: _minScale,
-                  maxScale: _maxScale,
-                  boundaryMargin: const EdgeInsets.all(160),
-                  clipBehavior: Clip.none,
-                  panEnabled: canvasPan,
-                  scaleEnabled: true,
-                  child: SizedBox(
-                    width: size.width,
-                    height: size.height,
-                    child: Stack(
-                      clipBehavior: Clip.none,
-                      children: [
-                        for (final tag in ordered)
-                          Positioned(
-                            left: _pixelPos(tag.id, size).dx,
-                            top: _pixelPos(tag.id, size).dy,
-                            child: _CanvasTagNode(
+                GestureDetector(
+                  onDoubleTap: _resetToHome,
+                  child: InteractiveViewer(
+                    transformationController: _transform,
+                    // 世界坐标比视口大，必须 false，否则内容被压回视口、标签易「消失」。
+                    constrained: false,
+                    minScale: _minScale,
+                    maxScale: _maxScale,
+                    boundaryMargin: const EdgeInsets.all(48),
+                    clipBehavior: Clip.none,
+                    panEnabled: canvasPan,
+                    scaleEnabled: true,
+                    child: SizedBox(
+                      width: _worldOf(size).width,
+                      height: _worldOf(size).height,
+                      child: Stack(
+                        clipBehavior: Clip.none,
+                        children: [
+                          for (final tag in ordered)
+                            Positioned(
+                              left: _pixelPos(tag.id, size).dx,
+                              top: _pixelPos(tag.id, size).dy,
+                              child: _CanvasTagNode(
                               tag: tag,
                               color: TagDotColors.forModule(tag.moduleId),
                               dimmed: widget.draggingTagId == tag.id ||
@@ -344,7 +367,8 @@ class _TagCanvasViewState extends State<TagCanvasView> {
                               onPanEnd: () => _onRepositionEnd(size),
                             ),
                           ),
-                      ],
+                        ],
+                      ),
                     ),
                   ),
                 ),
