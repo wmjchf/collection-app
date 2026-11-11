@@ -2,11 +2,6 @@ const helpImageOss = require('./helpImageOss');
 
 /** App 本地帮助页配图：固定 OSS 对象键（help/ 前缀） */
 const SETS = {
-  ai_auto_tags: [
-    'help/ai-auto-tags-fig1.png',
-    'help/ai-auto-tags-fig2.png',
-    'help/ai-auto-tags-fig3.png',
-  ],
   ai_agent: [
     'help/ai-agent-chat.png',
   ],

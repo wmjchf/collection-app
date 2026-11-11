@@ -1555,24 +1555,6 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
     }
   }
 
-  /// 转写刚成功时自动打标可能尚未入队，先等 pending 再跟状态，或等到标签出现。
-  Future<void> _pollAutoTagsAfterTranscript() async {
-    for (var i = 0; i < 30; i++) {
-      await Future<void>.delayed(const Duration(seconds: 2));
-      if (!mounted) return;
-      try {
-        final item = await _repo.getItem(_item.id);
-        if (!mounted) return;
-        setState(() => _item = item);
-        if (item.tags.isNotEmpty) return;
-        if (item.aiMeta.tags.isPending) {
-          await _pollAiSuggestInBackground();
-          return;
-        }
-      } catch (_) {}
-    }
-  }
-
   void _openTagList(Tag tag) {
     Navigator.of(context).push(
       MaterialPageRoute<void>(
@@ -1751,10 +1733,7 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
         final anySuccess = st.segments.values.any((s) => s.isSuccess);
         if (anySuccess) {
           AppToast.show(context, '文稿已生成');
-          // 视频：服务端转写成功后自动打标，轮询刷新
-          if (_item.hasVideo) {
-            unawaited(_pollAutoTagsAfterTranscript());
-          } else if (_item.aiMeta.tags.isPending) {
+          if (_item.aiMeta.tags.isPending) {
             unawaited(_pollAiSuggestInBackground());
           }
         } else {

@@ -30,11 +30,11 @@ const ALLOWED = new Set([
 ]);
 const DROP = new Set(['script', 'style', 'iframe', 'object', 'embed', 'link', 'meta', 'svg']);
 
-/** 允许 App 展示、后台编辑的帮助页。缺行时用这里的默认正文补上。 */
+/** 允许后台编辑的帮助页（App 设置已不再入口展示 ai_auto_tags）。缺行时用这里的默认正文补上。 */
 const PAGES = {
   ai_auto_tags: {
-    title: 'AI自动标签方法',
-    body: 'Pro 用户在内容解析成功后，如果这篇还没有标签，AI 会根据正文自动打标签。\n\n标签完成后显示在内容上；已有标签的内容不会重复自动打标。归类由你新建；也可点 ✦「归类」把标签填进已有归类。',
+    title: '标签与归类',
+    body: '解析/转写后自动打标签已下线。请在阅读页手动增删标签；在收藏页创建归类，并长按拖动整理。',
   },
 };
 

@@ -415,7 +415,7 @@ Body: { conversationId, messageId, approve: true|false }
 
 | 项 | 建议 |
 | --- | --- |
-| 规划模型 | `ALIYUN_AI_MODEL_AGENT`（与自动打标 `ALIYUN_AI_MODEL_TAGS` **独立**；默认 `qwen3.8-flash`，可单独升 27b/max） |
+| 规划模型 | `ALIYUN_AI_MODEL_AGENT`（与遗留 `ALIYUN_AI_MODEL_TAGS` **独立**；默认 `qwen3.8-flash`，可单独升 27b/max） |
 | 实现形态 | 优先 **原生 tool-calling**（Thought 隐式/显式均可）；无可靠 tool-call 时再退回文本 ReAct 解析 |
 | 单篇重活 | 打标/收藏页归类用 `ALIYUN_AI_MODEL_TAGS`；脑图用 `ALIYUN_AI_MODEL`；深挖解读走助手同一 `ALIYUN_AI_MODEL_AGENT` |
 | Context | 近期 N 轮消息 + 本轮 Thought/Action/Observation；单篇正文仍走 `aiInput` cache_control，避免全文进历史 |
@@ -432,7 +432,7 @@ Body: { conversationId, messageId, approve: true|false }
 | --- | --- |
 | 档位 | 太子+（与解读同级） |
 | 计量 | `(prompt - cached) + completion`；事件 `type=ai_agent`（规划+回答）；tool 内总结/脑图继续各自 type 或统一归 `ai_agent` 子字段 `tool` |
-| 自动打标 | **仍不走 Agent、仍不计用户额度**（保持现网） |
+| 自动打标 | **已下线**（`maybeAutoTag*` no-op；不走 Agent） |
 | 触顶 | 402 + 升级引导；助手页展示本月剩余与现网 usage 一致 |
 | 配置 | `USAGE_ENFORCING`；`features.aiAgent` |
 

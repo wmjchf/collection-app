@@ -66,9 +66,10 @@ class AiAgentHelpPage extends StatelessWidget {
               ),
               const SizedBox(height: 12),
               const _CapabilityCard(
-                title: '转写写文章',
+                title: '整理成文章',
                 desc:
-                    '从阅读页打开已转写视频，说「根据转写写一篇文章」：整理成可读长文。暂不支持用正文生成，也不做图文创作。',
+                    '已转写视频可说「根据转写写一篇文章」；知识向的图片可一键「根据图片整理成文章」。'
+                    '暂不支持用正文生成，也不做图文创作。',
               ),
               const SizedBox(height: 24),
               const _SectionHeading('从哪里打开'),
@@ -86,9 +87,8 @@ class AiAgentHelpPage extends StatelessWidget {
               const SizedBox(height: 10),
               const _ProCard(
                 child: Text(
-                  '需开通太子Pro / 帝王Pro。对话消耗本月 AI助手额度；'
-                  '解析后/转写后的自动打标签不占用该额度。'
-                  '帝王Pro 提供更高月额度。音视频转写是另一项核心能力，在阅读页「更多」里发起。',
+                  '需开通太子Pro / 帝王Pro。对话与整理成文章（含根据图片）消耗本月 AI助手额度；'
+                  '帝王Pro 提供更高月额度。转写按分钟单独计量，常作为视频成文的前一步。',
                   style: TextStyle(
                     fontSize: 15,
                     color: Colors.white,
@@ -210,9 +210,9 @@ class _IntroCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            '太子Pro 的核心能力之一：在你的收藏库里做意图搜索与对照；'
-            '从阅读页打开还可深挖当前篇、根据已转写视频写文章。'
-            '另一核心能力是音视频转写。',
+            '太子Pro 的核心：在你的收藏库里做意图搜索与对照；'
+            '从阅读页打开还可深挖当前篇。'
+            '视频可先转写再成文；知识向的图片可整理成文。',
             style: TextStyle(
               fontSize: 15,
               color: AiAgentHelpPage._text,

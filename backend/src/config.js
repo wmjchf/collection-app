@@ -65,7 +65,7 @@ module.exports = {
     dashScopeApiRoot: process.env.DASHSCOPE_API_ROOT || '',
     /** 脑图等默认模型 */
     aiModel: process.env.ALIYUN_AI_MODEL || 'qwen3.8-max',
-    /** 自动打标 / 收藏页归类建议（与助手分开；调用量大，默认 flash） */
+    /** 遗留标签建议 / 收藏页归类建议（与助手分开；调用量大，默认 flash） */
     aiModelTags: process.env.ALIYUN_AI_MODEL_TAGS || 'qwen3.8-flash',
     /**
      * AI助手编排（规划/回答/深挖解读；与 ALIYUN_AI_MODEL_TAGS 打标独立）。

@@ -1,5 +1,5 @@
 /**
- * 与 App `item_models.dart` 的 hasVideo / isImageGallery 对齐，供自动打标等服务端判定。
+ * 与 App `item_models.dart` 的 hasVideo / isImageGallery 对齐，供媒体类型判定。
  */
 
 function parseImageUrls(row) {

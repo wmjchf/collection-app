@@ -21,7 +21,6 @@ abstract final class AnalyticsScreens {
   static const usageTranscriptEvents = 'usage_transcript_events';
   static const howToAddLink = 'how_to_add_link';
   static const aiAgentHelp = 'ai_agent_help';
-  static const aiAutoTagsHelp = 'ai_auto_tags_help';
   static const shortcutsHelp = 'shortcuts_help';
   static const agentPanel = 'agent_panel';
   static const feedback = 'feedback';

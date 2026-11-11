@@ -1060,7 +1060,6 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
       _PlanFeature('永久解析', included: true),
       _PlanFeature('AI助手', included: false),
       _PlanFeature('音视频转写', included: false),
-      _PlanFeature('解析 / 转写后自动打标签', included: false),
     ];
   }
 
@@ -1069,7 +1068,6 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
       const _PlanFeature('订阅期内收藏不限条数', included: true),
       const _PlanFeature('AI助手', included: true),
       const _PlanFeature('音视频转写', included: true),
-      const _PlanFeature('解析 / 转写后自动打标签', included: true),
       _PlanFeature(
         'AI助手额度 ${formatAiCredits(quotas.prince.aiTokens)} 积分 / 月',
         included: true,

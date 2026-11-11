@@ -6,7 +6,7 @@ const DEFAULT_TAGS = {
   awaitTranscript: false,
   regenerateFrom: null,
   creditsUsed: null,
-  /** 解析后自动打标：建议生成成功后自动采纳全部 */
+  /** 遗留：建议生成成功后自动采纳全部（自动打标路径已下线） */
   autoApply: false,
 };
 

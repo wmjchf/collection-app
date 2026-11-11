@@ -708,121 +708,17 @@ async function applyAiSuggest(userId, itemId, { names = [] } = {}) {
 }
 
 /**
- * 解析成功后：太子+ 自动打标；图集跳过；视频等转写成功后再打。
- * 失败不影响解析结果（内容不足等静默跳过）。
+ * 解析后自动打标：已下线（会员也不再自动打标）。保留函数供旧调用点安全 no-op。
  */
-async function maybeAutoTagAfterParse(userId, itemId) {
-  try {
-    if (!aliyunDashScope.isConfigured()) return;
-
-    const planService = require('./planService');
-    const subscriptionService = require('./subscriptionService');
-    const { plan } = await subscriptionService.getPlanForUser(userId);
-    if (
-      require('../config').usage.enforcing !== false &&
-      !planService.hasPrince(plan)
-    ) {
-      console.log(
-        `[maybeAutoTagAfterParse] skip non-prince user=${userId} item=${itemId}`,
-      );
-      return;
-    }
-
-    const guideItemService = require('./guideItemService');
-    const itemService = require('./itemService');
-    const row = await getItemRow(itemId, userId);
-    if (!row) return;
-    if (guideItemService.isGuideItem(row)) return;
-    if (itemMediaKind.isImageGallery(row)) {
-      console.log(`[maybeAutoTagAfterParse] skip gallery item=${itemId}`);
-      return;
-    }
-    if (itemMediaKind.hasTopVideo(row)) {
-      const target = transcriptSegments.topBarTranscriptTarget(row);
-      const ready =
-        target &&
-        target.status === 'success' &&
-        String(target.text || '').trim();
-      if (!ready) {
-        console.log(
-          `[maybeAutoTagAfterParse] defer video until transcript item=${itemId}`,
-        );
-        return;
-      }
-    }
-
-    const currentTags = await itemService.listItemTags(userId, itemId);
-    if (currentTags.some((t) => !t.isSystem)) return;
-
-    const meta = aiMeta.parseAiMeta(row.ai_meta);
-    if (meta.tags.status === 'pending') return;
-
-    await requestAiSuggest(userId, itemId, { autoApply: true });
-    console.log(`[maybeAutoTagAfterParse] enqueued item=${itemId}`);
-  } catch (err) {
-    console.warn(
-      `[maybeAutoTagAfterParse] skip item=${itemId}`,
-      err.message || err,
-    );
-  }
+async function maybeAutoTagAfterParse(_userId, _itemId) {
+  return;
 }
 
 /**
- * 转写成功后：太子+ 顶栏视频条目自动打标（图集不打；已有用户标签则跳过）。
+ * 转写后自动打标：已下线。保留函数供旧调用点安全 no-op。
  */
-async function maybeAutoTagAfterTranscript(itemId) {
-  try {
-    if (!aliyunDashScope.isConfigured()) return;
-
-    const [rows] = await pool.execute(
-      `SELECT * FROM items WHERE id = :itemId AND deleted_at IS NULL LIMIT 1`,
-      { itemId },
-    );
-    const row = rows[0];
-    if (!row) return;
-
-    const planService = require('./planService');
-    const subscriptionService = require('./subscriptionService');
-    const { plan } = await subscriptionService.getPlanForUser(row.user_id);
-    if (
-      require('../config').usage.enforcing !== false &&
-      !planService.hasPrince(plan)
-    ) {
-      console.log(
-        `[maybeAutoTagAfterTranscript] skip non-prince user=${row.user_id} item=${itemId}`,
-      );
-      return;
-    }
-
-    const guideItemService = require('./guideItemService');
-    if (guideItemService.isGuideItem(row)) return;
-    if (itemMediaKind.isImageGallery(row)) return;
-    if (!itemMediaKind.hasTopVideo(row)) return;
-
-    const target = transcriptSegments.topBarTranscriptTarget(row);
-    if (
-      !target ||
-      target.status !== 'success' ||
-      !String(target.text || '').trim()
-    ) {
-      return;
-    }
-
-    const itemService = require('./itemService');
-    const currentTags = await itemService.listItemTags(row.user_id, itemId);
-    if (currentTags.some((t) => !t.isSystem)) return;
-
-    const meta = aiMeta.parseAiMeta(row.ai_meta);
-    if (meta.tags.status === 'pending') return;
-
-    await requestAiSuggest(row.user_id, itemId, { autoApply: true });
-    console.log(`[maybeAutoTagAfterTranscript] enqueued item=${itemId}`);
-  } catch (err) {
-    console.warn(
-      `[maybeAutoTagAfterTranscript] skip item=${itemId}`,
-      err.message || err,
-    );
-  }
+async function maybeAutoTagAfterTranscript(_itemId) {
+  return;
 }
 
 module.exports = {

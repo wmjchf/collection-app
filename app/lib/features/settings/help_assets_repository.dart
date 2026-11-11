@@ -13,7 +13,6 @@ class HelpAssetsRepository {
   final AuthRepository _auth;
   static final _cache = <String, _CachedHelpAssets>{};
 
-  static const aiAutoTags = 'ai_auto_tags';
   static const aiAgent = 'ai_agent';
   static const shortcuts = 'shortcuts';
   static const howToAddLink = 'how_to_add_link';

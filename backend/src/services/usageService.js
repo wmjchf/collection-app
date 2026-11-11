@@ -300,7 +300,7 @@ function billableAiTokensFromUsage(usage) {
 }
 
 /**
- * AI助手（含改标/归类等）与遗留脑图等共用 token 池；解析后自动打标不记入。
+ * AI助手（含改标/归类等）与遗留脑图等共用 token 池。
  * @param {{ userId: number, itemId?: number|null, feature: 'tags'|'mindmap'|'summary'|'organize'|'agent', tokens: number, generatedAt?: string, meta?: object }} args
  */
 /**
