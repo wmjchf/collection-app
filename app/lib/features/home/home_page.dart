@@ -398,7 +398,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       tooltip: CoachTooltipCard(
         stepLabel: '3 / 3',
         title: '标签与归类',
-        message: '可在标签页创建归类，球上点选筛选、长按换归类；阅读页也可手动增删标签。',
+        message: '可在标签页创建归类，画布上散落标签可缩放，长按拖到归类；阅读页也可手动增删标签。',
         confirmLabel: '开始使用',
         showSkip: false,
         onConfirm: () => unawaited(_finishCoach()),
