@@ -8,6 +8,7 @@ import 'package:super_collection/core/ui/app_orientation.dart';
 import 'package:super_collection/core/ui/app_toast.dart';
 import 'package:super_collection/features/agent/agent_host.dart';
 import 'package:super_collection/features/agent/agent_spark_label.dart';
+import 'package:super_collection/features/auth/auth_repository.dart';
 import 'package:super_collection/features/collection/collection_tag_modules_section.dart';
 import 'package:super_collection/features/collection/create_module_sheet.dart';
 import 'package:super_collection/features/collection/create_tag_sheet.dart';
@@ -16,6 +17,8 @@ import 'package:super_collection/features/collection/tag_models.dart';
 import 'package:super_collection/features/collection/tag_module_models.dart';
 import 'package:super_collection/features/collection/tag_modules_repository.dart';
 import 'package:super_collection/features/collection/tags_repository.dart';
+import 'package:super_collection/features/onboarding/home_coach_overlay.dart';
+import 'package:super_collection/features/onboarding/tag_coach_prefs.dart';
 import 'package:super_collection/features/shell/tablet_items_split.dart';
 import 'package:super_collection/features/shell/user_avatar_button.dart';
 
@@ -49,8 +52,21 @@ class _CollectionPageState extends State<CollectionPage> {
   static const _bg = Color(0xFFF7F7FA);
   static const _blue = Color(0xFF2F6FED);
 
+  /// 引导步骤：创建归类 → 筛选 →（无标签时）添加 → 短拖 → 长按。
+  static const _stepCreate = 0;
+  static const _stepChips = 1;
+  static const _stepAddTag = 2;
+  static const _stepShortDrag = 3;
+  static const _stepLongPress = 4;
+
   final _tagsRepo = TagsRepository();
   final _tagModulesRepo = TagModulesRepository();
+  final _auth = AuthRepository();
+
+  final _createModuleKey = GlobalKey();
+  final _chipsKey = GlobalKey();
+  final _addTagKey = GlobalKey();
+  final _sampleTagKey = GlobalKey();
 
   List<TagModule> _modules = const [];
   List<Tag> _ungrouped = const [];
@@ -61,12 +77,28 @@ class _CollectionPageState extends State<CollectionPage> {
   _TabletBrowse? _tabletBrowse;
   int _tabletBrowseTick = 0;
 
+  int? _coachStep;
+  int? _coachUserId;
+  OverlayEntry? _coachOverlay;
+  bool _coachStarting = false;
+  /// 开导时是否需要「添加标签」步（用于步数文案）。
+  bool _coachIncludeAddTag = false;
+
   bool get _hubEmpty => _modules.isEmpty && _ungrouped.isEmpty;
 
   @override
   void initState() {
     super.initState();
     _load();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && widget.isActive) unawaited(_maybeStartCoach());
+    });
+  }
+
+  @override
+  void dispose() {
+    _removeCoachOverlay();
+    super.dispose();
   }
 
   @override
@@ -74,6 +106,13 @@ class _CollectionPageState extends State<CollectionPage> {
     super.didUpdateWidget(oldWidget);
     if (widget.isActive && !oldWidget.isActive) {
       _load(quiet: true);
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) unawaited(_maybeStartCoach());
+      });
+    }
+    if (!widget.isActive && oldWidget.isActive) {
+      _removeCoachOverlay();
+      _coachStep = null;
     }
     if (widget.refreshTick != oldWidget.refreshTick) {
       _load(quiet: true);
@@ -97,6 +136,11 @@ class _CollectionPageState extends State<CollectionPage> {
         _loading = false;
         _error = null;
       });
+      if (widget.isActive) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) unawaited(_maybeStartCoach());
+        });
+      }
     } on ApiException catch (e) {
       if (!mounted) return;
       setState(() {
@@ -113,9 +157,206 @@ class _CollectionPageState extends State<CollectionPage> {
   }
 
   Future<void> _createModule() async {
+    if (_coachStep != null) return;
     final module = await showCreateModuleSheet(context);
     if (module == null || !mounted) return;
     await _load(quiet: true);
+  }
+
+  Future<void> _maybeStartCoach() async {
+    if (!mounted ||
+        !widget.isActive ||
+        _coachStarting ||
+        _coachStep != null ||
+        _tabletBrowse != null ||
+        _loading ||
+        _error != null) {
+      return;
+    }
+    _coachStarting = true;
+    try {
+      final session = await _auth.readSession();
+      _coachUserId = session?.userId;
+      final seen = await TagCoachPrefs.isSeen(userId: _coachUserId);
+      if (!mounted || seen || !widget.isActive || _tabletBrowse != null) {
+        return;
+      }
+      _coachIncludeAddTag = _hubEmpty;
+      final first = _nextValidStep(_stepCreate);
+      if (first == null) return;
+      _coachStep = first;
+      _syncCoachOverlay();
+    } finally {
+      _coachStarting = false;
+    }
+  }
+
+  void _removeCoachOverlay() {
+    _coachOverlay?.remove();
+    _coachOverlay = null;
+  }
+
+  void _syncCoachOverlay() {
+    _removeCoachOverlay();
+    if (_coachStep == null || !mounted) return;
+    _coachOverlay = OverlayEntry(builder: (context) => _buildCoachLayer());
+    Overlay.of(context).insert(_coachOverlay!);
+  }
+
+  void _rebuildCoachOverlay() {
+    _coachOverlay?.markNeedsBuild();
+  }
+
+  Future<void> _finishCoach() async {
+    _removeCoachOverlay();
+    _coachStep = null;
+    await TagCoachPrefs.markSeen(userId: _coachUserId);
+  }
+
+  /// 跳过当前不需要的步骤（有标签则跳过「添加」；仍无标签则跳过拖动两步）。
+  int? _nextValidStep(int fromInclusive) {
+    for (var s = fromInclusive; s <= _stepLongPress; s++) {
+      if (s == _stepAddTag && !_hubEmpty) continue;
+      if ((s == _stepShortDrag || s == _stepLongPress) && _hubEmpty) continue;
+      return s;
+    }
+    return null;
+  }
+
+  void _coachNext() {
+    final step = _coachStep;
+    if (step == null) return;
+    final next = _nextValidStep(step + 1);
+    if (next == null) {
+      unawaited(_finishCoach());
+      return;
+    }
+    _coachStep = next;
+    _syncCoachOverlay();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _rebuildCoachOverlay();
+    });
+  }
+
+  int _coachDisplayIndex(int step) {
+    if (!_coachIncludeAddTag) {
+      if (step <= _stepChips) return step + 1;
+      if (step == _stepShortDrag) return 3;
+      return 4;
+    }
+    return step + 1;
+  }
+
+  int get _coachDisplayTotal => _coachIncludeAddTag ? 5 : 4;
+
+  double _tooltipTop(Rect hole, Size screen) {
+    const tipH = 210.0;
+    final below = hole.bottom + 14;
+    if (below + tipH < screen.height - 88) return below;
+    return (hole.top - tipH - 12).clamp(24.0, screen.height - tipH - 24);
+  }
+
+  Widget _buildCoachLayer() {
+    final step = _coachStep;
+    if (step == null) return const SizedBox.shrink();
+    final screen = MediaQuery.sizeOf(context);
+
+    // 走到拖动步却仍无标签：自动收尾。
+    if ((step == _stepShortDrag || step == _stepLongPress) && _hubEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && _coachStep == step) unawaited(_finishCoach());
+      });
+      return const SizedBox.shrink();
+    }
+
+    GlobalKey targetKey;
+    String title;
+    String message;
+    String confirm;
+    var holeRadius = 12.0;
+    var inflate = 6.0;
+    switch (step) {
+      case _stepCreate:
+        targetKey = _createModuleKey;
+        title = '创建归类';
+        message = '点右上角「+」，新建一个归类匣，用来收纳相关标签。';
+        confirm = '下一步';
+        holeRadius = 18;
+        inflate = 4;
+      case _stepChips:
+        targetKey = _chipsKey;
+        title = '筛选归类';
+        message =
+            '左右滑动可看更多归类；点选后筛选，当前归类高亮，其它标签会变淡但仍可见。';
+        confirm = '下一步';
+      case _stepAddTag:
+        targetKey = _addTagKey;
+        title = '添加标签';
+        message = '还没有标签。先点「添加标签」建一个，后面才能练习拖动。';
+        confirm = '下一步';
+        holeRadius = 14;
+      case _stepShortDrag:
+        targetKey = _sampleTagKey;
+        title = '短拖改位置';
+        message = '按住这个标签直接拖动，摆到你喜欢的位置，松手后会记住。';
+        confirm = '下一步';
+        holeRadius = 14;
+        inflate = 10;
+      default:
+        targetKey = _sampleTagKey;
+        title = '长按换归类';
+        message =
+            '长按这个标签，拖到上方归类 chip 即可换匣；双指可缩放，双击空白复位。';
+        confirm = '开始整理';
+        holeRadius = 14;
+        inflate = 10;
+    }
+
+    final hole = rectForKey(targetKey, inflate: inflate);
+    if (hole == null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || _coachStep != step) return;
+        // 添加步：用户可能已建好标签，直接跳到拖动。
+        if (step == _stepAddTag && !_hubEmpty) {
+          _coachNext();
+          return;
+        }
+        _rebuildCoachOverlay();
+      });
+      return const SizedBox.shrink();
+    }
+
+    return CoachHoleOverlay(
+      hole: hole,
+      holeRadius: holeRadius,
+      tooltipTop: _tooltipTop(hole, screen),
+      onHoleTap: () {
+        if (step == _stepAddTag) {
+          unawaited(_addTagDuringCoach());
+        } else {
+          _coachNext();
+        }
+      },
+      tooltip: CoachTooltipCard(
+        stepLabel: '${_coachDisplayIndex(step)} / $_coachDisplayTotal',
+        title: title,
+        message: message,
+        confirmLabel: confirm,
+        showSkip: step != _stepLongPress,
+        onSkip: () => unawaited(_finishCoach()),
+        onConfirm: _coachNext,
+      ),
+    );
+  }
+
+  Future<void> _addTagDuringCoach() async {
+    await _addTagToModule(null);
+    if (!mounted || _coachStep != _stepAddTag) return;
+    if (!_hubEmpty) {
+      _coachNext();
+    } else {
+      _rebuildCoachOverlay();
+    }
   }
 
   Future<void> _renameModule(TagModule module) async {
@@ -295,6 +536,7 @@ class _CollectionPageState extends State<CollectionPage> {
   /// 与首页一致：蓝底圆「+」。
   Widget _buildCreateModuleButton({EdgeInsetsGeometry? padding}) {
     final button = IconButton(
+      key: _createModuleKey,
       tooltip: '创建归类',
       padding: EdgeInsets.zero,
       constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
@@ -417,6 +659,9 @@ class _CollectionPageState extends State<CollectionPage> {
                       showHeader: false,
                       bodyOnly: false,
                       fillRemaining: true,
+                      chipsKey: _chipsKey,
+                      addTagKey: _addTagKey,
+                      sampleTagKey: _sampleTagKey,
                       onOpenTag: _openTag,
                       onOpenModule: _openModule,
                       onAddTag: _addTagToModule,

@@ -23,6 +23,9 @@ class CollectionTagModulesSection extends StatefulWidget {
     this.fillRemaining = false,
     this.showHeader = true,
     this.bodyOnly = false,
+    this.chipsKey,
+    this.addTagKey,
+    this.sampleTagKey,
   });
 
   final List<TagModule> modules;
@@ -37,6 +40,11 @@ class CollectionTagModulesSection extends StatefulWidget {
   final bool fillRemaining;
   final bool showHeader;
   final bool bodyOnly;
+
+  /// 新手引导镂空用。
+  final Key? chipsKey;
+  final Key? addTagKey;
+  final Key? sampleTagKey;
 
   static const ink = Color(0xFF1F242E);
   static const muted = Color(0xFF8B929C);
@@ -122,9 +130,14 @@ class _CollectionTagModulesSectionState
         }
 
         final canvas = tags.isEmpty
-            ? _EmptyTags(label: '还没有标签', onAdd: onAdd)
+            ? _EmptyTags(
+                label: '还没有标签',
+                onAdd: onAdd,
+                addButtonKey: widget.addTagKey,
+              )
             : TagCanvasView(
                 tags: tags,
+                sampleTagKey: widget.sampleTagKey,
                 isEmphasized: _isEmphasized,
                 draggingTagId: _draggingTagId,
                 draggable: widget.onPlaceTag != null,
@@ -171,31 +184,34 @@ class _CollectionTagModulesSectionState
                 ),
                 const SizedBox(height: 12),
               ],
-              _ModuleFilterChips(
-                modules: widget.modules,
-                ungroupedCount: widget.ungrouped.length,
-                filter: _filter,
-                filterAll: _filterAll,
-                filterUngrouped: _filterUngrouped,
-                dropHover: _dropHover,
-                dragging: _draggingTagId != null,
-                onFilter: (v) => setState(() => _filter = v),
-                onOpenModule: widget.onOpenModule,
-                onAddTag: widget.onAddTag,
-                onRenameModule: widget.onRenameModule,
-                onDeleteModule: widget.onDeleteModule,
-                onWillAccept: (tag, target) =>
-                    widget.onPlaceTag != null && tag.moduleId != target,
-                onAccept: (tag, target) => _place(tag, target),
-                onHover: (target) {
-                  if (_dropHover == target) return;
-                  setState(() => _dropHover = target);
-                  if (target != null) AppHaptics.tap();
-                },
-                onLeave: () {
-                  if (_dropHover == null) return;
-                  setState(() => _dropHover = null);
-                },
+              KeyedSubtree(
+                key: widget.chipsKey,
+                child: _ModuleFilterChips(
+                  modules: widget.modules,
+                  ungroupedCount: widget.ungrouped.length,
+                  filter: _filter,
+                  filterAll: _filterAll,
+                  filterUngrouped: _filterUngrouped,
+                  dropHover: _dropHover,
+                  dragging: _draggingTagId != null,
+                  onFilter: (v) => setState(() => _filter = v),
+                  onOpenModule: widget.onOpenModule,
+                  onAddTag: widget.onAddTag,
+                  onRenameModule: widget.onRenameModule,
+                  onDeleteModule: widget.onDeleteModule,
+                  onWillAccept: (tag, target) =>
+                      widget.onPlaceTag != null && tag.moduleId != target,
+                  onAccept: (tag, target) => _place(tag, target),
+                  onHover: (target) {
+                    if (_dropHover == target) return;
+                    setState(() => _dropHover = target);
+                    if (target != null) AppHaptics.tap();
+                  },
+                  onLeave: () {
+                    if (_dropHover == null) return;
+                    setState(() => _dropHover = null);
+                  },
+                ),
               ),
               const SizedBox(height: 10),
               if (fill)
@@ -214,10 +230,12 @@ class _EmptyTags extends StatelessWidget {
   const _EmptyTags({
     required this.label,
     required this.onAdd,
+    this.addButtonKey,
   });
 
   final String label;
   final VoidCallback onAdd;
+  final Key? addButtonKey;
 
   @override
   Widget build(BuildContext context) {
@@ -241,6 +259,7 @@ class _EmptyTags extends StatelessWidget {
           ),
           const SizedBox(height: 14),
           TextButton(
+            key: addButtonKey,
             onPressed: () {
               HapticFeedback.selectionClick();
               onAdd();
@@ -452,66 +471,92 @@ class _ModuleFilterChips extends StatelessWidget {
   Widget build(BuildContext context) {
     return SizedBox(
       height: 36,
-      child: ListView(
-        scrollDirection: Axis.horizontal,
-        physics: dragging
-            ? const NeverScrollableScrollPhysics()
-            : const BouncingScrollPhysics(),
+      child: Stack(
         children: [
-          _FilterChip(
-            label: '全部',
-            selected: filter == filterAll,
-            onTap: () => onFilter(filterAll),
-            dimmed: dragging,
+          ListView(
+            scrollDirection: Axis.horizontal,
+            physics: dragging
+                ? const NeverScrollableScrollPhysics()
+                : const BouncingScrollPhysics(),
+            padding: const EdgeInsets.only(right: 20),
+            children: [
+              _FilterChip(
+                label: '全部',
+                selected: filter == filterAll,
+                onTap: () => onFilter(filterAll),
+                dimmed: dragging,
+              ),
+              const SizedBox(width: 8),
+              _dropWrap(
+                targetModuleId: null,
+                hoverId: filterUngrouped,
+                child: _FilterChip(
+                  label: ungroupedCount > 0 ? '未归类 $ungroupedCount' : '未归类',
+                  selected: filter == filterUngrouped,
+                  dropTarget: dropHover == filterUngrouped,
+                  dotColor: TagDotColors.ungrouped,
+                  onTap: () => onFilter(filterUngrouped),
+                ),
+              ),
+              for (final m in modules) ...[
+                const SizedBox(width: 8),
+                Builder(
+                  builder: (chipContext) {
+                    final count = m.tags.length;
+                    return _dropWrap(
+                      targetModuleId: m.id,
+                      hoverId: m.id,
+                      child: _FilterChip(
+                        label: count > 0 ? '${m.name} $count' : m.name,
+                        selected: filter == m.id,
+                        dropTarget: dropHover == m.id,
+                        dotColor: TagDotColors.forModule(m.id),
+                        onTap: () => onFilter(m.id),
+                        onLongPress: () {
+                          HapticFeedback.selectionClick();
+                          onOpenModule?.call(m);
+                        },
+                        trailing: () {
+                          HapticFeedback.selectionClick();
+                          _showModuleActionsMenu(
+                            chipContext,
+                            onRename: onRenameModule == null
+                                ? null
+                                : () => onRenameModule!(m),
+                            onAddTag: () => onAddTag(m.id),
+                            onDelete: onDeleteModule == null
+                                ? null
+                                : () => onDeleteModule!(m),
+                          );
+                        },
+                      ),
+                    );
+                  },
+                ),
+              ],
+            ],
           ),
-          const SizedBox(width: 8),
-          _dropWrap(
-            targetModuleId: null,
-            hoverId: filterUngrouped,
-            child: _FilterChip(
-              label: ungroupedCount > 0 ? '未归类 $ungroupedCount' : '未归类',
-              selected: filter == filterUngrouped,
-              dropTarget: dropHover == filterUngrouped,
-              dotColor: TagDotColors.ungrouped,
-              onTap: () => onFilter(filterUngrouped),
-            ),
-          ),
-          for (final m in modules) ...[
-            const SizedBox(width: 8),
-            Builder(
-              builder: (chipContext) {
-                final count = m.tags.length;
-                return _dropWrap(
-                  targetModuleId: m.id,
-                  hoverId: m.id,
-                  child: _FilterChip(
-                    label: count > 0 ? '${m.name} $count' : m.name,
-                    selected: filter == m.id,
-                    dropTarget: dropHover == m.id,
-                    dotColor: TagDotColors.forModule(m.id),
-                    onTap: () => onFilter(m.id),
-                    onLongPress: () {
-                      HapticFeedback.selectionClick();
-                      onOpenModule?.call(m);
-                    },
-                    trailing: () {
-                      HapticFeedback.selectionClick();
-                      _showModuleActionsMenu(
-                        chipContext,
-                        onRename: onRenameModule == null
-                            ? null
-                            : () => onRenameModule!(m),
-                        onAddTag: () => onAddTag(m.id),
-                        onDelete: onDeleteModule == null
-                            ? null
-                            : () => onDeleteModule!(m),
-                      );
-                    },
+          // 右侧淡出，暗示还可左右滑动。
+          Positioned(
+            right: 0,
+            top: 0,
+            bottom: 0,
+            width: 28,
+            child: IgnorePointer(
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.centerLeft,
+                    end: Alignment.centerRight,
+                    colors: [
+                      CollectionTagModulesSection.panel.withValues(alpha: 0),
+                      CollectionTagModulesSection.panel,
+                    ],
                   ),
-                );
-              },
+                ),
+              ),
             ),
-          ],
+          ),
         ],
       ),
     );

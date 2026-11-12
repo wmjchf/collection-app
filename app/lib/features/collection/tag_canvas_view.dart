@@ -20,6 +20,7 @@ class TagCanvasView extends StatefulWidget {
     this.onDragEnded,
     this.draggable = true,
     this.draggingTagId,
+    this.sampleTagKey,
   });
 
   final List<Tag> tags;
@@ -32,6 +33,9 @@ class TagCanvasView extends StatefulWidget {
   final VoidCallback? onDragEnded;
   final bool draggable;
   final int? draggingTagId;
+
+  /// 新手引导：挂在稳定选中的示例标签上（按 id 最小）。
+  final Key? sampleTagKey;
 
   @override
   State<TagCanvasView> createState() => _TagCanvasViewState();
@@ -293,6 +297,11 @@ class _TagCanvasViewState extends State<TagCanvasView> {
             final be = _emphasized(b) ? 1 : 0;
             return ae.compareTo(be);
           });
+        final sampleId = widget.tags.isEmpty
+            ? null
+            : ([...widget.tags]..sort((a, b) => a.id.compareTo(b.id)))
+                .first
+                .id;
 
         // 外层可视区可能被下拉挤矮；内部仍按稳定尺寸排布，只裁剪不压缩。
         // 点阵铺在视口层，按变换矩阵反算可见范围，平移/缩放始终铺满。
@@ -336,37 +345,43 @@ class _TagCanvasViewState extends State<TagCanvasView> {
                             Positioned(
                               left: _pixelPos(tag.id, size).dx,
                               top: _pixelPos(tag.id, size).dy,
-                              child: _CanvasTagNode(
-                              tag: tag,
-                              color: TagDotColors.forModule(tag.moduleId),
-                              dimmed: widget.draggingTagId == tag.id ||
-                                  !_emphasized(tag),
-                              softDim: widget.draggingTagId != tag.id &&
-                                  !_emphasized(tag),
-                              lifting: _repositionId == tag.id,
-                              draggable: widget.draggable,
-                              onTap: () => widget.onTapTag(tag),
-                              onDragStarted: widget.onDragStarted == null
-                                  ? null
-                                  : () {
-                                      _onTagPointerCancel();
-                                      widget.onDragStarted!(tag);
-                                    },
-                              onDragEnded: widget.onDragEnded,
-                              onFingerDown: () {
-                                if (widget.draggingTagId != null) return;
-                                setState(() => _fingerOnTag = true);
-                              },
-                              onFingerUp: () {
-                                if (_repositionId != null) return;
-                                setState(() => _fingerOnTag = false);
-                              },
-                              onPanStart: () => _onRepositionStart(tag, size),
-                              onPanUpdate: (delta) =>
-                                  _onRepositionUpdate(delta, size),
-                              onPanEnd: () => _onRepositionEnd(size),
+                              child: KeyedSubtree(
+                                key: tag.id == sampleId
+                                    ? widget.sampleTagKey
+                                    : null,
+                                child: _CanvasTagNode(
+                                  tag: tag,
+                                  color: TagDotColors.forModule(tag.moduleId),
+                                  dimmed: widget.draggingTagId == tag.id ||
+                                      !_emphasized(tag),
+                                  softDim: widget.draggingTagId != tag.id &&
+                                      !_emphasized(tag),
+                                  lifting: _repositionId == tag.id,
+                                  draggable: widget.draggable,
+                                  onTap: () => widget.onTapTag(tag),
+                                  onDragStarted: widget.onDragStarted == null
+                                      ? null
+                                      : () {
+                                          _onTagPointerCancel();
+                                          widget.onDragStarted!(tag);
+                                        },
+                                  onDragEnded: widget.onDragEnded,
+                                  onFingerDown: () {
+                                    if (widget.draggingTagId != null) return;
+                                    setState(() => _fingerOnTag = true);
+                                  },
+                                  onFingerUp: () {
+                                    if (_repositionId != null) return;
+                                    setState(() => _fingerOnTag = false);
+                                  },
+                                  onPanStart: () =>
+                                      _onRepositionStart(tag, size),
+                                  onPanUpdate: (delta) =>
+                                      _onRepositionUpdate(delta, size),
+                                  onPanEnd: () => _onRepositionEnd(size),
+                                ),
+                              ),
                             ),
-                          ),
                         ],
                       ),
                     ),
@@ -481,13 +496,13 @@ class _CanvasTagNode extends StatelessWidget {
           softDim ? 0.55 : 0.22,
         )!
         .withValues(alpha: feedback ? 0.95 : (softDim ? 0.75 : 0.90));
-    final core = feedback || lifting ? 7.5 : 6.5;
-    final halo = feedback || lifting ? 18.0 : 16.0;
+    final big = feedback || lifting;
+    final core = big ? 8.5 : 6.5;
+    final halo = big ? 20.0 : 16.0;
 
-    return Material(
-      color: Colors.transparent,
-      elevation: feedback || lifting ? 4 : 0,
-      shadowColor: Colors.black.withValues(alpha: feedback || lifting ? 0.10 : 0),
+    // 长按/拖动反馈：不投影，只略放大，避免出现阴影方块。
+    return Transform.scale(
+      scale: big ? 1.12 : 1,
       child: SizedBox(
         width: 104,
         child: Column(
@@ -520,7 +535,7 @@ class _CanvasTagNode extends StatelessWidget {
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
-                fontSize: feedback ? 14 : 13,
+                fontSize: big ? 14.5 : 13,
                 fontWeight: softDim ? FontWeight.w500 : FontWeight.w600,
                 height: 1.15,
                 letterSpacing: 0.2,
@@ -557,10 +572,7 @@ class _CanvasTagNode extends StatelessWidget {
         onPanCancel: onPanEnd,
         child: Opacity(
           opacity: opacity,
-          child: Transform.scale(
-            scale: lifting ? 1.06 : 1,
-            child: _visual(feedback: lifting),
-          ),
+          child: _visual(feedback: lifting),
         ),
       ),
     );
