@@ -270,6 +270,7 @@ class AgentMessage {
     this.citations = const [],
     this.pendingAction,
     this.toolTrace = const [],
+    this.thinking = '',
   });
 
   final int id;
@@ -278,9 +279,13 @@ class AgentMessage {
   final List<AgentCitation> citations;
   final AgentPendingAction? pendingAction;
   final List<Map<String, dynamic>> toolTrace;
+  /// 任务理解与规划独白（可折叠「思考中 / 思考完成」）
+  final String thinking;
 
   bool get isUser => role == 'user';
   bool get isAssistant => role == 'assistant';
+
+  String get displayThinking => thinking.trim();
 
   /// list_tags 盘点结果：用于 chip 展示（不列文章）
   List<AgentTagChip> get inventoryTags {
@@ -316,6 +321,7 @@ class AgentMessage {
     List<AgentCitation>? citations,
     AgentPendingAction? pendingAction,
     List<Map<String, dynamic>>? toolTrace,
+    String? thinking,
     bool clearPendingAction = false,
   }) {
     return AgentMessage(
@@ -326,6 +332,7 @@ class AgentMessage {
       pendingAction:
           clearPendingAction ? null : (pendingAction ?? this.pendingAction),
       toolTrace: toolTrace ?? this.toolTrace,
+      thinking: thinking ?? this.thinking,
     );
   }
 
@@ -367,6 +374,11 @@ class AgentMessage {
     }
 
     addSteps(json['toolTrace'] ?? json['tool_trace']);
+    final rawTrace = json['toolTrace'] ?? json['tool_trace'];
+    var thinking = (json['thinking'] as String?)?.trim() ?? '';
+    if (thinking.isEmpty && rawTrace is Map) {
+      thinking = (rawTrace['thinking'] as String?)?.trim() ?? '';
+    }
     return AgentMessage(
       id: (json['id'] as num?)?.toInt() ?? 0,
       role: json['role'] as String? ?? 'assistant',
@@ -374,6 +386,7 @@ class AgentMessage {
       citations: citations,
       pendingAction: pending,
       toolTrace: toolTrace,
+      thinking: thinking,
     );
   }
 
@@ -384,6 +397,7 @@ class AgentMessage {
         'citations': [for (final c in citations) c.toJson()],
         if (pendingAction != null) 'pendingAction': pendingAction!.toJson(),
         if (toolTrace.isNotEmpty) 'toolTrace': toolTrace,
+        if (thinking.trim().isNotEmpty) 'thinking': thinking,
       };
 }
 

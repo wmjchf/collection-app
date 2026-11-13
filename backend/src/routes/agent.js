@@ -2,8 +2,6 @@ const express = require('express');
 const { requireAuth } = require('../middleware/auth');
 const conversationService = require('../services/agent/agentConversationService');
 const orchestrator = require('../services/agent/agentOrchestrator');
-const confirmActionService = require('../services/agent/agentConfirmAction');
-const agentPresetService = require('../services/agent/agentPresetService');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -84,7 +82,7 @@ router.delete('/conversations/:id', async (req, res, next) => {
 /**
  * POST /api/agent/conversations/:id/messages
  * body: { content, clientMessageId?, focusItemId? }
- * Accept: text/event-stream → SSE（phase / token / done / error）
+ * Accept: text/event-stream → SSE（thinking / phase / token / done / error）
  */
 router.post('/conversations/:id/messages', async (req, res, next) => {
   const id = Number(req.params.id);
@@ -143,8 +141,21 @@ router.post('/conversations/:id/messages', async (req, res, next) => {
           send('token', { text: ev.text || '' });
           return;
         }
+        if (ev.type === 'thinking') {
+          send('thinking', {
+            delta: ev.delta || '',
+            ...(ev.text ? { text: ev.text } : {}),
+          });
+          return;
+        }
         if (ev.type === 'phase') {
-          send('phase', { phase: ev.phase });
+          send('phase', {
+            phase: ev.phase,
+            ...(ev.detail ? { detail: ev.detail } : {}),
+            ...(Array.isArray(ev.trail) && ev.trail.length
+              ? { trail: ev.trail }
+              : {}),
+          });
           return;
         }
         if (ev.type === 'user') {
@@ -165,8 +176,7 @@ router.post('/conversations/:id/messages', async (req, res, next) => {
 
 /**
  * POST /api/agent/conversations/:id/presets
- * body: { focusItemId?, lastAssistantContent?, hasPendingAction? }
- * 动态口语预设；不计用户 AI 额度（仍需太子+）
+ * LangGraph MVP：静态搜索向预设，兼容 App（不调模型）
  */
 router.post('/conversations/:id/presets', async (req, res, next) => {
   try {
@@ -174,16 +184,26 @@ router.post('/conversations/:id/presets', async (req, res, next) => {
     if (!Number.isFinite(id) || id <= 0) {
       return res.status(400).json({ message: '无效的会话' });
     }
-    const focusItemId =
-      req.body?.focusItemId != null ? Number(req.body.focusItemId) : null;
-    const result = await agentPresetService.suggestPresets({
-      userId: req.auth.userId,
-      conversationId: id,
-      focusItemId,
-      lastAssistantContent: req.body?.lastAssistantContent,
-      hasPendingAction: Boolean(req.body?.hasPendingAction),
-    });
-    return res.json(result);
+    const conv = await conversationService.getConversationForUser(
+      req.auth.userId,
+      id,
+    );
+    if (!conv) {
+      return res.status(404).json({ message: '会话不存在' });
+    }
+    const focus =
+      req.body?.focusItemId != null || conv.focusItemId != null
+        ? [
+            '这篇和库里哪些类似',
+            '我还存过哪些相关的',
+            '帮我在收藏里找同类内容',
+          ]
+        : [
+            '我存过哪些关于…',
+            '帮我找找收藏里的…',
+            '有没有类似的内容',
+          ];
+    return res.json({ presets: focus, source: 'static' });
   } catch (err) {
     return next(err);
   }
@@ -191,59 +211,24 @@ router.post('/conversations/:id/presets', async (req, res, next) => {
 
 /**
  * POST /api/agent/actions/confirm
- * body: { conversationId, messageId, approve: boolean }
+ * MVP 未接入改标/归类确认
  */
-router.post('/actions/confirm', async (req, res, next) => {
-  try {
-    const conversationId = Number(req.body?.conversationId);
-    const messageId = Number(req.body?.messageId);
-    const approve = Boolean(req.body?.approve);
-    if (!Number.isFinite(conversationId) || conversationId <= 0) {
-      return res.status(400).json({ message: '无效的会话' });
-    }
-    if (!Number.isFinite(messageId) || messageId <= 0) {
-      return res.status(400).json({ message: '无效的消息' });
-    }
-    const result = await confirmActionService.confirmAction({
-      userId: req.auth.userId,
-      conversationId,
-      messageId,
-      approve,
-    });
-    return res.json(result);
-  } catch (err) {
-    return next(err);
-  }
+router.post('/actions/confirm', async (_req, res) => {
+  return res.status(410).json({
+    message: '当前助手版本暂不支持确认条操作',
+    code: 'agent_action_unavailable',
+  });
 });
 
 /**
  * POST /api/agent/actions/settle-transcript
- * body: { conversationId, messageId, status: success|failed|cancelled, content? }
+ * MVP 未接入转写结算
  */
-router.post('/actions/settle-transcript', async (req, res, next) => {
-  try {
-    const conversationId = Number(req.body?.conversationId);
-    const messageId = Number(req.body?.messageId);
-    const status = String(req.body?.status || '').trim();
-    const content =
-      req.body?.content == null ? null : String(req.body.content);
-    if (!Number.isFinite(conversationId) || conversationId <= 0) {
-      return res.status(400).json({ message: '无效的会话' });
-    }
-    if (!Number.isFinite(messageId) || messageId <= 0) {
-      return res.status(400).json({ message: '无效的消息' });
-    }
-    const result = await confirmActionService.settleTranscriptAction({
-      userId: req.auth.userId,
-      conversationId,
-      messageId,
-      status,
-      content,
-    });
-    return res.json(result);
-  } catch (err) {
-    return next(err);
-  }
+router.post('/actions/settle-transcript', async (_req, res) => {
+  return res.status(410).json({
+    message: '当前助手版本暂不支持转写结算',
+    code: 'agent_transcript_unavailable',
+  });
 });
 
 module.exports = router;

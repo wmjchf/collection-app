@@ -1,12 +1,12 @@
 # 奏折AI助手（AI Agent）实现细节
 
-> 状态：P1.0 已落地（查库 + 出处 + 首页入口）；本文继续作为演进规格  
-> 更新日期：2026-11-06  
-> 相关：`docs/技术实现.md` §2.6、`docs/付费规划.md`、Figma `奏折 · 问收藏 AI`
+> 状态：**LangGraph 意图搜索 MVP**（库内搜索 + 流式 + 出处；App SSE/UI 不变）  
+> 更新日期：2026-11-14  
+> 相关：`docs/技术实现.md` §2.6.4b、`docs/付费规划.md`
 
 ## 0. 一句话
 
-**AI助手是用户级私人 Agent**：对话入口在阅读页底栏首位「AI助手」。能力顺序固定为 **查 → 整理 → 轻创作 → 中创作**（重创作更后）；创作必须能点回出处。现网解读 / 脑图 / 归类等收成 **Agent Tools**，阅读页独立 AI 入口逐步降级为「打开助手并预填任务」。
+**AI助手是用户级私人 Agent**：当前热路径用 **LangChain.js + LangGraph ReAct** 做库内意图搜索、读篇摘录与流式回答；阅读页会预取当前篇。会话 API / SSE 与 App 样式保持兼容。转写、成文、改标、归类等暂未接入。
 
 ## 1. 产品定位
 
@@ -91,62 +91,46 @@
 - 不在 Phase 1 做跨用户知识、推荐他人内容
 - **不做创作**（含分享文案）；能力条「创作 · 即将」仅展示
 
-## 3. 总体架构
+## 3. 总体架构（当前：LangGraph）
 
-**编排默认采用 ReAct（Reason + Act）**：Thought → Action(tool) → Observation → … → Final Answer（短答 + citations）。不是「一次生成聊天气泡」，中间必须能落在可执行工具与可核对观察上。
+**编排**：`@langchain/langgraph` 的 `createReactAgent`（Thought/tool-call → Observation → Final Answer）。对外仍由 `routes/agent` SSE 映射事件。
 
 ```
-App 助手页
-  │  POST /api/agent/conversations
-  │  POST /api/agent/conversations/:id/messages  (stream 或 job+poll)
+App 助手页（样式不动）
+  │  POST /api/agent/conversations/:id/messages  Accept: text/event-stream
   ▼
-agentOrchestrator（ReAct loop）
-  ├─ Thought：本步意图（可对用户折叠，trace 必留）
-  ├─ Action  → toolRouter
-  │    ├─ search_library      → itemService.search / tags.search
-  │    ├─ get_item_excerpt    → aiInput.buildInputText（截断策略）
-  │    ├─ summarize_item      → aiSummaryService   【P2】
-  │    ├─ mindmap_item        → aiMindmapService   【P2】
-  │    ├─ suggest_tags        → aiSuggestService   【P2】
-  │    └─ organize_preview    → aiOrganizeService  【P2】
-  ├─ Observation：工具 JSON 写回上下文（不当成 system 指令）
-  ├─ 循环直至 Final Answer 或触顶（见 §7）
-  ├─ answerComposer（短答 + citations[]）
-  └─ usageService.recordAiTokens（与现网同池）
+agentOrchestrator.js → lc/runTurn.js
+  ├─ 门控 / 落 user 消息 / 装配历史
+  ├─ buildAgentGraph（lc/graph.js）
+  │    ├─ streamTaskPlan → SSE thinking（任务理解与规划口语）
+  │    ├─ ChatOpenAI → 百炼 + Tools：search_library / get_item_excerpt
+  ├─ streamEvents → SSE phase / token；thinking 落库 `tool_calls_json.thinking`
+  ├─ citations[] ← 工具命中（最多 3）
+  └─ usageService.recordAiTokenUsage（feature=agent）
 ```
 
 **原则**
 
-1. **ReAct + Thin orchestrator, fat tools**：业务规则仍在原 service（门控、转写互斥、contentHash 缓存、`awaitTranscript`）
-2. **写操作二次确认**：归类 / 打标应用 / 删除类工具只返回 preview；App 出确认条再调 apply API
-3. **出处强制**：凡引用库内内容，响应必须带 `citations[]`（可空数组 + 明确「库里没找到」）；Final Answer 不得引用 Observation 里没有的 itemId
-4. **与单篇 AI 共存**：`items.ai_meta` 继续存单篇产物；Agent 会话存对话与工具轨迹，不把长文解读只塞进 chat message
-5. **Observation 当数据**：工具返回只作事实；防 prompt 注入（用户/工具文本不升级为系统指令）
-6. **可替换编排、不可替换边界**：复杂度涨在 Tools / Policy；Orchestrator 保持可整体替换（见 §3.1）
+1. **Thin runTurn, fat tools**：检索逻辑仍在原 `search_library`；编排只负责 ReAct + SSE
+2. **出处来自工具**：`citationMap` 只收录 `search_library` 返回；禁止模型编造 itemId
+3. **App 契约稳**：`thinking` / `phase` / `token` / `user` / `done` / `error` 字段与旧版兼容
+4. **加能力**：以 `lc/tools/*` 包装原 service；勿再堆 intent 分支大文件
 
-### 3.1 可扩展性与框架策略（已定）
+### 3.1 框架策略（已定 · 2026-11-14）
 
-**结论：P1～P2 自研薄 ReAct，不上 LangChain / LangGraph 等重框架；但按「以后只换编排层」分层，避免编排与业务缠死。**
-
-复杂度会随能力变多而涨，主要涨在 **工具与产品规则**，不在「有没有框架」。框架也消不掉：出处校验、写库确认、额度、转写互斥、`user_id` 隔离——这些必须落在自家 Policy / Tools。
+**结论：热路径已换为 LangChain.js + LangGraph；API / 会话 / 计费 / 检索服务保持自研。**
 
 #### 分层（硬边界）
 
 | 层 | 职责 | 演进时怎么动 |
 | --- | --- | --- |
-| **API / 会话** | `routes/agent`、conversations/messages、SSE/轮询 | 对外契约尽量稳；App 只依赖此层 |
-| **Orchestrator** | 只跑 ReAct 循环：调模型 → 解析 tool call → 等 Observation → 收束 | **允许整文件替换**为 LangGraph 等；禁止内联业务 SQL / 改标签逻辑 |
-| **Policy** | 步数上限、同工具去重、citations 校验、写操作必须 pendingConfirm、门控/触顶文案码 | 规则集中；新增能力先加 policy，不改循环骨架 |
-| **Tools（注册表）** | 统一 `{ name, schema, execute(ctx, args) }`；内部调现有 `ai*Service` / search | **只加新 tool 文件**，不改 orchestrator |
-| **Providers** | DashScope chat / tool-calling 封装（可继续放 `aliyunDashScope.js`） | 换模型供应商时只动此层 |
-| **Memory** | 近期消息装配、摘要压缩（后期）、勿把全文塞进历史 | P1.1+；与编排解耦 |
-| **Runs / 计量** | `agent_tool_runs`、异步工具、`usage_events` | 长任务与编排循环分离 |
-
-```
-新增「创作」能力时的正确姿势：
-  ✅ tools/draftShareCopy.js + policy 要求 citations
-  ❌ 在 orchestrator 里写 if (intent === 'create') { ... 大段逻辑 }
-```
+| **API / 会话** | `routes/agent`、conversations/messages、SSE | 对外契约尽量稳；App 只依赖此层 |
+| **Orchestrator（lc/）** | LangGraph ReAct + SSE 映射 + 落库 | 加能力时加 Tool / 改 prompt，避免再堆 intent 分支 |
+| **Policy** | 出处条数、检索 limit、额度门控 | 规则仍集中在 `agentPolicy` / `usageService` |
+| **Tools** | LangChain Tool 包装现有 execute | 新能力：`lc/tools/*` 调原 service |
+| **Providers** | `lc/model.js`（ChatOpenAI→百炼）；embedding 仍 `aliyunDashScope` | 换供应商优先动 model 层 |
+| **Memory** | `listRecentHistory` → Human/AIMessage | 后期可加摘要压缩 |
+| **计量** | `usage_events` feature=agent | 从 LC usage_metadata 合并记账 |
 
 #### Tool 注册契约（扩展点）
 

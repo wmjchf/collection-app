@@ -34,6 +34,9 @@
     "@alicloud/dypnsapi20170525": "^2.0.0",
     "@alicloud/openapi-client": "^0.4.15",
     "@alicloud/openapi-core": "^1.0.8",
+    "@langchain/core": "^1.4.0",
+    "@langchain/langgraph": "^1.7.4",
+    "@langchain/openai": "^1.8.4",
     "ali-oss": "^6.23.0",
     "cheerio": "^1.2.0",
     "cors": "^2.8.6",
@@ -42,7 +45,8 @@
     "jsonwebtoken": "^9.0.3",
     "music-metadata": "^11.15.0",
     "mysql2": "^3.23.3",
-    "sm3": "^1.0.3"
+    "sm3": "^1.0.3",
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@types/jsonwebtoken": "^9.0.10",

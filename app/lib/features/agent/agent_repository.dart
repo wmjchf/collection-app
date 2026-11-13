@@ -152,13 +152,14 @@ class AgentRepository {
     return AgentTurnResult.fromJson(json);
   }
 
-  /// SSE 发消息：事件 `phase` / `token` / `user` / `done` / `error`
+  /// SSE 发消息：事件 `phase` / `thinking` / `token` / `user` / `done` / `error`
   Future<AgentTurnResult> sendMessageStream({
     required int conversationId,
     required String content,
     String? clientMessageId,
     int? focusItemId,
     void Function(String phase)? onPhase,
+    void Function(String delta, {String? text})? onThinking,
     void Function(String text)? onToken,
     void Function(AgentMessage user)? onUser,
   }) async {
@@ -232,6 +233,16 @@ class AgentRepository {
         case 'phase':
           final phase = map['phase']?.toString();
           if (phase != null && phase.isNotEmpty) onPhase?.call(phase);
+          break;
+        case 'thinking':
+          final delta = map['delta']?.toString() ?? '';
+          final full = map['text']?.toString();
+          if (delta.isNotEmpty || (full != null && full.isNotEmpty)) {
+            onThinking?.call(
+              delta,
+              text: (full != null && full.isNotEmpty) ? full : null,
+            );
+          }
           break;
         case 'token':
           final text = map['text']?.toString() ?? '';

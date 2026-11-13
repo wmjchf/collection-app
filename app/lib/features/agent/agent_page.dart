@@ -71,8 +71,10 @@ class _AgentPageState extends State<AgentPage> {
   bool _sending = false;
   /// 确认改标签进行中
   bool _confirmingAction = false;
-  /// 已有流式 token 时隐藏「思考中」
+  /// 已有流式 token 时隐藏「思考中」占位
   bool _streamLive = false;
+  /// 流式任务规划独白
+  String _liveThinking = '';
   String? _error;
   CollectionItem? _focusItem;
   /// 已勾选进输入区的出处（以 chip 展示，发送时拼进正文）
@@ -254,6 +256,7 @@ class _AgentPageState extends State<AgentPage> {
     setState(() {
       _sending = true;
       _streamLive = false;
+      _liveThinking = '';
       _pickedCitations.clear();
       _llmPresets = null;
     });
@@ -284,18 +287,58 @@ class _AgentPageState extends State<AgentPage> {
             if (idx >= 0) _messages[idx] = user;
           });
         },
+        onThinking: (delta, {text}) {
+          if (!mounted) return;
+          setState(() {
+            if (text != null && text.isNotEmpty) {
+              _liveThinking = text;
+            } else {
+              _liveThinking += delta;
+            }
+            // 思考开始时先挂助手占位，便于展示规划区
+            final aIdx =
+                _messages.indexWhere((m) => m.id == streamAssistantId);
+            if (aIdx < 0 && _liveThinking.isNotEmpty) {
+              _messages.add(
+                AgentMessage(
+                  id: streamAssistantId,
+                  role: 'assistant',
+                  content: '',
+                  thinking: _liveThinking,
+                ),
+              );
+            } else if (aIdx >= 0) {
+              _messages[aIdx] = _messages[aIdx].copyWith(
+                thinking: _liveThinking,
+              );
+            }
+          });
+          _scrollToEnd();
+        },
         onToken: (delta) {
           if (!mounted) return;
           setState(() {
             if (!_streamLive) {
               _streamLive = true;
-              _messages.add(
-                AgentMessage(
-                  id: streamAssistantId,
-                  role: 'assistant',
-                  content: delta,
-                ),
-              );
+              final aIdx =
+                  _messages.indexWhere((m) => m.id == streamAssistantId);
+              if (aIdx >= 0) {
+                _messages[aIdx] = _messages[aIdx].copyWith(
+                  content: _messages[aIdx].content + delta,
+                  thinking: _liveThinking.isNotEmpty
+                      ? _liveThinking
+                      : _messages[aIdx].thinking,
+                );
+              } else {
+                _messages.add(
+                  AgentMessage(
+                    id: streamAssistantId,
+                    role: 'assistant',
+                    content: delta,
+                    thinking: _liveThinking,
+                  ),
+                );
+              }
             } else {
               final idx =
                   _messages.indexWhere((m) => m.id == streamAssistantId);
@@ -330,6 +373,7 @@ class _AgentPageState extends State<AgentPage> {
         }
         _sending = false;
         _streamLive = false;
+        _liveThinking = '';
       });
       unawaited(_persistCache());
       _scrollToEnd();
@@ -343,6 +387,7 @@ class _AgentPageState extends State<AgentPage> {
         );
         _sending = false;
         _streamLive = false;
+        _liveThinking = '';
       });
       await handleApiException(context, e);
     } catch (_) {
@@ -353,6 +398,7 @@ class _AgentPageState extends State<AgentPage> {
         );
         _sending = false;
         _streamLive = false;
+        _liveThinking = '';
       });
       AppToast.show(context, '发送失败，请重试');
     }
@@ -1274,10 +1320,15 @@ class _AgentPageState extends State<AgentPage> {
                             controller: _scroll,
                             padding: const EdgeInsets.fromLTRB(22, 12, 22, 24),
                             itemCount: _messages.length +
-                                (_sending && !_streamLive ? 1 : 0),
+                                (_sending &&
+                                        !_streamLive &&
+                                        _liveThinking.trim().isEmpty
+                                    ? 1
+                                    : 0),
                             itemBuilder: (context, index) {
                               if (_sending &&
                                   !_streamLive &&
+                                  _liveThinking.trim().isEmpty &&
                                   index == _messages.length) {
                                 return const Padding(
                                   padding: EdgeInsets.only(top: 2, bottom: 14),
@@ -1288,6 +1339,16 @@ class _AgentPageState extends State<AgentPage> {
                                 );
                               }
                               final m = _messages[index];
+                              final thinkingText = m.displayThinking.isNotEmpty
+                                  ? m.displayThinking
+                                  : (m.id < 0 &&
+                                          _liveThinking.trim().isNotEmpty
+                                      ? _liveThinking
+                                      : '');
+                              final thinkingLive = m.id < 0 &&
+                                  _sending &&
+                                  thinkingText.isNotEmpty &&
+                                  !_streamLive;
                               return Padding(
                                 padding: const EdgeInsets.only(bottom: 14),
                                 child: m.isUser
@@ -1298,6 +1359,8 @@ class _AgentPageState extends State<AgentPage> {
                                       )
                                     : _AssistantBlock(
                                         text: m.content,
+                                        thinking: thinkingText,
+                                        thinkingLive: thinkingLive,
                                         citations: m.citations,
                                         inventoryTags: m.inventoryTags,
                                         pendingAction: m.pendingAction,
@@ -1741,6 +1804,98 @@ class _EmptyState extends StatelessWidget {
   }
 }
 
+/// 可折叠「思考中… / 思考完成」：任务理解与规划灰字。
+class _ThinkingPanel extends StatefulWidget {
+  const _ThinkingPanel({
+    required this.text,
+    this.live = false,
+    this.initiallyExpanded = false,
+  });
+
+  final String text;
+  final bool live;
+  final bool initiallyExpanded;
+
+  @override
+  State<_ThinkingPanel> createState() => _ThinkingPanelState();
+}
+
+class _ThinkingPanelState extends State<_ThinkingPanel> {
+  late bool _expanded;
+
+  @override
+  void initState() {
+    super.initState();
+    _expanded = widget.initiallyExpanded || widget.live;
+  }
+
+  @override
+  void didUpdateWidget(covariant _ThinkingPanel oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.live && !oldWidget.live) {
+      _expanded = true;
+    }
+    if (!widget.live && oldWidget.live) {
+      _expanded = false;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final body = widget.text.trim();
+    if (body.isEmpty) return const SizedBox.shrink();
+    final title = widget.live ? '思考中…' : '思考完成';
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        InkWell(
+          onTap: () => setState(() => _expanded = !_expanded),
+          borderRadius: BorderRadius.circular(8),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 4),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  title,
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: widget.live
+                        ? const Color(0xFF5C6B7A)
+                        : const Color(0xFF9AA1AB),
+                    height: 1.2,
+                  ),
+                ),
+                const SizedBox(width: 2),
+                Icon(
+                  _expanded
+                      ? Icons.keyboard_arrow_up_rounded
+                      : Icons.keyboard_arrow_down_rounded,
+                  size: 16,
+                  color: const Color(0xFF9AA1AB),
+                ),
+              ],
+            ),
+          ),
+        ),
+        if (_expanded) ...[
+          const SizedBox(height: 6),
+          Text(
+            body,
+            style: const TextStyle(
+              fontSize: 13,
+              height: 1.55,
+              color: Color(0xFF8B939E),
+              fontWeight: FontWeight.w400,
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
 /// 助手思考中：浅底胶囊 + 三点呼吸动画。
 class _ThinkingIndicator extends StatefulWidget {
   const _ThinkingIndicator();
@@ -2059,6 +2214,8 @@ class _AssistantBlock extends StatelessWidget {
     required this.onOpenTag,
     required this.onPick,
     required this.contextMenuBuilder,
+    this.thinking = '',
+    this.thinkingLive = false,
     this.focusItemId,
     this.pendingAction,
     this.pickEnabled = true,
@@ -2067,6 +2224,8 @@ class _AssistantBlock extends StatelessWidget {
   });
 
   final String text;
+  final String thinking;
+  final bool thinkingLive;
   final List<AgentCitation> citations;
   final List<AgentTagChip> inventoryTags;
   final AgentPendingAction? pendingAction;
@@ -2117,18 +2276,28 @@ class _AssistantBlock extends StatelessWidget {
     final showConfirm = pendingAction?.isPending == true && onConfirmAction != null;
     final progressSeg = _transcriptProgressSegment;
     final canCopy = text.trim().isNotEmpty && progressSeg == null;
+    final think = thinking.trim();
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        TextSelectionTheme(
-          data: const TextSelectionThemeData(
-            selectionColor: Color(0x662F6FED),
+        if (think.isNotEmpty) ...[
+          _ThinkingPanel(
+            text: think,
+            live: thinkingLive,
+            initiallyExpanded: thinkingLive,
           ),
-          child: AgentMarkdown(
-            text,
-            contextMenuBuilder: contextMenuBuilder,
+          if (text.trim().isNotEmpty) const SizedBox(height: 10),
+        ],
+        if (text.trim().isNotEmpty)
+          TextSelectionTheme(
+            data: const TextSelectionThemeData(
+              selectionColor: Color(0x662F6FED),
+            ),
+            child: AgentMarkdown(
+              text,
+              contextMenuBuilder: contextMenuBuilder,
+            ),
           ),
-        ),
         if (progressSeg != null) ...[
           const SizedBox(height: 12),
           TranscriptPendingProgress(segment: progressSeg),

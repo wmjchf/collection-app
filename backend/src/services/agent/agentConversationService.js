@@ -28,6 +28,7 @@ function mapMessage(row) {
   let pendingAction = null;
   let awaiting = null;
   let awaitingMeta = null;
+  let thinking = null;
   if (rawTrace && !Array.isArray(rawTrace) && typeof rawTrace === 'object') {
     pendingAction = rawTrace.pendingAction || null;
     awaiting = rawTrace.awaiting || null;
@@ -35,11 +36,14 @@ function mapMessage(row) {
       rawTrace.awaitingMeta && typeof rawTrace.awaitingMeta === 'object'
         ? rawTrace.awaitingMeta
         : null;
+    const th = String(rawTrace.thinking || '').trim();
+    thinking = th || null;
     toolTrace =
       rawTrace.steps != null
         ? rawTrace.steps
         : Object.prototype.hasOwnProperty.call(rawTrace, 'pendingAction') ||
-            Object.prototype.hasOwnProperty.call(rawTrace, 'awaiting')
+            Object.prototype.hasOwnProperty.call(rawTrace, 'awaiting') ||
+            Object.prototype.hasOwnProperty.call(rawTrace, 'thinking')
           ? rawTrace.steps || null
           : rawTrace;
   }
@@ -50,6 +54,7 @@ function mapMessage(row) {
     content: row.content || '',
     citations: parseJson(row.citations_json, null),
     toolTrace,
+    thinking,
     pendingAction,
     awaiting,
     awaitingMeta,
