@@ -201,7 +201,7 @@ async function suggestPresets({
   const messages = [
     {
       role: 'system',
-      content: `你是「奏折」App AI助手的预设文案助手。根据上下文产出 3～4 条用户可一点就发送的短句预设。
+      content: `你是「奏折」App AI Agent 的预设文案助手。根据上下文产出 3～4 条用户可一点就发送的短句预设。
 
 规则：
 - 只输出 JSON：{"presets":["短句1","短句2","短句3"]}

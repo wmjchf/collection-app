@@ -5,7 +5,7 @@ import 'package:super_collection/features/items/item_models.dart';
 import 'package:super_collection/features/settings/quota_gate.dart';
 import 'package:super_collection/features/settings/usage_repository.dart';
 
-/// iPad 主壳提供 AI助手面板状态。
+/// iPad 主壳提供 AI Agent面板状态。
 ///
 /// - 两列（收藏枢纽）：侧栏不动，第二列让出定宽，右侧滑入助手
 /// - 三列（首页/搜索/收藏浏览）：从列表|阅读缝顶入，侧栏+列表挤没
@@ -63,7 +63,7 @@ class AgentHost extends InheritedWidget {
       panel != oldWidget.panel;
 }
 
-/// 打开 AI助手：平板按当前列数布局，手机全屏页。
+/// 打开 AI Agent：平板按当前列数布局，手机全屏页。
 Future<void> openAgent(
   BuildContext context, {
   int? focusItemId,

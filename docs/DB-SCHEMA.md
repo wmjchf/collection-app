@@ -61,8 +61,8 @@
 | `analytics_events` | 产品行为埋点（P0：入库/阅读/搜索/Pro） |
 | `subscriptions` | 订阅（Pro；支付前可有 `source=dev`） |
 | `home_roam_cache` | 首页漫游缓存 |
-| `agent_conversations` | AI助手会话（迁移 `039`/`040`；`focus_item_id` 按篇隔离） |
-| `agent_messages` | AI助手消息 / 出处 / tool trace（迁移 `039`） |
+| `agent_conversations` | AI Agent 会话（迁移 `039`/`040`；`focus_item_id` 按篇隔离） |
+| `agent_messages` | AI Agent 消息 / 出处 / tool trace（迁移 `039`） |
 
 ---
 
@@ -243,7 +243,7 @@ API：`GET …/transcript-targets`、`POST …/transcript`（body.segmentKey）�
 | `POST /api/tag-modules` | body `{ name }` 新建模块（仅标题） |
 | `PATCH /api/tag-modules/:id` | body `{ name }` 重命名 |
 | `DELETE /api/tag-modules/:id` | 删除模块；组内标签回未归类 |
-| （已下线）`POST /api/tag-modules/ai-organize*` | 归类建议/应用改走 AI 助手 `propose_organize` + `/api/agent/actions/confirm` |
+| （已下线）`POST /api/tag-modules/ai-organize*` | 归类建议/应用改走 AI Agent `propose_organize` + `/api/agent/actions/confirm` |
 
 ## 系统筛选 API（约定）
 
@@ -296,7 +296,7 @@ Android 微信 APP 支付订单；成功后 `activateSubscription(source=wechat)
 
 ## `agent_conversations` / `agent_messages`（迁移 `039`）
 
-AI助手会话。详见 `docs/AI-Agent-实现.md`。
+AI Agent 会话。详见 `docs/AI-Agent-实现.md`。
 
 | 表 | 要点 |
 | --- | --- |

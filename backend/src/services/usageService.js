@@ -300,7 +300,7 @@ function billableAiTokensFromUsage(usage) {
 }
 
 /**
- * AI助手（含改标/归类等）与遗留脑图等共用 token 池。
+ * AI Agent（含改标/归类等）与遗留脑图等共用 token 池。
  * @param {{ userId: number, itemId?: number|null, feature: 'tags'|'mindmap'|'summary'|'organize'|'agent', tokens: number, generatedAt?: string, meta?: object }} args
  */
 /**
@@ -718,7 +718,7 @@ function aiFeatureLabel(feature) {
     case 'tags':
       return 'AI 标签';
     case 'agent':
-      return 'AI助手';
+      return 'AI Agent';
     default:
       return 'AI';
   }

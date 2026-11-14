@@ -7,7 +7,7 @@ import 'package:super_collection/features/agent/agent_host.dart';
 import 'package:super_collection/features/shell/app_bottom_nav_bar.dart';
 import 'package:super_collection/features/shell/home_nav_swap_icon.dart';
 
-/// iPad 横屏左侧导航：品牌 + 首页/标签/搜索；底部 AI助手行 + 账户。
+/// iPad 横屏左侧导航：品牌 + 首页/标签/搜索；底部 AI Agent行 + 账户。
 class AppSideNav extends StatelessWidget {
   const AppSideNav({
     super.key,
@@ -235,7 +235,7 @@ class _AgentRow extends StatelessWidget {
                 SizedBox(width: 10),
                 Expanded(
                   child: Text(
-                    'AI助手',
+                    'AI Agent',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(

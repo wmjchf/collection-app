@@ -777,7 +777,7 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
               const SizedBox(height: 10),
               _TierPlanCard(
                 title: '太子Pro',
-                tagline: '订阅期内无限收藏：核心为 AI助手与音视频转写',
+                tagline: '订阅期内无限收藏：核心为 AI Agent 与音视频转写',
                 owned: _isTierOwned(UsagePlan.prince),
                 priceWidget: _cardPriceWidget(
                   UsagePlan.prince,
@@ -790,7 +790,7 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
               const SizedBox(height: 10),
               _TierPlanCard(
                 title: '帝王Pro',
-                tagline: '含太子Pro 全部能力，AI助手与转写额度更大',
+                tagline: '含太子Pro 全部能力，AI Agent 与转写额度更大',
                 owned: _isTierOwned(UsagePlan.emperor),
                 priceWidget: _cardPriceWidget(
                   UsagePlan.emperor,
@@ -802,7 +802,7 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
               ),
               const SizedBox(height: 8),
               Text(
-                '免费上限 ${_quotas.free.itemLimit ?? 100} 条；普通买断永久不限；太子/帝王订阅期内不限；AI助手 / 转写按自然月重置',
+                '免费上限 ${_quotas.free.itemLimit ?? 100} 条；普通买断永久不限；太子/帝王订阅期内不限；AI Agent / 转写按自然月重置',
                 style: const TextStyle(
                   fontSize: 12,
                   color: _muted,
@@ -985,7 +985,7 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
                       Expanded(
                         child: _TabletPlanCard(
                           title: '太子Pro',
-                          tagline: '订阅期内无限收藏：核心为 AI助手与音视频转写',
+                          tagline: '订阅期内无限收藏：核心为 AI Agent 与音视频转写',
                           badge: '推荐',
                           owned: _isTierOwned(UsagePlan.prince),
                           featured: true,
@@ -1008,7 +1008,7 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
                       Expanded(
                         child: _TabletPlanCard(
                           title: '帝王Pro',
-                          tagline: '含太子Pro 全部能力，AI助手与转写额度更大',
+                          tagline: '含太子Pro 全部能力，AI Agent 与转写额度更大',
                           owned: _isTierOwned(UsagePlan.emperor),
                           featured: false,
                           selected: _selectedTier == UsagePlan.emperor,
@@ -1058,7 +1058,7 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
     return const [
       _PlanFeature('一次买断，永久收藏不限条数', included: true),
       _PlanFeature('永久解析', included: true),
-      _PlanFeature('AI助手', included: false),
+      _PlanFeature('AI Agent', included: false),
       _PlanFeature('音视频转写', included: false),
     ];
   }
@@ -1066,10 +1066,10 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
   List<_PlanFeature> _princeFeatures(PlanQuotasTable quotas) {
     return [
       const _PlanFeature('订阅期内收藏不限条数', included: true),
-      const _PlanFeature('AI助手', included: true),
+      const _PlanFeature('AI Agent', included: true),
       const _PlanFeature('音视频转写', included: true),
       _PlanFeature(
-        'AI助手额度 ${formatAiCredits(quotas.prince.aiTokens)} 积分 / 月',
+        'AI Agent 额度 ${formatAiCredits(quotas.prince.aiTokens)} 积分 / 月',
         included: true,
         isQuota: true,
       ),
@@ -1085,7 +1085,7 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
     return [
       const _PlanFeature('含太子Pro全部能力', included: true),
       _PlanFeature(
-        'AI助手额度 ${formatAiCredits(quotas.emperor.aiTokens)} 积分 / 月',
+        'AI Agent 额度 ${formatAiCredits(quotas.emperor.aiTokens)} 积分 / 月',
         included: true,
         isQuota: true,
       ),

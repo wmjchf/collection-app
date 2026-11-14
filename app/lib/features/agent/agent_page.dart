@@ -31,7 +31,7 @@ import 'package:super_collection/features/items/transcript_segment_panel.dart';
 import 'package:super_collection/features/settings/quota_gate.dart';
 import 'package:super_collection/features/settings/usage_repository.dart';
 
-/// AI助手（P1：查收藏 + 出处）
+/// AI Agent（P1：查收藏 + 出处）
 ///
 /// [focusItemId] / [focusItem]：从阅读页带入时展示当前篇，并每轮锚定摘录。
 /// [asPanel]：iPad 右侧抽屉内嵌；关闭用「关闭」而非「返回」。
@@ -1262,7 +1262,7 @@ class _AgentPageState extends State<AgentPage> {
           mainAxisSize: MainAxisSize.min,
           children: [
             const Text(
-              'AI助手',
+              'AI Agent',
               style: TextStyle(
                 fontSize: 17,
                 fontWeight: FontWeight.w700,
@@ -1278,7 +1278,7 @@ class _AgentPageState extends State<AgentPage> {
     }
 
     return AppSubpageAppBar(
-      title: 'AI助手',
+      title: 'AI Agent',
       titleTrailing: proBadge,
       actions: [
         SizedBox(
@@ -1790,7 +1790,7 @@ class _EmptyState extends StatelessWidget {
             _sparkIcon(),
             const SizedBox(height: 24),
             const Text(
-              '你的AI助手',
+              '你的 AI Agent',
               textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: 26,

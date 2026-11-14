@@ -357,7 +357,7 @@ class _AccountPageState extends State<AccountPage> with ScreenDwellMixin {
                   _CardGroup(
                     children: [
                       _UsageRow(
-                        title: 'AI助手',
+                        title: 'AI Agent',
                         valueLabel: _aiUsageLabel(_usage!),
                         progress: _usage!.aiLimitTokens > 0
                             ? (_usage!.aiUsedTokens / _usage!.aiLimitTokens)

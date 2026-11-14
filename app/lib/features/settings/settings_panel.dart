@@ -72,7 +72,7 @@ class _SettingsPanelState extends State<SettingsPanel> {
                     onTap: () => _open(const HowToAddLinkPage()),
                   ),
                   _SettingsRow(
-                    title: 'AI助手',
+                    title: 'AI Agent',
                     showChevron: true,
                     onTap: () => _open(const AiAgentHelpPage()),
                   ),

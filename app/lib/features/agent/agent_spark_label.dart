@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-/// 顶栏「✦ AI助手」：✦ 轻呼吸，不抢戏。
+/// 顶栏「✦ AI Agent」：✦ 轻呼吸，不抢戏。
 class AgentSparkLabel extends StatefulWidget {
   const AgentSparkLabel({
     super.key,
@@ -67,7 +67,7 @@ class _AgentSparkLabelState extends State<AgentSparkLabel>
           },
           child: Text('✦', style: sparkStyle),
         ),
-        Text(' AI助手', style: textStyle),
+        Text(' AI Agent', style: textStyle),
       ],
     );
   }

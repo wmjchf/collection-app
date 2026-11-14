@@ -5,7 +5,7 @@ import 'package:super_collection/features/settings/help_assets_loader.dart';
 import 'package:super_collection/features/settings/help_assets_repository.dart';
 import 'package:super_collection/features/settings/settings_modal.dart';
 
-/// 设置 → 使用帮助 → AI助手（文案本地写死，配图 OSS help/）
+/// 设置 → 使用帮助 → AI Agent（文案本地写死，配图 OSS help/）
 class AiAgentHelpPage extends StatelessWidget {
   const AiAgentHelpPage({super.key});
 
@@ -30,7 +30,7 @@ class AiAgentHelpPage extends StatelessWidget {
           leadingWidth: SettingsBackButton.leadingWidth,
           leading: const SettingsBackButton(),
           title: const Text(
-            'AI助手',
+            'AI Agent',
             style: TextStyle(
               fontSize: 17,
               fontWeight: FontWeight.w700,
@@ -61,6 +61,13 @@ class AiAgentHelpPage extends StatelessWidget {
               ),
               const SizedBox(height: 12),
               const _CapabilityCard(
+                title: '生成文稿',
+                desc:
+                    '阅读页打开助手后，可为音视频生成可读文稿（按分钟计量）。'
+                    '常作为「整理成一篇文章」的前一步。',
+              ),
+              const SizedBox(height: 12),
+              const _CapabilityCard(
                 title: '整理成文章',
                 desc:
                     '已有文稿的视频可说「整理成一篇文章」；知识向的图片可一键「根据图片整理成文章」。'
@@ -82,7 +89,7 @@ class AiAgentHelpPage extends StatelessWidget {
               const SizedBox(height: 10),
               const _ProCard(
                 child: Text(
-                  '需开通太子Pro / 帝王Pro。对话与整理成文章（含根据图片）消耗本月 AI助手额度；'
+                  '需开通太子Pro / 帝王Pro。对话与整理成文章（含根据图片）消耗本月 AI Agent 额度；'
                   '帝王Pro 提供更高月额度。生成文稿按分钟单独计量，常作为视频成文的前一步。',
                   style: TextStyle(
                     fontSize: 15,
@@ -104,7 +111,7 @@ class AiAgentHelpPage extends StatelessWidget {
               ),
               const SizedBox(height: 20),
               const Text(
-                'AI助手 · 功能指引',
+                'AI Agent · 功能指引',
                 textAlign: TextAlign.center,
                 style: TextStyle(fontSize: 12, color: _muted),
               ),
@@ -207,7 +214,7 @@ class _IntroCard extends StatelessWidget {
           Text(
             '太子Pro 的核心：在你的收藏库里做意图搜索；'
             '从阅读页打开还可深挖当前篇。'
-            '视频可先生成文稿再成文；知识向的图片可整理成文。',
+            '视频可先生成文稿再成文；知识向的图片也可整理成文章。',
             style: TextStyle(
               fontSize: 15,
               color: AiAgentHelpPage._text,

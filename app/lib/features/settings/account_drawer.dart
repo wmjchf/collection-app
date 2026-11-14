@@ -171,7 +171,7 @@ class _AccountPlanCard extends StatelessWidget {
 
   String get _subtitle {
     if (!isPaid) return '免费额度 · 收藏有上限';
-    if (canUpgradeToEmperor) return '可升级帝王 · 更高 AI助手 / 转写额度';
+    if (canUpgradeToEmperor) return '可升级帝王 · 更高 AI Agent / 转写额度';
     if (canUpgradeToPrince) return '无限收藏 · 升级解锁 AI';
     return '当前方案 · 会员权益已生效';
   }

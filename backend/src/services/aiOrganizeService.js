@@ -12,7 +12,7 @@ const FULL_REORG_MIN_INTERVAL_MS = 24 * 60 * 60 * 1000;
 const FULL_REORG_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 
 /**
- * 归类口径（AI 助手）：单层架子（无多级树）；可填已有架或建议新建；确认后才写入。
+ * 归类口径（AI Agent）：单层架子（无多级树）；可填已有架或建议新建；确认后才写入。
  */
 const ORGANIZE_SYSTEM_PROMPT_UNGROUPED =
   '你是收藏整理助手。归类只有一层：把标签放进归类名下，禁止多级/父子分类。' +
