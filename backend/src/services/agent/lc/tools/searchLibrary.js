@@ -78,7 +78,8 @@ function createSearchLibraryTool(runtime) {
     {
       name: 'search_library',
       description:
-        '在用户的奏折收藏库中按意图检索相关条目。用户问「存过哪些 / 找类似 / 关于某主题」时必须调用。' +
+        '按主题/意图检索收藏。用户问「关于×× / 找类似 / 存过某主题」时调用。' +
+        '不要用于「最近收藏了哪些 / 今天存了什么 / 有多少收藏」——那些请用 list_library。' +
         'q 用短主题词；大类意图务必具象改写后再搜（数码→笔记本/平板，可分两次调用再汇总）。不要照抄整句闲聊或只搜笼统原词。',
       schema: z.object({
         q: z

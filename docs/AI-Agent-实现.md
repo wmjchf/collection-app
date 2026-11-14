@@ -104,7 +104,7 @@ agentOrchestrator.js → lc/runTurn.js
   ├─ buildAgentGraph（lc/graph.js）
   │    ├─ streamTaskPlan → SSE thinking（任务理解与规划口语）
   │    ├─ 规划正文注入 ReAct system（约束执行优先按规划调 tool）
-  │    ├─ ChatOpenAI → 百炼 + Tools：search_library / get_item_excerpt / generate_transcript / draft_article
+  │    ├─ ChatOpenAI → 百炼 + Tools：search_library / list_library / get_item_excerpt / generate_transcript / draft_article
   ├─ streamEvents → SSE phase / token；thinking 落库 `tool_calls_json.thinking`
   ├─ citations[] ← 工具命中（落库最多 12；气泡默认露 3，「加载更多」展开）；generate_transcript 可挂 pendingAction；draft_article 真流式成文
   └─ usageService.recordAiTokenUsage（feature=agent）
@@ -461,8 +461,8 @@ Body: { conversationId, messageId, approve: true|false }
 - 出处点击 → `ItemReadingPage(openEntry: 'agent')`；左侧勾选 → 输入胶囊内蓝底标题 chip（可 × 取消），发送时拼「标题」锁定篇目
 - 阅读页底栏首位「AI Agent」→ `openAgent(focusItemId)` 篇专属会话；首页/收藏/侧栏 → 全局会话。手机全屏 `AgentPage`；iPad：三列从列表右缘顶入（挤没侧栏+列表），两列枢纽压一半（`AgentSplitInset` / `asPanel`）
 - 盘点类问题（有哪些/有多少收藏）→ `list_library`，勿用空泛词 `search_library`
-- 带时间的盘点（今天/昨天/本周/本月/最近收藏）→ 仍走 `list_library`，由编排层解析 Asia/Shanghai 时间窗写入 `createdAfter`/`createdBefore`；回答不得把窗外旧篇说成该时段的；对话内不续翻
-- 「最近阅读 / 朕已阅」「批注 / 朱批」盘点 → `list_library` + `filter=recent_read|annotated`（与收藏页瓷砖同一套 `systemFilterService` 规则：近 7 天已读 / 有标注）；最多 3 条样例，完整列表在库外浏览
+- 带时间的盘点（今天/昨天/本周/本月/最近收藏）→ `list_library` + `scope`（服务端 `resolveListScope` 算 Asia/Shanghai 时间窗）；回答不得把窗外旧篇说成该时段的；对话内不续翻
+- 「最近阅读 / 朕已阅」「批注 / 朱批」盘点 → `list_library` + `scope=recent_read|annotated`（与收藏页瓷砖同一套 `systemFilterService` 规则：近 7 天已读 / 有标注）；最多 3 条样例，完整列表在库外浏览
 - 「还有吗 / 再列其他」→ 不再对话内翻页，提示去首页/收藏页，或说主题做意图搜索
 - 错误：额度 / 网络 / 空库；空库引导去添加链接
 

@@ -777,7 +777,7 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
               const SizedBox(height: 10),
               _TierPlanCard(
                 title: '太子Pro',
-                tagline: '订阅期内无限收藏：核心为 AI Agent 与音视频转写',
+                tagline: '订阅期内无限收藏：核心为 AI Agent',
                 owned: _isTierOwned(UsagePlan.prince),
                 priceWidget: _cardPriceWidget(
                   UsagePlan.prince,
@@ -790,7 +790,7 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
               const SizedBox(height: 10),
               _TierPlanCard(
                 title: '帝王Pro',
-                tagline: '含太子Pro 全部能力，AI Agent 与转写额度更大',
+                tagline: '含太子Pro 全部能力，AI Agent 额度更大',
                 owned: _isTierOwned(UsagePlan.emperor),
                 priceWidget: _cardPriceWidget(
                   UsagePlan.emperor,
@@ -985,7 +985,7 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
                       Expanded(
                         child: _TabletPlanCard(
                           title: '太子Pro',
-                          tagline: '订阅期内无限收藏：核心为 AI Agent 与音视频转写',
+                          tagline: '订阅期内无限收藏：核心为 AI Agent',
                           badge: '推荐',
                           owned: _isTierOwned(UsagePlan.prince),
                           featured: true,
@@ -1008,7 +1008,7 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
                       Expanded(
                         child: _TabletPlanCard(
                           title: '帝王Pro',
-                          tagline: '含太子Pro 全部能力，AI Agent 与转写额度更大',
+                          tagline: '含太子Pro 全部能力，AI Agent 额度更大',
                           owned: _isTierOwned(UsagePlan.emperor),
                           featured: false,
                           selected: _selectedTier == UsagePlan.emperor,
@@ -1054,20 +1054,33 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
     setState(() => _selectedTier = tier);
   }
 
+  static const _agentCapabilities = [
+    '意图搜索',
+    '深挖原文',
+    '生成文稿',
+    '整理成文章',
+  ];
+
   List<_PlanFeature> _basicFeatures() {
     return const [
       _PlanFeature('一次买断，永久收藏不限条数', included: true),
       _PlanFeature('永久解析', included: true),
-      _PlanFeature('AI Agent', included: false),
-      _PlanFeature('音视频转写', included: false),
+      _PlanFeature(
+        'AI Agent',
+        included: false,
+        children: _agentCapabilities,
+      ),
     ];
   }
 
   List<_PlanFeature> _princeFeatures(PlanQuotasTable quotas) {
     return [
       const _PlanFeature('订阅期内收藏不限条数', included: true),
-      const _PlanFeature('AI Agent', included: true),
-      const _PlanFeature('音视频转写', included: true),
+      const _PlanFeature(
+        'AI Agent',
+        included: true,
+        children: _agentCapabilities,
+      ),
       _PlanFeature(
         'AI Agent 额度 ${formatAiCredits(quotas.prince.aiTokens)} 积分 / 月',
         included: true,
@@ -1874,11 +1887,17 @@ class _TabletProFooter extends StatelessWidget {
 }
 
 class _PlanFeature {
-  const _PlanFeature(this.label, {required this.included, this.isQuota = false});
+  const _PlanFeature(
+    this.label, {
+    required this.included,
+    this.isQuota = false,
+    this.children = const [],
+  });
 
   final String label;
   final bool included;
   final bool isQuota;
+  final List<String> children;
 }
 
 /// 年付价签：删除线原价 + 醒目「立省」胶囊
@@ -2096,22 +2115,66 @@ class _FeatureLine extends StatelessWidget {
             ? _UpgradeProPageState._accent
             : _UpgradeProPageState._text)
         : _UpgradeProPageState._muted.withValues(alpha: 0.55);
-    return Row(
+    final childColor = included
+        ? _UpgradeProPageState._muted
+        : _UpgradeProPageState._muted.withValues(alpha: 0.5);
+    return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Icon(icon, size: 18, color: color),
-        const SizedBox(width: 8),
-        Expanded(
-          child: Text(
-            feature.label,
-            style: TextStyle(
-              fontSize: feature.isQuota ? 13 : 14,
-              fontWeight: feature.isQuota ? FontWeight.w500 : FontWeight.w400,
-              color: color,
-              height: 1.35,
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(icon, size: 18, color: color),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                feature.label,
+                style: TextStyle(
+                  fontSize: feature.isQuota ? 13 : 14,
+                  fontWeight:
+                      feature.isQuota ? FontWeight.w500 : FontWeight.w400,
+                  color: color,
+                  height: 1.35,
+                ),
+              ),
+            ),
+          ],
+        ),
+        if (feature.children.isNotEmpty) ...[
+          const SizedBox(height: 6),
+          ...feature.children.map(
+            (child) => Padding(
+              padding: const EdgeInsets.only(left: 26, bottom: 4),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.only(top: 7),
+                    child: Container(
+                      width: 4,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: childColor,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      child,
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: childColor,
+                        height: 1.35,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
-        ),
+        ],
       ],
     );
   }
