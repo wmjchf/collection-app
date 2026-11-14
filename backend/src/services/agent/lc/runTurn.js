@@ -4,6 +4,9 @@ const usageService = require('../../usageService');
 const itemService = require('../../itemService');
 const getItemExcerpt = require('../tools/getItemExcerpt');
 const { MAX_STORED_CITATIONS, EXCERPT_MAX_CHARS } = require('../agentPolicy');
+const {
+  searchConversationMemory,
+} = require('../agentMessageEmbeddingService');
 const { buildAgentGraph } = require('./graph');
 const { streamTaskPlan } = require('./taskPlan');
 
@@ -121,11 +124,29 @@ async function runUserTurn({
     }
   }
 
+  // 更早对话检索：排除近期窗口 + 本轮刚写入的 user，拼进 system（不占 lcMessages 轮次）
+  let historyMemory = [];
+  try {
+    historyMemory = await searchConversationMemory({
+      userId,
+      conversationId,
+      query: text,
+      excludeMessageIds: [
+        ...(history || []).map((m) => Number(m.id)),
+        Number(userMessage?.id),
+      ],
+    });
+  } catch (err) {
+    console.warn('[agent] historyMemory fail:', err?.message || err);
+    historyMemory = [];
+  }
+
   const runtime = {
     userId,
     focusItemId: focusItemIdResolved,
     focusTitle,
     focusExcerpt,
+    historyMemory,
     toolTrace,
     citationMap,
     pendingAction: null,

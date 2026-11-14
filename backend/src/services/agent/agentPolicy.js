@@ -14,7 +14,14 @@ const MAX_STORED_CITATIONS = MAX_SEARCH_HARD_CAP;
 /** list_library 样例条数（助手内不翻页，完整列表在库外） */
 const MAX_LIST_ITEMS = 3;
 const EXCERPT_MAX_CHARS = 8000;
+/** 每轮注入 ReAct 的近期全文窗口 */
 const HISTORY_MESSAGE_LIMIT = 12;
+/** 更早对话检索条数（不含近期窗口） */
+const HISTORY_MEMORY_TOP_K = 4;
+/** 对话记忆文本向量门槛 */
+const HISTORY_MEMORY_MIN_SCORE = 0.4;
+/** 相对头名分差 */
+const HISTORY_MEMORY_SCORE_GAP = 0.12;
 
 function assertCitationsAllowed(citationItemIds, allowedIds) {
   const allow = new Set(
@@ -47,6 +54,9 @@ module.exports = {
   MAX_LIST_ITEMS,
   EXCERPT_MAX_CHARS,
   HISTORY_MESSAGE_LIMIT,
+  HISTORY_MEMORY_TOP_K,
+  HISTORY_MEMORY_MIN_SCORE,
+  HISTORY_MEMORY_SCORE_GAP,
   assertCitationsAllowed,
   clampSearchLimit,
 };

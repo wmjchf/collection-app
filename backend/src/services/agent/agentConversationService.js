@@ -270,7 +270,19 @@ async function insertMessage({
     `SELECT * FROM agent_messages WHERE id = :id LIMIT 1`,
     { id: result.insertId },
   );
-  return mapMessage(rows[0]);
+  const mapped = mapMessage(rows[0]);
+  // 异步建对话向量，供更早轮次检索（不阻塞本轮）
+  if (mapped && (mapped.role === 'user' || mapped.role === 'assistant')) {
+    try {
+      const {
+        scheduleIndexMessage,
+      } = require('./agentMessageEmbeddingService');
+      scheduleIndexMessage(mapped.id);
+    } catch (_) {
+      /* optional */
+    }
+  }
+  return mapped;
 }
 
 async function getMessageForUser(userId, conversationId, messageId) {
@@ -331,6 +343,12 @@ async function updateMessageContent(messageId, content) {
       content: content == null ? '' : String(content),
     },
   );
+  try {
+    const { scheduleIndexMessage } = require('./agentMessageEmbeddingService');
+    scheduleIndexMessage(messageId);
+  } catch (_) {
+    /* optional */
+  }
 }
 
 async function touchTitleIfEmpty(userId, conversationId, seed) {

@@ -4,6 +4,9 @@ const { createSearchLibraryTool } = require('./tools/searchLibrary');
 const { createGetItemExcerptTool } = require('./tools/getItemExcerpt');
 const { createGenerateTranscriptTool } = require('./tools/generateTranscript');
 const { createDraftArticleTool } = require('./tools/draftArticle');
+const {
+  formatMemoryForPrompt,
+} = require('../agentMessageEmbeddingService');
 
 /** 全局助手：仅库内意图搜索，不挂单篇工具 */
 const GLOBAL_SYSTEM = `你是「奏折」的私人收藏库助手（全局入口）。
@@ -42,6 +45,7 @@ const FOCUS_SYSTEM = `你是「奏折」的私人收藏库助手（阅读页入�
  *   focusItemId?: number|null,
  *   focusTitle?: string|null,
  *   focusExcerpt?: string|null,
+ *   historyMemory?: Array<{ role: string, content: string, score?: number }>,
  *   toolTrace: object[],
  *   citationMap: Map<number, object>,
  *   pendingAction?: object|null,
@@ -54,6 +58,7 @@ function buildAgentGraph(runtime) {
   const focusTitle = String(runtime.focusTitle || '').trim();
   const focusExcerpt = String(runtime.focusExcerpt || '').trim();
   const taskPlan = String(runtime.taskPlan || '').trim();
+  const memoryBlock = formatMemoryForPrompt(runtime.historyMemory);
 
   let prompt = hasFocus ? FOCUS_SYSTEM : GLOBAL_SYSTEM;
   if (hasFocus) {
@@ -68,6 +73,12 @@ function buildAgentGraph(runtime) {
       prompt +=
         '\n当前篇摘录未预取到正文时，请调用 get_item_excerpt 再回答，不要只凭标题臆测。音视频无文稿时可用 generate_transcript；成文用 draft_article。';
     }
+  }
+
+  if (memoryBlock) {
+    prompt += `\n\n${memoryBlock}`;
+    prompt +=
+      '\n若用户在接续更早话题，可参考以上摘录；找收藏仍须 search_library，不要把对话摘录当成库内篇目。';
   }
 
   if (taskPlan) {
