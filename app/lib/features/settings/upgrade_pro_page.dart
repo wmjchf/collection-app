@@ -9,6 +9,7 @@ import 'package:super_collection/core/analytics/screen_dwell_tracker.dart';
 import 'package:super_collection/core/network/api_client.dart';
 import 'package:super_collection/core/ui/app_orientation.dart';
 import 'package:super_collection/core/ui/app_toast.dart';
+import 'package:super_collection/features/settings/ai_agent_help_page.dart';
 import 'package:super_collection/features/settings/apple_iap_service.dart';
 import 'package:super_collection/features/settings/legal_docs.dart';
 import 'package:super_collection/features/settings/simple_doc_page.dart';
@@ -770,7 +771,7 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
                   UsagePlan.basic,
                   selected: _selectedTier == UsagePlan.basic,
                 ),
-                features: _basicFeatures(),
+                features: _basicFeatures(onAgentHelp: _openAgentHelp),
                 selected: _selectedTier == UsagePlan.basic,
                 onTap: () => _selectTier(UsagePlan.basic),
               ),
@@ -783,7 +784,10 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
                   UsagePlan.prince,
                   selected: _selectedTier == UsagePlan.prince,
                 ),
-                features: _princeFeatures(_quotas),
+                features: _princeFeatures(
+                  _quotas,
+                  onAgentHelp: _openAgentHelp,
+                ),
                 selected: _selectedTier == UsagePlan.prince,
                 onTap: () => _selectTier(UsagePlan.prince),
               ),
@@ -971,7 +975,7 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
                             UsagePlan.basic,
                             selected: _selectedTier == UsagePlan.basic,
                           ),
-                          features: _basicFeatures(),
+                          features: _basicFeatures(onAgentHelp: _openAgentHelp),
                           ctaLabel: _subscribeLabelForTier(UsagePlan.basic),
                           ctaEnabled: _ctaEnabledForTier(UsagePlan.basic),
                           ctaBusy: _busy &&
@@ -994,7 +998,10 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
                             UsagePlan.prince,
                             selected: _selectedTier == UsagePlan.prince,
                           ),
-                          features: _princeFeatures(_quotas),
+                          features: _princeFeatures(
+                            _quotas,
+                            onAgentHelp: _openAgentHelp,
+                          ),
                           ctaLabel: _subscribeLabelForTier(UsagePlan.prince),
                           ctaEnabled: _ctaEnabledForTier(UsagePlan.prince),
                           ctaBusy: _busy &&
@@ -1061,25 +1068,36 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
     '整理成文章',
   ];
 
-  List<_PlanFeature> _basicFeatures() {
-    return const [
-      _PlanFeature('一次买断，永久收藏不限条数', included: true),
-      _PlanFeature('永久解析', included: true),
+  void _openAgentHelp() {
+    openSettingsPage<void>(context, const AiAgentHelpPage());
+  }
+
+  List<_PlanFeature> _basicFeatures({VoidCallback? onAgentHelp}) {
+    return [
+      const _PlanFeature('一次买断，永久收藏不限条数', included: true),
+      const _PlanFeature('永久解析', included: true),
       _PlanFeature(
         'AI Agent',
         included: false,
         children: _agentCapabilities,
+        childrenNote: '之后还会陆续增加更多能力',
+        onTap: onAgentHelp,
       ),
     ];
   }
 
-  List<_PlanFeature> _princeFeatures(PlanQuotasTable quotas) {
+  List<_PlanFeature> _princeFeatures(
+    PlanQuotasTable quotas, {
+    VoidCallback? onAgentHelp,
+  }) {
     return [
       const _PlanFeature('订阅期内收藏不限条数', included: true),
-      const _PlanFeature(
+      _PlanFeature(
         'AI Agent',
         included: true,
         children: _agentCapabilities,
+        childrenNote: '之后还会陆续增加更多能力',
+        onTap: onAgentHelp,
       ),
       _PlanFeature(
         'AI Agent 额度 ${formatAiCredits(quotas.prince.aiTokens)} 积分 / 月',
@@ -1892,12 +1910,17 @@ class _PlanFeature {
     required this.included,
     this.isQuota = false,
     this.children = const [],
+    this.childrenNote,
+    this.onTap,
   });
 
   final String label;
   final bool included;
   final bool isQuota;
   final List<String> children;
+  /// 二级能力列表下方说明（非能力项）
+  final String? childrenNote;
+  final VoidCallback? onTap;
 }
 
 /// 年付价签：删除线原价 + 醒目「立省」胶囊
@@ -2118,6 +2141,33 @@ class _FeatureLine extends StatelessWidget {
     final childColor = included
         ? _UpgradeProPageState._muted
         : _UpgradeProPageState._muted.withValues(alpha: 0.5);
+    final labelStyle = TextStyle(
+      fontSize: feature.isQuota ? 13 : 14,
+      fontWeight: feature.isQuota ? FontWeight.w500 : FontWeight.w400,
+      color: color,
+      height: 1.35,
+      decoration: feature.onTap != null ? TextDecoration.underline : null,
+      decorationColor: color.withValues(alpha: 0.45),
+    );
+    final label = feature.onTap == null
+        ? Text(feature.label, style: labelStyle)
+        : GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: feature.onTap,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Flexible(child: Text(feature.label, style: labelStyle)),
+                const SizedBox(width: 2),
+                Icon(
+                  Icons.chevron_right_rounded,
+                  size: 18,
+                  color: color.withValues(alpha: 0.7),
+                ),
+              ],
+            ),
+          );
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -2126,18 +2176,7 @@ class _FeatureLine extends StatelessWidget {
           children: [
             Icon(icon, size: 18, color: color),
             const SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                feature.label,
-                style: TextStyle(
-                  fontSize: feature.isQuota ? 13 : 14,
-                  fontWeight:
-                      feature.isQuota ? FontWeight.w500 : FontWeight.w400,
-                  color: color,
-                  height: 1.35,
-                ),
-              ),
-            ),
+            Expanded(child: label),
           ],
         ),
         if (feature.children.isNotEmpty) ...[
@@ -2174,6 +2213,19 @@ class _FeatureLine extends StatelessWidget {
               ),
             ),
           ),
+          if (feature.childrenNote != null &&
+              feature.childrenNote!.trim().isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(left: 26, top: 2),
+              child: Text(
+                feature.childrenNote!,
+                style: TextStyle(
+                  fontSize: 12,
+                  color: childColor.withValues(alpha: included ? 0.85 : 0.75),
+                  height: 1.35,
+                ),
+              ),
+            ),
         ],
       ],
     );

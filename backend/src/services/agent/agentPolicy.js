@@ -1,7 +1,9 @@
 /** Agent 策略：步数、citations、写库确认（P1 只读） */
 
 const MAX_STEPS_P1 = 4;
-const MAX_SEARCH_QUERIES = 2;
+/** 大类意图可分多轮具象抽样；与 prompt「可 2～3 次」对齐（编排层提示用） */
+const MAX_SEARCH_QUERIES = 3;
+
 /** 单次搜库默认返回条数（给模型写答用） */
 const MAX_SEARCH_HITS = 6;
 /** 单次搜库硬顶；落库出处池与此对齐，App 可「加载更多」展开 */
