@@ -160,7 +160,7 @@ class _SummaryLoadingCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final label = awaitTranscript
-        ? '转写完成后生成 AI 解读…'
+        ? '文稿生成完成后生成 AI 解读…'
         : aiScholarGeneratingLabel('解读', isPro: isPro);
     return Container(
       width: double.infinity,

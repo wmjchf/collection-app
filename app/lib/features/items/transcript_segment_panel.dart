@@ -68,7 +68,7 @@ class _TranscriptPendingProgressState extends State<TranscriptPendingProgress> {
   Widget build(BuildContext context) {
     final seg = widget.segment;
     final label = (seg.phaseLabel ?? '').trim();
-    final title = label.isEmpty ? '文稿转写中…' : label;
+    final title = label.isEmpty ? '正在生成文稿…' : label;
     final hint = (seg.phaseHint ?? '').trim();
     final elapsed = _elapsedLabel();
     final steps = const ['准备', '提交', '识别'];
@@ -110,7 +110,7 @@ class _TranscriptPendingProgressState extends State<TranscriptPendingProgress> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     const Text(
-                      '文稿转写中',
+                      '正在生成文稿',
                       style: TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.w700,
@@ -262,7 +262,7 @@ class TranscriptSegmentPanel extends StatelessWidget {
           ),
           padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
           child: Text(
-            '文稿转写失败：$err',
+            '生成文稿失败：$err',
             style: const TextStyle(fontSize: 13, color: _muted, height: 1.4),
           ),
         ),
@@ -273,7 +273,7 @@ class TranscriptSegmentPanel extends StatelessWidget {
 
     final text = seg.text!.trim();
     final charCount = text.replaceAll(RegExp(r'\s'), '').length;
-    final metaLabel = charCount > 0 ? '$charCount 字' : '已转写';
+    final metaLabel = charCount > 0 ? '$charCount 字' : '已生成';
 
     return Padding(
       padding: const EdgeInsets.only(top: 14),
@@ -314,7 +314,7 @@ class TranscriptSegmentPanel extends StatelessWidget {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             const Text(
-                              '转写完成',
+                              '文稿已生成',
                               style: TextStyle(
                                 fontSize: 16,
                                 fontWeight: FontWeight.w700,

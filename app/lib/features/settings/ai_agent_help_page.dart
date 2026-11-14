@@ -68,7 +68,7 @@ class AiAgentHelpPage extends StatelessWidget {
               const _CapabilityCard(
                 title: '整理成文章',
                 desc:
-                    '已转写视频可说「根据转写写一篇文章」；知识向的图片可一键「根据图片整理成文章」。'
+                    '已有文稿的视频可说「整理成一篇文章」；知识向的图片可一键「根据图片整理成文章」。'
                     '暂不支持用正文生成，也不做图文创作。',
               ),
               const SizedBox(height: 24),
@@ -88,7 +88,7 @@ class AiAgentHelpPage extends StatelessWidget {
               const _ProCard(
                 child: Text(
                   '需开通太子Pro / 帝王Pro。对话与整理成文章（含根据图片）消耗本月 AI助手额度；'
-                  '帝王Pro 提供更高月额度。转写按分钟单独计量，常作为视频成文的前一步。',
+                  '帝王Pro 提供更高月额度。生成文稿按分钟单独计量，常作为视频成文的前一步。',
                   style: TextStyle(
                     fontSize: 15,
                     color: Colors.white,
@@ -212,7 +212,7 @@ class _IntroCard extends StatelessWidget {
           Text(
             '太子Pro 的核心：在你的收藏库里做意图搜索与对照；'
             '从阅读页打开还可深挖当前篇。'
-            '视频可先转写再成文；知识向的图片可整理成文。',
+            '视频可先生成文稿再成文；知识向的图片可整理成文。',
             style: TextStyle(
               fontSize: 15,
               color: AiAgentHelpPage._text,

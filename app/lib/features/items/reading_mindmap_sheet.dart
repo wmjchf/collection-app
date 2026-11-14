@@ -114,7 +114,7 @@ class _ReadingMindmapSheetState extends State<_ReadingMindmapSheet> {
     if (_item.hasAnyTranscriptPending && !_meta.awaitTranscript) {
       if (mounted) {
         setState(() => _requesting = false);
-        AppToast.show(context, '转写进行中，请稍候再生成思维导图');
+        AppToast.show(context, '正在生成文稿，请稍候再生成思维导图');
       }
       return;
     }
@@ -349,7 +349,7 @@ class _ReadingMindmapSheetState extends State<_ReadingMindmapSheet> {
   Widget _buildBody() {
     if (_meta.isPending || _requesting) {
       final label = _meta.awaitTranscript
-          ? '转写完成后生成思维导图…'
+          ? '文稿生成完成后生成思维导图…'
           : aiScholarGeneratingLabel('思维导图', isPro: _isPro);
       return Container(
         width: double.infinity,

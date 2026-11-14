@@ -6,7 +6,7 @@
 
 ## 0. 一句话
 
-**AI助手是用户级私人 Agent**：当前热路径用 **LangChain.js + LangGraph ReAct** 做库内意图搜索、读篇摘录与流式回答；阅读页会预取当前篇。会话 API / SSE 与 App 样式保持兼容。转写、成文、改标、归类等暂未接入。
+**AI助手是用户级私人 Agent**：当前热路径用 **LangChain.js + LangGraph ReAct** 做库内意图搜索、读篇摘录、发起「生成文稿」确认与流式回答；阅读页会预取当前篇。会话 API / SSE 与 App 样式保持兼容。成文、改标、归类等暂未接入。
 
 ## 1. 产品定位
 
@@ -103,9 +103,9 @@ agentOrchestrator.js → lc/runTurn.js
   ├─ 门控 / 落 user 消息 / 装配历史
   ├─ buildAgentGraph（lc/graph.js）
   │    ├─ streamTaskPlan → SSE thinking（任务理解与规划口语）
-  │    ├─ ChatOpenAI → 百炼 + Tools：search_library / get_item_excerpt
+  │    ├─ ChatOpenAI → 百炼 + Tools：search_library / get_item_excerpt / generate_transcript
   ├─ streamEvents → SSE phase / token；thinking 落库 `tool_calls_json.thinking`
-  ├─ citations[] ← 工具命中（最多 3）
+  ├─ citations[] ← 工具命中（最多 3）；generate_transcript 可挂 pendingAction
   └─ usageService.recordAiTokenUsage（feature=agent）
 ```
 
@@ -113,8 +113,9 @@ agentOrchestrator.js → lc/runTurn.js
 
 1. **Thin runTurn, fat tools**：检索逻辑仍在原 `search_library`；编排只负责 ReAct + SSE
 2. **出处来自工具**：`citationMap` 只收录 `search_library` 返回；禁止模型编造 itemId
-3. **App 契约稳**：`thinking` / `phase` / `token` / `user` / `done` / `error` 字段与旧版兼容
+3. **App 契约稳**：`thinking` / `phase` / `token` / `user` / `done` / `error` 字段与旧版兼容；文稿确认条仍走 `pendingAction`
 4. **加能力**：以 `lc/tools/*` 包装原 service；勿再堆 intent 分支大文件
+5. **生成文稿不在 ReAct 内跑 ASR**：Tool 只校验并挂确认；App 确认后提交并 `settle-transcript`
 
 ### 3.1 框架策略（已定 · 2026-11-14）
 
@@ -149,7 +150,7 @@ agentOrchestrator.js → lc/runTurn.js
 
 - `ctx`：`{ userId, conversationId, messageId, signal }` — 禁止 tool 自己读「别的用户」
 - 返回值进 Observation；`citations` 由编排器合并进最终消息（tool 可贡献，Answer 不可瞎编）
-- Phase 开关：`AGENT_TOOLS_ENABLED=search_library,get_item_excerpt` 这类白名单，未到阶段的 tool 不进 schema
+- Phase 开关：`AGENT_TOOLS_ENABLED=search_library,get_item_excerpt,generate_transcript` 这类白名单，未到阶段的 tool 不进 schema
 
 #### 何时考虑引入框架（换 Orchestrator，不推倒 Tools）
 
@@ -335,8 +336,19 @@ Body: { conversationId, messageId, approve: true|false }
 | 项 | 说明 |
 | --- | --- |
 | Args | `{ itemId, maxChars?: number }` |
-| 实现 | `aiInput.buildInputText` 后按 `maxChars`（默认 6k～12k）截断；音视频无文稿时返回 `needsTranscript: true`（Phase 1 **不**自动开转写，提示用户去阅读页转写或「需要我先转写这篇吗」待 P1.1） |
+| 实现 | `aiInput.buildInputText` 后按 `maxChars`（默认 6k～12k）截断；音视频无文稿时摘录可能为空，可再调 `generate_transcript` |
 | 返回 | `{ title, excerpt, tagNames, contentHash }` |
+
+#### `generate_transcript`
+
+| 项 | 说明 |
+| --- | --- |
+| Args | `{ itemId?, thenCompose? }`；`itemId` 省略则用当前阅读篇 |
+| 实现 | 校验属主与可转写媒体；**不**调用 `requestTranscript`、不扣分钟 |
+| 返回 | `ready` / `running` / `needs_confirm` / `no_media` / `missing_item` 等 JSON |
+| 确认 | `needs_confirm` 时写入 `pendingAction: { type: start_transcript, status: pending, resumeCompose }`；App 展示额度说明与「开始生成」 |
+| 结算 | App 完成后 `POST /api/agent/actions/settle-transcript` 写回 status / content |
+| 成文 | `thenCompose=true` 仅保留续跑门闩；整理成文章 Tool 尚未接入 |
 
 #### `propose_item_tag_edit`（只读预览）
 

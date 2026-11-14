@@ -668,10 +668,10 @@ class _MindmapLoadingCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final title = awaitTranscript
-        ? '正在转写，完成后生成思维导图…'
+        ? '正在生成文稿，完成后生成思维导图…'
         : aiScholarGeneratingLabel('思维导图', isPro: isPro);
     final subtitle = awaitTranscript
-        ? '转写完成后将自动开始生成'
+        ? '文稿生成完成后将自动开始'
         : '完成后可缩放查看结构';
     return Container(
       width: double.infinity,

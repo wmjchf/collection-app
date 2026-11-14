@@ -16,9 +16,9 @@ Future<bool?> showReadingRegenerateConfirmDialog(
   return switch (kind) {
     ReadingRegenerateKind.transcript => showAppConfirmDialog(
         context,
-        title: '重新转写文稿？',
-        message: '该段已有文稿，重新转写将覆盖现有内容。',
-        confirmLabel: '重新转写',
+        title: '重新生成文稿？',
+        message: '该段已有文稿，重新生成将覆盖现有内容。',
+        confirmLabel: '重新生成',
         dangerConfirm: false,
       ),
     ReadingRegenerateKind.mindmap => showAppConfirmDialog(

@@ -75,6 +75,8 @@ class _AgentPageState extends State<AgentPage> {
   bool _streamLive = false;
   /// 流式任务规划独白
   String _liveThinking = '';
+  /// 规划已结束、正文未出（用于「思考完成 + loading」）
+  bool _planDone = false;
   String? _error;
   CollectionItem? _focusItem;
   /// 已勾选进输入区的出处（以 chip 展示，发送时拼进正文）
@@ -88,7 +90,7 @@ class _AgentPageState extends State<AgentPage> {
   int _transcriptPollGen = 0;
   /// 已准备过气泡确认文案的助手消息 id
   final Set<int> _transcriptConfirmStarted = {};
-  /// 仅当次在气泡点过「开始转写」才允许转写成功后自动成文（进页续跑不成文）
+  /// 仅当次在气泡点过「开始生成」才允许文稿成功后自动成文（进页续跑不成文）
   bool _allowResumeComposeAfterTranscript = false;
 
   int? get _focusItemId =>
@@ -257,6 +259,7 @@ class _AgentPageState extends State<AgentPage> {
       _sending = true;
       _streamLive = false;
       _liveThinking = '';
+      _planDone = false;
       _pickedCitations.clear();
       _llmPresets = null;
     });
@@ -279,6 +282,13 @@ class _AgentPageState extends State<AgentPage> {
         conversationId: id,
         content: text,
         focusItemId: _focusItemId,
+        onPhase: (phase) {
+          if (!mounted) return;
+          // planning 之后进入 searching/answering = 规划结束
+          if (phase == 'searching' || phase == 'answering') {
+            setState(() => _planDone = true);
+          }
+        },
         onUser: (user) {
           if (!mounted) return;
           setState(() {
@@ -374,6 +384,7 @@ class _AgentPageState extends State<AgentPage> {
         _sending = false;
         _streamLive = false;
         _liveThinking = '';
+        _planDone = false;
       });
       unawaited(_persistCache());
       _scrollToEnd();
@@ -388,6 +399,7 @@ class _AgentPageState extends State<AgentPage> {
         _sending = false;
         _streamLive = false;
         _liveThinking = '';
+        _planDone = false;
       });
       await handleApiException(context, e);
     } catch (_) {
@@ -399,6 +411,7 @@ class _AgentPageState extends State<AgentPage> {
         _sending = false;
         _streamLive = false;
         _liveThinking = '';
+        _planDone = false;
       });
       AppToast.show(context, '发送失败，请重试');
     }
@@ -451,7 +464,7 @@ class _AgentPageState extends State<AgentPage> {
           // 离开期间已转写完：只结算成功态，不再自动成文（避免每次进页重发）
           _patchAssistantMessage(
             msg.id,
-            content: '转写完成。可以说「根据转写写一篇文章」，或到阅读页查看全文。',
+            content: '文稿已生成。可以说「整理成一篇文章」，或到阅读页查看全文。',
             pending: pa.copyWith(status: 'success', clearPhase: true),
           );
           ItemTranscriptRefresh.notify(itemId);
@@ -473,11 +486,11 @@ class _AgentPageState extends State<AgentPage> {
       return;
     }
     if (pa.status != 'pending') return;
-    // 只准备气泡内确认文案，不弹系统框；用户点「开始转写」再提交
+    // 只准备气泡内确认文案，不弹系统框；用户点「开始生成」再提交
     await _prepareTranscriptConfirm(assistant);
   }
 
-  /// 充实转写确认气泡（额度说明）；确认条由 pendingAction 驱动。
+  /// 充实文稿确认气泡（额度说明）；确认条由 pendingAction 驱动。
   Future<void> _prepareTranscriptConfirm(AgentMessage message) async {
     final pa = message.pendingAction;
     if (pa == null || !pa.isTranscriptConfirmPending) return;
@@ -493,7 +506,7 @@ class _AgentPageState extends State<AgentPage> {
     if (!allowed || !mounted) {
       _patchAssistantMessage(
         message.id,
-        content: '转写需要太子Pro。开通后可再说「转写这篇」。',
+        content: '生成文稿需要太子Pro。开通后可再说「生成文稿」。',
         pending: pa.copyWith(status: 'cancelled'),
       );
       return;
@@ -513,11 +526,11 @@ class _AgentPageState extends State<AgentPage> {
 
     if (!mounted) return;
     final lead = pa.resumeCompose
-        ? '这篇还没有转写文稿。确认后我先转写，完成后再整理成文章。'
-        : '确认后开始转写这篇文稿。';
+        ? '这篇还没有文稿。确认后我先生成文稿，完成后再整理成文章。'
+        : '确认后开始生成这篇文稿。';
     _patchAssistantMessage(
       message.id,
-      content: '$lead\n按实际时长扣减本月转写分钟，单次最长约 1 小时。$remainHint',
+      content: '$lead\n按实际时长扣减本月文稿分钟，单次最长约 1 小时。$remainHint',
       pending: pa,
     );
   }
@@ -578,7 +591,7 @@ class _AgentPageState extends State<AgentPage> {
     if (itemId <= 0) {
       _patchAssistantMessage(
         message.id,
-        content: '转写失败：缺少当前篇目。请从阅读页打开助手后再试。',
+        content: '生成文稿失败：缺少当前篇目。请从阅读页打开助手后再试。',
         pending: pa.copyWith(status: 'failed'),
       );
       return;
@@ -592,7 +605,7 @@ class _AgentPageState extends State<AgentPage> {
       await handleApiException(context, e);
       _patchAssistantMessage(
         message.id,
-        content: '转写失败：${e.message}',
+        content: '生成文稿失败：${e.message}',
         pending: pa.copyWith(status: 'failed'),
       );
       return;
@@ -600,7 +613,7 @@ class _AgentPageState extends State<AgentPage> {
       if (!mounted) return;
       _patchAssistantMessage(
         message.id,
-        content: '转写失败：无法获取可转写媒体。',
+        content: '生成文稿失败：无法获取可用的音视频。',
         pending: pa.copyWith(status: 'failed'),
       );
       return;
@@ -611,13 +624,13 @@ class _AgentPageState extends State<AgentPage> {
     if (pendingTargets.isEmpty) {
       _patchAssistantMessage(
         message.id,
-        content: '这篇已经有转写文稿了。可以说「根据转写写一篇文章」。',
+        content: '这篇已经有文稿了。可以说「整理成一篇文章」。',
         pending: pa.copyWith(status: 'success'),
       );
       ItemTranscriptRefresh.notify(itemId);
       if (pa.resumeCompose && _allowResumeComposeAfterTranscript) {
         _allowResumeComposeAfterTranscript = false;
-        unawaited(_send('根据转写写一篇文章'));
+        unawaited(_send('整理成一篇文章'));
       } else {
         _allowResumeComposeAfterTranscript = false;
       }
@@ -638,7 +651,7 @@ class _AgentPageState extends State<AgentPage> {
     if (chosen == null) {
       _patchAssistantMessage(
         message.id,
-        content: '已取消转写。需要时再说「转写这篇」。',
+        content: '已取消。需要时再说「生成文稿」。',
         pending: pa.copyWith(status: 'cancelled'),
       );
       unawaited(_refreshLlmPresets());
@@ -657,7 +670,7 @@ class _AgentPageState extends State<AgentPage> {
         if (mediaUrl == null || mediaUrl.trim().isEmpty) {
           _patchAssistantMessage(
             message.id,
-            content: '无法获取音视频直链，请先到阅读页播放或刷新视频后再转写。',
+            content: '无法获取音视频直链，请先到阅读页播放或刷新视频后再生成文稿。',
             pending: pa.copyWith(status: 'failed'),
           );
           return;
@@ -675,7 +688,7 @@ class _AgentPageState extends State<AgentPage> {
         if (!mounted) return;
         _patchAssistantMessage(
           message.id,
-          content: '无法获取音视频直链，请先到阅读页播放或刷新视频后再转写。',
+          content: '无法获取音视频直链，请先到阅读页播放或刷新视频后再生成文稿。',
           pending: pa.copyWith(status: 'failed'),
         );
         return;
@@ -699,8 +712,8 @@ class _AgentPageState extends State<AgentPage> {
       _patchAssistantMessage(
         message.id,
         content: pa.resumeCompose
-            ? '正在转写文稿，完成后会自动整理成文章。'
-            : '正在转写文稿，请稍候。',
+            ? '正在生成文稿，完成后会自动整理成文章。'
+            : '正在生成文稿，请稍候。',
         pending: pa.copyWith(
           status: 'running',
           segmentKey: chosen.segmentKey,
@@ -716,14 +729,14 @@ class _AgentPageState extends State<AgentPage> {
       await handleApiException(context, e);
       _patchAssistantMessage(
         message.id,
-        content: '转写失败：${e.message}',
+        content: '生成文稿失败：${e.message}',
         pending: pa.copyWith(status: 'failed'),
       );
     } catch (_) {
       if (!mounted) return;
       _patchAssistantMessage(
         message.id,
-        content: '转写失败，请稍后重试。',
+        content: '生成文稿失败，请稍后重试。',
         pending: pa.copyWith(status: 'failed'),
       );
     }
@@ -789,14 +802,14 @@ class _AgentPageState extends State<AgentPage> {
           _patchAssistantMessage(
             messageId,
             content: shouldCompose
-                ? '转写完成，正在根据文稿整理成文章…'
-                : '转写完成。可以说「根据转写写一篇文章」，或到阅读页查看全文。',
+                ? '文稿已生成，正在整理成文章…'
+                : '文稿已生成。可以说「整理成一篇文章」，或到阅读页查看全文。',
             pending: pa.copyWith(status: 'success', clearPhase: true),
           );
           ItemTranscriptRefresh.notify(itemId);
           unawaited(_refreshLlmPresets());
           if (shouldCompose) {
-            unawaited(_send('根据转写写一篇文章'));
+            unawaited(_send('整理成一篇文章'));
           }
           return;
         }
@@ -811,7 +824,7 @@ class _AgentPageState extends State<AgentPage> {
         }
         _patchAssistantMessage(
           messageId,
-          content: '转写失败：${errMsg ?? '请稍后重试'}',
+          content: '生成文稿失败：${errMsg ?? '请稍后重试'}',
           pending: pa.copyWith(status: 'failed', clearPhase: true),
         );
         unawaited(_refreshLlmPresets());
@@ -828,7 +841,7 @@ class _AgentPageState extends State<AgentPage> {
     if (pa == null || !pa.isTranscriptJobActive) return;
     _patchAssistantMessage(
       messageId,
-      content: '转写等待超时，请稍后在助手里再说「转写这篇」。',
+      content: '生成文稿等待超时，请稍后在助手里再说「生成文稿」。',
       pending: pa.copyWith(status: 'failed', clearPhase: true),
     );
   }
@@ -1062,8 +1075,8 @@ class _AgentPageState extends State<AgentPage> {
         _patchAssistantMessage(
           message.id,
           content: pa.resumeCompose
-              ? '已取消转写。需要时再说「根据转写写一篇文章」或「转写这篇」。'
-              : '已取消转写。需要时再说「转写这篇」。',
+              ? '已取消。需要时再说「整理成一篇文章」或「生成文稿」。'
+              : '已取消。需要时再说「生成文稿」。',
           pending: pa.copyWith(status: 'cancelled'),
         );
         unawaited(_refreshLlmPresets());
@@ -1348,6 +1361,11 @@ class _AgentPageState extends State<AgentPage> {
                               final thinkingLive = m.id < 0 &&
                                   _sending &&
                                   thinkingText.isNotEmpty &&
+                                  !_planDone &&
+                                  !_streamLive;
+                              final awaitingAnswer = m.id < 0 &&
+                                  _sending &&
+                                  _planDone &&
                                   !_streamLive;
                               return Padding(
                                 padding: const EdgeInsets.only(bottom: 14),
@@ -1361,6 +1379,7 @@ class _AgentPageState extends State<AgentPage> {
                                         text: m.content,
                                         thinking: thinkingText,
                                         thinkingLive: thinkingLive,
+                                        awaitingAnswer: awaitingAnswer,
                                         citations: m.citations,
                                         inventoryTags: m.inventoryTags,
                                         pendingAction: m.pendingAction,
@@ -1804,6 +1823,38 @@ class _EmptyState extends StatelessWidget {
   }
 }
 
+/// 思考完成后、正文未出：轻量 loading。
+class _AnswerPendingLoader extends StatelessWidget {
+  const _AnswerPendingLoader();
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        const SizedBox(
+          width: 14,
+          height: 14,
+          child: CircularProgressIndicator(
+            strokeWidth: 1.6,
+            color: Color(0xFF9AA1AB),
+          ),
+        ),
+        const SizedBox(width: 8),
+        Text(
+          '正在执行…',
+          style: TextStyle(
+            fontSize: 13,
+            height: 1.2,
+            color: const Color(0xFF9AA1AB).withValues(alpha: 0.95),
+            fontWeight: FontWeight.w400,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 /// 可折叠「思考中… / 思考完成」：任务理解与规划灰字。
 class _ThinkingPanel extends StatefulWidget {
   const _ThinkingPanel({
@@ -2216,6 +2267,7 @@ class _AssistantBlock extends StatelessWidget {
     required this.contextMenuBuilder,
     this.thinking = '',
     this.thinkingLive = false,
+    this.awaitingAnswer = false,
     this.focusItemId,
     this.pendingAction,
     this.pickEnabled = true,
@@ -2226,6 +2278,8 @@ class _AssistantBlock extends StatelessWidget {
   final String text;
   final String thinking;
   final bool thinkingLive;
+  /// 思考完成、正文尚未开始流式
+  final bool awaitingAnswer;
   final List<AgentCitation> citations;
   final List<AgentTagChip> inventoryTags;
   final AgentPendingAction? pendingAction;
@@ -2265,7 +2319,7 @@ class _AssistantBlock extends StatelessWidget {
     return TranscriptSegment(
       status: 'pending',
       phase: pa.phase ?? 'queued',
-      phaseLabel: pa.phaseLabel ?? '文稿转写中…',
+      phaseLabel: pa.phaseLabel ?? '正在生成文稿…',
       phaseHint: pa.phaseHint,
       phaseAt: pa.phaseAt,
     );
@@ -2286,8 +2340,14 @@ class _AssistantBlock extends StatelessWidget {
             live: thinkingLive,
             initiallyExpanded: thinkingLive,
           ),
-          if (text.trim().isNotEmpty) const SizedBox(height: 10),
+          if (awaitingAnswer || text.trim().isNotEmpty)
+            const SizedBox(height: 10),
         ],
+        if (awaitingAnswer && text.trim().isEmpty)
+          const Padding(
+            padding: EdgeInsets.only(top: 2, bottom: 4),
+            child: _AnswerPendingLoader(),
+          ),
         if (text.trim().isNotEmpty)
           TextSelectionTheme(
             data: const TextSelectionThemeData(
@@ -2434,24 +2494,25 @@ class _AssistantBlock extends StatelessWidget {
 /// 按上一轮助手回复用规则推断预设（不走模型）。
 /// 挂确认条的最后一步不展示预设，避免与「确认整理」抢决策。
 class _AgentPresetRules {
-  static const _composeVideoPreset = '根据转写写一篇文章';
-  static const _transcriptPreset = '转写这篇';
+  static const _composeVideoPreset = '整理成一篇文章';
+  static const _transcriptPreset = '生成文稿';
   static const _composeGalleryPreset = '根据图片整理成文章';
 
   static bool _looksLikeVideoCompose(String p) {
     final s = p.trim();
-    if (RegExp(r'^转写这篇$').hasMatch(s)) return false;
-    return RegExp(r'根据转写|转写写一篇').hasMatch(s);
+    if (RegExp(r'^生成文稿$|^转写这篇$').hasMatch(s)) return false;
+    if (RegExp(r'根据图片').hasMatch(s)) return false;
+    return RegExp(r'^整理成一篇文章$|根据转写|转写写一篇').hasMatch(s);
   }
 
   static bool _looksLikeTranscriptOnly(String p) =>
-      RegExp(r'^转写这篇$|开始转写|生成文稿').hasMatch(p.trim());
+      RegExp(r'^生成文稿$|^转写这篇$|开始转写|开始生成').hasMatch(p.trim());
 
   static bool _looksLikeGalleryCompose(String p) =>
-      RegExp(r'这组图|图集整理|根据图片整理|把.*图.*整理成|整理成文章|整理成笔记')
+      RegExp(r'这组图|图集整理|根据图片整理|把.*图.*整理成|整理成笔记')
           .hasMatch(p);
 
-  /// 视频：未转写留「转写这篇」+ 成文；图集：可留整理成文；互斥滤掉对方的 compose 预设。
+  /// 视频：未有文稿时留「生成文稿」+ 成文；图集：可留整理成文；互斥滤掉对方的 compose 预设。
   static List<String> filterCompose(
     List<String> presets, {
     required bool isVideo,
@@ -2466,13 +2527,9 @@ class _AgentPresetRules {
       if (kept.isEmpty) {
         return const [_transcriptPreset, _composeVideoPreset];
       }
-      final hasTranscript = kept.any(_looksLikeTranscriptOnly);
       final hasCompose = kept.any(_looksLikeVideoCompose);
       return List<String>.unmodifiable([
-        if (hasTranscript)
-          kept.firstWhere(_looksLikeTranscriptOnly)
-        else
-          _transcriptPreset,
+        _transcriptPreset,
         if (hasCompose)
           kept.firstWhere(_looksLikeVideoCompose)
         else

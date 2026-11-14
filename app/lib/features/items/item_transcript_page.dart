@@ -595,7 +595,7 @@ class _ItemTranscriptPageState extends State<ItemTranscriptPage> {
                 children: [
                   const Expanded(
                     child: Text(
-                      '转写文稿',
+                      '文稿',
                       style: TextStyle(
                         fontSize: 17,
                         fontWeight: FontWeight.w600,

@@ -222,13 +222,63 @@ router.post('/actions/confirm', async (_req, res) => {
 
 /**
  * POST /api/agent/actions/settle-transcript
- * MVP 未接入转写结算
+ * body: { conversationId, messageId, status, content? }
+ * App 在确认后本地提交 ASR / 轮询结束后写回 pendingAction，避免重进页重复弹确认。
  */
-router.post('/actions/settle-transcript', async (_req, res) => {
-  return res.status(410).json({
-    message: '当前助手版本暂不支持转写结算',
-    code: 'agent_transcript_unavailable',
-  });
+router.post('/actions/settle-transcript', async (req, res, next) => {
+  try {
+    const userId = req.auth.userId;
+    const conversationId = Number(req.body?.conversationId);
+    const messageId = Number(req.body?.messageId);
+    const status = String(req.body?.status || '').trim();
+    const content =
+      req.body?.content != null ? String(req.body.content) : null;
+
+    if (
+      !Number.isFinite(conversationId) ||
+      conversationId <= 0 ||
+      !Number.isFinite(messageId) ||
+      messageId <= 0
+    ) {
+      return res.status(400).json({ message: '参数无效' });
+    }
+
+    const allowed = new Set([
+      'pending',
+      'running',
+      'success',
+      'failed',
+      'cancelled',
+    ]);
+    if (!allowed.has(status)) {
+      return res.status(400).json({ message: 'status 无效' });
+    }
+
+    const msg = await conversationService.getMessageForUser(
+      userId,
+      conversationId,
+      messageId,
+    );
+    if (!msg) {
+      return res.status(404).json({ message: '消息不存在' });
+    }
+
+    const pa = msg.pendingAction;
+    if (!pa || pa.type !== 'start_transcript') {
+      return res.json({ ok: true, alreadySettled: true });
+    }
+
+    await conversationService.patchMessageToolPayload(messageId, {
+      pendingAction: { ...pa, status },
+    });
+    if (content != null) {
+      await conversationService.updateMessageContent(messageId, content);
+    }
+
+    return res.json({ ok: true });
+  } catch (err) {
+    return next(err);
+  }
 });
 
 module.exports = router;

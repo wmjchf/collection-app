@@ -259,7 +259,7 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
     }
     if (seg == null || !seg.hasText) {
       if (!mounted) return;
-      AppToast.show(context, '暂无文稿，可在助手里转写');
+      AppToast.show(context, '暂无文稿，可在助手里生成');
       return;
     }
     await showItemTranscriptSheet(

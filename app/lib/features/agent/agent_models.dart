@@ -170,7 +170,7 @@ class AgentPendingAction {
   bool get isOrganize => type == 'organize_tags';
 
   String get confirmLabel {
-    if (isStartTranscript) return '开始转写';
+    if (isStartTranscript) return '开始生成';
     if (isOrganize) return '确认整理';
     return '确认调整';
   }

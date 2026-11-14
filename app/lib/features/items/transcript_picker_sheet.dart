@@ -60,7 +60,7 @@ class _TranscriptPickerSheet extends StatelessWidget {
               Row(
                 children: [
                   const Text(
-                    '选择转写对象',
+                    '选择要生成文稿的内容',
                     style: TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.w600,
@@ -79,7 +79,7 @@ class _TranscriptPickerSheet extends StatelessWidget {
               ),
               const SizedBox(height: 8),
               Text(
-                '本篇含 ${targets.length} 段视频，请选择要转写的内容',
+                '本篇含 ${targets.length} 段视频，请选择要生成文稿的内容',
                 style: const TextStyle(fontSize: 13, color: _muted, height: 1.4),
               ),
               const SizedBox(height: 16),

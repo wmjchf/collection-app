@@ -107,7 +107,7 @@ class _ReadingSummarySheetState extends State<_ReadingSummarySheet> {
     if (_item.hasAnyTranscriptPending && !_meta.awaitTranscript) {
       if (mounted) {
         setState(() => _requesting = false);
-        AppToast.show(context, '转写进行中，请稍候再生成 AI 解读');
+        AppToast.show(context, '正在生成文稿，请稍候再生成 AI 解读');
       }
       return;
     }
@@ -420,7 +420,7 @@ class _ReadingSummarySheetState extends State<_ReadingSummarySheet> {
   Widget _buildBody() {
     if (_meta.isPending || _requesting) {
       final label = _meta.awaitTranscript
-          ? '转写完成后生成 AI 解读…'
+          ? '文稿生成完成后生成 AI 解读…'
           : aiScholarGeneratingLabel('解读', isPro: _isPro);
       return Container(
         width: double.infinity,

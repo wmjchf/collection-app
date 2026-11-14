@@ -71,6 +71,8 @@ async function runUserTurn({
   let focusItemIdResolved = null;
   let focusTitle = null;
   let focusExcerpt = null;
+  let focusIsAv = false;
+  let focusHasTranscript = false;
   const toolTrace = [];
   const citationMap = new Map();
 
@@ -80,6 +82,8 @@ async function runUserTurn({
       if (item) {
         focusItemIdResolved = focusIdRaw;
         focusTitle = String(item.title || '').trim() || null;
+        focusIsAv = isAvFocusItem(item);
+        focusHasTranscript = hasReadyTranscript(item);
       }
     } catch (_) {
       /* ignore */
@@ -124,6 +128,7 @@ async function runUserTurn({
     focusExcerpt,
     toolTrace,
     citationMap,
+    pendingAction: null,
   };
 
   const agent = buildAgentGraph(runtime);
@@ -154,12 +159,23 @@ async function runUserTurn({
       userText: text,
       focusTitle,
       hasFocusExcerpt: Boolean(focusExcerpt),
+      focusIsAv,
+      focusHasTranscript,
       emit,
     });
     thinkingText = String(plan.text || '').trim();
     usageTotal = mergeUsage(usageTotal, plan.usage);
   } catch (err) {
     console.warn('[agent] taskPlan fail:', err?.message || err);
+  }
+
+  // 规划已结束、正文未出：让前端切到「思考完成 + loading」
+  if (emit) {
+    emit({
+      type: 'phase',
+      phase: 'searching',
+      detail: '正在检索与组织回答',
+    });
   }
 
   let contentOut = '';
@@ -219,6 +235,7 @@ async function runUserTurn({
   }
 
   const citations = [...citationMap.values()].slice(0, MAX_ANSWER_CITATIONS);
+  const pendingAction = runtime.pendingAction || null;
   const assistantMessage = await conversationService.insertMessage({
     conversationId,
     role: 'assistant',
@@ -227,6 +244,7 @@ async function runUserTurn({
     toolTrace: {
       steps: toolTrace,
       ...(thinkingText ? { thinking: thinkingText } : {}),
+      ...(pendingAction ? { pendingAction } : {}),
     },
   });
 
@@ -236,6 +254,25 @@ async function runUserTurn({
     assistantMessage,
     usageTotal,
     emit,
+  });
+}
+
+function isAvFocusItem(item) {
+  if (!item) return false;
+  if (String(item.videoUrl || '').trim()) return true;
+  const kind = String(item.mediaKind || '').toLowerCase();
+  return kind.includes('video') || kind.includes('audio');
+}
+
+function hasReadyTranscript(item) {
+  const segs = item?.transcriptSegments;
+  if (!segs || typeof segs !== 'object') return false;
+  return Object.values(segs).some((s) => {
+    if (!s || typeof s !== 'object') return false;
+    return (
+      String(s.status || '') === 'success' &&
+      String(s.text || '').trim().length > 0
+    );
   });
 }
 
