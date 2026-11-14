@@ -2,6 +2,7 @@ const express = require('express');
 const { requireAuth } = require('../middleware/auth');
 const conversationService = require('../services/agent/agentConversationService');
 const orchestrator = require('../services/agent/agentOrchestrator');
+const agentPresetService = require('../services/agent/agentPresetService');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -176,7 +177,8 @@ router.post('/conversations/:id/messages', async (req, res, next) => {
 
 /**
  * POST /api/agent/conversations/:id/presets
- * LangGraph MVP：静态搜索向预设，兼容 App（不调模型）
+ * body: { focusItemId?, lastAssistantContent?, hasPendingAction? }
+ * 动态口语预设；不计用户 AI 额度（仍需太子+）
  */
 router.post('/conversations/:id/presets', async (req, res, next) => {
   try {
@@ -184,26 +186,16 @@ router.post('/conversations/:id/presets', async (req, res, next) => {
     if (!Number.isFinite(id) || id <= 0) {
       return res.status(400).json({ message: '无效的会话' });
     }
-    const conv = await conversationService.getConversationForUser(
-      req.auth.userId,
-      id,
-    );
-    if (!conv) {
-      return res.status(404).json({ message: '会话不存在' });
-    }
-    const focus =
-      req.body?.focusItemId != null || conv.focusItemId != null
-        ? [
-            '这篇和库里哪些类似',
-            '我还存过哪些相关的',
-            '帮我在收藏里找同类内容',
-          ]
-        : [
-            '我存过哪些关于…',
-            '帮我找找收藏里的…',
-            '有没有类似的内容',
-          ];
-    return res.json({ presets: focus, source: 'static' });
+    const focusItemId =
+      req.body?.focusItemId != null ? Number(req.body.focusItemId) : null;
+    const result = await agentPresetService.suggestPresets({
+      userId: req.auth.userId,
+      conversationId: id,
+      focusItemId,
+      lastAssistantContent: req.body?.lastAssistantContent,
+      hasPendingAction: Boolean(req.body?.hasPendingAction),
+    });
+    return res.json(result);
   } catch (err) {
     return next(err);
   }

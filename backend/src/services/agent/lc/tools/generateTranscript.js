@@ -119,8 +119,8 @@ function createGenerateTranscriptTool(runtime) {
           segmentsReady: ready.length,
           segmentsTotal: targets.length,
           note: thenCompose
-            ? '已有文稿。当前版本暂未接入「整理成文章」，可请用户到阅读页查看文稿，或稍后再试成文。'
-            : '已有文稿。请告知用户可到阅读页查看全文；若想整理成文章，可再说「整理成一篇文章」（成文能力后续接入）。',
+            ? '已有文稿。请立刻再调用 draft_article 整理成文章。'
+            : '已有文稿。请告知用户可到阅读页查看全文；若要整理成文章可再说「整理成一篇文章」或调用 draft_article。',
         });
       }
 

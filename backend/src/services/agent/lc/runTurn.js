@@ -3,7 +3,7 @@ const conversationService = require('../agentConversationService');
 const usageService = require('../../usageService');
 const itemService = require('../../itemService');
 const getItemExcerpt = require('../tools/getItemExcerpt');
-const { MAX_ANSWER_CITATIONS, EXCERPT_MAX_CHARS } = require('../agentPolicy');
+const { MAX_STORED_CITATIONS, EXCERPT_MAX_CHARS } = require('../agentPolicy');
 const { buildAgentGraph } = require('./graph');
 const { streamTaskPlan } = require('./taskPlan');
 
@@ -129,9 +129,13 @@ async function runUserTurn({
     toolTrace,
     citationMap,
     pendingAction: null,
+    taskPlan: null,
+    emit,
+    draftContent: null,
+    draftUsage: null,
+    suppressAnswerTokens: false,
   };
 
-  const agent = buildAgentGraph(runtime);
   const lcMessages = historyToLcMessages(history);
   lcMessages.push(new HumanMessage(text));
 
@@ -158,6 +162,7 @@ async function runUserTurn({
     const plan = await streamTaskPlan({
       userText: text,
       focusTitle,
+      hasFocus: Boolean(focusItemIdResolved),
       hasFocusExcerpt: Boolean(focusExcerpt),
       focusIsAv,
       focusHasTranscript,
@@ -168,6 +173,10 @@ async function runUserTurn({
   } catch (err) {
     console.warn('[agent] taskPlan fail:', err?.message || err);
   }
+
+  // 规划注入执行图：ReAct 按思考优先调 tool（规划失败则无附言）
+  runtime.taskPlan = thinkingText || null;
+  const agent = buildAgentGraph(runtime);
 
   // 规划已结束、正文未出：让前端切到「思考完成 + loading」
   if (emit) {
@@ -181,6 +190,7 @@ async function runUserTurn({
   let contentOut = '';
   let sawTool = false;
   let answering = false;
+  let suppressAnswerTokens = false;
 
   const eventStream = agent.streamEvents(
     { messages: lcMessages },
@@ -190,13 +200,23 @@ async function runUserTurn({
   for await (const ev of eventStream) {
     const name = ev?.event;
     if (name === 'on_tool_start') {
+      const toolName = String(ev?.name || ev?.data?.name || '').trim();
+      if (toolName === 'generate_transcript' || toolName === 'draft_article') {
+        // 确认文案 / 成文正文由工具或后端写；丢掉此前口头字
+        suppressAnswerTokens = true;
+        runtime.suppressAnswerTokens = true;
+        contentOut = '';
+      }
       if (!sawTool) {
         sawTool = true;
         if (emit) {
+          let detail = '在收藏库里找相关内容';
+          if (toolName === 'generate_transcript') detail = '准备生成文稿';
+          if (toolName === 'draft_article') detail = '正在整理成文章';
           emit({
             type: 'phase',
             phase: 'searching',
-            detail: '在收藏库里找相关内容',
+            detail,
           });
         }
       }
@@ -204,6 +224,15 @@ async function runUserTurn({
     }
 
     if (name === 'on_chat_model_stream') {
+      // 文稿确认 / 成文：正文由工具流式或后端写，不把模型口头答复推给 App
+      if (
+        suppressAnswerTokens ||
+        runtime.suppressAnswerTokens ||
+        runtime.pendingAction?.type === 'start_transcript' ||
+        runtime.draftContent
+      ) {
+        continue;
+      }
       const chunk = ev?.data?.chunk;
       const delta = extractContentDelta(chunk);
       if (delta) {
@@ -223,19 +252,34 @@ async function runUserTurn({
     }
   }
 
-  contentOut = String(contentOut || '').trim();
-  if (!contentOut) {
-    contentOut =
-      citationMap.size > 0
-        ? '我在库里找到了一些相关收藏，但没能整理出完整回答。你可以换个说法再问一次。'
-        : '我在收藏库里没有找到相关内容。可以换个关键词再试试。';
-    if (stream && emit) emit({ type: 'token', text: contentOut });
-  } else if (!stream && emit) {
-    emit({ type: 'token', text: contentOut });
+  const pendingAction = runtime.pendingAction || null;
+  const transcriptConfirm =
+    pendingAction &&
+    pendingAction.type === 'start_transcript' &&
+    pendingAction.status === 'pending';
+  const drafted = String(runtime.draftContent || '').trim();
+  usageTotal = mergeUsage(usageTotal, runtime.draftUsage);
+
+  if (transcriptConfirm) {
+    // 确认文案只进落库 / done，不再 token 流式，避免与口头答复拼接闪烁
+    contentOut = await buildTranscriptConfirmContent(userId, pendingAction);
+  } else if (drafted) {
+    // 成文已在 tool 内流式发出；此处只落库，不再重复 token
+    contentOut = drafted;
+  } else {
+    contentOut = String(contentOut || '').trim();
+    if (!contentOut) {
+      contentOut =
+        citationMap.size > 0
+          ? '我在库里找到了一些相关收藏，但没能整理出完整回答。你可以换个说法再问一次。'
+          : '我在收藏库里没有找到相关内容。可以换个关键词再试试。';
+      if (stream && emit) emit({ type: 'token', text: contentOut });
+    } else if (!stream && emit) {
+      emit({ type: 'token', text: contentOut });
+    }
   }
 
-  const citations = [...citationMap.values()].slice(0, MAX_ANSWER_CITATIONS);
-  const pendingAction = runtime.pendingAction || null;
+  const citations = [...citationMap.values()].slice(0, MAX_STORED_CITATIONS);
   const assistantMessage = await conversationService.insertMessage({
     conversationId,
     role: 'assistant',
@@ -255,6 +299,29 @@ async function runUserTurn({
     usageTotal,
     emit,
   });
+}
+
+async function buildTranscriptConfirmContent(userId, pendingAction) {
+  const resumeCompose = Boolean(pendingAction?.resumeCompose);
+  const lead = resumeCompose
+    ? '这篇还没有文稿。确认后我先生成文稿，完成后再整理成文章。'
+    : '确认后开始生成这篇文稿。';
+  let remainHint = '';
+  try {
+    const summary = await usageService.getUsageSummary(userId);
+    const left = Number(summary?.transcript?.remainingMinutes);
+    const limit = Number(summary?.transcript?.limitMinutes);
+    if (Number.isFinite(left) && Number.isFinite(limit) && limit > 0 && left >= 0) {
+      const leftLabel =
+        left >= 10 || left === Math.round(left)
+          ? String(Math.round(left))
+          : left.toFixed(1);
+      remainHint = `\n本月大约还剩 ${leftLabel} 分钟。`;
+    }
+  } catch (_) {
+    /* ignore quota read */
+  }
+  return `${lead}\n按实际时长扣减本月文稿分钟，单次最长约 1 小时。${remainHint}`;
 }
 
 function isAvFocusItem(item) {

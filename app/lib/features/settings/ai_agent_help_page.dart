@@ -56,11 +56,6 @@ class AiAgentHelpPage extends StatelessWidget {
               ),
               const SizedBox(height: 12),
               const _CapabilityCard(
-                title: '对照内容',
-                desc: '勾选或点名几篇，让助手比较异同、梳理要点。',
-              ),
-              const SizedBox(height: 12),
-              const _CapabilityCard(
                 title: '深挖原文',
                 desc: '从阅读页打开助手后，围绕当前篇追问观点、原话或细节。全局助手不做深挖。',
               ),
@@ -149,7 +144,7 @@ class _ScreenshotCard extends StatelessWidget {
           const Padding(
             padding: EdgeInsets.symmetric(horizontal: 4),
             child: Text(
-              '可按意图搜索与对照；从阅读页打开后还可深挖。',
+              '可按意图在收藏里搜索；从阅读页打开后还可深挖。',
               style: TextStyle(
                 fontSize: 13,
                 color: AiAgentHelpPage._muted,
@@ -210,7 +205,7 @@ class _IntroCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            '太子Pro 的核心：在你的收藏库里做意图搜索与对照；'
+            '太子Pro 的核心：在你的收藏库里做意图搜索；'
             '从阅读页打开还可深挖当前篇。'
             '视频可先生成文稿再成文；知识向的图片可整理成文。',
             style: TextStyle(

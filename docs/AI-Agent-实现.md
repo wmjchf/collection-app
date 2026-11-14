@@ -6,7 +6,7 @@
 
 ## 0. 一句话
 
-**AI助手是用户级私人 Agent**：当前热路径用 **LangChain.js + LangGraph ReAct** 做库内意图搜索、读篇摘录、发起「生成文稿」确认与流式回答；阅读页会预取当前篇。会话 API / SSE 与 App 样式保持兼容。成文、改标、归类等暂未接入。
+**AI助手是用户级私人 Agent**：当前热路径用 **LangChain.js + LangGraph ReAct** 做库内意图搜索、读篇摘录、生成文稿确认、整理成文章与流式回答；阅读页会预取当前篇。会话 API / SSE 与 App 样式保持兼容。改标、归类等暂未接入。
 
 ## 1. 产品定位
 
@@ -103,19 +103,22 @@ agentOrchestrator.js → lc/runTurn.js
   ├─ 门控 / 落 user 消息 / 装配历史
   ├─ buildAgentGraph（lc/graph.js）
   │    ├─ streamTaskPlan → SSE thinking（任务理解与规划口语）
-  │    ├─ ChatOpenAI → 百炼 + Tools：search_library / get_item_excerpt / generate_transcript
+  │    ├─ 规划正文注入 ReAct system（约束执行优先按规划调 tool）
+  │    ├─ ChatOpenAI → 百炼 + Tools：search_library / get_item_excerpt / generate_transcript / draft_article
   ├─ streamEvents → SSE phase / token；thinking 落库 `tool_calls_json.thinking`
-  ├─ citations[] ← 工具命中（最多 3）；generate_transcript 可挂 pendingAction
+  ├─ citations[] ← 工具命中（落库最多 12；气泡默认露 3，「加载更多」展开）；generate_transcript 可挂 pendingAction；draft_article 真流式成文
   └─ usageService.recordAiTokenUsage（feature=agent）
 ```
 
 **原则**
 
 1. **Thin runTurn, fat tools**：检索逻辑仍在原 `search_library`；编排只负责 ReAct + SSE
-2. **出处来自工具**：`citationMap` 只收录 `search_library` 返回；禁止模型编造 itemId
+2. **出处来自工具**：`citationMap` 只收录工具返回；禁止模型编造 itemId
 3. **App 契约稳**：`thinking` / `phase` / `token` / `user` / `done` / `error` 字段与旧版兼容；文稿确认条仍走 `pendingAction`
 4. **加能力**：以 `lc/tools/*` 包装原 service；勿再堆 intent 分支大文件
 5. **生成文稿不在 ReAct 内跑 ASR**：Tool 只校验并挂确认；App 确认后提交并 `settle-transcript`
+6. **先规划后执行**：规划与 ReAct 串行；规划文本注入执行 prompt，避免「想的一套、做的一套」
+7. **成文在 Tool 内流式**：`draft_article` 直接 `token`；抑制模型事后复述
 
 ### 3.1 框架策略（已定 · 2026-11-14）
 
@@ -329,7 +332,7 @@ Body: { conversationId, messageId, approve: true|false }
 | Args | `{ q: string, tagNames?: string[], limit?: number }` |
 | 实现 | 复用现网全文/标签搜索（`GET /api/items/search` 同源逻辑）；只搜当前 `user_id` |
 | 返回 | `{ hits: [{ itemId, title, snippet, score?, tagNames[] }] }` |
-| 限制 | `limit` 默认 8、硬顶 20；snippet 优先命中句，否则标题/摘要截断 |
+| 限制 | `limit` 默认 6、硬顶 12；snippet 优先命中句，否则标题/摘要截断 |
 
 #### `get_item_excerpt`
 
@@ -346,9 +349,19 @@ Body: { conversationId, messageId, approve: true|false }
 | Args | `{ itemId?, thenCompose? }`；`itemId` 省略则用当前阅读篇 |
 | 实现 | 校验属主与可转写媒体；**不**调用 `requestTranscript`、不扣分钟 |
 | 返回 | `ready` / `running` / `needs_confirm` / `no_media` / `missing_item` 等 JSON |
-| 确认 | `needs_confirm` 时写入 `pendingAction: { type: start_transcript, status: pending, resumeCompose }`；App 展示额度说明与「开始生成」 |
+| 确认 | `needs_confirm` 时写入 `pendingAction` + 后端确认文案（含剩余分钟）；抑制模型口头答复 token；App 只做档位门控与「开始生成」 |
 | 结算 | App 完成后 `POST /api/agent/actions/settle-transcript` 写回 status / content |
-| 成文 | `thenCompose=true` 仅保留续跑门闩；整理成文章 Tool 尚未接入 |
+| 成文 | `thenCompose=true` 时确认成功后 App 续发「整理成一篇文章」→ `draft_article` |
+
+#### `draft_article`
+
+| 项 | 说明 |
+| --- | --- |
+| Args | `{ itemId? }`；省略则当前阅读篇 |
+| 视频 | 复用 `draftFromTranscript`；须成功文稿；口播→书面 Markdown 流式 |
+| 图集 | 复用 `draftFromGallery`；VL 看图（`ALIYUN_AI_MODEL_AGENT_VISION`）；知识向成文 / 生活向短拒 |
+| 无文稿 | 返回 `need_transcript`，模型应改调 `generate_transcript(thenCompose=true)` |
+| 流式 | Tool 内 `chatTextStream` → SSE `token`；`runtime.draftContent` 落库；不写回条目 |
 
 #### `propose_item_tag_edit`（只读预览）
 
@@ -467,7 +480,7 @@ Body: { conversationId, messageId, approve: true|false }
 2. **召回层（已落地）**：`item_embeddings` + DashScope embedding；`search_library` **语义优先，关键词 LIKE 兜底**；有强关键词命中时仍丢掉仅正文顺带提到的弱命中；盘点类走 `list_library`  
 3. **索引时机**：解析成功、用户改正文后异步 `scheduleIndexItem`；**使用指引（`platform=guide`）永不入库**；删条目靠 FK CASCADE；存量 `pnpm kb:index`；`AGENT_KB_ENABLED=false` 可关  
 4. **阅读页找类似**：明确查库时 `excludeItemIds` 排除当前篇，避免本篇占满名额  
-5. **聊天不是搜索结果页**：正文与出处卡最多 **3** 篇；命中更多时先报总数，引导点名/换主题；出处与正文标题对齐  
+5. **聊天不是搜索结果页**：正文点最贴几条；出处卡默认 **3**，本轮池最多 **12**，「加载更多」展开（不再次搜库）；命中仍多时可提醒意图说得更具体  
 6. 用户问「对照 A 和 B」：识别两篇 → 两篇 excerpt → 对比段落  
 7. 编排仍自研薄 ReAct；**不上整包 LangChain**；向量存储可后续从 MySQL JSON 近邻换 pgvector/Qdrant，只动 retrieval  
 8. snippet：语义命中用 chunk 摘要；关键词命中优先含 query 的句子；禁止整篇塞进 citations UI  

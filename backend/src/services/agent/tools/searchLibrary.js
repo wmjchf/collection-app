@@ -49,7 +49,7 @@ const tool = {
 
     // 多取一些再筛：正文顺带提到关键词的弱命中会被丢掉
     const result = await itemService.searchItems(ctx.userId, q, {
-      limit: Math.min(limit * 3, 20),
+      limit: Math.min(limit * 3, 36),
       offset: 0,
     });
     const keywordItems = (result.items || []).filter((item) => {

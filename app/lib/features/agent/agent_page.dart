@@ -81,6 +81,9 @@ class _AgentPageState extends State<AgentPage> {
   CollectionItem? _focusItem;
   /// 已勾选进输入区的出处（以 chip 展示，发送时拼进正文）
   final Map<int, AgentCitation> _pickedCitations = {};
+  /// 每条助手消息已露出的出处条数（默认 [_citationPageSize]，点加载更多再加）
+  final Map<int, int> _citationRevealByMsgId = {};
+  static const int _citationPageSize = 3;
   int? _cacheUserId;
   /// 动态预设（LLM）；为空则用规则兜底
   List<String>? _llmPresets;
@@ -95,6 +98,22 @@ class _AgentPageState extends State<AgentPage> {
 
   int? get _focusItemId =>
       widget.focusItemId ?? widget.focusItem?.id ?? _focusItem?.id;
+
+  int _citationRevealCount(int messageId) {
+    final n = _citationRevealByMsgId[messageId];
+    if (n == null || n < _citationPageSize) return _citationPageSize;
+    return n;
+  }
+
+  void _loadMoreCitations(int messageId, int totalVisible) {
+    if (totalVisible <= _citationPageSize) return;
+    setState(() {
+      final cur = _citationRevealCount(messageId);
+      final next = cur + _citationPageSize;
+      _citationRevealByMsgId[messageId] =
+          next > totalVisible ? totalVisible : next;
+    });
+  }
 
   @override
   void initState() {
@@ -490,7 +509,7 @@ class _AgentPageState extends State<AgentPage> {
     await _prepareTranscriptConfirm(assistant);
   }
 
-  /// 充实文稿确认气泡（额度说明）；确认条由 pendingAction 驱动。
+  /// 文稿确认：文案已由后端随 pendingAction 写好；此处只做档位门控。
   Future<void> _prepareTranscriptConfirm(AgentMessage message) async {
     final pa = message.pendingAction;
     if (pa == null || !pa.isTranscriptConfirmPending) return;
@@ -509,30 +528,7 @@ class _AgentPageState extends State<AgentPage> {
         content: '生成文稿需要太子Pro。开通后可再说「生成文稿」。',
         pending: pa.copyWith(status: 'cancelled'),
       );
-      return;
     }
-
-    var remainHint = '';
-    try {
-      final usage = await UsageRefresh.ensure();
-      final left = usage.transcriptRemainingMinutes;
-      if (left >= 0 && usage.transcriptLimitMinutes > 0) {
-        final leftLabel = left >= 10 || left == left.roundToDouble()
-            ? '${left.round()}'
-            : left.toStringAsFixed(1);
-        remainHint = '\n本月大约还剩 $leftLabel 分钟。';
-      }
-    } catch (_) {}
-
-    if (!mounted) return;
-    final lead = pa.resumeCompose
-        ? '这篇还没有文稿。确认后我先生成文稿，完成后再整理成文章。'
-        : '确认后开始生成这篇文稿。';
-    _patchAssistantMessage(
-      message.id,
-      content: '$lead\n按实际时长扣减本月文稿分钟，单次最长约 1 小时。$remainHint',
-      pending: pa,
-    );
   }
 
   void _patchAssistantMessage(
@@ -1376,11 +1372,16 @@ class _AgentPageState extends State<AgentPage> {
                                             _selectionToolbar(),
                                       )
                                     : _AssistantBlock(
+                                        key: ValueKey('agent-asst-${m.id}'),
                                         text: m.content,
                                         thinking: thinkingText,
                                         thinkingLive: thinkingLive,
                                         awaitingAnswer: awaitingAnswer,
                                         citations: m.citations,
+                                        citationShownCount:
+                                            _citationRevealCount(m.id),
+                                        onLoadMoreCitations: (total) =>
+                                            _loadMoreCitations(m.id, total),
                                         inventoryTags: m.inventoryTags,
                                         pendingAction: m.pendingAction,
                                         focusItemId: _focusItemId,
@@ -1722,8 +1723,7 @@ class _FocusItemBanner extends StatelessWidget {
   }
 }
 
-/// 空态：主题色 ✦ 圆标（无光晕）+ 居中标题/副文。
-/// 有锚定篇时顶部已展示条目，这里只留短提示。
+/// 空态：主题色 ✦ 圆标（无光晕）+ 居中标题；全局另有副文。
 class _EmptyState extends StatelessWidget {
   const _EmptyState({this.focused = false});
 
@@ -1734,16 +1734,38 @@ class _EmptyState extends StatelessWidget {
   static const _title = Color(0xFF1F242E);
   static const _sub = Color(0xFF737A85);
 
+  Widget _sparkIcon() {
+    return Container(
+      width: 72,
+      height: 72,
+      decoration: const BoxDecoration(
+        shape: BoxShape.circle,
+        color: _brandSoft,
+      ),
+      alignment: Alignment.center,
+      child: const Text(
+        '✦',
+        style: TextStyle(
+          fontSize: 28,
+          height: 1,
+          color: _brand,
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     if (focused) {
-      return const Center(
+      return Center(
         child: Padding(
-          padding: EdgeInsets.fromLTRB(36, 24, 36, 48),
+          padding: const EdgeInsets.fromLTRB(36, 24, 36, 48),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text(
+              _sparkIcon(),
+              const SizedBox(height: 24),
+              const Text(
                 '围绕这篇聊聊',
                 textAlign: TextAlign.center,
                 style: TextStyle(
@@ -1752,17 +1774,6 @@ class _EmptyState extends StatelessWidget {
                   color: _title,
                   height: 1.25,
                   letterSpacing: 0.8,
-                ),
-              ),
-              SizedBox(height: 10),
-              Text(
-                '问观点、原话，或对照其它收藏',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 15,
-                  color: _sub,
-                  height: 1.55,
-                  letterSpacing: 0.15,
                 ),
               ),
             ],
@@ -1776,23 +1787,7 @@ class _EmptyState extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Container(
-              width: 72,
-              height: 72,
-              decoration: const BoxDecoration(
-                shape: BoxShape.circle,
-                color: _brandSoft,
-              ),
-              alignment: Alignment.center,
-              child: const Text(
-                '✦',
-                style: TextStyle(
-                  fontSize: 28,
-                  height: 1,
-                  color: _brand,
-                ),
-              ),
-            ),
+            _sparkIcon(),
             const SizedBox(height: 24),
             const Text(
               '你的AI助手',
@@ -1807,7 +1802,7 @@ class _EmptyState extends StatelessWidget {
             ),
             const SizedBox(height: 12),
             const Text(
-              '意图搜索与对照',
+              '在收藏里更快找到内容',
               textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: 15,
@@ -2257,8 +2252,11 @@ class _UserBubble extends StatelessWidget {
 
 class _AssistantBlock extends StatelessWidget {
   const _AssistantBlock({
+    super.key,
     required this.text,
     required this.citations,
+    required this.citationShownCount,
+    required this.onLoadMoreCitations,
     required this.inventoryTags,
     required this.pickedIds,
     required this.onOpen,
@@ -2281,6 +2279,9 @@ class _AssistantBlock extends StatelessWidget {
   /// 思考完成、正文尚未开始流式
   final bool awaitingAnswer;
   final List<AgentCitation> citations;
+  /// 由页面控制：默认 3，点加载更多再增加
+  final int citationShownCount;
+  final ValueChanged<int> onLoadMoreCitations;
   final List<AgentTagChip> inventoryTags;
   final AgentPendingAction? pendingAction;
   final int? focusItemId;
@@ -2331,6 +2332,11 @@ class _AssistantBlock extends StatelessWidget {
     final progressSeg = _transcriptProgressSegment;
     final canCopy = text.trim().isNotEmpty && progressSeg == null;
     final think = thinking.trim();
+    final allCites = _visibleCitations;
+    final limit = citationShownCount < 1 ? 1 : citationShownCount;
+    final shown = allCites.take(limit).toList(growable: false);
+    final remaining = allCites.length - shown.length;
+    final hasMore = remaining > 0;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -2400,7 +2406,7 @@ class _AssistantBlock extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 8),
-          for (final c in _visibleCitations) ...[
+          for (final c in shown) ...[
             Row(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
@@ -2443,6 +2449,23 @@ class _AssistantBlock extends StatelessWidget {
             ),
             const SizedBox(height: 8),
           ],
+          if (hasMore)
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton(
+                onPressed: () => onLoadMoreCitations(allCites.length),
+                style: TextButton.styleFrom(
+                  foregroundColor: _brand,
+                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+                  minimumSize: const Size(0, 36),
+                  tapTargetSize: MaterialTapTargetSize.padded,
+                ),
+                child: Text(
+                  '加载更多（还有 $remaining 条）',
+                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
+                ),
+              ),
+            ),
         ],
         if (showConfirm) ...[
           const SizedBox(height: 8),
@@ -2597,7 +2620,7 @@ class _AgentPresetRules {
     return const [
       '查找关于…',
       '类似××的内容有哪些',
-      '对照几篇收藏',
+      '我存过哪些关于…',
     ];
   }
 
@@ -2620,7 +2643,7 @@ class _AgentPresetRules {
       final short = title.length > 12 ? '${title.substring(0, 12)}…' : title;
       return [
         if (short.isNotEmpty) '深入解读《$short》',
-        '对照这几篇',
+        '还有哪些相关收藏？',
         '查找关于…',
       ];
     }
@@ -2633,7 +2656,7 @@ class _AgentPresetRules {
           const [
             '再展开说明',
             _composeGalleryPreset,
-            '对照其它收藏',
+            '还有哪些相关收藏？',
           ],
           isVideo: isVideo,
           isGallery: isGallery,
@@ -2645,7 +2668,7 @@ class _AgentPresetRules {
         const [
           '再展开说明',
           _composeVideoPreset,
-          '对照其它收藏',
+          '还有哪些相关收藏？',
         ],
         isVideo: isVideo,
         isGallery: isGallery,
@@ -2653,11 +2676,11 @@ class _AgentPresetRules {
         canComposeGallery: canComposeGallery,
       );
     }
-    // 全局助手：意图搜索 + 对照（无深挖）
+    // 全局助手：意图搜索（无深挖）
     return const [
       '查找关于…',
       '类似××的内容有哪些',
-      '对照几篇收藏',
+      '我存过哪些关于…',
     ];
   }
 }

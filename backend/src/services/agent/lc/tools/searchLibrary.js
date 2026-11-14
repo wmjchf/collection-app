@@ -1,7 +1,11 @@
 const { tool } = require('@langchain/core/tools');
 const { z } = require('zod');
 const searchLibrary = require('../../tools/searchLibrary');
-const { clampSearchLimit, MAX_ANSWER_CITATIONS } = require('../../agentPolicy');
+const {
+  clampSearchLimit,
+  MAX_ANSWER_CITATIONS,
+  MAX_SEARCH_HITS,
+} = require('../../agentPolicy');
 
 /**
  * LangChain Tool：封装现有 search_library 执行逻辑。
@@ -52,32 +56,43 @@ function createSearchLibraryTool(runtime) {
         match: h.match,
       }));
 
+      const crowded = hits.length >= Math.min(lim, MAX_SEARCH_HITS);
+      let note =
+        hits.length === 0
+          ? '库内无相关收藏，请如实告诉用户没有找到，不要编造篇目。'
+          : `界面默认露出 ${MAX_ANSWER_CITATIONS} 条出处，用户可点「加载更多」展开本轮其余命中；回答里可点名标题。`;
+      if (crowded) {
+        note +=
+          ' 相关命中偏多：正文先点最贴的几条，可自然提醒把意图说得更具体（人名/产品/场景）会更好找；不要假装已列全库，也不要让用户再搜一次才「翻页」。';
+      }
+
       return JSON.stringify({
         query: obs?.data?.query || query,
         total: obs?.data?.total ?? hits.length,
         returned: hits.length,
         citationCap: MAX_ANSWER_CITATIONS,
         hits,
-        note:
-          hits.length === 0
-            ? '库内无相关收藏，请如实告诉用户没有找到，不要编造篇目。'
-            : `最多在回复中挂 ${MAX_ANSWER_CITATIONS} 条出处；可点名标题。`,
+        note,
       });
     },
     {
       name: 'search_library',
       description:
         '在用户的奏折收藏库中按意图检索相关条目。用户问「存过哪些 / 找类似 / 关于某主题」时必须调用。' +
-        '传入理解后的短查询词（可同义改写），不要照抄整句闲聊。',
+        'q 用短主题词；大类意图务必具象改写后再搜（数码→笔记本/平板，可分两次调用再汇总）。不要照抄整句闲聊或只搜笼统原词。',
       schema: z.object({
-        q: z.string().describe('检索用短主题或关键词'),
+        q: z
+          .string()
+          .describe(
+            '短主题词；大类词请改成具象说法（如笔记本、平板），不要只用「数码」这类笼统词',
+          ),
         limit: z
           .number()
           .int()
           .min(1)
-          .max(20)
+          .max(12)
           .optional()
-          .describe('返回条数，默认由服务端限制'),
+          .describe('返回条数，默认由服务端限制（约 6，硬顶 12）'),
       }),
     },
   );
