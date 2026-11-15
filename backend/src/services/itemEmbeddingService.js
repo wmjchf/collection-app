@@ -459,6 +459,10 @@ async function searchSimilar(userId, query, {
   excludeItemIds = [],
   minScore = MIN_SCORE,
   minScoreMultimodal = MIN_SCORE_MULTIMODAL,
+  /** 相对头名分差；大类意图可放宽（默认 SCORE_GAP=0.1） */
+  scoreGap = SCORE_GAP,
+  /** 返回条数硬顶（默认 20；助手大类可提到 50） */
+  maxCap = 20,
 } = {}) {
   if (!isEnabled()) return [];
   const q = String(query || '').trim();
@@ -573,10 +577,18 @@ async function searchSimilar(userId, query, {
   const ranked = [...bestByItem.values()].sort((a, b) => b.score - a.score);
   if (!ranked.length) return [];
   const head = ranked[0].score;
-  const tight = ranked.filter((h) => head - h.score <= SCORE_GAP);
+  const gap =
+    scoreGap == null || !Number.isFinite(Number(scoreGap))
+      ? SCORE_GAP
+      : Math.max(0, Number(scoreGap));
+  const tight = ranked.filter((h) => head - h.score <= gap);
+  const cap = Math.min(
+    Math.max(Number(maxCap) || 20, 1),
+    80,
+  );
   const top = tight.slice(
     0,
-    Math.min(Math.max(Number(limit) || DEFAULT_TOP_K, 1), 20),
+    Math.min(Math.max(Number(limit) || DEFAULT_TOP_K, 1), cap),
   );
 
   const ids = top.map((h) => h.itemId);

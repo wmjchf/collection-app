@@ -6,7 +6,7 @@ const agentProfileService = require('../../agentProfileService');
 
 /** 低于此数：不出确认条，先劝打标 */
 const MIN_TAGS_FOR_ORGANIZE = 6;
-/** 少于此数：粗分，限制新建架子数量 */
+/** 少于此数：粗分，限制新建归类数量 */
 const COARSE_TAG_THRESHOLD = 12;
 
 /**
@@ -54,7 +54,7 @@ function createProposeOrganizeTool(runtime) {
       }
       if (modeIn !== 'full') {
         policyBits.push(
-          '默认只整理未归类标签；已手动摆好的架子尽量不动。',
+          '默认只整理未归类标签；已手动摆好的归类尽量不动。',
         );
       } else {
         policyBits.push(
@@ -148,7 +148,7 @@ function createProposeOrganizeTool(runtime) {
     {
       name: 'propose_organize',
       description:
-        '为收藏库标签生成归类整理预览（不写库）。用户说「帮我归类」「整理标签架子」时调用。' +
+        '为收藏库标签生成归类整理预览（不写库）。用户说「帮我归类」「整理标签归类」时调用。' +
         '默认 mode=ungrouped（只收拾未归类）；仅当用户明确要「全部重排/打乱重来」时用 full。' +
         '标签过少时会拒绝预览并提示先打标。确认后才写入。' +
         '用户只是要改某个已有架名时不要用本工具，改用 propose_rename_module。',

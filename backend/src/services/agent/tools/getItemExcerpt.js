@@ -2,6 +2,8 @@ const { pool } = require('../../../db');
 const { buildInputText, hasAiInput } = require('../../aiInput');
 const { EXCERPT_MAX_CHARS } = require('../agentPolicy');
 const { citationMediaFields } = require('../agentCitationFields');
+const { peekGalleryVisual } = require('./peekGalleryVisual');
+const { isGalleryItem } = require('./draftFromGallery');
 
 const tool = {
   name: 'get_item_excerpt',
@@ -12,12 +14,13 @@ const tool = {
     properties: {
       itemId: { type: 'number' },
       maxChars: { type: 'number' },
+      peekImages: { type: 'boolean' },
     },
     required: ['itemId'],
   },
   /**
    * @param {{ userId: number }} ctx
-   * @param {{ itemId: number, maxChars?: number }} args
+   * @param {{ itemId: number, maxChars?: number, peekImages?: boolean }} args
    */
   async execute(ctx, args) {
     const itemId = Number(args?.itemId);
@@ -50,7 +53,10 @@ const tool = {
     );
     const tagNames = tagRows.map((r) => r.name).filter(Boolean);
 
-    if (!hasAiInput(row)) {
+    const wantPeek =
+      args?.peekImages !== false && isGalleryItem(row);
+
+    if (!hasAiInput(row) && !wantPeek) {
       return {
         ok: true,
         data: {
@@ -68,6 +74,30 @@ const tool = {
       20000,
     );
     let excerpt = buildInputText(row);
+    let visual = null;
+    if (wantPeek) {
+      visual = await peekGalleryVisual(row);
+      if (visual?.notes) {
+        const block = `画面要点（已看前 ${visual.imagesUsed}/${visual.imagesTotal} 张）：\n${visual.notes}`;
+        excerpt = excerpt ? `${excerpt}\n\n${block}` : block;
+      }
+    }
+
+    if (!String(excerpt || '').trim()) {
+      return {
+        ok: true,
+        data: {
+          itemId,
+          title: row.title || row.url || `条目 ${itemId}`,
+          excerpt: '',
+          tagNames,
+          empty: true,
+          peekedImages: Boolean(visual),
+        },
+        usage: visual?.usage || null,
+      };
+    }
+
     if (excerpt.length > maxChars) {
       excerpt = `${excerpt.slice(0, maxChars)}…`;
     }
@@ -87,6 +117,9 @@ const tool = {
         tagNames,
         coverImageUrl: media.coverImageUrl,
         pageUrl: media.pageUrl,
+        peekedImages: Boolean(visual?.notes),
+        imagesPeeked: visual?.imagesUsed || 0,
+        imagesTotal: visual?.imagesTotal || 0,
       },
       citations: [
         {
@@ -98,6 +131,7 @@ const tool = {
           pageUrl: media.pageUrl,
         },
       ],
+      usage: visual?.usage || null,
     };
   },
 };

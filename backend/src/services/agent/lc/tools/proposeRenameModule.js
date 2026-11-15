@@ -33,7 +33,7 @@ function createProposeRenameModuleTool(runtime) {
         return JSON.stringify({
           ok: false,
           status: 'no_modules',
-          note: '用户还没有任何归类架子。如实说明，不要调用 propose_organize 冒充改名。',
+          note: '用户还没有任何归类。如实说明，不要调用 propose_organize 冒充改名。',
         });
       }
 
@@ -71,7 +71,7 @@ function createProposeRenameModuleTool(runtime) {
           fromName: hit.name,
           modules: shelves.map((s) => s.name),
           note:
-            `已定位架子「${hit.name}」。请直接问用户想改成什么名字；` +
+            `已定位归类「${hit.name}」。请直接问用户想改成什么名字；` +
             '得到新名字后再调本工具并带上 toName。禁止挂确认条，禁止调用 propose_organize。',
         });
       }
@@ -130,7 +130,7 @@ function createProposeRenameModuleTool(runtime) {
     {
       name: 'propose_rename_module',
       description:
-        '预览修改某个归类架子的名字（不写库；确认后写入）。' +
+        '预览修改某个归类的名字（不写库；确认后写入）。' +
         '用户说「某某架名改一下 / 改成… / 不要叫…」时用本工具。' +
         '禁止用 propose_organize 冒充改名。若用户未给新名字，先问清楚再带 toName 调用。',
       schema: z.object({

@@ -106,10 +106,10 @@ agentOrchestrator.js → lc/runTurn.js
   ├─ buildAgentGraph（lc/graph.js）
   │    ├─ streamTaskPlan → SSE thinking（任务理解与规划口语；带近期对话 + 同会话向量摘录）
   │    ├─ 规划正文注入 ReAct system（约束执行优先按规划调 tool）
-  │    ├─ ChatOpenAI → 百炼 + Tools：search_library / list_library / propose_organize / propose_rename_module / remember_preference（全局）/ get_item_excerpt / generate_transcript / draft_article / propose_item_tag_edit / remember_preference（阅读页）
+  │    ├─ ChatOpenAI → 百炼 + Tools：browse_library_map / search_library / grep_library / list_library / get_item_excerpt（全局+阅读页）；全局另 propose_organize / propose_rename_module / remember_preference；阅读页另 generate_transcript / draft_article / propose_item_tag_edit / remember_preference
   ├─ 短档案 `users.agent_profile` 注入 system；与同会话向量记忆分开
   ├─ streamEvents → SSE phase / token；thinking 落库 `tool_calls_json.thinking`
-  ├─ citations[] ← 工具命中（落库最多 12；气泡默认露 3，「加载更多」展开）；generate_transcript 可挂 pendingAction；draft_article 真流式成文
+  ├─ citations[] ← 工具命中（落库软顶 100；气泡默认露 3，「加载更多」翻完）；generate_transcript 可挂 pendingAction；draft_article 真流式成文
   └─ usageService.recordAiTokenUsage（feature=agent）
 ```
 
@@ -343,7 +343,7 @@ Body: { conversationId, messageId, approve: true|false }
 | Args | `{ q: string, tagNames?: string[], limit?: number }` |
 | 实现 | 复用现网全文/标签搜索（`GET /api/items/search` 同源逻辑）；只搜当前 `user_id` |
 | 返回 | `{ hits: [{ itemId, title, snippet, score?, tagNames[] }] }` |
-| 限制 | `limit` 默认 6、硬顶 12；snippet 优先命中句，否则标题/摘要截断 |
+| 限制 | 模型可见 `limit` 默认 6、硬顶 12；出处落库软顶 100 可翻页；可传 `tagNames`/`moduleName`/`mode`；snippet 优先命中句 |
 
 #### `get_item_excerpt`
 
@@ -484,14 +484,19 @@ Body: { conversationId, messageId, approve: true|false }
 
 ## 10. 检索质量（Phase 1 → 知识库）
 
-1. **plan 按意图改写检索词**：`queries` 不是从用户原话抠词，而是理解要找什么后产出 1～2 个短主题/同义词；回答仍只能基于命中，不得编库外篇目  
-2. **召回层（已落地）**：`item_embeddings` + DashScope embedding；`search_library` **语义优先，关键词 LIKE 兜底**；有强关键词命中时仍丢掉仅正文顺带提到的弱命中；盘点类走 `list_library`  
-3. **索引时机**：解析成功、用户改正文后异步 `scheduleIndexItem`；**使用指引（`platform=guide`）永不入库**；删条目靠 FK CASCADE；存量 `pnpm kb:index`；`AGENT_KB_ENABLED=false` 可关  
-4. **阅读页找类似**：明确查库时 `excludeItemIds` 排除当前篇，避免本篇占满名额  
-5. **聊天不是搜索结果页**：正文点最贴几条；出处卡默认 **3**，本轮池最多 **12**，「加载更多」展开（不再次搜库）；命中仍多时可提醒意图说得更具体  
-6. 用户问「对照 A 和 B」：识别两篇 → 两篇 excerpt → 对比段落  
-7. 编排仍自研薄 ReAct；**不上整包 LangChain**；向量存储可后续从 MySQL JSON 近邻换 pgvector/Qdrant，只动 retrieval  
-8. snippet：语义命中用 chunk 摘要；关键词命中优先含 query 的句子；禁止整篇塞进 citations UI  
+1. **Agentic 循环**：`search`/`grep` 候选不落出处 → `get_item_excerpt` 先判断（点名默认 `cite=false`）→ 符合用户限定再 `cite:true` 进出处 → 不够换词  
+2. **图集精读**：默认 VL 看前 1～2 张真图，画面要点写入摘录；阅读页预取不看图；视频仍靠文稿  
+3. **用户限定**：凡有收窄条件（体裁/用途/形态/受众等）精读按限定严卡，不符不 cite、不当推荐；无额外限定则相关即可  
+4. **搜索作答**：只点名已 cite 标题；禁止内容梗概、列落选篇与体裁点评、「想听细节」收尾；用户明确要总结/讲这篇时再展开  
+5. **召回层**：`search_library`=语义+关键词；`grep_library`=字面；盘点 `list_library`  
+6. **索引时机**：解析/改正文后 `scheduleIndexItem`；`guide` 不入库；`AGENT_KB_ENABLED` 可关  
+7. **阅读页找类似**：`excludeItemIds` 排除当前篇；问本篇省略 itemId 默认 cite  
+8. **出处**：仅 `cite:true` 的精读；默认露 3，可加载更多  
+9. 编排 LangGraph ReAct；扩词由 Agent 自己换  
+10. snippet 短披露；禁止整篇塞 citations UI  
+
+
+
 
 ## 11. 安全与隐私
 

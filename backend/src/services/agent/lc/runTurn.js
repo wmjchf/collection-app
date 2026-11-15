@@ -108,12 +108,22 @@ async function runUserTurn({
     try {
       const obs = await getItemExcerpt.execute(
         { userId },
-        { itemId: focusItemIdResolved, maxChars: EXCERPT_MAX_CHARS },
+        {
+          itemId: focusItemIdResolved,
+          maxChars: EXCERPT_MAX_CHARS,
+          // 预取不看图，避免阅读页每轮都打 VL；搜候选/显式精读由 tool 默认 peek
+          peekImages: false,
+        },
       );
       toolTrace.push({
         tool: 'get_item_excerpt',
         ok: Boolean(obs?.ok),
-        args: { itemId: focusItemIdResolved, focus: true, prefetch: true },
+        args: {
+          itemId: focusItemIdResolved,
+          focus: true,
+          prefetch: true,
+          peekImages: false,
+        },
         error: obs?.ok ? null : obs?.error || null,
       });
       if (obs?.ok) {
@@ -175,6 +185,7 @@ async function runUserTurn({
     emit,
     draftContent: null,
     draftUsage: null,
+    excerptVisionUsage: null,
     suppressAnswerTokens: false,
   };
 
@@ -238,7 +249,8 @@ async function runUserTurn({
 
   const eventStream = agent.streamEvents(
     { messages: lcMessages },
-    { version: 'v2', recursionLimit: 8 },
+    // Agentic：搜→精读→换词再搜，需要比「单次搜+答」更多步
+    { version: 'v2', recursionLimit: 14 },
   );
 
   for await (const ev of eventStream) {
@@ -318,6 +330,7 @@ async function runUserTurn({
     pendingAction.status === 'pending';
   const drafted = String(runtime.draftContent || '').trim();
   usageTotal = mergeUsage(usageTotal, runtime.draftUsage);
+  usageTotal = mergeUsage(usageTotal, runtime.excerptVisionUsage);
 
   if (transcriptConfirm) {
     // 确认文案只进落库 / done，不再 token 流式，避免与口头答复拼接闪烁

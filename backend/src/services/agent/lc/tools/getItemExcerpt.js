@@ -3,6 +3,25 @@ const { z } = require('zod');
 const getItemExcerpt = require('../../tools/getItemExcerpt');
 const { EXCERPT_MAX_CHARS } = require('../../agentPolicy');
 
+function mergePeekUsage(runtime, usage) {
+  if (!usage || !runtime) return;
+  const prev = runtime.excerptVisionUsage || null;
+  if (!prev) {
+    runtime.excerptVisionUsage = usage;
+    return;
+  }
+  runtime.excerptVisionUsage = {
+    promptTokens:
+      (Number(prev.promptTokens) || 0) + (Number(usage.promptTokens) || 0),
+    completionTokens:
+      (Number(prev.completionTokens) || 0) +
+      (Number(usage.completionTokens) || 0),
+    totalTokens:
+      (Number(prev.totalTokens) || 0) + (Number(usage.totalTokens) || 0),
+    model: usage.model || prev.model,
+  };
+}
+
 /**
  * LangChain Tool：读取单篇摘录（含当前阅读篇）。
  * @param {{
@@ -10,35 +29,55 @@ const { EXCERPT_MAX_CHARS } = require('../../agentPolicy');
  *   focusItemId?: number|null,
  *   toolTrace: object[],
  *   citationMap: Map<number, object>,
+ *   excerptVisionUsage?: object|null,
  * }} runtime
  */
 function createGetItemExcerptTool(runtime) {
   return tool(
-    async ({ itemId, maxChars }) => {
-      let id = Number(itemId);
-      if ((!Number.isFinite(id) || id <= 0) && runtime.focusItemId) {
+    async ({ itemId, maxChars, cite, peekImages }) => {
+      const rawId = Number(itemId);
+      const hasExplicitId = Number.isFinite(rawId) && rawId > 0;
+      let id = hasExplicitId ? rawId : NaN;
+      if (!hasExplicitId && runtime.focusItemId) {
         id = Number(runtime.focusItemId);
       }
+
+      // 省略 itemId=读本篇 → 默认进出处；点名胜选读 → 默认不进，须 cite:true 确认
+      const shouldCite =
+        cite === true || (cite !== false && !hasExplicitId);
+
       const obs = await getItemExcerpt.execute(
         { userId: runtime.userId },
         {
           itemId: id,
           maxChars: maxChars || EXCERPT_MAX_CHARS,
+          // 未显式传时：工具层默认看图（图集）；预取路径自行传 false
+          peekImages: peekImages === false ? false : true,
         },
       );
+
+      mergePeekUsage(runtime, obs?.usage);
 
       runtime.toolTrace.push({
         tool: 'get_item_excerpt',
         ok: Boolean(obs?.ok),
-        args: { itemId: id, maxChars: maxChars || EXCERPT_MAX_CHARS },
+        args: {
+          itemId: id,
+          maxChars: maxChars || EXCERPT_MAX_CHARS,
+          cite: shouldCite,
+          peekImages: peekImages === false ? false : true,
+          peekedImages: Boolean(obs?.data?.peekedImages),
+        },
         error: obs?.ok ? null : obs?.error || null,
       });
 
-      for (const c of obs?.citations || []) {
-        const cid = Number(c?.itemId);
-        if (!Number.isFinite(cid) || cid <= 0) continue;
-        if (!runtime.citationMap.has(cid)) {
-          runtime.citationMap.set(cid, c);
+      if (shouldCite) {
+        for (const c of obs?.citations || []) {
+          const cid = Number(c?.itemId);
+          if (!Number.isFinite(cid) || cid <= 0) continue;
+          if (!runtime.citationMap.has(cid)) {
+            runtime.citationMap.set(cid, c);
+          }
         }
       }
 
@@ -47,27 +86,47 @@ function createGetItemExcerptTool(runtime) {
           ok: false,
           error: obs?.error || 'failed',
           itemId: id,
+          cited: false,
         });
       }
 
       const data = obs.data || {};
+      let note;
+      if (data.empty) {
+        note = '该篇暂无可用正文/文稿，请如实告知用户。';
+      } else if (shouldCite) {
+        note =
+          '已精读且 cite=true：本篇进入用户「出处」。可作答依据；勿编造摘录外内容。';
+      } else {
+        note =
+          '已精读但未进出处（cite=false）。请对照用户收窄限定（体裁/用途/形态/受众等）判断；' +
+          '符合再调用本工具并传 cite:true；无额外限定则相关即可 cite；不符合则换篇或换词再搜，不要当推荐。';
+      }
+      if (data.peekedImages) {
+        note +=
+          ` 已看前 ${data.imagesPeeked || 0}/${data.imagesTotal || 0} 张配图（画面要点在摘录中）。`;
+      }
+
       return JSON.stringify({
         ok: true,
         itemId: data.itemId,
         title: data.title,
         tagNames: data.tagNames || [],
         empty: Boolean(data.empty),
+        cited: shouldCite && !data.empty,
+        peekedImages: Boolean(data.peekedImages),
         excerpt: data.excerpt || '',
-        note: data.empty
-          ? '该篇暂无可用正文/文稿，请如实告知用户。'
-          : '以下摘录可直接用于回答；勿编造摘录外内容。',
+        note,
       });
     },
     {
       name: 'get_item_excerpt',
       description:
-        '读取用户收藏中某一篇的正文/文稿摘录。用户在问「这篇 / 当前这篇 / 总结一下」或深挖正在阅读的内容时必须调用；' +
-        'itemId 可省略（默认当前阅读篇）。找类似内容请用 search_library，不要用本工具搜库。',
+        '精读某一篇正文/文稿；图集默认再看前 1～2 张真图写入画面要点。' +
+        '问「这篇/总结」省略 itemId，默认 cite 进出处。' +
+        '主题检索：先对候选 get_item_excerpt（默认不进出处）判断是否符合用户收窄限定；' +
+        '确认符合后再调用并传 cite:true 才进用户出处。本轮已看过图可传 peekImages:false。' +
+        '搜库用 search_library / grep_library。',
       schema: z.object({
         itemId: z
           .number()
@@ -82,6 +141,18 @@ function createGetItemExcerptTool(runtime) {
           .max(20000)
           .optional()
           .describe('摘录最大字符数'),
+        cite: z
+          .boolean()
+          .optional()
+          .describe(
+            '是否纳入用户出处。主题检索确认符合限定后传 true；先判断时传 false 或不传（点名 itemId 时默认 false）',
+          ),
+        peekImages: z
+          .boolean()
+          .optional()
+          .describe(
+            '图集是否看真图（默认 true，最多 1～2 张）。已看过可 false；非图集忽略',
+          ),
       }),
     },
   );
