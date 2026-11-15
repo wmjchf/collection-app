@@ -29,6 +29,7 @@ function mapMessage(row) {
   let awaiting = null;
   let awaitingMeta = null;
   let thinking = null;
+  let uiHidden = false;
   if (rawTrace && !Array.isArray(rawTrace) && typeof rawTrace === 'object') {
     pendingAction = rawTrace.pendingAction || null;
     awaiting = rawTrace.awaiting || null;
@@ -38,12 +39,14 @@ function mapMessage(row) {
         : null;
     const th = String(rawTrace.thinking || '').trim();
     thinking = th || null;
+    uiHidden = rawTrace.uiHidden === true;
     toolTrace =
       rawTrace.steps != null
         ? rawTrace.steps
         : Object.prototype.hasOwnProperty.call(rawTrace, 'pendingAction') ||
             Object.prototype.hasOwnProperty.call(rawTrace, 'awaiting') ||
-            Object.prototype.hasOwnProperty.call(rawTrace, 'thinking')
+            Object.prototype.hasOwnProperty.call(rawTrace, 'thinking') ||
+            Object.prototype.hasOwnProperty.call(rawTrace, 'uiHidden')
           ? rawTrace.steps || null
           : rawTrace;
   }
@@ -58,6 +61,7 @@ function mapMessage(row) {
     pendingAction,
     awaiting,
     awaitingMeta,
+    uiHidden,
     createdAt: row.created_at,
   };
 }

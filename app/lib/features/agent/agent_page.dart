@@ -93,11 +93,15 @@ class _AgentPageState extends State<AgentPage> {
   int _transcriptPollGen = 0;
   /// 已准备过气泡确认文案的助手消息 id
   final Set<int> _transcriptConfirmStarted = {};
-  /// 仅当次在气泡点过「开始生成」才允许文稿成功后自动成文（进页续跑不成文）
+  /// 点过「开始生成」后允许文稿成功自动成文；退出再进以 pending.resumeCompose 为准
   bool _allowResumeComposeAfterTranscript = false;
 
   int? get _focusItemId =>
       widget.focusItemId ?? widget.focusItem?.id ?? _focusItem?.id;
+
+  /// 静默续跑的用户消息不展示
+  List<AgentMessage> get _visibleMessages =>
+      _messages.where((m) => m.visibleInChat).toList(growable: false);
 
   int _citationRevealCount(int messageId) {
     final n = _citationRevealByMsgId[messageId];
@@ -255,7 +259,8 @@ class _AgentPageState extends State<AgentPage> {
     _conversationId = conv.id;
   }
 
-  Future<void> _send([String? preset]) async {
+  /// [hideUserBubble]：转写成功后自动成文等，不展示第二条用户气泡
+  Future<void> _send({String? preset, bool hideUserBubble = false}) async {
     final typed = (preset ?? _input.text).trim();
     final refs = _pickedCitations.values
         .map((c) => '「${c.title.trim()}」')
@@ -302,15 +307,18 @@ class _AgentPageState extends State<AgentPage> {
     });
     if (preset == null) _input.clear();
 
-    // 乐观展示用户消息 + 流式助手占位
+    // 乐观展示用户消息 + 流式助手占位（静默续跑不展示用户气泡）
     final optimisticUser = AgentMessage(
       id: -DateTime.now().millisecondsSinceEpoch,
       role: 'user',
       content: text,
+      uiHidden: hideUserBubble,
     );
     final streamAssistantId = -DateTime.now().millisecondsSinceEpoch - 1;
-    setState(() => _messages.add(optimisticUser));
-    _scrollToEnd();
+    if (!hideUserBubble) {
+      setState(() => _messages.add(optimisticUser));
+      _scrollToEnd();
+    }
 
     try {
       await _ensureConversation();
@@ -319,6 +327,7 @@ class _AgentPageState extends State<AgentPage> {
         conversationId: id,
         content: text,
         focusItemId: _focusItemId,
+        silent: hideUserBubble,
         onPhase: (phase) {
           if (!mounted) return;
           // planning 之后进入 searching/answering = 规划结束
@@ -327,7 +336,7 @@ class _AgentPageState extends State<AgentPage> {
           }
         },
         onUser: (user) {
-          if (!mounted) return;
+          if (!mounted || hideUserBubble || user.uiHidden) return;
           setState(() {
             final idx =
                 _messages.indexWhere((m) => m.id == optimisticUser.id);
@@ -401,14 +410,16 @@ class _AgentPageState extends State<AgentPage> {
       );
       if (!mounted) return;
       setState(() {
-        final uIdx =
-            _messages.indexWhere((m) => m.id == optimisticUser.id);
-        if (uIdx >= 0) {
-          _messages[uIdx] = result.userMessage;
-        } else {
-          final lastUser = _messages.lastIndexWhere((m) => m.isUser);
-          if (lastUser >= 0) {
-            _messages[lastUser] = result.userMessage;
+        if (!hideUserBubble && !result.userMessage.uiHidden) {
+          final uIdx =
+              _messages.indexWhere((m) => m.id == optimisticUser.id);
+          if (uIdx >= 0) {
+            _messages[uIdx] = result.userMessage;
+          } else {
+            final lastUser = _messages.lastIndexWhere((m) => m.isUser);
+            if (lastUser >= 0) {
+              _messages[lastUser] = result.userMessage;
+            }
           }
         }
         final aIdx =
@@ -468,7 +479,7 @@ class _AgentPageState extends State<AgentPage> {
   void _completeTranscriptSuccess({
     required int messageId,
     required AgentPendingAction pa,
-    required int itemId, {
+    required int itemId,
     String alreadyReadyMessage = '这篇已经有文稿了。可以说「整理成一篇文章」。',
     bool alreadyReady = false,
   }) {
@@ -486,7 +497,7 @@ class _AgentPageState extends State<AgentPage> {
     ItemTranscriptRefresh.notify(itemId);
     unawaited(_refreshLlmPresets());
     if (shouldCompose) {
-      unawaited(_send('整理成一篇文章'));
+      unawaited(_send(preset: '整理成一篇文章', hideUserBubble: true));
     }
   }
 
@@ -1354,22 +1365,23 @@ class _AgentPageState extends State<AgentPage> {
                           ],
                         ),
                       )
-                    : _messages.isEmpty
+                    : _visibleMessages.isEmpty && !_sending
                         ? _EmptyState(focused: _focusItem != null)
                         : ListView.builder(
                             controller: _scroll,
                             padding: const EdgeInsets.fromLTRB(22, 12, 22, 24),
-                            itemCount: _messages.length +
+                            itemCount: _visibleMessages.length +
                                 (_sending &&
                                         !_streamLive &&
                                         _liveThinking.trim().isEmpty
                                     ? 1
                                     : 0),
                             itemBuilder: (context, index) {
+                              final visible = _visibleMessages;
                               if (_sending &&
                                   !_streamLive &&
                                   _liveThinking.trim().isEmpty &&
-                                  index == _messages.length) {
+                                  index == visible.length) {
                                 return const Padding(
                                   padding: EdgeInsets.only(top: 2, bottom: 14),
                                   child: Align(
@@ -1378,7 +1390,7 @@ class _AgentPageState extends State<AgentPage> {
                                   ),
                                 );
                               }
-                              final m = _messages[index];
+                              final m = visible[index];
                               final thinkingText = m.displayThinking.isNotEmpty
                                   ? m.displayThinking
                                   : (m.id < 0 &&

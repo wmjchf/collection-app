@@ -83,7 +83,7 @@ router.delete('/conversations/:id', async (req, res, next) => {
 
 /**
  * POST /api/agent/conversations/:id/messages
- * body: { content, clientMessageId?, focusItemId? }
+ * body: { content, clientMessageId?, focusItemId?, silent? }
  * Accept: text/event-stream → SSE（thinking / phase / token / done / error）
  */
 router.post('/conversations/:id/messages', async (req, res, next) => {
@@ -102,6 +102,7 @@ router.post('/conversations/:id/messages', async (req, res, next) => {
         content: req.body?.content,
         clientMessageId: req.body?.clientMessageId,
         focusItemId,
+        silent: Boolean(req.body?.silent),
       });
       return res.json(result);
     } catch (err) {
@@ -128,6 +129,7 @@ router.post('/conversations/:id/messages', async (req, res, next) => {
       content: req.body?.content,
       clientMessageId: req.body?.clientMessageId,
       focusItemId,
+      silent: Boolean(req.body?.silent),
       stream: true,
       onEvent: (ev) => {
         if (!ev || !ev.type) return;

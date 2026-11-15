@@ -20,6 +20,8 @@ async function runUserTurn({
   content,
   clientMessageId,
   focusItemId = null,
+  /** 转写成功后自动成文等：仍入库供模型上下文，但不在 UI 展示用户气泡 */
+  silent = false,
   stream = false,
   onEvent,
 }) {
@@ -58,17 +60,24 @@ async function runUserTurn({
     conversationId,
   );
 
+  const silentTurn = Boolean(silent);
+  const userToolTrace = {};
+  if (clientMessageId) {
+    userToolTrace.clientMessageId = String(clientMessageId).slice(0, 64);
+  }
+  if (silentTurn) userToolTrace.uiHidden = true;
+
   const userMessage = await conversationService.insertMessage({
     conversationId,
     role: 'user',
     content: text,
-    toolTrace: clientMessageId
-      ? { clientMessageId: String(clientMessageId).slice(0, 64) }
-      : null,
+    toolTrace: Object.keys(userToolTrace).length ? userToolTrace : null,
   });
-  await conversationService.touchTitleIfEmpty(userId, conversationId, text);
+  if (!silentTurn) {
+    await conversationService.touchTitleIfEmpty(userId, conversationId, text);
+  }
 
-  if (emit) emit({ type: 'user', message: userMessage });
+  if (emit && !silentTurn) emit({ type: 'user', message: userMessage });
   if (emit) emit({ type: 'phase', phase: 'planning' });
 
   const focusIdRaw = Number(focusItemId);

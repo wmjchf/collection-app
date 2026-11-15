@@ -158,6 +158,7 @@ class AgentRepository {
     required String content,
     String? clientMessageId,
     int? focusItemId,
+    bool silent = false,
     void Function(String phase)? onPhase,
     void Function(String delta, {String? text})? onThinking,
     void Function(String text)? onToken,
@@ -178,6 +179,7 @@ class AgentRepository {
         if (clientMessageId != null && clientMessageId.isNotEmpty)
           'clientMessageId': clientMessageId,
         'focusItemId': ?focusItemId,
+        if (silent) 'silent': true,
       });
 
     final streamed = await _http.send(req).timeout(

@@ -275,6 +275,7 @@ class AgentMessage {
     this.pendingAction,
     this.toolTrace = const [],
     this.thinking = '',
+    this.uiHidden = false,
   });
 
   final int id;
@@ -285,9 +286,12 @@ class AgentMessage {
   final List<Map<String, dynamic>> toolTrace;
   /// 任务理解与规划独白（可折叠「思考中 / 思考完成」）
   final String thinking;
+  /// 静默续跑（如转写后自动成文）：不展示用户气泡
+  final bool uiHidden;
 
   bool get isUser => role == 'user';
   bool get isAssistant => role == 'assistant';
+  bool get visibleInChat => !uiHidden;
 
   String get displayThinking => thinking.trim();
 
@@ -326,6 +330,7 @@ class AgentMessage {
     AgentPendingAction? pendingAction,
     List<Map<String, dynamic>>? toolTrace,
     String? thinking,
+    bool? uiHidden,
     bool clearPendingAction = false,
   }) {
     return AgentMessage(
@@ -337,6 +342,7 @@ class AgentMessage {
           clearPendingAction ? null : (pendingAction ?? this.pendingAction),
       toolTrace: toolTrace ?? this.toolTrace,
       thinking: thinking ?? this.thinking,
+      uiHidden: uiHidden ?? this.uiHidden,
     );
   }
 
@@ -383,6 +389,10 @@ class AgentMessage {
     if (thinking.isEmpty && rawTrace is Map) {
       thinking = (rawTrace['thinking'] as String?)?.trim() ?? '';
     }
+    var uiHidden = json['uiHidden'] == true;
+    if (!uiHidden && rawTrace is Map && rawTrace['uiHidden'] == true) {
+      uiHidden = true;
+    }
     return AgentMessage(
       id: (json['id'] as num?)?.toInt() ?? 0,
       role: json['role'] as String? ?? 'assistant',
@@ -390,6 +400,7 @@ class AgentMessage {
       citations: citations,
       pendingAction: pending,
       toolTrace: toolTrace,
+      uiHidden: uiHidden,
       thinking: thinking,
     );
   }
@@ -402,6 +413,7 @@ class AgentMessage {
         if (pendingAction != null) 'pendingAction': pendingAction!.toJson(),
         if (toolTrace.isNotEmpty) 'toolTrace': toolTrace,
         if (thinking.trim().isNotEmpty) 'thinking': thinking,
+        if (uiHidden) 'uiHidden': true,
       };
 }
 

@@ -32,6 +32,11 @@ const PROBE_PREFIX_BYTES =
   1024 *
   1024;
 const MULTIPART_PART_SIZE = 5 * 1024 * 1024;
+/** 分片并行数（默认 8；可用 ALIYUN_OSS_TRANSCRIPT_UPLOAD_PARALLEL 覆盖，限制 1～16） */
+const _parallelRaw = Number(process.env.ALIYUN_OSS_TRANSCRIPT_UPLOAD_PARALLEL);
+const MULTIPART_PARALLEL = Number.isFinite(_parallelRaw)
+  ? Math.min(16, Math.max(1, Math.floor(_parallelRaw)))
+  : 8;
 
 let ossClient = null;
 
@@ -338,12 +343,13 @@ async function uploadTempFileToOss({ tmpPath, key, contentType, itemId, segmentK
   const client = getOssClient();
   const t0 = Date.now();
   console.log(
-    `[transcriptMediaOss] uploading item=${itemId} segment=${segmentKey} key=${key}`,
+    `[transcriptMediaOss] uploading item=${itemId} segment=${segmentKey} key=${key} ` +
+      `parallel=${MULTIPART_PARALLEL}`,
   );
 
   await client.multipartUpload(key, tmpPath, {
     timeout: OSS_TIMEOUT_MS,
-    parallel: 4,
+    parallel: MULTIPART_PARALLEL,
     partSize: MULTIPART_PART_SIZE,
     headers: { 'Content-Type': contentType },
   });
@@ -354,7 +360,8 @@ async function uploadTempFileToOss({ tmpPath, key, contentType, itemId, segmentK
 
   const ms = Date.now() - t0;
   console.log(
-    `[transcriptMediaOss] uploaded item=${itemId} segment=${segmentKey} key=${key} ms=${ms}`,
+    `[transcriptMediaOss] uploaded item=${itemId} segment=${segmentKey} key=${key} ` +
+      `ms=${ms} parallel=${MULTIPART_PARALLEL}`,
   );
   return { fileLink, uploadMs: ms };
 }
