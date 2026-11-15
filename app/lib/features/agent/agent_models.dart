@@ -150,16 +150,17 @@ class AgentPendingAction {
   final String? phaseHint;
   final DateTime? phaseAt;
 
-  /// 改标 / 归类确认条
+  /// 写库类确认条（改标 / 归类 / 改名等；凡 pending 且非转写都出按钮）
   bool get isTagConfirmPending =>
       status == 'pending' &&
-      (type == 'item_tag_edit' || type == 'organize_tags');
+      type.isNotEmpty &&
+      type != 'start_transcript';
 
   /// 转写待确认（气泡内确认，不弹系统框）
   bool get isTranscriptConfirmPending =>
       isStartTranscript && status == 'pending';
 
-  /// 气泡确认条（改标 / 归类 / 转写）
+  /// 气泡确认条（写库确认 / 转写）
   bool get isPending => isTagConfirmPending || isTranscriptConfirmPending;
 
   bool get isStartTranscript => type == 'start_transcript';
@@ -169,9 +170,12 @@ class AgentPendingAction {
 
   bool get isOrganize => type == 'organize_tags';
 
+  bool get isRenameModule => type == 'rename_module';
+
   String get confirmLabel {
     if (isStartTranscript) return '开始生成';
     if (isOrganize) return '确认整理';
+    if (isRenameModule) return '确认改名';
     return '确认调整';
   }
 

@@ -1,19 +1,25 @@
 const { HumanMessage, SystemMessage } = require('@langchain/core/messages');
 const { createAgentChatModel } = require('./model');
 
+/** 规划用近期对话条数 / 单条截断 */
+const PLAN_HISTORY_MAX = 6;
+const PLAN_MSG_CHARS = 220;
+
 /** 全局：意图搜索 + 盘点 */
 const PLAN_SYSTEM_GLOBAL = `你是奏折助手的「任务理解与规划」模块（不是最终回答）。当前是全局助手入口。
 根据用户这句话，用口语写出你对任务的理解与打算怎么做。
 产品口径（必须遵守）：
-- 全局可做：库内意图搜索（找主题/找类似）+ 按时间或筛选盘点 + 标签归类整理预览（确认后写入）。
+- 全局可做：库内意图搜索（找主题/找类似）+ 按时间或筛选盘点 + 标签归类整理预览（确认后写入）+ 改归类架名。
 - 盘点类不要规划成「用关键词搜近期收藏」；应说明按收录时间列出样例并告知总数。
 - 归类：默认只收拾未归类；用户明确「全部重排」才全量；标签过少时应规划先劝打标，不要硬出方案。
+- 改架名：规划成改名确认，不要规划成再整理未归类；未给新名字则先问。
 - 用户明确纠正长期分法/口味时：规划里写「先记住偏好再整理」。
 - 不做本篇深挖/总结、生成文稿、整理成文章、改单篇标签；若用户要这些，规划里应说明会引导去阅读页打开，不要假装要读某一篇全文或已改标。
+- 须结合「近期对话」与「相关更早摘录」理解本轮；短回复或接话不要脱离上文单独当成新任务。
 要求：
 1. 先说清楚用户大概想做什么（1～2 句）
-2. 用「我需要考虑：」列出 2～4 个要点（盘点时间范围、检索词具象改写、或归类用未归类/全量与分法 hint 等）
-3. 最后一句说你接下来打算怎么做：主题检索须写出 2～3 个互补的具象短词；盘点须写出时间范围或筛选；归类须写出 ungrouped 或 full 与 hint 要点；纠正偏好须写出要记住的规则要点。禁止计划去搜「近期收藏」「存过」等空词
+2. 用「我需要考虑：」列出 2～4 个要点（盘点时间范围、检索词具象改写、或归类用未归类/全量与分法 hint、或改名的旧名/新名等）
+3. 最后一句说你接下来打算怎么做：主题检索须写出 2～3 个互补的具象短词；盘点须写出时间范围或筛选；归类须写出 ungrouped 或 full 与 hint 要点；改名须写出旧名与是否已有新名；纠正偏好须写出要记住的规则要点。禁止计划去搜「近期收藏」「存过」等空词
 4. 不要编造收藏篇目，不要给出最终答案正文，不要提工具英文名
 5. 全文约 80～180 字，可用短列表`;
 
@@ -25,6 +31,7 @@ const PLAN_SYSTEM_FOCUS = `你是奏折助手的「任务理解与规划」模�
 - 「生成文稿」= 为当前音视频发起识别确认（按分钟计费）。
 - 「整理成一篇文章」（音视频）= 基于已有「文稿」整理成书面文章；没有文稿时先确认生成文稿再整理。
 - 「根据图片整理成文章」= 图集知识向成文（看图+文案）；生活向可能短拒。
+- 须结合「近期对话」与「相关更早摘录」理解本轮；短回复或接话不要脱离上文单独当成新任务。
 要求：
 1. 先说清楚用户大概想做什么（1～2 句）
 2. 用「我需要考虑：」列出 2～4 个要点（缺什么信息、先读本篇还是搜库、音视频是否已有文稿等）
@@ -39,6 +46,35 @@ const PLAN_SYSTEM_FOCUS = `你是奏折助手的「任务理解与规划」模�
 11. 改标签（打上/去掉/调整）：规划成预览确认条；写明本篇或指定篇与拟加减标签；禁止规划成未确认已写入
 12. 归类整理：说明请到全局助手入口处理，阅读页不做整库归类`;
 
+function formatPlanHistory(history) {
+  const list = Array.isArray(history) ? history : [];
+  if (!list.length) return '';
+  const slice = list.slice(-PLAN_HISTORY_MAX);
+  const lines = slice.map((m) => {
+    const who = m?.role === 'assistant' ? '助手' : '用户';
+    const body = String(m?.content || '')
+      .trim()
+      .replace(/\s+/g, ' ')
+      .slice(0, PLAN_MSG_CHARS);
+    return `- ${who}：${body || '（空）'}`;
+  });
+  return `【近期对话】\n${lines.join('\n')}`;
+}
+
+function formatPlanMemory(hits) {
+  const list = Array.isArray(hits) ? hits : [];
+  if (!list.length) return '';
+  const lines = list.map((h) => {
+    const who = h?.role === 'assistant' ? '助手' : '用户';
+    const body = String(h?.content || '')
+      .trim()
+      .replace(/\s+/g, ' ')
+      .slice(0, PLAN_MSG_CHARS);
+    return `- ${who}：${body || '（空）'}`;
+  });
+  return `【相关更早摘录】\n${lines.join('\n')}`;
+}
+
 /**
  * 流式生成「任务理解与规划」独白 → SSE thinking。
  * @returns {Promise<{ text: string, usage: object|null }>}
@@ -50,6 +86,8 @@ async function streamTaskPlan({
   hasFocusExcerpt,
   focusIsAv = false,
   focusHasTranscript = false,
+  recentHistory = [],
+  historyMemory = [],
   emit,
 }) {
   const llm = createAgentChatModel({
@@ -59,6 +97,11 @@ async function streamTaskPlan({
   const parts = [`用户说：${String(userText || '').trim()}`];
   const title = String(focusTitle || '').trim();
   const focused = Boolean(hasFocus) || Boolean(title);
+
+  const histBlock = formatPlanHistory(recentHistory);
+  if (histBlock) parts.push(histBlock);
+  const memBlock = formatPlanMemory(historyMemory);
+  if (memBlock) parts.push(memBlock);
 
   if (focused && title) {
     parts.push(`当前正在阅读：「${title.slice(0, 80)}」`);
@@ -83,7 +126,7 @@ async function streamTaskPlan({
   let usage = null;
   const stream = await llm.stream([
     new SystemMessage(focused ? PLAN_SYSTEM_FOCUS : PLAN_SYSTEM_GLOBAL),
-    new HumanMessage(parts.join('\n')),
+    new HumanMessage(parts.join('\n\n')),
   ]);
 
   for await (const chunk of stream) {

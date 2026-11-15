@@ -17,12 +17,25 @@ const FULL_REORG_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 /** 新建归类至少几个标签；不够则回未归类，等以后再分 */
 const MIN_TAGS_FOR_NEW_SHELF = 2;
 
+/**
+ * 整理时系统固定维度口径（落实「不同维度不混架」；不进用户短档案）。
+ */
+const ORGANIZE_DIMENSION_POLICY =
+  '分架维度口径（系统固定，必须遵守）：\n' +
+  '- 来源渠道：媒体号、站点、作者号等「从哪来」\n' +
+  '- 内容主题：话题、题材、评测主题等「讲什么」\n' +
+  '- 实体产品：具体设备/产品实体\n' +
+  '- 规格属性：屏幕、刷新率、交互参数等属性\n' +
+  '同一架内只放同一维度；跨维度禁止混放。' +
+  '某一维度凑不够新建架最少标签数时，把该维度标签放进 ungroupedTagIds，不要硬塞进其它维度架。';
+
 const ORGANIZE_SYSTEM_PROMPT_UNGROUPED =
   '你是收藏整理助手。归类只有一层：把标签放进归类名下，禁止多级/父子分类。' +
   '可把待安置标签填进已有归类，也可建议新建归类名（create:true）。' +
   '已有架：existingModuleId 必填且来自「已有归类」，name 用原名，create 可省略或 false；往已有架追加可以只有 1 个标签。' +
   '新架：create:true，existingModuleId 为 null，name 为简洁归类名（2～12 字），不要与已有架同名；' +
   `新建归类的 tagIds 至少 ${MIN_TAGS_FOR_NEW_SHELF} 个，禁止为单个标签单独建架；凑不够就放进 ungroupedTagIds，等以后标签多了再分。` +
+  '分架须遵守用户消息中的「分架维度口径」：跨维度禁止混放。' +
   '锁定标签禁止改动；tagIds 只用待安置 id；每个待安置标签恰好出现一次。' +
   '只输出 JSON：{"modules":[{"name":"归类名","existingModuleId":12,"create":false,"tagIds":[1]},{"name":"新架名","existingModuleId":null,"create":true,"tagIds":[2,3]}],"ungroupedTagIds":[4]}';
 
@@ -33,6 +46,7 @@ const ORGANIZE_SYSTEM_PROMPT_FULL =
   '已有架：existingModuleId 必填；往已有架追加可以只有 1 个标签。' +
   '新架：create:true 且 name 新、existingModuleId null；' +
   `新建归类的 tagIds 至少 ${MIN_TAGS_FOR_NEW_SHELF} 个，禁止为单个标签单独建架；凑不够就放进 ungroupedTagIds。` +
+  '分架须遵守用户消息中的「分架维度口径」：跨维度禁止混放。' +
   '只用可重排 tagId；每个恰好出现一次。' +
   '只输出 JSON：{"modules":[{"name":"归类名","existingModuleId":12,"create":false,"tagIds":[1]},{"name":"新架名","existingModuleId":null,"create":true,"tagIds":[2,3]}],"ungroupedTagIds":[4]}';
 
@@ -557,6 +571,7 @@ async function suggestOrganize(
   const hintText = String(hint || '').trim().slice(0, 700);
   const userParts = [
     catalog,
+    ORGANIZE_DIMENSION_POLICY,
     modules.length
       ? ''
       : `当前尚无归类架子；可为待安置标签建议新归类名（create:true），但每个新架至少 ${MIN_TAGS_FOR_NEW_SHELF} 个标签。`,

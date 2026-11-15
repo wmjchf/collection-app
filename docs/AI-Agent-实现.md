@@ -63,6 +63,7 @@
 | `mindmap_item` | `aiMindmapService` | 导图树 |
 | `suggest_tags` | `aiSuggestService` | 建议标签（可 `autoApply=false` 给用户确认） |
 | `propose_organize`（已落地） | `aiOrganizeService` | 可建议新建架子 + 填入；**确认后** `createModule` / `placeTag`；hint 自动拼短档案 `organize` |
+| `propose_rename_module`（已落地） | `tagModuleService.renameModule` | 改已有架名预览；**确认后**写入；勿用 organize 冒充 |
 | `remember_preference`（已落地） | `agentProfileService` | 写入用户级短档案（`users.agent_profile`）；跨会话 |
 | `get_item` / `search_library` | items / search | 查库（Phase 1 核心，P2 继续用） |
 
@@ -103,9 +104,9 @@ App 助手页（样式不动）
 agentOrchestrator.js → lc/runTurn.js
   ├─ 门控 / 落 user 消息 / 装配历史
   ├─ buildAgentGraph（lc/graph.js）
-  │    ├─ streamTaskPlan → SSE thinking（任务理解与规划口语）
+  │    ├─ streamTaskPlan → SSE thinking（任务理解与规划口语；带近期对话 + 同会话向量摘录）
   │    ├─ 规划正文注入 ReAct system（约束执行优先按规划调 tool）
-  │    ├─ ChatOpenAI → 百炼 + Tools：search_library / list_library / propose_organize / remember_preference（全局）/ get_item_excerpt / generate_transcript / draft_article / propose_item_tag_edit / remember_preference（阅读页）
+  │    ├─ ChatOpenAI → 百炼 + Tools：search_library / list_library / propose_organize / propose_rename_module / remember_preference（全局）/ get_item_excerpt / generate_transcript / draft_article / propose_item_tag_edit / remember_preference（阅读页）
   ├─ 短档案 `users.agent_profile` 注入 system；与同会话向量记忆分开
   ├─ streamEvents → SSE phase / token；thinking 落库 `tool_calls_json.thinking`
   ├─ citations[] ← 工具命中（落库最多 12；气泡默认露 3，「加载更多」展开）；generate_transcript 可挂 pendingAction；draft_article 真流式成文
@@ -115,8 +116,9 @@ agentOrchestrator.js → lc/runTurn.js
 ### 短档案（用户理解层）
 
 - 存在 `users.agent_profile`（JSON），按 namespace：`organize` / `tagging` / `general`；与 `conversation_id` 无关，清聊天不丢。
-- 写入：`remember_preference`；确认归类时若有用户 hint 也会回写 `organize`。写入后用轻量模型压成**原则级**规则（禁止品牌/标签名/垂类举例），只保留结构习惯。
+- 写入：`remember_preference`；确认归类时若有用户 hint 也会回写 `organize`。写入后压成**纯原则**（禁止任何实际例子与「如××」）。
 - 读取：每轮 `runTurn` 加载 → system「用户已知偏好」；`propose_organize` 兜底拼进 hint。
+- 整理另注入系统固定维度口径（来源渠道 / 内容主题 / 实体产品 / 规格属性），落实「不同维度不混架」，不写入短档案。
 - 新能力：加 namespace + 读时注入即可，不必另做记忆系统。
 
 **原则**

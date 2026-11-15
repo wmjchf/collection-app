@@ -266,6 +266,24 @@ class _AgentPageState extends State<AgentPage> {
         : [refs, typed].where((s) => s.isNotEmpty).join(' ').trim();
     if (text.isEmpty || _sending) return;
 
+    // 打字「确认改名/确认整理…」且上一条有待确认 → 走确认 API，不当新对话
+    AgentMessage? pendingMsg;
+    for (var i = _messages.length - 1; i >= 0; i--) {
+      final m = _messages[i];
+      if (m.isAssistant && m.pendingAction?.isTagConfirmPending == true) {
+        pendingMsg = m;
+        break;
+      }
+    }
+    final confirmLabel = pendingMsg?.pendingAction?.confirmLabel;
+    if (pendingMsg != null &&
+        confirmLabel != null &&
+        (text == confirmLabel || text == '「$confirmLabel」')) {
+      if (preset == null) _input.clear();
+      await _confirmPendingAction(pendingMsg, true);
+      return;
+    }
+
     final allowed = await ensurePlanFeatures(
       context,
       requirements: [

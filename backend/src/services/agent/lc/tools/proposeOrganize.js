@@ -150,7 +150,8 @@ function createProposeOrganizeTool(runtime) {
       description:
         '为收藏库标签生成归类整理预览（不写库）。用户说「帮我归类」「整理标签架子」时调用。' +
         '默认 mode=ungrouped（只收拾未归类）；仅当用户明确要「全部重排/打乱重来」时用 full。' +
-        '标签过少时会拒绝预览并提示先打标。确认后才写入。',
+        '标签过少时会拒绝预览并提示先打标。确认后才写入。' +
+        '用户只是要改某个已有架名时不要用本工具，改用 propose_rename_module。',
       schema: z.object({
         hint: z
           .string()

@@ -198,6 +198,8 @@ async function runUserTurn({
       hasFocusExcerpt: Boolean(focusExcerpt),
       focusIsAv,
       focusHasTranscript,
+      recentHistory: history,
+      historyMemory,
       emit,
     });
     thinkingText = String(plan.text || '').trim();
@@ -263,6 +265,7 @@ async function runUserTurn({
         runtime.pendingAction?.type === 'start_transcript' ||
         runtime.pendingAction?.type === 'item_tag_edit' ||
         runtime.pendingAction?.type === 'organize_tags' ||
+        runtime.pendingAction?.type === 'rename_module' ||
         runtime.draftContent
       ) {
         continue;
@@ -299,6 +302,10 @@ async function runUserTurn({
     pendingAction &&
     pendingAction.type === 'organize_tags' &&
     pendingAction.status === 'pending';
+  const renameConfirm =
+    pendingAction &&
+    pendingAction.type === 'rename_module' &&
+    pendingAction.status === 'pending';
   const drafted = String(runtime.draftContent || '').trim();
   usageTotal = mergeUsage(usageTotal, runtime.draftUsage);
 
@@ -309,6 +316,8 @@ async function runUserTurn({
     contentOut = buildTagConfirmContent(pendingAction);
   } else if (organizeConfirm) {
     contentOut = buildOrganizeConfirmContent(pendingAction);
+  } else if (renameConfirm) {
+    contentOut = buildRenameConfirmContent(pendingAction);
   } else if (drafted) {
     // 成文已在 tool 内流式发出；此处只落库，不再重复 token
     contentOut = drafted;
@@ -375,6 +384,15 @@ function buildTagConfirmContent(pendingAction) {
   }
   parts.push('请点确认后再写入；未确认不会改库。');
   return parts.join('');
+}
+
+function buildRenameConfirmContent(pendingAction) {
+  const fromName = String(pendingAction?.fromName || '').trim() || '该归类';
+  const toName = String(pendingAction?.toName || '').trim() || '新名字';
+  return [
+    `准备把归类「${fromName}」改名为「${toName}」。`,
+    '请点「确认改名」后再写入；未确认不会改库。',
+  ].join('\n');
 }
 
 function buildOrganizeConfirmContent(pendingAction) {

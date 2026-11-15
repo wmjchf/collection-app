@@ -1,5 +1,6 @@
 const itemService = require('../itemService');
 const tagService = require('../tagService');
+const tagModuleService = require('../tagModuleService');
 const aiOrganizeService = require('../aiOrganizeService');
 const conversationService = require('./agentConversationService');
 const agentProfileService = require('./agentProfileService');
@@ -29,7 +30,9 @@ async function confirmAction({ userId, conversationId, messageId, approve }) {
   const pending = message.pendingAction;
   if (
     !pending ||
-    (pending.type !== 'item_tag_edit' && pending.type !== 'organize_tags')
+    (pending.type !== 'item_tag_edit' &&
+      pending.type !== 'organize_tags' &&
+      pending.type !== 'rename_module')
   ) {
     throw Object.assign(new Error('没有待确认的操作'), { status: 400 });
   }
@@ -48,13 +51,16 @@ async function confirmAction({ userId, conversationId, messageId, approve }) {
     await conversationService.patchMessageToolPayload(messageId, {
       pendingAction: next,
     });
+    const cancelContent =
+      pending.type === 'organize_tags'
+        ? '已取消这次归类整理。'
+        : pending.type === 'rename_module'
+          ? '已取消这次归类改名。'
+          : '已取消这次标签调整。';
     const cancelMsg = await conversationService.insertMessage({
       conversationId,
       role: 'assistant',
-      content:
-        pending.type === 'organize_tags'
-          ? '已取消这次归类整理。'
-          : '已取消这次标签调整。',
+      content: cancelContent,
       citations: null,
       toolTrace: {
         steps: [{ tool: 'confirm_action', ok: true, args: { approve: false } }],
@@ -76,6 +82,15 @@ async function confirmAction({ userId, conversationId, messageId, approve }) {
     });
   }
 
+  if (pending.type === 'rename_module') {
+    return confirmRenameModule({
+      userId,
+      conversationId,
+      messageId,
+      pending,
+    });
+  }
+
   return confirmTagEdit({
     userId,
     conversationId,
@@ -83,6 +98,57 @@ async function confirmAction({ userId, conversationId, messageId, approve }) {
     message,
     pending,
   });
+}
+
+async function confirmRenameModule({
+  userId,
+  conversationId,
+  messageId,
+  pending,
+}) {
+  const moduleId = Number(pending.moduleId);
+  const toName = String(pending.toName || '').trim();
+  const fromName = String(pending.fromName || '').trim();
+  if (!Number.isFinite(moduleId) || moduleId <= 0 || !toName) {
+    throw Object.assign(new Error('无效的改名预览'), { status: 400 });
+  }
+
+  const renamed = await tagModuleService.renameModule(userId, moduleId, toName);
+  const next = {
+    ...pending,
+    status: 'approved',
+    toName: renamed?.name || toName,
+  };
+  await conversationService.patchMessageToolPayload(messageId, {
+    pendingAction: next,
+  });
+
+  const resultMsg = await conversationService.insertMessage({
+    conversationId,
+    role: 'assistant',
+    content: `已将归类「${fromName || '原名'}」改名为「${next.toName}」。`,
+    citations: null,
+    toolTrace: {
+      steps: [
+        {
+          tool: 'confirm_action',
+          ok: true,
+          args: {
+            approve: true,
+            type: 'rename_module',
+            moduleId,
+            toName: next.toName,
+          },
+        },
+      ],
+    },
+  });
+
+  return {
+    pendingAction: next,
+    assistantMessage: resultMsg,
+    alreadySettled: false,
+  };
 }
 
 async function confirmOrganize({
