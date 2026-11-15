@@ -325,9 +325,17 @@ class _UsageEventRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final mutedTitle = event.itemDeleted;
-    final meta = timeLabel.isEmpty
-        ? event.featureLabel
-        : '${event.featureLabel} · $timeLabel';
+    // 标题已是能力名（无条目）时副标题只留时间，避免「AI Agent / AI Agent · …」
+    final titleIsFeature = event.itemId == null &&
+        event.title.trim() == event.featureLabel.trim();
+    final String meta;
+    if (titleIsFeature) {
+      meta = timeLabel;
+    } else if (timeLabel.isEmpty) {
+      meta = event.featureLabel;
+    } else {
+      meta = '${event.featureLabel} · $timeLabel';
+    }
 
     return Material(
       color: Colors.white,

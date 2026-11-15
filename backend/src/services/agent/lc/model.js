@@ -68,7 +68,12 @@ class DashScopeCompletions extends ChatOpenAICompletions {
 
 /**
  * 助手用 Chat：默认开百炼 think（enable_thinking）。
- * @param {{ temperature?: number, enableThinking?: boolean }} [opts]
+ * @param {{
+ *   temperature?: number,
+ *   enableThinking?: boolean,
+ *   purpose?: 'agent'|'search',
+ *   model?: string,
+ * }} [opts]
  */
 function createAgentChatModel(opts = {}) {
   const apiKey = config.aliyun.dashScopeApiKey;
@@ -78,8 +83,14 @@ function createAgentChatModel(opts = {}) {
     });
   }
   const baseURL = (config.aliyun.dashScopeBaseUrl || '').replace(/\/$/, '');
+  const purpose = opts.purpose === 'search' ? 'search' : 'agent';
   const model =
-    config.aliyun.aiModelAgent || config.aliyun.aiModel || 'qwen3.8-flash';
+    (opts.model && String(opts.model).trim()) ||
+    (purpose === 'search'
+      ? config.aliyun.aiModelAgentSearch
+      : config.aliyun.aiModelAgent) ||
+    config.aliyun.aiModel ||
+    'qwen3.8-flash';
   const temperature =
     opts.temperature != null && Number.isFinite(Number(opts.temperature))
       ? Number(opts.temperature)
@@ -102,8 +113,39 @@ function createAgentChatModel(opts = {}) {
   });
 }
 
+/**
+ * 本轮 ReAct 是否用 Agentic Search 模型（与深挖/归类等分开）。
+ * @param {{ userText?: string, hasFocus?: boolean }} args
+ */
+function preferSearchChatModel({ userText, hasFocus } = {}) {
+  const t = String(userText || '').trim();
+  if (!t) return !hasFocus;
+
+  // 归类 / 改名 / 偏好：走 agent
+  if (
+    /帮我归类|整理归类|改归类名|改名|记住|偏好|打标|改标签|加减标签/.test(t)
+  ) {
+    return false;
+  }
+  // 文稿 / 成文：走 agent
+  if (/生成文稿|转写|整理成一篇|整理成文章|根据图片整理/.test(t)) {
+    return false;
+  }
+
+  if (hasFocus) {
+    // 阅读页：找类似 / 搜库 → search；总结深挖等 → agent
+    return /找类似|类似的|还有没有|库里|搜一?下|查找|关于.+的|存过|收藏里/.test(
+      t,
+    );
+  }
+
+  // 全局：盘点也可 search 模型；默认偏检索
+  return true;
+}
+
 module.exports = {
   createAgentChatModel,
+  preferSearchChatModel,
   DashScopeCompletions,
   patchMappedWithReasoning,
 };

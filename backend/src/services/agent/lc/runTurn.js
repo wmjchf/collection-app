@@ -10,6 +10,8 @@ const {
 const agentProfileService = require('../agentProfileService');
 const { buildAgentGraph } = require('./graph');
 const { streamTaskPlan } = require('./taskPlan');
+const { preferSearchChatModel } = require('./model');
+const { resolveAgentUsageAction } = require('../agentUsageAction');
 
 /**
  * LangGraph Agentic Search 回合（SSE 契约与旧路由兼容）。
@@ -170,6 +172,13 @@ async function runUserTurn({
     agentProfile = null;
   }
 
+  const chatModelPurpose = preferSearchChatModel({
+    userText: text,
+    hasFocus: Boolean(focusItemIdResolved),
+  })
+    ? 'search'
+    : 'agent';
+
   const runtime = {
     userId,
     userText: String(text || '').trim(),
@@ -180,6 +189,7 @@ async function runUserTurn({
     agentProfile,
     toolTrace,
     citationMap,
+    chatModelPurpose,
     pendingAction: null,
     taskPlan: null,
     emit,
@@ -221,6 +231,7 @@ async function runUserTurn({
       focusHasTranscript,
       recentHistory: history,
       historyMemory,
+      chatModelPurpose,
       emit,
     });
     thinkingText = String(plan.text || '').trim();
@@ -372,6 +383,9 @@ async function runUserTurn({
 
   return emitDone({
     userId,
+    itemId: focusItemIdResolved,
+    toolTrace,
+    pendingAction,
     userMessage,
     assistantMessage,
     usageTotal,
@@ -617,19 +631,28 @@ function mergeUsage(a, b) {
 
 async function emitDone({
   userId,
+  itemId = null,
+  toolTrace = null,
+  pendingAction = null,
   userMessage,
   assistantMessage,
   usageTotal,
   emit,
 }) {
   const generatedAt = new Date().toISOString();
+  const focusId = Number(itemId);
+  const usageAction = resolveAgentUsageAction(toolTrace, pendingAction);
   await usageService.recordAiTokenUsage({
     userId,
-    itemId: null,
+    itemId: Number.isFinite(focusId) && focusId > 0 ? focusId : null,
     feature: 'agent',
     tokens: usageTotal?.totalTokens || 0,
     generatedAt,
-    meta: usageTotal,
+    meta: {
+      ...(usageTotal && typeof usageTotal === 'object' ? usageTotal : {}),
+      agentAction: usageAction.action,
+      agentActionLabel: usageAction.label,
+    },
   });
 
   const usage = {

@@ -70,7 +70,7 @@ function quotasForPlan(plan, { isTrial = false } = {}) {
           400,
       ),
       aiTokensPerMonth: Number(
-        u.emperorAiTokensPerMonth ?? u.proAiTokensPerMonth ?? 800000,
+        u.emperorAiTokensPerMonth ?? u.proAiTokensPerMonth ?? 3200000,
       ),
       itemLimit: null,
     };
@@ -93,7 +93,7 @@ function quotasForPlan(plan, { isTrial = false } = {}) {
         u.princeTranscriptMinutesPerMonth ?? 200,
       ),
       aiTokensPerMonth: Number(
-        u.princeAiTokensPerMonth ?? u.proAiTokensPerMonth ?? 500000,
+        u.princeAiTokensPerMonth ?? u.proAiTokensPerMonth ?? 2000000,
       ),
       itemLimit: null,
     };
@@ -707,7 +707,36 @@ function creditsFromModelUsage(usage) {
   return tokensToCredits(billable);
 }
 
-function aiFeatureLabel(feature) {
+function aiFeatureLabel(feature, meta = null) {
+  if (feature === 'agent') {
+    const fromMeta =
+      meta?.agentActionLabel != null
+        ? String(meta.agentActionLabel).trim()
+        : '';
+    if (fromMeta) return fromMeta;
+    switch (String(meta?.agentAction || '').trim()) {
+      case 'search':
+        return 'Agentic Search';
+      case 'list':
+        return '盘点';
+      case 'excerpt':
+        return '深挖原文';
+      case 'organize':
+        return '整理归类';
+      case 'rename_module':
+        return '改归类名';
+      case 'item_tag_edit':
+        return '打标签';
+      case 'generate_transcript':
+        return '生成文稿';
+      case 'draft_article':
+        return '整理成文章';
+      case 'remember_preference':
+        return '记住偏好';
+      default:
+        return 'AI Agent';
+    }
+  }
   switch (feature) {
     case 'summary':
       return 'AI 总结';
@@ -717,8 +746,6 @@ function aiFeatureLabel(feature) {
       return '归类';
     case 'tags':
       return 'AI 标签';
-    case 'agent':
-      return 'AI Agent';
     default:
       return 'AI';
   }
@@ -756,7 +783,7 @@ function mapUsageEventRow(row) {
     amount,
     unit,
     feature,
-    featureLabel: isAi ? aiFeatureLabel(feature) : '转写',
+    featureLabel: isAi ? aiFeatureLabel(feature, meta) : '转写',
     displayAmount: isAi
       ? tokensToCredits(amount)
       : round1(amount / 60),

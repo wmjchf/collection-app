@@ -486,14 +486,15 @@ Body: { conversationId, messageId, approve: true|false }
 
 1. **Agentic 循环**：`search`/`grep` 候选不落出处 → `get_item_excerpt` 先判断（点名默认 `cite=false`）→ 符合用户限定再 `cite:true` 进出处 → 不够换词  
 2. **图集精读**：默认 VL 看前 1～2 张真图，画面要点写入摘录；阅读页预取不看图；视频仍靠文稿  
-3. **用户限定**：凡有收窄条件（体裁/用途/形态/受众等）精读按限定严卡，不符不 cite、不当推荐；无额外限定则相关即可  
-4. **搜索作答**：只点名已 cite 标题；禁止内容梗概、列落选篇与体裁点评、「想听细节」收尾；用户明确要总结/讲这篇时再展开  
-5. **召回层**：`search_library`=语义+关键词；`grep_library`=字面；盘点 `list_library`  
-6. **索引时机**：解析/改正文后 `scheduleIndexItem`；`guide` 不入库；`AGENT_KB_ENABLED` 可关  
-7. **阅读页找类似**：`excludeItemIds` 排除当前篇；问本篇省略 itemId 默认 cite  
-8. **出处**：仅 `cite:true` 的精读；默认露 3，可加载更多  
-9. 编排 LangGraph ReAct；扩词由 Agent 自己换  
-10. snippet 短披露；禁止整篇塞 citations UI  
+3. **摘录长度**：主题搜点名候选默认约 2500 字；阅读页本篇/深挖默认约 8000 字  
+4. **用户限定**：凡有收窄条件（体裁/用途/形态/受众等）精读按限定严卡，不符不 cite、不当推荐；无额外限定则相关即可  
+5. **搜索作答**：只点名已 cite 标题；禁止内容梗概、列落选篇与体裁点评、「想听细节」收尾；用户明确要总结/讲这篇时再展开  
+6. **召回层**：`search_library`=语义+关键词；`grep_library`=字面；盘点 `list_library`  
+7. **索引时机**：解析/改正文后 `scheduleIndexItem`；`guide` 不入库；`AGENT_KB_ENABLED` 可关  
+8. **阅读页找类似**：`excludeItemIds` 排除当前篇；问本篇省略 itemId 默认 cite  
+9. **出处**：仅 `cite:true` 的精读；默认露 3，可加载更多  
+10. 编排 LangGraph ReAct；扩词由 Agent 自己换  
+11. snippet 短披露；禁止整篇塞 citations UI  
 
 
 

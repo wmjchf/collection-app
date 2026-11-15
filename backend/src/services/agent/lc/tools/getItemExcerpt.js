@@ -1,7 +1,10 @@
 const { tool } = require('@langchain/core/tools');
 const { z } = require('zod');
 const getItemExcerpt = require('../../tools/getItemExcerpt');
-const { EXCERPT_MAX_CHARS } = require('../../agentPolicy');
+const {
+  EXCERPT_MAX_CHARS,
+  EXCERPT_JUDGE_MAX_CHARS,
+} = require('../../agentPolicy');
 
 function mergePeekUsage(runtime, usage) {
   if (!usage || !runtime) return;
@@ -46,11 +49,17 @@ function createGetItemExcerptTool(runtime) {
       const shouldCite =
         cite === true || (cite !== false && !hasExplicitId);
 
+      // 本篇/深挖用长摘录；主题搜点名候选用短摘录压 token（仍可显式传 maxChars）
+      const defaultMax = hasExplicitId
+        ? EXCERPT_JUDGE_MAX_CHARS
+        : EXCERPT_MAX_CHARS;
+      const resolvedMax = maxChars || defaultMax;
+
       const obs = await getItemExcerpt.execute(
         { userId: runtime.userId },
         {
           itemId: id,
-          maxChars: maxChars || EXCERPT_MAX_CHARS,
+          maxChars: resolvedMax,
           // 未显式传时：工具层默认看图（图集）；预取路径自行传 false
           peekImages: peekImages === false ? false : true,
         },
@@ -63,7 +72,7 @@ function createGetItemExcerptTool(runtime) {
         ok: Boolean(obs?.ok),
         args: {
           itemId: id,
-          maxChars: maxChars || EXCERPT_MAX_CHARS,
+          maxChars: resolvedMax,
           cite: shouldCite,
           peekImages: peekImages === false ? false : true,
           peekedImages: Boolean(obs?.data?.peekedImages),
@@ -123,10 +132,9 @@ function createGetItemExcerptTool(runtime) {
       name: 'get_item_excerpt',
       description:
         '精读某一篇正文/文稿；图集默认再看前 1～2 张真图写入画面要点。' +
-        '问「这篇/总结」省略 itemId，默认 cite 进出处。' +
-        '主题检索：先对候选 get_item_excerpt（默认不进出处）判断是否符合用户收窄限定；' +
-        '确认符合后再调用并传 cite:true 才进用户出处。本轮已看过图可传 peekImages:false。' +
-        '搜库用 search_library / grep_library。',
+        '问「这篇/总结」省略 itemId（长摘录、默认 cite）。' +
+        '主题检索点名候选：默认短摘录、不进出处；确认符合再 cite:true。' +
+        '本轮已看过图可传 peekImages:false。搜库用 search_library / grep_library。',
       schema: z.object({
         itemId: z
           .number()
@@ -140,7 +148,9 @@ function createGetItemExcerptTool(runtime) {
           .min(500)
           .max(20000)
           .optional()
-          .describe('摘录最大字符数'),
+          .describe(
+            '摘录最大字符数；点名候选默认约 2500，本篇默认约 8000',
+          ),
         cite: z
           .boolean()
           .optional()

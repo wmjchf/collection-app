@@ -107,7 +107,13 @@ function buildAgentGraph(runtime) {
       '\n执行时按规划选 tool；不要与规划矛盾；不要向用户复述整段规划。';
   }
 
-  const llm = createAgentChatModel({ temperature: 0.3, enableThinking: false });
+  const purpose =
+    runtime.chatModelPurpose === 'search' ? 'search' : 'agent';
+  const llm = createAgentChatModel({
+    temperature: 0.3,
+    enableThinking: false,
+    purpose,
+  });
   const tools = hasFocus
     ? [
         createBrowseLibraryMapTool(runtime),

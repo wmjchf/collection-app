@@ -18,7 +18,10 @@ const MAX_EXCERPTS = 3;
 const MAX_ANSWER_CITATIONS = 3;
 /** list_library 样例条数（助手内不翻页，完整列表在库外） */
 const MAX_LIST_ITEMS = 3;
+/** 阅读页本篇 / 深挖：精读上限 */
 const EXCERPT_MAX_CHARS = 8000;
+/** 主题搜候选判断：短摘录，压 token */
+const EXCERPT_JUDGE_MAX_CHARS = 2500;
 /** 图集精读看真图：最多送几张（搜索判断用，勿全图） */
 const EXCERPT_PEEK_IMAGES = 2;
 /** 画面要点写入摘录的上限 */
@@ -68,6 +71,7 @@ module.exports = {
   MAX_STORED_CITATIONS,
   MAX_LIST_ITEMS,
   EXCERPT_MAX_CHARS,
+  EXCERPT_JUDGE_MAX_CHARS,
   EXCERPT_PEEK_IMAGES,
   EXCERPT_VISUAL_NOTES_MAX_CHARS,
   HISTORY_MESSAGE_LIMIT,

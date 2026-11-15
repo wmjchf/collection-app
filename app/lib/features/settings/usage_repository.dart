@@ -698,6 +698,11 @@ class UsageEvent {
     final t = itemTitle?.trim();
     if (t != null && t.isNotEmpty) return t;
     if (itemDeleted) return '已删除的收藏';
+    // 无关联收藏（如全局 AI Agent）：用能力名，勿「未知条目」
+    if (itemId == null) {
+      final f = featureLabel.trim();
+      if (f.isNotEmpty) return f;
+    }
     return '未知条目';
   }
 

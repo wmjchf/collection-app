@@ -72,6 +72,14 @@ module.exports = {
      * 解读已收束到助手，不再单独配置 SUMMARY 模型。
      */
     aiModelAgent: process.env.ALIYUN_AI_MODEL_AGENT || 'qwen3.8-flash',
+    /**
+     * Agentic Search / 库内检索 ReAct（可与 AGENT 分开配更便宜型号）。
+     * 未设时回退 aiModelAgent。
+     */
+    aiModelAgentSearch:
+      process.env.ALIYUN_AI_MODEL_AGENT_SEARCH ||
+      process.env.ALIYUN_AI_MODEL_AGENT ||
+      'qwen3.8-flash',
     /** 图集成文 VL 看图（draft_gallery_article） */
     aiModelAgentVision:
       process.env.ALIYUN_AI_MODEL_AGENT_VISION || 'qwen3-vl-plus',
@@ -114,11 +122,11 @@ module.exports = {
     freeTranscriptMinutesPerMonth:
       Number(process.env.FREE_TRANSCRIPT_MINUTES_PER_MONTH) || 0,
     princeAiTokensPerMonth:
-      Number(process.env.PRINCE_AI_TOKENS_PER_MONTH) || 500000,
+      Number(process.env.PRINCE_AI_TOKENS_PER_MONTH) || 2000000,
     princeTranscriptMinutesPerMonth:
       Number(process.env.PRINCE_TRANSCRIPT_MINUTES_PER_MONTH) || 200,
     emperorAiTokensPerMonth:
-      Number(process.env.EMPEROR_AI_TOKENS_PER_MONTH) || 800000,
+      Number(process.env.EMPEROR_AI_TOKENS_PER_MONTH) || 3200000,
     emperorTranscriptMinutesPerMonth:
       Number(process.env.EMPEROR_TRANSCRIPT_MINUTES_PER_MONTH) || 400,
     /**
@@ -153,7 +161,7 @@ module.exports = {
     proAiTokensPerMonth:
       Number(process.env.PRO_AI_TOKENS_PER_MONTH) ||
       Number(process.env.PRINCE_AI_TOKENS_PER_MONTH) ||
-      500000,
+      2000000,
     /** @deprecated 等同帝王转写 */
     proTranscriptMinutesPerMonth:
       Number(process.env.PRO_TRANSCRIPT_MINUTES_PER_MONTH) ||

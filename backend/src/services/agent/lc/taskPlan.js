@@ -90,11 +90,13 @@ async function streamTaskPlan({
   focusHasTranscript = false,
   recentHistory = [],
   historyMemory = [],
+  chatModelPurpose = 'agent',
   emit,
 }) {
   const llm = createAgentChatModel({
     temperature: 0.4,
     enableThinking: false,
+    purpose: chatModelPurpose === 'search' ? 'search' : 'agent',
   });
   const parts = [`用户说：${String(userText || '').trim()}`];
   const title = String(focusTitle || '').trim();
