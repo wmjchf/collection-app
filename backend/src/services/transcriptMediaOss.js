@@ -54,35 +54,20 @@ function isOssConfigured() {
   );
 }
 
-/** 源站防盗链：CDN host 常变，不能只靠 bilivideo/hdslb 白名单 */
-const HOTLINK_PLATFORMS = new Set([
-  'bilibili',
-  'xiaohongshu',
-  'weibo',
-  'douyin',
-  'kuaishou',
-]);
+/**
+ * 实测仅 B 站直链 Fun-ASR 常 403，须先下到 OSS。
+ * 抖音等开放直链可直交 ASR；若仍 403，runTranscriptJob 会 forceOss 重试一次。
+ */
+const HOTLINK_PLATFORMS = new Set(['bilibili']);
 
 function pageLooksHotlink(pageUrl) {
   const page = String(pageUrl || '').toLowerCase();
   if (!page) return false;
-  return (
-    page.includes('bilibili.com') ||
-    page.includes('b23.tv') ||
-    page.includes('xiaohongshu.com') ||
-    page.includes('xhslink.com') ||
-    page.includes('weibo.com') ||
-    page.includes('weibo.cn') ||
-    page.includes('douyin.com') ||
-    page.includes('iesdouyin.com') ||
-    page.includes('v.douyin.com') ||
-    page.includes('kuaishou.com') ||
-    page.includes('gifshow.com')
-  );
+  return page.includes('bilibili.com') || page.includes('b23.tv');
 }
 
 /**
- * Fun-ASR 直拉无 Referer；防盗链 CDN 须先下到 OSS。
+ * Fun-ASR 直拉无 Referer；B 站防盗链 CDN 须先下到 OSS。
  * @param {string} mediaUrl
  * @param {{ platform?: string, pageUrl?: string, force?: boolean }} [opts]
  */
@@ -98,9 +83,6 @@ function needsOssProxy(mediaUrl, opts = {}) {
   return (
     lower.includes('bilivideo') ||
     lower.includes('hdslb.com') ||
-    lower.includes('weibocdn') ||
-    lower.includes('gtimg.com') ||
-    lower.includes('toutiaovod') ||
     (lower.includes('akamaized.net') && lower.includes('bili'))
   );
 }
