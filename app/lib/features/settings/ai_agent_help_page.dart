@@ -50,7 +50,7 @@ class AiAgentHelpPage extends StatelessWidget {
               const _SectionHeading('能做什么'),
               const SizedBox(height: 10),
               const _CapabilityCard(
-                title: '意图搜索',
+                title: 'Agentic Search',
                 desc:
                     '按你的意思在库里找，不只关键词硬匹配。例如「类似这篇文章的」「关于××的有哪些」。',
               ),

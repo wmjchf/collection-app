@@ -1,12 +1,12 @@
 # 奏折 AI Agent 实现细节
 
-> 状态：**LangGraph 意图搜索 MVP**（库内搜索 + 流式 + 出处；App SSE/UI 不变）  
+> 状态：**LangGraph Agentic Search MVP**（库内搜索 + 流式 + 出处；App SSE/UI 不变）  
 > 更新日期：2026-11-14  
 > 相关：`docs/技术实现.md` §2.6.4b、`docs/付费规划.md`
 
 ## 0. 一句话
 
-**AI Agent 是用户级私人 Agent**：当前热路径用 **LangChain.js + LangGraph ReAct** 做库内意图搜索、盘点、读篇摘录、生成文稿确认、整理成文章、阅读页改标与全局归类预览；阅读页会预取当前篇。会话 API / SSE 与 App 样式保持兼容。
+**AI Agent 是用户级私人 Agent**：当前热路径用 **LangChain.js + LangGraph ReAct** 做库内 Agentic Search、盘点、读篇摘录、生成文稿确认、整理成文章、阅读页改标与全局归类预览；阅读页会预取当前篇。会话 API / SSE 与 App 样式保持兼容。
 
 ## 1. 产品定位
 
@@ -471,7 +471,7 @@ Body: { conversationId, messageId, approve: true|false }
 - 盘点类问题（有哪些/有多少收藏）→ `list_library`，勿用空泛词 `search_library`
 - 带时间的盘点（今天/昨天/本周/本月/最近收藏）→ `list_library` + `scope`（服务端 `resolveListScope` 算 Asia/Shanghai 时间窗）；回答不得把窗外旧篇说成该时段的；对话内不续翻
 - 「最近阅读 / 朕已阅」「批注 / 朱批」盘点 → `list_library` + `scope=recent_read|annotated`（与收藏页瓷砖同一套 `systemFilterService` 规则：近 7 天已读 / 有标注）；最多 3 条样例，完整列表在库外浏览
-- 「还有吗 / 再列其他」→ 不再对话内翻页，提示去首页/收藏页，或说主题做意图搜索
+- 「还有吗 / 再列其他」→ 不再对话内翻页，提示去首页/收藏页，或说主题做 Agentic Search
 - 错误：额度 / 网络 / 空库；空库引导去添加链接
 
 ### 9.3 与阅读页 AI 的关系（演进）

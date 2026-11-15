@@ -151,7 +151,7 @@ async function suggestPresets({
   }
 
   const globalOnly = !focusId;
-  // 全局助手：意图搜索起步（无深挖），不调模型
+  // 全局助手：Agentic Search 起步（无深挖），不调模型
   if (globalOnly) {
     return {
       presets: [
@@ -207,7 +207,7 @@ async function suggestPresets({
 规则：
 - 只输出 JSON：{"presets":["短句1","短句2","短句3"]}
 - 每条 6～20 个汉字为宜，口语、可直接当用户消息；不要编号、不要解释
-- 贴合当前阅读篇与上一轮回复；可含意图搜索、深挖、找类似、给本篇打标签等
+- 贴合当前阅读篇与上一轮回复；可含 Agentic Search、深挖、找类似、给本篇打标签等
 - 改标签预设用「给这篇打上××标签」这类说法（点了会出确认条）；不要「确认调整」「确认整理」这类确认按钮文案
 - 阅读页不要给「帮我归类/整理分类」预设（归类在全局助手）；不要「现在有哪些标签」类全库盘点预设，不要「对照」类预设
 - ${composeHint}

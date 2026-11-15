@@ -2745,7 +2745,7 @@ class _AgentPresetRules {
         canComposeGallery: canComposeGallery,
       );
     }
-    // 全局助手：意图搜索 + 归类（无深挖）
+    // 全局助手：Agentic Search + 归类（无深挖）
     return const [
       '查找关于…',
       '类似××的内容有哪些',

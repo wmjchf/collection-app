@@ -12,7 +12,7 @@ const { buildAgentGraph } = require('./graph');
 const { streamTaskPlan } = require('./taskPlan');
 
 /**
- * LangGraph 意图搜索回合（SSE 契约与旧路由兼容）。
+ * LangGraph Agentic Search 回合（SSE 契约与旧路由兼容）。
  */
 async function runUserTurn({
   userId,
