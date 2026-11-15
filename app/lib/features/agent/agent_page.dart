@@ -503,7 +503,7 @@ class _AgentPageState extends State<AgentPage> {
     _patchAssistantMessage(
       messageId,
       content: shouldCompose
-          ? '现在开始整理成文章'
+          ? '现在开始整理成文章。'
           : alreadyReady
               ? alreadyReadyMessage
               : '文稿已生成。可以说「整理成一篇文章」，或到阅读页查看全文。',
@@ -1448,6 +1448,7 @@ class _AgentPageState extends State<AgentPage> {
                                         inventoryTags: m.inventoryTags,
                                         pendingAction: m.pendingAction,
                                         focusItemId: _focusItemId,
+                                        showCopy: m.isDraftArticle,
                                         pickedIds: _pickedCitations.keys.toSet(),
                                         onOpen: _openCitation,
                                         onOpenTag: _openInventoryTag,
@@ -2331,6 +2332,7 @@ class _AssistantBlock extends StatelessWidget {
     this.awaitingAnswer = false,
     this.focusItemId,
     this.pendingAction,
+    this.showCopy = false,
     this.pickEnabled = true,
     this.confirmEnabled = true,
     this.onConfirmAction,
@@ -2348,6 +2350,8 @@ class _AssistantBlock extends StatelessWidget {
   final List<AgentTagChip> inventoryTags;
   final AgentPendingAction? pendingAction;
   final int? focusItemId;
+  /// 仅「整理成文章」结果展示整篇复制
+  final bool showCopy;
   final Set<int> pickedIds;
   final ValueChanged<AgentCitation> onOpen;
   final ValueChanged<AgentTagChip> onOpenTag;
@@ -2393,7 +2397,8 @@ class _AssistantBlock extends StatelessWidget {
   Widget build(BuildContext context) {
     final showConfirm = pendingAction?.isPending == true && onConfirmAction != null;
     final progressSeg = _transcriptProgressSegment;
-    final canCopy = text.trim().isNotEmpty && progressSeg == null;
+    final canCopy =
+        showCopy && text.trim().isNotEmpty && progressSeg == null;
     final think = thinking.trim();
     final allCites = _visibleCitations;
     final limit = citationShownCount < 1 ? 1 : citationShownCount;

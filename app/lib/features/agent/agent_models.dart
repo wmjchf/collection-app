@@ -295,6 +295,15 @@ class AgentMessage {
 
   String get displayThinking => thinking.trim();
 
+  /// 本轮成功调用过 draft_article（整理成文章）
+  bool get isDraftArticle {
+    for (final step in toolTrace) {
+      if (step['tool']?.toString() != 'draft_article') continue;
+      if (step['ok'] == true) return true;
+    }
+    return false;
+  }
+
   /// list_tags 盘点结果：用于 chip 展示（不列文章）
   List<AgentTagChip> get inventoryTags {
     final out = <AgentTagChip>[];
