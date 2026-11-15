@@ -69,6 +69,17 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
       _isAndroid && (_billing?.wechat.configured ?? false);
   WechatBillingConfig get _wechatCfg =>
       _billing?.wechat ?? WechatBillingConfig.none;
+  AndroidTrialOffer get _androidTrial =>
+      _billing?.androidTrial ?? AndroidTrialOffer.none;
+  bool get _androidTrialEligible =>
+      _isAndroid && _androidTrial.eligible;
+
+  /// Android：月付太子且有资格时走领取 CTA（不经支付）
+  bool _canClaimAndroidTrial(String tier) {
+    if (!_androidTrialEligible || _yearlyBilling) return false;
+    if (_isTierOwned(tier)) return false;
+    return UsagePlan.normalize(tier) == UsagePlan.prince;
+  }
 
   /// 该档是否已实购（普通≠被太子覆盖）
   bool _isTierOwned(String tier) => _ownedPlans.owns(tier);
@@ -317,6 +328,17 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
         ),
       );
     }
+    if (_canClaimAndroidTrial(tier)) {
+      return Text(
+        '免费试用 ${_androidTrial.days} 天',
+        style: TextStyle(
+          fontSize: 22,
+          fontWeight: FontWeight.w700,
+          color: selected ? _accent : _text,
+          height: 1.2,
+        ),
+      );
+    }
     if (_wechatReady) {
       return _wechatPriceWidgetForTier(tier, selected: selected);
     }
@@ -532,6 +554,9 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
         _busy && !_restoreFlow && t == UsagePlan.normalize(_selectedTier);
     if (buyingThis) return _phaseLabel;
     if (_isTierOwned(tier)) return '已开通 ${_tierDisplayName(tier)}';
+    if (_canClaimAndroidTrial(tier)) {
+      return '免费试用 ${_androidTrial.days} 天';
+    }
     if (_wechatReady) {
       final sku = _wechatSkuForTier(tier);
       if (sku == null) return t == UsagePlan.basic ? '一次买断' : '微信支付';
@@ -554,6 +579,7 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
 
   bool _ctaEnabledForTier(String tier) {
     if (_busy || _isTierOwned(tier)) return false;
+    if (_canClaimAndroidTrial(tier)) return true;
     if (_wechatReady) return _wechatSkuForTier(tier) != null;
     if (!_isIos) return false;
     if (_productsLoading || _error != null) return false;
@@ -568,6 +594,10 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
   Future<void> _buy([String? tier]) async {
     final t = UsagePlan.normalize(tier ?? _selectedTier);
     if (_busy || _isTierOwned(t)) return;
+    if (_canClaimAndroidTrial(t)) {
+      await _claimAndroidTrial();
+      return;
+    }
     if (_wechatReady) {
       await _buyWechat(t);
       return;
@@ -610,6 +640,52 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
         errorCode: e.toString(),
       );
       AppToast.show(context, '购买失败，请稍后重试');
+    } finally {
+      if (mounted) {
+        setState(() {
+          _phase = null;
+          _restoreFlow = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _claimAndroidTrial() async {
+    if (_busy) return;
+    setState(() {
+      _selectedTier = UsagePlan.prince;
+      _restoreFlow = false;
+      _phase = AppleIapPhase.paying;
+    });
+    try {
+      final days = _androidTrial.days;
+      final usage = await _usageRepo.claimAndroidTrial();
+      if (!mounted) return;
+      final prev = _billing;
+      setState(() {
+        _currentPlan = UsagePlan.normalize(usage.plan);
+        _ownedPlans = usage.ownedPlans;
+        if (prev != null) {
+          _billing = BillingProductsConfig(
+            basicLifetime: prev.basicLifetime,
+            basic: prev.basic,
+            prince: prev.prince,
+            emperor: prev.emperor,
+            quotas: prev.quotas,
+            wechat: prev.wechat,
+            androidTrial: AndroidTrialOffer.none,
+          );
+        }
+      });
+      UsageRefresh.bump();
+      AppToast.show(context, '已开通太子Pro 试用 $days 天');
+      Navigator.of(context).maybePop(true);
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      AppToast.show(context, e.message);
+    } catch (_) {
+      if (!mounted) return;
+      AppToast.show(context, '领取失败，请稍后重试');
     } finally {
       if (mounted) {
         setState(() {
@@ -737,7 +813,7 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
             padding: const EdgeInsets.fromLTRB(16, 14, 16, 20),
             children: [
               const _MembershipIntro(),
-              if (_isAndroid && !_wechatReady) ...[
+              if (_isAndroid && !_wechatReady && !_androidTrialEligible) ...[
                 const SizedBox(height: 12),
                 const _AndroidComingSoonHint(),
               ] else if (_nextUpgradeableTier == null) ...[
@@ -881,7 +957,7 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
               body: LegalDocs.privacyPolicy,
             ),
           )
-        else if (_wechatReady)
+        else if (_wechatReady || _androidTrialEligible)
           _BottomActionBar(
             showPurchaseActions: true,
             showRestore: false,
@@ -890,11 +966,16 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
             restoreLabel: '',
             busy: _busy,
             restoreFlow: false,
-            subscribeEnabled:
-                !_selectedOwned && _wechatSkuForTier(_selectedTier) != null,
-            selectedPrice: _wechatSkuForTier(_selectedTier)?.displayPrice,
+            subscribeEnabled: !_selectedOwned &&
+                (_canClaimAndroidTrial(_selectedTier) ||
+                    _wechatSkuForTier(_selectedTier) != null),
+            selectedPrice: _canClaimAndroidTrial(_selectedTier)
+                ? null
+                : _wechatSkuForTier(_selectedTier)?.displayPrice,
             lifetimePurchase: _isBasicSelected,
             manualRenewal: true,
+            androidTrialClaim: _canClaimAndroidTrial(_selectedTier),
+            androidTrialDays: _androidTrial.days,
             onSubscribe: () => _buy(),
             onRestore: () {},
             onUserAgreement: () => _openLegal(
@@ -931,7 +1012,7 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
                       (!_isIos || (!_productsLoading && _error == null)),
                   onBillingChanged: _setBillingPeriod,
                 ),
-                if (_isAndroid && !_wechatReady) ...[
+                if (_isAndroid && !_wechatReady && !_androidTrialEligible) ...[
                   const SizedBox(height: 12),
                   const _AndroidComingSoonHint(),
                 ] else if (_nextUpgradeableTier == null) ...[
@@ -2366,6 +2447,8 @@ class _BottomActionBar extends StatelessWidget {
     this.selectedPrice,
     this.lifetimePurchase = false,
     this.manualRenewal = false,
+    this.androidTrialClaim = false,
+    this.androidTrialDays = 7,
   });
 
   final bool showPurchaseActions;
@@ -2384,6 +2467,8 @@ class _BottomActionBar extends StatelessWidget {
   final String? selectedPrice;
   final bool lifetimePurchase;
   final bool manualRenewal;
+  final bool androidTrialClaim;
+  final int androidTrialDays;
 
   @override
   Widget build(BuildContext context) {
@@ -2435,6 +2520,8 @@ class _BottomActionBar extends StatelessWidget {
                     selectedPrice: selectedPrice,
                     lifetimePurchase: lifetimePurchase,
                     manualRenewal: manualRenewal,
+                    androidTrialClaim: androidTrialClaim,
+                    androidTrialDays: androidTrialDays,
                   ),
               ],
             ),
@@ -2453,6 +2540,8 @@ class _SubscriptionLegalFooter extends StatelessWidget {
     this.selectedPrice,
     this.lifetimePurchase = false,
     this.manualRenewal = false,
+    this.androidTrialClaim = false,
+    this.androidTrialDays = 7,
   });
 
   final VoidCallback onUserAgreement;
@@ -2461,6 +2550,8 @@ class _SubscriptionLegalFooter extends StatelessWidget {
   final String? selectedPrice;
   final bool lifetimePurchase;
   final bool manualRenewal;
+  final bool androidTrialClaim;
+  final int androidTrialDays;
 
   @override
   Widget build(BuildContext context) {
@@ -2485,6 +2576,10 @@ class _SubscriptionLegalFooter extends StatelessWidget {
       trail = manualRenewal
           ? '。'
           : '。如果已购买但未生效，请恢复购买。';
+    } else if (androidTrialClaim) {
+      lead =
+          '符合条件可免费试用 $androidTrialDays 天太子Pro（试用额度约为正式月的四分之一），到期后不会自动扣款；之后可通过微信付费开通。领取即表示你接受我们的';
+      trail = '。';
     } else if (manualRenewal) {
       lead =
           '本页支付通过微信完成；太子Pro / 帝王Pro 为按期开通，到期后需手动续费，不会自动扣款。支付即表示你接受我们的';

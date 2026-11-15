@@ -7,6 +7,15 @@ const STATUS_CANCELLED = 'cancelled';
 
 const PAID_PLANS = planService.paidPlans();
 
+/** Android 服务端赠送太子试用 */
+const ANDROID_TRIAL_SOURCE = 'android_trial';
+const ANDROID_TRIAL_DAYS = 7;
+const ANDROID_TRIAL_PLANS = [
+  planService.PLAN_PRINCE,
+  planService.PLAN_EMPEROR,
+  planService.PLAN_PRO,
+];
+
 /**
  * 当前有效付费订阅（含 legacy pro）
  */
@@ -507,11 +516,85 @@ async function expireByExternalId({ source, externalId, reason = null }) {
   return { updated: true };
 }
 
+/**
+ * Android 7 天太子试用资格：从未有过太子/帝王/legacy pro，且未领过 android_trial。
+ */
+async function getAndroidTrialEligibility(userId) {
+  const base = {
+    eligible: false,
+    days: ANDROID_TRIAL_DAYS,
+    plan: planService.PLAN_PRINCE,
+  };
+  if (!userId) return base;
+
+  const planPh = ANDROID_TRIAL_PLANS.map((_, i) => `:p${i}`).join(', ');
+  const params = {
+    userId,
+    androidSource: ANDROID_TRIAL_SOURCE,
+  };
+  ANDROID_TRIAL_PLANS.forEach((p, i) => {
+    params[`p${i}`] = p;
+  });
+
+  const [rows] = await pool.execute(
+    `SELECT id FROM subscriptions
+     WHERE user_id = :userId
+       AND (
+         plan IN (${planPh})
+         OR source = :androidSource
+       )
+     LIMIT 1`,
+    params,
+  );
+  return {
+    ...base,
+    eligible: !rows.length,
+  };
+}
+
+/**
+ * 领取 Android 太子 7 天试用（不经支付）。
+ * @throws {{ status: number, code: string, message: string }}
+ */
+async function claimAndroidTrial(userId) {
+  if (!userId) {
+    throw Object.assign(new Error('缺少用户'), {
+      status: 400,
+      code: 'UNAUTHORIZED',
+    });
+  }
+  const eligibility = await getAndroidTrialEligibility(userId);
+  if (!eligibility.eligible) {
+    throw Object.assign(new Error('不符合免费试用资格'), {
+      status: 403,
+      code: 'TRIAL_NOT_ELIGIBLE',
+    });
+  }
+
+  const externalId = `${ANDROID_TRIAL_SOURCE}_${userId}`;
+  const sub = await activateSubscription({
+    userId,
+    plan: planService.PLAN_PRINCE,
+    source: ANDROID_TRIAL_SOURCE,
+    externalId,
+    days: ANDROID_TRIAL_DAYS,
+    meta: {
+      isTrial: true,
+      autoRenewEnabled: false,
+      channel: 'android_claim',
+      days: ANDROID_TRIAL_DAYS,
+    },
+  });
+  return sub;
+}
+
 module.exports = {
   PLAN_PRO: planService.PLAN_PRO,
   STATUS_ACTIVE,
   STATUS_EXPIRED,
   STATUS_CANCELLED,
+  ANDROID_TRIAL_SOURCE,
+  ANDROID_TRIAL_DAYS,
   getActiveSubscription,
   getActiveSubscriptions,
   buildTrialReminder,
@@ -528,4 +611,6 @@ module.exports = {
   extendByExternalId,
   expireByExternalId,
   mapSub,
+  getAndroidTrialEligibility,
+  claimAndroidTrial,
 };

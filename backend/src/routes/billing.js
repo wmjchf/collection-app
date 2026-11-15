@@ -58,13 +58,55 @@ router.get('/subscription', async (req, res, next) => {
   }
 });
 
-/** GET /api/billing/products — iOS ASC 商品 + Android 微信价目 */
-router.get('/products', async (_req, res) => {
-  const apple = appleIapService.publicProductConfig();
-  return res.json({
-    ...apple,
-    wechat: wechatPayService.publicProductConfig(),
-  });
+/** GET /api/billing/products — iOS ASC 商品 + Android 微信价目 + 试用资格 */
+router.get('/products', async (req, res, next) => {
+  try {
+    const apple = appleIapService.publicProductConfig();
+    const androidTrial =
+      await subscriptionService.getAndroidTrialEligibility(req.auth.userId);
+    return res.json({
+      ...apple,
+      wechat: wechatPayService.publicProductConfig(),
+      androidTrial,
+    });
+  } catch (err) {
+    return next(err);
+  }
+});
+
+/** GET /api/billing/android-trial — Android 7 天太子试用资格 */
+router.get('/android-trial', async (req, res, next) => {
+  try {
+    const androidTrial =
+      await subscriptionService.getAndroidTrialEligibility(req.auth.userId);
+    return res.json({ androidTrial });
+  } catch (err) {
+    return next(err);
+  }
+});
+
+/**
+ * POST /api/billing/android/claim-trial
+ * 领取 Android 服务端赠送的 7 天太子Pro 试用（不经支付）
+ */
+router.post('/android/claim-trial', async (req, res, next) => {
+  try {
+    const sub = await subscriptionService.claimAndroidTrial(req.auth.userId);
+    const summary = await usageService.getUsageSummary(req.auth.userId);
+    return res.json({
+      message: '已开通太子Pro 试用',
+      subscription: sub,
+      plan: summary.plan,
+      usage: summary,
+      androidTrial: {
+        eligible: false,
+        days: subscriptionService.ANDROID_TRIAL_DAYS,
+        plan: 'prince',
+      },
+    });
+  } catch (err) {
+    return next(err);
+  }
 });
 
 /**

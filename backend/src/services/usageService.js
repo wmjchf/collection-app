@@ -865,6 +865,8 @@ async function getUsageSummary(userId) {
   const aiLimit = quotas.aiTokensPerMonth;
   const aiUsed = Math.round(aiTokens);
   const baseLabel = planService.planLabel(normalizedPlan);
+  const androidTrial =
+    await subscriptionService.getAndroidTrialEligibility(userId);
 
   return {
     period: {
@@ -879,6 +881,7 @@ async function getUsageSummary(userId) {
     isTrial,
     subscription,
     trialReminder: subscriptionService.buildTrialReminder(subscription),
+    androidTrial,
     enforcing: isEnforcing(),
     transcript: {
       usedSeconds: round1(transcriptSeconds),

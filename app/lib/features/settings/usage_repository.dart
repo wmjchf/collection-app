@@ -366,6 +366,34 @@ class WechatPaySku {
   String get displayPrice => '¥$priceYuan';
 }
 
+/// Android 服务端赠送太子 7 天试用资格（不经支付）
+class AndroidTrialOffer {
+  const AndroidTrialOffer({
+    required this.eligible,
+    this.days = 7,
+    this.plan = UsagePlan.prince,
+  });
+
+  final bool eligible;
+  final int days;
+  final String plan;
+
+  static const none = AndroidTrialOffer(eligible: false);
+
+  factory AndroidTrialOffer.fromJson(Map<String, dynamic>? json) {
+    if (json == null) return AndroidTrialOffer.none;
+    return AndroidTrialOffer(
+      eligible: json['eligible'] == true,
+      days: (json['days'] as num?)?.toInt() ?? 7,
+      plan: UsagePlan.normalize(
+        (json['plan'] as String?)?.trim().isNotEmpty == true
+            ? json['plan'] as String
+            : UsagePlan.prince,
+      ),
+    );
+  }
+}
+
 class WechatBillingConfig {
   const WechatBillingConfig({
     required this.configured,
@@ -432,6 +460,7 @@ class BillingProductsConfig {
     required this.emperor,
     required this.quotas,
     this.wechat = WechatBillingConfig.none,
+    this.androidTrial = AndroidTrialOffer.none,
   });
 
   /// 普通会员主售：非消耗型一次买断
@@ -442,6 +471,7 @@ class BillingProductsConfig {
   final TierProductIds emperor;
   final PlanQuotasTable quotas;
   final WechatBillingConfig wechat;
+  final AndroidTrialOffer androidTrial;
 
   /// 全部商品 id（StoreKit 查询用）
   Set<String> get allIds => {
@@ -549,6 +579,12 @@ class UsageRepository {
             ? wechatRaw.map((k, v) => MapEntry(k.toString(), v))
             : null,
       );
+      final trialRaw = json['androidTrial'];
+      final androidTrial = AndroidTrialOffer.fromJson(
+        trialRaw is Map
+            ? trialRaw.map((k, v) => MapEntry(k.toString(), v))
+            : null,
+      );
       return BillingProductsConfig(
         basicLifetime: basicLifetime,
         basic: TierProductIds(monthly: basicMonthly, yearly: basicYearly),
@@ -559,6 +595,7 @@ class UsageRepository {
         ),
         quotas: quotas,
         wechat: wechat,
+        androidTrial: androidTrial,
       );
     } catch (_) {
       return const BillingProductsConfig(
@@ -588,6 +625,24 @@ class UsageRepository {
   Future<void> checkout() async {
     final token = await _token();
     await _api.post('/api/billing/checkout', accessToken: token);
+  }
+
+  /// Android：领取服务端赠送的 7 天太子Pro 试用
+  Future<UsageSummary> claimAndroidTrial() async {
+    final token = await _token();
+    final json = await _api.post(
+      '/api/billing/android/claim-trial',
+      accessToken: token,
+    );
+    final usageRaw = json['usage'];
+    if (usageRaw is Map) {
+      final usage = UsageSummary.fromJson(
+        usageRaw.map((k, v) => MapEntry(k.toString(), v)),
+      );
+      snapshot = usage;
+      return usage;
+    }
+    return fetchUsage();
   }
 }
 
