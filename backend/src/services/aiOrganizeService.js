@@ -14,21 +14,27 @@ const FULL_REORG_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 /**
  * 归类口径（AI Agent）：单层架子（无多级树）；可填已有架或建议新建；确认后才写入。
  */
+/** 新建归类至少几个标签；不够则回未归类，等以后再分 */
+const MIN_TAGS_FOR_NEW_SHELF = 2;
+
 const ORGANIZE_SYSTEM_PROMPT_UNGROUPED =
   '你是收藏整理助手。归类只有一层：把标签放进归类名下，禁止多级/父子分类。' +
   '可把待安置标签填进已有归类，也可建议新建归类名（create:true）。' +
-  '已有架：existingModuleId 必填且来自「已有归类」，name 用原名，create 可省略或 false。' +
-  '新架：create:true，existingModuleId 为 null，name 为简洁归类名（2～12 字），不要与已有架同名。' +
+  '已有架：existingModuleId 必填且来自「已有归类」，name 用原名，create 可省略或 false；往已有架追加可以只有 1 个标签。' +
+  '新架：create:true，existingModuleId 为 null，name 为简洁归类名（2～12 字），不要与已有架同名；' +
+  `新建归类的 tagIds 至少 ${MIN_TAGS_FOR_NEW_SHELF} 个，禁止为单个标签单独建架；凑不够就放进 ungroupedTagIds，等以后标签多了再分。` +
   '锁定标签禁止改动；tagIds 只用待安置 id；每个待安置标签恰好出现一次。' +
-  '只输出 JSON：{"modules":[{"name":"归类名","existingModuleId":12,"create":false,"tagIds":[1]},{"name":"新架名","existingModuleId":null,"create":true,"tagIds":[2]}],"ungroupedTagIds":[3]}';
+  '只输出 JSON：{"modules":[{"name":"归类名","existingModuleId":12,"create":false,"tagIds":[1]},{"name":"新架名","existingModuleId":null,"create":true,"tagIds":[2,3]}],"ungroupedTagIds":[4]}';
 
 const ORGANIZE_SYSTEM_PROMPT_FULL =
   '你是收藏整理助手。归类只有一层：把标签放进归类名下，禁止多级/父子分类。' +
   '可把可重排标签填进已有归类，也可建议新建归类名（create:true）。' +
   '【锁定标签】禁止挪动。【可重排标签】可入已有架或新架。' +
-  '已有架：existingModuleId 必填；新架：create:true 且 name 新、existingModuleId null。' +
+  '已有架：existingModuleId 必填；往已有架追加可以只有 1 个标签。' +
+  '新架：create:true 且 name 新、existingModuleId null；' +
+  `新建归类的 tagIds 至少 ${MIN_TAGS_FOR_NEW_SHELF} 个，禁止为单个标签单独建架；凑不够就放进 ungroupedTagIds。` +
   '只用可重排 tagId；每个恰好出现一次。' +
-  '只输出 JSON：{"modules":[{"name":"归类名","existingModuleId":12,"create":false,"tagIds":[1]},{"name":"新架名","existingModuleId":null,"create":true,"tagIds":[2]}],"ungroupedTagIds":[3]}';
+  '只输出 JSON：{"modules":[{"name":"归类名","existingModuleId":12,"create":false,"tagIds":[1]},{"name":"新架名","existingModuleId":null,"create":true,"tagIds":[2,3]}],"ungroupedTagIds":[4]}';
 
 /** 归类目录里每架最多展示的已有标签名数 */
 const SHELF_TAG_PREVIEW_MAX = 12;
@@ -307,7 +313,6 @@ function normalizeProposal(raw, tagById, moduleById, movableIds, opts = {}) {
   const used = new Set();
   const modules = [];
   const ungroupedTagIds = [];
-  const willCreateModules = [];
   const maxModules = Math.max(16, moduleById.size || 0, movableIds.size);
   const pendingCreateNames = new Set();
 
@@ -328,7 +333,6 @@ function normalizeProposal(raw, tagById, moduleById, movableIds, opts = {}) {
         name: tagById.get(id).name,
       })),
     });
-    if (create) willCreateModules.push(name);
     return true;
   };
 
@@ -399,7 +403,7 @@ function normalizeProposal(raw, tagById, moduleById, movableIds, opts = {}) {
     }
 
     if (create && name && kept.length) {
-      // 合并进已有同名待建模块
+      // 合并进已有同名待建模块（末尾再按最少标签数拆掉不够的新架）
       const existingNew = modules.find(
         (m) =>
           m.create &&
@@ -452,14 +456,32 @@ function normalizeProposal(raw, tagById, moduleById, movableIds, opts = {}) {
     ungroupedTagIds.push(tid);
   }
 
+  // 新建架标签数不足 → 整架打回未归类（禁止单标建架）
+  const keptModules = [];
+  const createNames = [];
+  for (const m of modules) {
+    if (
+      m.create &&
+      Array.isArray(m.tagIds) &&
+      m.tagIds.length < MIN_TAGS_FOR_NEW_SHELF
+    ) {
+      for (const tid of m.tagIds) {
+        ungroupedTagIds.push(tid);
+      }
+      continue;
+    }
+    keptModules.push(m);
+    if (m.create && m.name) createNames.push(m.name);
+  }
+
   return {
-    modules,
+    modules: keptModules,
     ungroupedTagIds,
     ungroupedTags: ungroupedTagIds.map((id) => ({
       id,
       name: tagById.get(id).name,
     })),
-    willCreateModules: [...new Set(willCreateModules)],
+    willCreateModules: [...new Set(createNames)],
   };
 }
 
@@ -537,15 +559,16 @@ async function suggestOrganize(
     catalog,
     modules.length
       ? ''
-      : '当前尚无归类架子；请为待安置标签建议合适的新归类名（create:true）。',
+      : `当前尚无归类架子；可为待安置标签建议新归类名（create:true），但每个新架至少 ${MIN_TAGS_FOR_NEW_SHELF} 个标签。`,
     hintText ? `用户偏好与约束（必须遵守）：\n${hintText}` : '',
+    `新建归类至少放入 ${MIN_TAGS_FOR_NEW_SHELF} 个标签；只有 1 个合适标签时不要建新架，放入 ungroupedTagIds。往已有架追加不受此限。`,
     mode === 'full'
       ? allUserTags
-        ? '请把下列【可重排标签】全部填进已有归类或新建归类；每个 tagId 必须恰好出现一次，禁止遗漏。可 create:true 建新架；已有架填 existingModuleId。'
-        : '请把【可重排标签】填进已有归类或建议新建归类。【锁定标签】禁止挪动。可 create:true 建新架；已有架填 existingModuleId。若约束里已有架名与标签归属，必须沿用，禁止另起一套分类；上文/约束点名的标签禁止遗漏。'
+        ? '请把下列【可重排标签】填进已有归类或（够数时）新建归类；每个 tagId 必须恰好出现一次，禁止遗漏。可 create:true 建新架；已有架填 existingModuleId。'
+        : '请把【可重排标签】填进已有归类或（够数时）建议新建归类。【锁定标签】禁止挪动。可 create:true 建新架；已有架填 existingModuleId。若约束里已有架名与标签归属，必须沿用，禁止另起一套分类；上文/约束点名的标签禁止遗漏。'
       : allUserTags
-        ? '请把待安置标签全部填进已有归类或新建归类；每个 tagId 必须恰好出现一次，禁止遗漏。'
-        : '请把待安置标签填进已有归类，或建议新建归类（create:true）。锁定标签不动。已有架填 existingModuleId；新架给简洁 name。若约束里已有方案，必须沿用架名与归属，禁止另起一套；点名标签禁止遗漏。',
+        ? '请把待安置标签填进已有归类或（够数时）新建归类；每个 tagId 必须恰好出现一次，禁止遗漏。凑不够新架的放 ungroupedTagIds。'
+        : '请把待安置标签填进已有归类，或（够数时）建议新建归类（create:true）。锁定标签不动。已有架填 existingModuleId；新架给简洁 name。若约束里已有方案，必须沿用架名与归属，禁止另起一套；点名标签禁止遗漏。',
   ].filter(Boolean);
 
   const messages = [
@@ -784,4 +807,5 @@ module.exports = {
   FULL_REORG_NEW_AI_TAGS,
   FULL_REORG_MIN_INTERVAL_MS,
   FULL_REORG_MAX_AGE_MS,
+  MIN_TAGS_FOR_NEW_SHELF,
 };

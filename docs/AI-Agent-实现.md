@@ -6,7 +6,7 @@
 
 ## 0. 一句话
 
-**AI Agent 是用户级私人 Agent**：当前热路径用 **LangChain.js + LangGraph ReAct** 做库内意图搜索、读篇摘录、生成文稿确认、整理成文章与流式回答；阅读页会预取当前篇。会话 API / SSE 与 App 样式保持兼容。改标、归类等暂未接入。
+**AI Agent 是用户级私人 Agent**：当前热路径用 **LangChain.js + LangGraph ReAct** 做库内意图搜索、盘点、读篇摘录、生成文稿确认、整理成文章、阅读页改标与全局归类预览；阅读页会预取当前篇。会话 API / SSE 与 App 样式保持兼容。
 
 ## 1. 产品定位
 
@@ -45,7 +45,7 @@
 
 | 阶段 | 能力条 | 做什么 | 不做什么 |
 | --- | --- | --- | --- |
-| **P1 查** | `查收藏` 点亮 | 检索收藏、对照内容、深挖原文；**改标签 / 归类暂下线**（标签→阅读页；归类→收藏页） | 不静默写库、不批量全库改标、不生成分享稿 |
+| **P1 查** | `查收藏` 点亮 | 检索收藏、深挖原文；改标签在阅读页；归类在全局助手 | 不静默写库、不批量全库改标、不生成分享稿 |
 | **P2 整理** | `整理` 点亮 | 收拢现网 AI 为 Tools：解读 / 脑图 / 打标建议；归类已部分前移至 P1 助手 | 不写对外长文、不发帖 |
 | **P3a 轻创作** | `创作` 点亮（轻） | 基于出处的分享文案、对照短评、一句话推荐、摘句润色 | 不写无出处的自由长文 |
 | **P3b 中创作** | `创作` 加深 | 多篇综合备忘、主题导读、读书笔记草稿（可编辑再导出） | 不承诺自动发布 |
@@ -84,8 +84,8 @@
 
 ### 2.5 非目标（Phase 1）
 
-- ~~不自动改标签~~ → **助手内改标签暂下线**；阅读页手改；`propose_item_tag_edit` 代码保留；仍不做：无确认静默改标、整篇 AI 重打标流水线、批量全库改标、删条目
-- ~~不改归类架子~~ → **助手内归类暂下线**；收藏页手建/拖动；`propose_organize` 代码保留
+- ~~不自动改标签~~ → **阅读页可预览改标（确认写入）**；仍不做：无确认静默改标、整篇 AI 重打标流水线、批量全库改标、删条目
+- ~~不改归类架子~~ → **全局可预览归类（确认写入）**；收藏页仍可手建/拖动；阅读页不整库归类
 - 不接外部网页搜索、不读用户未收藏的 URL
 - 不做语音输入、不做流式 UI 动画规范以外的花活
 - 不在 Phase 1 做跨用户知识、推荐他人内容
@@ -104,7 +104,7 @@ agentOrchestrator.js → lc/runTurn.js
   ├─ buildAgentGraph（lc/graph.js）
   │    ├─ streamTaskPlan → SSE thinking（任务理解与规划口语）
   │    ├─ 规划正文注入 ReAct system（约束执行优先按规划调 tool）
-  │    ├─ ChatOpenAI → 百炼 + Tools：search_library / list_library / get_item_excerpt / generate_transcript / draft_article / propose_item_tag_edit
+  │    ├─ ChatOpenAI → 百炼 + Tools：search_library / list_library / propose_organize（全局）/ get_item_excerpt / generate_transcript / draft_article / propose_item_tag_edit（阅读页）
   ├─ streamEvents → SSE phase / token；thinking 落库 `tool_calls_json.thinking`
   ├─ citations[] ← 工具命中（落库最多 12；气泡默认露 3，「加载更多」展开）；generate_transcript 可挂 pendingAction；draft_article 真流式成文
   └─ usageService.recordAiTokenUsage（feature=agent）
@@ -293,7 +293,7 @@ GET /api/agent/messages/:id
 
 Stream（已落地）：`Accept: text/event-stream`，事件 `user` / `phase`（planning|searching|answering）/ `token` / `done`（含完整 assistant + citations）/ `error`。plan+工具仍同步；仅 answer 纯文本流式。
 
-### 5.3 确认类写操作（改标签 / 归类：工具保留，助手入口暂下线）
+### 5.3 确认类写操作（改标签 / 归类：确认条写入）
 
 ```
 POST /api/agent/actions/confirm
@@ -373,20 +373,16 @@ Body: { conversationId, messageId, approve: true|false }
 | 写入 | 用户点确认 → `POST /api/agent/actions/confirm` → find-or-create + `setItemTags` |
 | 口径 | 优先复用已有标签名；未确认禁止声称已改好 |
 
-#### `propose_organize`（只读预览）
+#### `propose_organize`（只读预览 · 仅全局）
 
 | 项 | 说明 |
 | --- | --- |
-| Args | `{ hint?: string, mode?: 'ungrouped'\|'full' }` |
-| 实现 | `suggestOrganize`（可建议新建归类）；**不写库**；hint 上限 700 |
-| 返回 | `modules`（含 `create`）/`willCreateModules`/`ungroupedTagIds` |
+| Args | `{ hint?: string, mode?: 'ungrouped'\|'full' }`；默认 `ungrouped` |
+| 实现 | `suggestOrganize`（可建议新建归类）；**不写库**；hint 上限 700；标签 &lt;6 → `too_few_tags` 不挂确认条；6～11 注入粗分约束 |
+| 返回 | `modules`（含 `create`）/`willCreateModules`/`ungroupedTagIds`；成功则挂 `pendingAction: organize_tags` |
 | 写入 | 确认 → `applyOrganize` |
-| 短回复 | 「新建一个」等：编排层 `buildOrganizeHint` 把上文助手建议拼进 hint，避免丢掉点名标签 |
-| 口头确认 | 「可以/确认」→ 执行 pending 或按上文方案 `applyOrganize`；禁止只回「已确认执行」不写库 |
-| 归类三步 | 查标签 → 未带分法才问意见 → 有明确意见或表态后 `propose_organize` 确认条写入 |
-| 盘点标签 | **暂下线**：问全库标签时引导收藏页；`list_tags` 工具代码保留 |
-| 改单篇标签 | **已接入**：`propose_item_tag_edit` 预览 + 确认条写入；优先复用已有标签名 |
-| 推荐标签 | **只读**：走普通 search+本篇摘录→回答 LLM；不写库、无专用 turn |
+| 盘点标签 | **暂下线**：问全库标签时引导收藏页 |
+| 改单篇标签 | **仅阅读页**：见上节 |
 
 #### `answer`（内部，非 LLM tool）
 
