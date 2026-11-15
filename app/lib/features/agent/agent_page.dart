@@ -289,13 +289,28 @@ class _AgentPageState extends State<AgentPage> {
       return;
     }
 
+    // 静默续跑先亮 loading，避免额度检查期间空白
+    if (hideUserBubble && mounted) {
+      setState(() {
+        _sending = true;
+        _streamLive = false;
+        _liveThinking = '';
+        _planDone = false;
+      });
+    }
+
     final allowed = await ensurePlanFeatures(
       context,
       requirements: [
         (has: (f) => f.aiAgent, tier: UsagePlan.prince),
       ],
     );
-    if (!allowed || !mounted) return;
+    if (!allowed || !mounted) {
+      if (hideUserBubble && mounted) {
+        setState(() => _sending = false);
+      }
+      return;
+    }
 
     setState(() {
       _sending = true;
@@ -488,7 +503,7 @@ class _AgentPageState extends State<AgentPage> {
     _patchAssistantMessage(
       messageId,
       content: shouldCompose
-          ? '文稿已生成，正在整理成文章…'
+          ? '现在开始整理成文章'
           : alreadyReady
               ? alreadyReadyMessage
               : '文稿已生成。可以说「整理成一篇文章」，或到阅读页查看全文。',
@@ -592,6 +607,7 @@ class _AgentPageState extends State<AgentPage> {
     int messageId, {
     String? content,
     AgentPendingAction? pending,
+    bool? uiHidden,
   }) {
     if (!mounted) return;
     final idx = _messages.indexWhere((m) => m.id == messageId);
@@ -601,6 +617,7 @@ class _AgentPageState extends State<AgentPage> {
       _messages[idx] = _messages[idx].copyWith(
         content: content,
         pendingAction: pending,
+        uiHidden: uiHidden,
       );
     });
     unawaited(_persistCache());
@@ -613,6 +630,7 @@ class _AgentPageState extends State<AgentPage> {
         messageId: messageId,
         status: st!,
         content: nextContent,
+        uiHidden: uiHidden == true,
       ));
     }
   }
@@ -621,6 +639,7 @@ class _AgentPageState extends State<AgentPage> {
     required int messageId,
     required String status,
     String? content,
+    bool uiHidden = false,
   }) async {
     final convId = _conversationId;
     if (convId == null || messageId <= 0) return;
@@ -630,6 +649,7 @@ class _AgentPageState extends State<AgentPage> {
         messageId: messageId,
         status: status,
         content: content,
+        uiHidden: uiHidden,
       );
     } catch (_) {
       // 结算失败不挡本轮 UI；下次进页仍可能再结算一次（幂等）

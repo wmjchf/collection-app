@@ -347,6 +347,7 @@ class AgentRepository {
     required int messageId,
     required String status,
     String? content,
+    bool uiHidden = false,
   }) async {
     await _client.post(
       '/api/agent/actions/settle-transcript',
@@ -356,6 +357,7 @@ class AgentRepository {
         'messageId': messageId,
         'status': status,
         if (content != null) 'content': content,
+        if (uiHidden) 'uiHidden': true,
       },
     );
   }

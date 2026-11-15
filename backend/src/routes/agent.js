@@ -237,8 +237,9 @@ router.post('/actions/confirm', async (req, res, next) => {
 
 /**
  * POST /api/agent/actions/settle-transcript
- * body: { conversationId, messageId, status, content? }
+ * body: { conversationId, messageId, status, content?, uiHidden? }
  * App 在确认后本地提交 ASR / 轮询结束后写回 pendingAction，避免重进页重复弹确认。
+ * 自动续跑成文时可带 uiHidden，隐藏「文稿已生成…」中间句。
  */
 router.post('/actions/settle-transcript', async (req, res, next) => {
   try {
@@ -248,6 +249,7 @@ router.post('/actions/settle-transcript', async (req, res, next) => {
     const status = String(req.body?.status || '').trim();
     const content =
       req.body?.content != null ? String(req.body.content) : null;
+    const uiHidden = req.body?.uiHidden === true;
 
     if (
       !Number.isFinite(conversationId) ||
@@ -283,9 +285,11 @@ router.post('/actions/settle-transcript', async (req, res, next) => {
       return res.json({ ok: true, alreadySettled: true });
     }
 
-    await conversationService.patchMessageToolPayload(messageId, {
+    const toolPatch = {
       pendingAction: { ...pa, status },
-    });
+    };
+    if (uiHidden) toolPatch.uiHidden = true;
+    await conversationService.patchMessageToolPayload(messageId, toolPatch);
     if (content != null) {
       await conversationService.updateMessageContent(messageId, content);
     }
