@@ -52,7 +52,7 @@ function createRememberPreferenceTool(runtime) {
     {
       name: 'remember_preference',
       description:
-        '把用户明确的长期偏好写入短档案（跨会话；系统会压成抽象原则）。' +
+        '把用户明确的长期方向写入短档案（跨会话；系统会压成抽象原则）。' +
         '用户纠正归类分法、打标习惯、或说明以后怎么做时调用。' +
         'namespace：organize=归类；tagging=打标；general=其它。' +
         'text 可含用户原话/例子，但尽量写成可复用原则；不要记一次性检索词。' +
@@ -60,13 +60,13 @@ function createRememberPreferenceTool(runtime) {
       schema: z.object({
         namespace: z
           .enum(['organize', 'tagging', 'general'])
-          .describe('偏好所属能力'),
+          .describe('方向所属能力'),
         text: z
           .string()
           .min(2)
           .max(200)
           .describe(
-            '用户偏好（可带例子）；系统会抽象。优先原则，如「不同语义维度不要混架」',
+            '用户方向（可带例子）；系统会抽象。优先原则，如「不同语义维度不要混架」',
           ),
       }),
     },

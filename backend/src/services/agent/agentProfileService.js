@@ -283,7 +283,7 @@ function formatProfileForPrompt(profile) {
   }
   if (!lines.length) return '';
   return (
-    '【用户已知偏好（短档案；原则级；与会话无关；相关能力必须遵守）】\n' +
+    '【用户已知方向（短档案；原则级；与会话无关；相关能力必须遵守）】\n' +
     lines.join('\n')
   );
 }

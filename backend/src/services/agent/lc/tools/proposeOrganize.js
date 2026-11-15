@@ -156,7 +156,7 @@ function createProposeOrganizeTool(runtime) {
         hint: z
           .string()
           .optional()
-          .describe('用户怎么分的偏好，如按主题/按用途；可含点名的架名'),
+          .describe('用户怎么分的方向，如按主题/按用途；可含点名的架名'),
         mode: z
           .enum(['ungrouped', 'full'])
           .optional()
