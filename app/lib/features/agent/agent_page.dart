@@ -1820,7 +1820,7 @@ class _EmptyState extends StatelessWidget {
             ),
             const SizedBox(height: 12),
             const Text(
-              '在收藏里更快找到内容',
+              '在收藏里更快找到内容，也能整理归类',
               textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: 15,

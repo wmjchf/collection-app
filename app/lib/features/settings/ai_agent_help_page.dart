@@ -61,6 +61,13 @@ class AiAgentHelpPage extends StatelessWidget {
               ),
               const SizedBox(height: 12),
               const _CapabilityCard(
+                title: '打标签/整理归类',
+                desc:
+                    '阅读页打开助手可预览为本篇加减标签；全局助手可说「帮我整理归类」预览如何把标签放进归类架，'
+                    '也可改归类名。确认后再写入；优先复用你已有的标签名。',
+              ),
+              const SizedBox(height: 12),
+              const _CapabilityCard(
                 title: '生成文稿',
                 desc:
                     '阅读页打开助手后，可为音视频生成可读文稿（按分钟计量）。'
@@ -104,6 +111,10 @@ class AiAgentHelpPage extends StatelessWidget {
               const SizedBox(height: 10),
               const _TipCard(
                 '点名标题，或先勾选出处再提问，指代更清楚。',
+              ),
+              const SizedBox(height: 12),
+              const _TipCard(
+                '打标签请在阅读页打开助手；整理归类请用首页/收藏顶栏的全局助手。',
               ),
               const SizedBox(height: 12),
               const _TipCard(
@@ -151,7 +162,7 @@ class _ScreenshotCard extends StatelessWidget {
           const Padding(
             padding: EdgeInsets.symmetric(horizontal: 4),
             child: Text(
-              '可按意图在收藏里搜索；从阅读页打开后还可深挖。',
+              '可按意图在收藏里搜索、整理归类；从阅读页打开后还可深挖与打标签。',
               style: TextStyle(
                 fontSize: 13,
                 color: AiAgentHelpPage._muted,
@@ -212,9 +223,7 @@ class _IntroCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            '太子Pro 的核心：在你的收藏库里做意图搜索；'
-            '从阅读页打开还可深挖当前篇。'
-            '视频可先生成文稿再成文；知识向的图片也可整理成文章。',
+            '太子Pro 的核心。只基于你自己的收藏库。',
             style: TextStyle(
               fontSize: 15,
               color: AiAgentHelpPage._text,
