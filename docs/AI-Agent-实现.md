@@ -104,7 +104,7 @@ agentOrchestrator.js → lc/runTurn.js
   ├─ buildAgentGraph（lc/graph.js）
   │    ├─ streamTaskPlan → SSE thinking（任务理解与规划口语）
   │    ├─ 规划正文注入 ReAct system（约束执行优先按规划调 tool）
-  │    ├─ ChatOpenAI → 百炼 + Tools：search_library / list_library / get_item_excerpt / generate_transcript / draft_article
+  │    ├─ ChatOpenAI → 百炼 + Tools：search_library / list_library / get_item_excerpt / generate_transcript / draft_article / propose_item_tag_edit
   ├─ streamEvents → SSE phase / token；thinking 落库 `tool_calls_json.thinking`
   ├─ citations[] ← 工具命中（落库最多 12；气泡默认露 3，「加载更多」展开）；generate_transcript 可挂 pendingAction；draft_article 真流式成文
   └─ usageService.recordAiTokenUsage（feature=agent）
@@ -363,14 +363,15 @@ Body: { conversationId, messageId, approve: true|false }
 | 无文稿 | 返回 `need_transcript`，模型应改调 `generate_transcript(thenCompose=true)` |
 | 流式 | Tool 内 `chatTextStream` → SSE `token`；`runtime.draftContent` 落库；不写回条目 |
 
-#### `propose_item_tag_edit`（只读预览）
+#### `propose_item_tag_edit`（只读预览 · 已接 LangGraph）
 
 | 项 | 说明 |
 | --- | --- |
-| Args | `{ itemId, add?: string[], remove?: string[], replace?: string[] }` |
-| 实现 | 校验属主；`listItemTags` 算 before/after/willCreate；**不写库** |
-| 返回 | `{ title, before, after, add, remove, willCreate, noop }` + citations |
+| Args | `{ itemId?, add?: string[], remove?: string[], replace?: string[] }`；`itemId` 可省略=当前阅读篇 |
+| 实现 | 校验属主；`listItemTags` 算 before/after/willCreate；**不写库**；挂 `pendingAction: item_tag_edit` |
+| 返回 | `{ title, before, after, add, remove, willCreate, noop }` + citations；`noop` 不挂确认条 |
 | 写入 | 用户点确认 → `POST /api/agent/actions/confirm` → find-or-create + `setItemTags` |
+| 口径 | 优先复用已有标签名；未确认禁止声称已改好 |
 
 #### `propose_organize`（只读预览）
 
@@ -384,7 +385,7 @@ Body: { conversationId, messageId, approve: true|false }
 | 口头确认 | 「可以/确认」→ 执行 pending 或按上文方案 `applyOrganize`；禁止只回「已确认执行」不写库 |
 | 归类三步 | 查标签 → 未带分法才问意见 → 有明确意见或表态后 `propose_organize` 确认条写入 |
 | 盘点标签 | **暂下线**：问全库标签时引导收藏页；`list_tags` 工具代码保留 |
-| 改单篇标签 | **暂下线写入**：引导阅读页手改；`propose_item_tag_edit` 工具代码保留 |
+| 改单篇标签 | **已接入**：`propose_item_tag_edit` 预览 + 确认条写入；优先复用已有标签名 |
 | 推荐标签 | **只读**：走普通 search+本篇摘录→回答 LLM；不写库、无专用 turn |
 
 #### `answer`（内部，非 LLM tool）
@@ -394,7 +395,7 @@ Body: { conversationId, messageId, approve: true|false }
 - 只依据工具返回的内容，禁止编造库外事实
 - 提及具体篇目时必须能在 `citations` 找到对应 `itemId`
 - 找不到时直说，并建议换说法或去搜索页用关键词
-- `tag_edit`：**暂下线**；引导阅读页手改标签，勿出预览确认条
+- `tag_edit`：须经确认条写入；未确认禁止声称已改好
 
 ### 6.2 Phase 2 Tools（包装现网）
 

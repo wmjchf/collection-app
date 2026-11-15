@@ -250,6 +250,7 @@ async function runUserTurn({
         suppressAnswerTokens ||
         runtime.suppressAnswerTokens ||
         runtime.pendingAction?.type === 'start_transcript' ||
+        runtime.pendingAction?.type === 'item_tag_edit' ||
         runtime.draftContent
       ) {
         continue;
@@ -278,14 +279,19 @@ async function runUserTurn({
     pendingAction &&
     pendingAction.type === 'start_transcript' &&
     pendingAction.status === 'pending';
+  const tagConfirm =
+    pendingAction &&
+    pendingAction.type === 'item_tag_edit' &&
+    pendingAction.status === 'pending';
   const drafted = String(runtime.draftContent || '').trim();
   usageTotal = mergeUsage(usageTotal, runtime.draftUsage);
 
   if (transcriptConfirm) {
     // 确认文案只进落库 / done，不再 token 流式，避免与口头答复拼接闪烁
     contentOut = await buildTranscriptConfirmContent(userId, pendingAction);
-  } else if (drafted) {
-    // 成文已在 tool 内流式发出；此处只落库，不再重复 token
+  } else if (tagConfirm) {
+    contentOut = buildTagConfirmContent(pendingAction);
+  } else if (drafted) {    // 成文已在 tool 内流式发出；此处只落库，不再重复 token
     contentOut = drafted;
   } else {
     contentOut = String(contentOut || '').trim();
@@ -320,6 +326,36 @@ async function runUserTurn({
     usageTotal,
     emit,
   });
+}
+
+function buildTagConfirmContent(pendingAction) {
+  const title = String(pendingAction?.title || '这篇').trim() || '这篇';
+  const after = Array.isArray(pendingAction?.after)
+    ? pendingAction.after.map((n) => String(n || '').trim()).filter(Boolean)
+    : [];
+  const add = Array.isArray(pendingAction?.add)
+    ? pendingAction.add.map((n) => String(n || '').trim()).filter(Boolean)
+    : [];
+  const remove = Array.isArray(pendingAction?.remove)
+    ? pendingAction.remove.map((n) => String(n || '').trim()).filter(Boolean)
+    : [];
+  const willCreate = Array.isArray(pendingAction?.willCreate)
+    ? pendingAction.willCreate.map((n) => String(n || '').trim()).filter(Boolean)
+    : [];
+
+  const parts = [`准备调整「${title}」的标签。`];
+  if (add.length) parts.push(`拟新增：${add.join('、')}。`);
+  if (remove.length) parts.push(`拟去掉：${remove.join('、')}。`);
+  if (after.length) {
+    parts.push(`确认后标签为：${after.join('、')}。`);
+  } else {
+    parts.push('确认后将清空该篇用户标签。');
+  }
+  if (willCreate.length) {
+    parts.push(`其中将新建：${willCreate.join('、')}。`);
+  }
+  parts.push('请点确认后再写入；未确认不会改库。');
+  return parts.join('');
 }
 
 async function buildTranscriptConfirmContent(userId, pendingAction) {

@@ -3,6 +3,7 @@ const { requireAuth } = require('../middleware/auth');
 const conversationService = require('../services/agent/agentConversationService');
 const orchestrator = require('../services/agent/agentOrchestrator');
 const agentPresetService = require('../services/agent/agentPresetService');
+const { confirmAction } = require('../services/agent/agentConfirmAction');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -203,13 +204,33 @@ router.post('/conversations/:id/presets', async (req, res, next) => {
 
 /**
  * POST /api/agent/actions/confirm
- * MVP 未接入改标/归类确认
+ * body: { conversationId, messageId, approve }
+ * 确认改标签（item_tag_edit）；归类整理若挂 pending 仍可走旧逻辑
  */
-router.post('/actions/confirm', async (_req, res) => {
-  return res.status(410).json({
-    message: '当前助手版本暂不支持确认条操作',
-    code: 'agent_action_unavailable',
-  });
+router.post('/actions/confirm', async (req, res, next) => {
+  try {
+    const userId = req.auth.userId;
+    const conversationId = Number(req.body?.conversationId);
+    const messageId = Number(req.body?.messageId);
+    const approve = Boolean(req.body?.approve);
+    if (
+      !Number.isFinite(conversationId) ||
+      conversationId <= 0 ||
+      !Number.isFinite(messageId) ||
+      messageId <= 0
+    ) {
+      return res.status(400).json({ message: '参数无效' });
+    }
+    const result = await confirmAction({
+      userId,
+      conversationId,
+      messageId,
+      approve,
+    });
+    return res.json(result);
+  } catch (err) {
+    return next(err);
+  }
 });
 
 /**
