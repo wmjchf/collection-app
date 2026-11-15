@@ -2,6 +2,7 @@ const { tool } = require('@langchain/core/tools');
 const { z } = require('zod');
 const proposeOrganize = require('../../tools/proposeOrganize');
 const tagService = require('../../../tagService');
+const agentProfileService = require('../../agentProfileService');
 
 /** 低于此数：不出确认条，先劝打标 */
 const MIN_TAGS_FOR_ORGANIZE = 6;
@@ -60,7 +61,13 @@ function createProposeOrganizeTool(runtime) {
           '用户明确要求全部重排：可重排标签可调整归属，仍尊重锁定标签。',
         );
       }
-      const mergedHint = [userHint, ...policyBits].filter(Boolean).join('\n');
+      const profileOrganize = agentProfileService.formatNamespace(
+        runtime.agentProfile,
+        'organize',
+      );
+      const mergedHint = [profileOrganize, userHint, ...policyBits]
+        .filter(Boolean)
+        .join('\n');
 
       const obs = await proposeOrganize.execute(
         { userId: runtime.userId },

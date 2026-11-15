@@ -7,6 +7,7 @@ const { MAX_STORED_CITATIONS, EXCERPT_MAX_CHARS } = require('../agentPolicy');
 const {
   searchConversationMemory,
 } = require('../agentMessageEmbeddingService');
+const agentProfileService = require('../agentProfileService');
 const { buildAgentGraph } = require('./graph');
 const { streamTaskPlan } = require('./taskPlan');
 
@@ -141,12 +142,22 @@ async function runUserTurn({
     historyMemory = [];
   }
 
+  // 用户级短档案（跨会话）
+  let agentProfile = null;
+  try {
+    agentProfile = await agentProfileService.getProfile(userId);
+  } catch (err) {
+    console.warn('[agent] agentProfile fail:', err?.message || err);
+    agentProfile = null;
+  }
+
   const runtime = {
     userId,
     focusItemId: focusItemIdResolved,
     focusTitle,
     focusExcerpt,
     historyMemory,
+    agentProfile,
     toolTrace,
     citationMap,
     pendingAction: null,

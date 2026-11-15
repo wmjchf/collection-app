@@ -51,6 +51,7 @@ const MIGRATION_FILES = [
   '041_wechat_pay_orders.sql',
   '042_item_embeddings.sql',
   '043_agent_message_embeddings.sql',
+  '044_user_agent_profile.sql',
 ];
 
 async function getConnection() {
@@ -468,6 +469,25 @@ async function apply038(conn, dbName) {
   console.log('[db:migrate] 038: users.survey_organize_style');
 }
 
+async function apply044(conn, dbName) {
+  if (await columnExists(conn, dbName, 'users', 'agent_profile')) {
+    console.log('[db:migrate] 044: agent_profile 已存在，跳过');
+    return;
+  }
+  const after = (await columnExists(conn, dbName, 'users', 'survey_organize_style'))
+    ? 'survey_organize_style'
+    : (await columnExists(conn, dbName, 'users', 'survey_interests'))
+      ? 'survey_interests'
+      : null;
+  const afterClause = after ? ` AFTER \`${after}\`` : '';
+  await conn.query(
+    'ALTER TABLE `users` ADD COLUMN `agent_profile` JSON DEFAULT NULL' +
+      " COMMENT 'Agent 短档案：按 namespace 存规则数组'" +
+      afterClause,
+  );
+  console.log('[db:migrate] 044: users.agent_profile');
+}
+
 async function applyMigration(conn, dbName, file) {
   if (file === '002_last_read_at.sql') {
     await apply002(conn, dbName);
@@ -527,6 +547,10 @@ async function applyMigration(conn, dbName, file) {
   }
   if (file === '038_survey_organize_style.sql') {
     await apply038(conn, dbName);
+    return;
+  }
+  if (file === '044_user_agent_profile.sql') {
+    await apply044(conn, dbName);
     return;
   }
   await runSqlFile(conn, file);

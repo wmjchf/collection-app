@@ -25,6 +25,8 @@ CREATE TABLE `users` (
   `survey_age_range` VARCHAR(32) DEFAULT NULL,
   `survey_source` VARCHAR(32) DEFAULT NULL,
   `survey_interests` JSON DEFAULT NULL,
+  `survey_organize_style` VARCHAR(16) DEFAULT NULL COMMENT '分类习惯：coarse|topic|fine',
+  `agent_profile` JSON DEFAULT NULL COMMENT 'Agent 短档案：按 namespace 存规则数组',
   `tag_organize_full_at` DATETIME(3) DEFAULT NULL COMMENT '上次标签全量重排时间',
   `tag_organize_ai_created_since` INT NOT NULL DEFAULT 0 COMMENT '距上次全量重排新建的 AI 标签数',
   `created_at` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),

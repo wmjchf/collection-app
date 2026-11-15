@@ -2,6 +2,7 @@ const itemService = require('../itemService');
 const tagService = require('../tagService');
 const aiOrganizeService = require('../aiOrganizeService');
 const conversationService = require('./agentConversationService');
+const agentProfileService = require('./agentProfileService');
 
 /**
  * 确认或取消助手消息上的 pendingAction。
@@ -97,6 +98,24 @@ async function confirmOrganize({
     // 与助手预览一致：可写入全部用户标签（用户已点确认）
     scope: pending.scope === 'ai_movable' ? 'ai_movable' : 'all_user_tags',
   });
+
+  // 确认时把当轮用户分法 hint 写入短档案（跨会话）
+  const hint = String(pending?.hint || '').trim();
+  if (hint) {
+    try {
+      await agentProfileService.upsertRule(
+        userId,
+        'organize',
+        hint.slice(0, 200),
+        'confirmed',
+      );
+    } catch (err) {
+      console.warn(
+        '[agent] save organize preference fail:',
+        err?.message || err,
+      );
+    }
+  }
 
   const next = { ...pending, status: 'approved' };
   await conversationService.patchMessageToolPayload(messageId, {
