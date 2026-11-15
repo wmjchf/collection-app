@@ -2,12 +2,22 @@ const { tool } = require('@langchain/core/tools');
 const { z } = require('zod');
 const itemService = require('../../../itemService');
 
+/** 用户本轮是「成文」意图时，转写成功后须自动续跑成文 */
+function userWantsCompose(text) {
+  const s = String(text || '').trim();
+  if (!s) return false;
+  return /整理成一篇文章|根据转写|转写写一篇|根据图片整理成文章|整理成文章/.test(
+    s,
+  );
+}
+
 /**
  * LangChain Tool：发起「生成文稿」确认（不跑 ASR）。
  * 真正提交与轮询由 App 在用户点「开始生成」后完成。
  *
  * @param {{
  *   userId: number,
+ *   userText?: string|null,
  *   focusItemId?: number|null,
  *   toolTrace: object[],
  *   pendingAction?: object|null,
@@ -21,9 +31,12 @@ function createGenerateTranscriptTool(runtime) {
         id = Number(runtime.focusItemId);
       }
 
+      // 模型常漏传 thenCompose：本轮用户话是成文意图时强制续跑
+      const forceCompose =
+        Boolean(thenCompose) || userWantsCompose(runtime.userText);
       const args = {
         itemId: Number.isFinite(id) && id > 0 ? id : null,
-        thenCompose: Boolean(thenCompose),
+        thenCompose: forceCompose,
       };
 
       if (!Number.isFinite(id) || id <= 0) {
@@ -118,7 +131,7 @@ function createGenerateTranscriptTool(runtime) {
           title,
           segmentsReady: ready.length,
           segmentsTotal: targets.length,
-          note: thenCompose
+          note: forceCompose
             ? '已有文稿。请立刻再调用 draft_article 整理成文章。'
             : '已有文稿。请告知用户可到阅读页查看全文；若要整理成文章可再说「整理成一篇文章」或调用 draft_article。',
         });
@@ -141,7 +154,7 @@ function createGenerateTranscriptTool(runtime) {
         });
       }
 
-      const resumeCompose = Boolean(thenCompose);
+      const resumeCompose = forceCompose;
       runtime.pendingAction = {
         type: 'start_transcript',
         status: 'pending',
@@ -185,7 +198,7 @@ function createGenerateTranscriptTool(runtime) {
           .boolean()
           .optional()
           .describe(
-            '用户本意是整理成文章、需先补文稿时为 true（确认生成成功后客户端可续跑成文）',
+            '用户本意是整理成文章、需先补文稿时必须为 true（确认生成成功后客户端自动续跑成文；漏传时服务端也会按用户话兜底）',
           ),
       }),
     },

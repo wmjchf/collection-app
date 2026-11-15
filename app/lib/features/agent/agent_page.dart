@@ -464,10 +464,40 @@ class _AgentPageState extends State<AgentPage> {
     return null;
   }
 
+  /// 转写成功结算；若 pending 带 resumeCompose（含退出 Agent 后再进），自动续跑成文一次。
+  void _completeTranscriptSuccess({
+    required int messageId,
+    required AgentPendingAction pa,
+    required int itemId, {
+    String alreadyReadyMessage = '这篇已经有文稿了。可以说「整理成一篇文章」。',
+    bool alreadyReady = false,
+  }) {
+    final shouldCompose = pa.resumeCompose;
+    _allowResumeComposeAfterTranscript = false;
+    _patchAssistantMessage(
+      messageId,
+      content: shouldCompose
+          ? '文稿已生成，正在整理成文章…'
+          : alreadyReady
+              ? alreadyReadyMessage
+              : '文稿已生成。可以说「整理成一篇文章」，或到阅读页查看全文。',
+      pending: pa.copyWith(status: 'success', clearPhase: true),
+    );
+    ItemTranscriptRefresh.notify(itemId);
+    unawaited(_refreshLlmPresets());
+    if (shouldCompose) {
+      unawaited(_send('整理成一篇文章'));
+    }
+  }
+
   Future<void> _resumeActiveTranscriptJob() async {
     final msg = _lastStartTranscriptMessage();
     if (msg == null) return;
     final pa = msg.pendingAction!;
+    // 退出再进：内存 flag 丢失，以 pending.resumeCompose 为准续跑
+    if (pa.resumeCompose) {
+      _allowResumeComposeAfterTranscript = true;
+    }
     if (pa.status == 'running') {
       unawaited(_pollAgentTranscript(msg.id));
       return;
@@ -498,14 +528,12 @@ class _AgentPageState extends State<AgentPage> {
         final done = item.transcriptSegments.values
             .any((s) => s.isSuccess && s.hasText);
         if (done) {
-          // 离开期间已转写完：只结算成功态，不再自动成文（避免每次进页重发）
-          _patchAssistantMessage(
-            msg.id,
-            content: '文稿已生成。可以说「整理成一篇文章」，或到阅读页查看全文。',
-            pending: pa.copyWith(status: 'success', clearPhase: true),
+          // 离开期间已转写完：仍按 resumeCompose 自动成文（结算后不再进本分支）
+          _completeTranscriptSuccess(
+            messageId: msg.id,
+            pa: pa,
+            itemId: itemId,
           );
-          ItemTranscriptRefresh.notify(itemId);
-          unawaited(_refreshLlmPresets());
           return;
         }
       } catch (_) {
@@ -636,18 +664,12 @@ class _AgentPageState extends State<AgentPage> {
     final pendingTargets =
         targets.where((t) => t.status != 'success').toList(growable: false);
     if (pendingTargets.isEmpty) {
-      _patchAssistantMessage(
-        message.id,
-        content: '这篇已经有文稿了。可以说「整理成一篇文章」。',
-        pending: pa.copyWith(status: 'success'),
+      _completeTranscriptSuccess(
+        messageId: message.id,
+        pa: pa,
+        itemId: itemId,
+        alreadyReady: true,
       );
-      ItemTranscriptRefresh.notify(itemId);
-      if (pa.resumeCompose && _allowResumeComposeAfterTranscript) {
-        _allowResumeComposeAfterTranscript = false;
-        unawaited(_send('整理成一篇文章'));
-      } else {
-        _allowResumeComposeAfterTranscript = false;
-      }
       return;
     }
 
@@ -810,21 +832,12 @@ class _AgentPageState extends State<AgentPage> {
 
         final anySuccess = st.segments.values.any((s) => s.isSuccess);
         if (anySuccess) {
-          final shouldCompose =
-              pa.resumeCompose && _allowResumeComposeAfterTranscript;
-          _allowResumeComposeAfterTranscript = false;
-          _patchAssistantMessage(
-            messageId,
-            content: shouldCompose
-                ? '文稿已生成，正在整理成文章…'
-                : '文稿已生成。可以说「整理成一篇文章」，或到阅读页查看全文。',
-            pending: pa.copyWith(status: 'success', clearPhase: true),
+          // 以 pending.resumeCompose 为准（退出 Agent 再进后内存 flag 可能已丢）
+          _completeTranscriptSuccess(
+            messageId: messageId,
+            pa: pa,
+            itemId: itemId,
           );
-          ItemTranscriptRefresh.notify(itemId);
-          unawaited(_refreshLlmPresets());
-          if (shouldCompose) {
-            unawaited(_send('整理成一篇文章'));
-          }
           return;
         }
 

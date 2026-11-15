@@ -153,6 +153,7 @@ async function runUserTurn({
 
   const runtime = {
     userId,
+    userText: String(text || '').trim(),
     focusItemId: focusItemIdResolved,
     focusTitle,
     focusExcerpt,

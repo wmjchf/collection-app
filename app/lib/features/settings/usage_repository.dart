@@ -639,7 +639,7 @@ class UsageRepository {
       final usage = UsageSummary.fromJson(
         usageRaw.map((k, v) => MapEntry(k.toString(), v)),
       );
-      snapshot = usage;
+      UsageRefresh.snapshot = usage;
       return usage;
     }
     return fetchUsage();
