@@ -133,8 +133,9 @@ function createGetItemExcerptTool(runtime) {
       description:
         '精读某一篇正文/文稿；图集默认再看前 1～2 张真图写入画面要点。' +
         '问「这篇/总结」省略 itemId（长摘录、默认 cite）。' +
-        '主题检索点名候选：默认短摘录、不进出处；确认符合再 cite:true。' +
-        '本轮已看过图可传 peekImages:false。搜库用 search_library / grep_library。',
+        '主题检索：仅对拿不准的候选精读（默认短摘录、不进出处；符合再 cite:true）。' +
+        '标题/snippet 已能判断相关时用 cite_search_hits，不要本工具。' +
+        '本轮已看过图可传 peekImages:false。',
       schema: z.object({
         itemId: z
           .number()

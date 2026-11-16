@@ -2,6 +2,7 @@ const { tool } = require('@langchain/core/tools');
 const { z } = require('zod');
 const searchLibrary = require('../../tools/searchLibrary');
 const { clampSearchLimit, MAX_SEARCH_HITS } = require('../../agentPolicy');
+const { rememberCandidateHits } = require('./candidateHits');
 
 /**
  * LangChain Tool：主题检索。只观察、不落出处。
@@ -10,6 +11,7 @@ const { clampSearchLimit, MAX_SEARCH_HITS } = require('../../agentPolicy');
  *   focusItemId?: number|null,
  *   toolTrace: object[],
  *   citationMap: Map<number, object>,
+ *   candidateHitMap?: Map<number, object>,
  * }} runtime
  */
 function createSearchLibraryTool(runtime) {
@@ -54,22 +56,25 @@ function createSearchLibraryTool(runtime) {
         error: obs?.ok ? null : obs?.error || null,
       });
 
-      // Agentic：search 不写入 citationMap
-
       const hits = (obs?.data?.hits || []).slice(0, lim).map((h) => ({
         itemId: h.itemId,
         title: h.title,
         snippet: String(h.snippet || '').slice(0, 160),
         tagNames: h.tagNames || [],
         match: h.match,
+        coverImageUrl: h.coverImageUrl || null,
+        pageUrl: h.pageUrl || null,
       }));
+      rememberCandidateHits(runtime, hits);
 
       const total = Number(obs?.data?.total ?? hits.length) || hits.length;
       const note =
         hits.length === 0
           ? '无候选。可换关键词再 search_library，或对专名用 grep_library。不要编造篇目。'
-          : `候选 ${hits.length} 条（约相关 ${total}）。请 get_item_excerpt 先判断（默认不进出处）；` +
-            `有用户收窄限定则按限定确认后再 cite:true；无额外限定则相关即可。不符的不要 cite、不要当推荐；可换词再搜或 grep。`;
+          : `候选 ${hits.length} 条（约相关 ${total}），尚未进出处。` +
+            '标题/snippet 已能判断相关 → cite_search_hits(itemIds)；' +
+            '拿不准 → get_item_excerpt 再判断，符合再 cite:true；' +
+            '明显无关跳过。有收窄限定且仅凭标题拿不准时须精读，勿硬挂。';
 
       return JSON.stringify({
         query: obs?.data?.query || query,
@@ -79,7 +84,13 @@ function createSearchLibraryTool(runtime) {
         total,
         returned: hits.length,
         hasMore: Boolean(obs?.data?.hasMore) || total > hits.length,
-        hits,
+        hits: hits.map((h) => ({
+          itemId: h.itemId,
+          title: h.title,
+          snippet: h.snippet,
+          tagNames: h.tagNames,
+          match: h.match,
+        })),
         note,
       });
     },
@@ -87,9 +98,8 @@ function createSearchLibraryTool(runtime) {
       name: 'search_library',
       description:
         '主题/意图检索（语义+关键词混合）。返回候选标题与短摘录，不写入用户出处。' +
-        '流程：search → 看候选 → get_item_excerpt 精读相关篇 → 不够则换词再搜或 grep_library。' +
-        '专名/型号优先 grep_library。盘点（最近/今天收藏）用 list_library。' +
-        'q 用主题词；子方向由你自己换词多次调用，服务端不再自动扩词。',
+        '确定相关 → cite_search_hits；拿不准 → get_item_excerpt；不够换词再搜或 grep。' +
+        '专名/型号优先 grep_library。盘点用 list_library。',
       schema: z.object({
         q: z
           .string()

@@ -41,7 +41,12 @@ const RULES = [
   {
     action: 'search',
     label: 'Agentic Search',
-    tools: ['search_library', 'grep_library', 'browse_library_map'],
+    tools: [
+      'search_library',
+      'grep_library',
+      'cite_search_hits',
+      'browse_library_map',
+    ],
   },
   {
     action: 'list',
