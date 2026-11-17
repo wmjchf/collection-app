@@ -61,7 +61,7 @@ function createCiteSearchHitsTool(runtime) {
         note:
           cited.length > 0
             ? `已将 ${cited.length} 篇（标题/snippet 已能判断相关）写入出处，未精读。` +
-              '拿不准的篇请 get_item_excerpt；作答只点名已进出处的标题。'
+              '拿不准的篇请 get_item_excerpt；作答用 Markdown 列表点名已进出处的标题。'
             : '未写入出处。itemIds 须来自本轮 search/grep 候选；拿不准请 get_item_excerpt。',
       });
     },

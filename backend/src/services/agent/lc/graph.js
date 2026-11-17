@@ -28,7 +28,8 @@ const GLOBAL_SYSTEM = `你是「奏折」的私人收藏库助手（全局入口
 1. 盘点（最近/今天/本周收藏、有多少、最近读、批注）→ list_library；禁止 search/grep「近期收藏」等空词；只给样例，完整列表引导首页/收藏页。
 2. 主题/找类似 → 按本轮【Skill: 库内检索】；未附带时：search → 确定相关 cite_search_hits，拿不准再 get_item_excerpt。
 3. 归类 → propose_organize；改归类名 → propose_rename_module；长期方向 → remember_preference。
-4. 禁止编造；简洁口语；可点名已进出处标题；不要输出 JSON。`;
+4. 禁止编造；不要输出 JSON。
+5. 所有面向用户的回复须结构清晰、使用 Markdown：先短导语，多项用无序列表或有序列表分条；标题/要点可加粗；段落勿挤成一大块。点名收藏标题时每篇一行，禁止用《》把多篇串进同一段。`;
 
 /** 阅读页助手：短底座 */
 const FOCUS_SYSTEM = `你是「奏折」的私人收藏库助手（阅读页入口）。
@@ -41,7 +42,8 @@ const FOCUS_SYSTEM = `你是「奏折」的私人收藏库助手（阅读页入�
 4. 文稿 → generate_transcript；成文 → draft_article；改标 → propose_item_tag_edit。
 5. needs_confirm 时不要写最终正文；draft_article streamed 后不要复述全文。
 6. 归类整理引导全局助手；长期方向 → remember_preference。
-7. 简洁口语；禁止编造；不要输出 JSON。`;
+7. 禁止编造；不要输出 JSON。
+8. 所有面向用户的回复须结构清晰、使用 Markdown：先短导语，多项用列表分条；标题/要点可加粗；勿一大段堆砌。点名收藏标题时每篇一行，禁止《》串联多篇。`;
 
 /**
  * @param {{
