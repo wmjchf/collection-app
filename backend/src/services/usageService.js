@@ -716,21 +716,21 @@ function aiFeatureLabel(feature, meta = null) {
     if (fromMeta) return fromMeta;
     switch (String(meta?.agentAction || '').trim()) {
       case 'search':
-        return 'Agentic Search';
+        return '意图检索';
       case 'list':
         return '盘点';
       case 'excerpt':
-        return '深挖原文';
+        return '深度研读';
       case 'organize':
-        return '整理归类';
+        return '智能归类';
       case 'rename_module':
         return '改归类名';
       case 'item_tag_edit':
-        return '打标签';
+        return '智能归类';
       case 'generate_transcript':
-        return '生成文稿';
+        return '视频转写';
       case 'draft_article':
-        return '整理成文章';
+        return '图文重构';
       case 'remember_preference':
         return '记住偏好';
       default:

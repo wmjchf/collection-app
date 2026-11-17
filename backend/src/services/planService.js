@@ -27,7 +27,7 @@ const FEATURE_MIN_PLAN = {
 
 const FEATURE_MESSAGES = {
   ai_tags: '订阅太子后可使用 AI 标签',
-  ai_summary: '订阅太子后可通过 AI Agent 深挖原文',
+  ai_summary: '订阅太子后可通过 AI Agent 深度研读',
   ai_organize: '订阅太子后可在收藏页整理归类',
   ai_mindmap: '订阅太子后可使用该能力',
   ai_agent: '订阅太子后可使用 AI Agent',

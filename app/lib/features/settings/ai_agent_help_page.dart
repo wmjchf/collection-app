@@ -1,11 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:super_collection/core/analytics/screen_dwell_tracker.dart';
-import 'package:super_collection/features/items/item_image_gallery.dart';
-import 'package:super_collection/features/settings/help_assets_loader.dart';
-import 'package:super_collection/features/settings/help_assets_repository.dart';
 import 'package:super_collection/features/settings/settings_modal.dart';
 
-/// 设置 → 使用帮助 → AI Agent（文案本地写死，配图 OSS help/）
+/// 设置 → 使用帮助 → AI Agent（文案本地写死）
 class AiAgentHelpPage extends StatelessWidget {
   const AiAgentHelpPage({super.key});
 
@@ -13,8 +10,6 @@ class AiAgentHelpPage extends StatelessWidget {
   static const _text = Color(0xFF1F242E);
   static const _muted = Color(0xFF737A85);
   static const _blue = Color(0xFF2F6FED);
-  static const _tint = Color(0xFFEAF1FE);
-  static const _illustrationBg = Color(0xFFF0F2F5);
 
   @override
   Widget build(BuildContext context) {
@@ -38,158 +33,95 @@ class AiAgentHelpPage extends StatelessWidget {
             ),
           ),
         ),
-        body: HelpAssetsLoader(
-          set: HelpAssetsRepository.aiAgent,
-          builder: (context, urls) => ListView(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
-            children: [
-              const _IntroCard(),
-              const SizedBox(height: 16),
-              _ScreenshotCard(urls: urls),
-              const SizedBox(height: 24),
-              const _SectionHeading('能做什么'),
-              const SizedBox(height: 10),
-              const _CapabilityCard(
-                title: 'Agentic Search',
-                desc:
-                    '按你的意思在库里找，不只关键词硬匹配。例如「类似这篇文章的」「关于××的有哪些」。',
+        body: ListView(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
+          children: [
+            const _IntroCard(),
+            const SizedBox(height: 24),
+            const _SectionHeading('能做什么'),
+            const SizedBox(height: 10),
+            const _CapabilityCard(
+              title: '意图检索',
+              desc:
+                  '摆脱机械的关键词硬匹配。通过自然语言理解你的真实意图，精准定位库中相关内容'
+                  '（如「找找类似这篇的文章」或「关于某主题的合集」）。',
+            ),
+            const SizedBox(height: 12),
+            const _CapabilityCard(
+              title: '深度研读',
+              desc:
+                  '在精读模式下随时唤醒，围绕当前文章深入追问核心观点、关键原话或细节逻辑，'
+                  '实现单篇内容的穿透式理解。',
+            ),
+            const SizedBox(height: 12),
+            const _CapabilityCard(
+              title: '智能归类',
+              desc:
+                  '智能分析并提取标签，自动规划归类路径。支持全链路预览与二次微调，'
+                  '确保每一次写入都完美契合你的知识体系。',
+            ),
+            const SizedBox(height: 12),
+            const _CapabilityCard(
+              title: '视频转写',
+              desc:
+                  '一键将播客、视频等非文本介质转化为结构清晰的可读文稿，'
+                  '为深度信息提炼与知识重构奠定基础。',
+            ),
+            const SizedBox(height: 12),
+            const _CapabilityCard(
+              title: '图文重构',
+              desc:
+                  '将已转写的视听文稿或知识类长图一键提炼，重构为逻辑严密、排版干净的深度文章。'
+                  '专注于私域知识消化，不涉足无源的图文创作。',
+            ),
+            const SizedBox(height: 24),
+            const _SectionHeading('从哪里打开'),
+            const SizedBox(height: 10),
+            const _WhiteCard(
+              child: Text(
+                '手机：首页、收藏顶栏或阅读页底栏全屏打开；'
+                'iPad：列表|阅读时从列表右缘顶入；收藏枢纽则把主区压一半。'
+                '不联网搜库外网页。',
+                style: TextStyle(fontSize: 15, color: _text, height: 1.55),
               ),
-              const SizedBox(height: 12),
-              const _CapabilityCard(
-                title: '深挖原文',
-                desc: '从阅读页打开助手后，围绕当前篇追问观点、原话或细节。全局助手不做深挖。',
-              ),
-              const SizedBox(height: 12),
-              const _CapabilityCard(
-                title: '打标签/整理归类',
-                desc:
-                    '阅读页打开助手可预览为本篇加减标签；全局助手可说「帮我整理归类」预览如何把标签放进归类架，'
-                    '也可改归类名。确认后再写入；优先复用你已有的标签名。',
-              ),
-              const SizedBox(height: 12),
-              const _CapabilityCard(
-                title: '生成文稿',
-                desc:
-                    '阅读页打开助手后，可为音视频生成可读文稿（按分钟计量）。'
-                    '常作为「整理成一篇文章」的前一步。',
-              ),
-              const SizedBox(height: 12),
-              const _CapabilityCard(
-                title: '整理成文章',
-                desc:
-                    '已有文稿的视频可说「整理成一篇文章」；知识向的图片可一键「根据图片整理成文章」。'
-                    '暂不支持用正文生成，也不做图文创作。',
-              ),
-              const SizedBox(height: 24),
-              const _SectionHeading('从哪里打开'),
-              const SizedBox(height: 10),
-              const _WhiteCard(
-                child: Text(
-                  '手机：首页、收藏顶栏或阅读页底栏全屏打开；'
-                  'iPad：列表|阅读时从列表右缘顶入；收藏枢纽则把主区压一半。'
-                  '只基于你自己的收藏库回答，不联网搜库外网页。',
-                  style: TextStyle(fontSize: 15, color: _text, height: 1.55),
+            ),
+            const SizedBox(height: 24),
+            const _SectionHeading('订阅与额度'),
+            const SizedBox(height: 10),
+            const _ProCard(
+              child: Text(
+                '需开通太子Pro / 帝王Pro。对话与整理成文章（含根据图片）消耗本月 AI Agent 额度；'
+                '帝王Pro 提供更高月额度。生成文稿按分钟单独计量，常作为视频成文的前一步。',
+                style: TextStyle(
+                  fontSize: 15,
+                  color: Colors.white,
+                  height: 1.55,
+                  fontWeight: FontWeight.w500,
                 ),
               ),
-              const SizedBox(height: 24),
-              const _SectionHeading('订阅与额度'),
-              const SizedBox(height: 10),
-              const _ProCard(
-                child: Text(
-                  '需开通太子Pro / 帝王Pro。对话与整理成文章（含根据图片）消耗本月 AI Agent 额度；'
-                  '帝王Pro 提供更高月额度。生成文稿按分钟单独计量，常作为视频成文的前一步。',
-                  style: TextStyle(
-                    fontSize: 15,
-                    color: Colors.white,
-                    height: 1.55,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-              ),
-              const SizedBox(height: 24),
-              const _SectionHeading('小技巧'),
-              const SizedBox(height: 10),
-              const _TipCard(
-                '点名标题，或先勾选出处再提问，指代更清楚。',
-              ),
-              const SizedBox(height: 12),
-              const _TipCard(
-                '打标签请在阅读页打开助手；整理归类请用首页/收藏顶栏的全局助手。',
-              ),
-              const SizedBox(height: 12),
-              const _TipCard(
-                '划选助手回复可复制，或做成分享海报。',
-              ),
-              const SizedBox(height: 20),
-              const Text(
-                'AI Agent · 功能指引',
-                textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 12, color: _muted),
-              ),
-            ],
-          ),
+            ),
+            const SizedBox(height: 24),
+            const _SectionHeading('小技巧'),
+            const SizedBox(height: 10),
+            const _TipCard(
+              '点名标题，或先勾选出处再提问，指代更清楚。',
+            ),
+            const SizedBox(height: 12),
+            const _TipCard(
+              '打标签请在阅读页打开助手；整理归类请用首页/收藏顶栏的全局助手。',
+            ),
+            const SizedBox(height: 12),
+            const _TipCard(
+              '划选助手回复可复制，或做成分享海报。',
+            ),
+            const SizedBox(height: 20),
+            const Text(
+              'AI Agent · 功能指引',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 12, color: _muted),
+            ),
+          ],
         ),
-      ),
-    );
-  }
-}
-
-class _ScreenshotCard extends StatelessWidget {
-  const _ScreenshotCard({required this.urls});
-
-  final List<String> urls;
-
-  @override
-  Widget build(BuildContext context) {
-    final url = urls.first;
-    return _WhiteCard(
-      padding: const EdgeInsets.all(12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Padding(
-            padding: EdgeInsets.fromLTRB(4, 4, 4, 0),
-            child: Text(
-              '界面一览',
-              style: TextStyle(
-                fontSize: 15,
-                fontWeight: FontWeight.w700,
-                color: AiAgentHelpPage._text,
-              ),
-            ),
-          ),
-          const SizedBox(height: 6),
-          const Padding(
-            padding: EdgeInsets.symmetric(horizontal: 4),
-            child: Text(
-              '可按意图在收藏里搜索、整理归类；从阅读页打开后还可深挖与打标签。',
-              style: TextStyle(
-                fontSize: 13,
-                color: AiAgentHelpPage._muted,
-                height: 1.45,
-              ),
-            ),
-          ),
-          const SizedBox(height: 12),
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              color: AiAgentHelpPage._illustrationBg,
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: HelpNetworkImage(
-              url: url,
-              width: double.infinity,
-              borderRadius: 8,
-              onTap: () => showNetworkImagePreview(
-                context,
-                urls: urls,
-                initialIndex: 0,
-              ),
-            ),
-          ),
-        ],
       ),
     );
   }
@@ -223,40 +155,25 @@ class _IntroCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            '太子Pro 的核心。只基于你自己的收藏库。',
+            '太子Pro 核心能力 · 专属私有知识库的智能中枢',
             style: TextStyle(
               fontSize: 15,
+              fontWeight: FontWeight.w600,
               color: AiAgentHelpPage._text,
+              height: 1.45,
+            ),
+          ),
+          SizedBox(height: 10),
+          Text(
+            '依托 Agentic Search 理解意图，在个人收藏库中检索；也可深度研读单篇、整理归类；'
+            '音视频、知识类图片也可整理成文章，沉淀为你的个人资产。',
+            style: TextStyle(
+              fontSize: 14,
+              color: AiAgentHelpPage._muted,
               height: 1.55,
             ),
           ),
-          SizedBox(height: 14),
-          _HighlightStrip(),
         ],
-      ),
-    );
-  }
-}
-
-class _HighlightStrip extends StatelessWidget {
-  const _HighlightStrip();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: AiAgentHelpPage._tint,
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: const Text(
-        '不是全网搜索，而是按意图翻你自己存过的内容——找得到、对得上、用得上。',
-        style: TextStyle(
-          fontSize: 14,
-          color: AiAgentHelpPage._text,
-          height: 1.5,
-        ),
       ),
     );
   }

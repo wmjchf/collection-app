@@ -6,18 +6,18 @@
 const RULES = [
   {
     action: 'draft_article',
-    label: '整理成文章',
+    label: '图文重构',
     tools: ['draft_article', 'draft_gallery_article', 'draft_from_transcript'],
   },
   {
     action: 'generate_transcript',
-    label: '生成文稿',
+    label: '视频转写',
     tools: ['generate_transcript'],
     pending: ['start_transcript'],
   },
   {
     action: 'organize',
-    label: '整理归类',
+    label: '智能归类',
     tools: ['propose_organize'],
     pending: ['organize_tags'],
   },
@@ -29,7 +29,7 @@ const RULES = [
   },
   {
     action: 'item_tag_edit',
-    label: '打标签',
+    label: '智能归类',
     tools: ['propose_item_tag_edit'],
     pending: ['item_tag_edit'],
   },
@@ -40,7 +40,7 @@ const RULES = [
   },
   {
     action: 'search',
-    label: 'Agentic Search',
+    label: '意图检索',
     tools: [
       'search_library',
       'grep_library',
@@ -55,7 +55,7 @@ const RULES = [
   },
   {
     action: 'excerpt',
-    label: '深挖原文',
+    label: '深度研读',
     tools: ['get_item_excerpt'],
   },
 ];
@@ -91,7 +91,7 @@ function resolveAgentUsageAction(toolTrace, pendingAction) {
     (s) => s?.tool === 'get_item_excerpt' && s?.args?.prefetch,
   );
   if (onlyPrefetch) {
-    return { action: 'excerpt', label: '深挖原文' };
+    return { action: 'excerpt', label: '深度研读' };
   }
 
   return { action: 'agent', label: 'AI Agent' };
