@@ -29,7 +29,8 @@ const GLOBAL_SYSTEM = `你是「奏折」的私人收藏库助手（全局入口
 2. 主题/找类似 → 按本轮【Skill: 库内检索】；未附带时：search → 确定相关 cite_search_hits，拿不准再 get_item_excerpt。
 3. 归类 → propose_organize；改归类名 → propose_rename_module；长期方向 → remember_preference。
 4. 禁止编造；不要输出 JSON。
-5. 所有面向用户的回复须结构清晰、使用 Markdown：先短导语，多项用无序列表或有序列表分条；标题/要点可加粗；段落勿挤成一大块。点名收藏标题时每篇一行，禁止用《》把多篇串进同一段。`;
+5. 所有面向用户的回复须结构清晰、使用 Markdown：先短导语，多项用无序列表或有序列表分条；标题/要点可加粗；段落勿挤成一大块。点名收藏标题时每篇一行，禁止用《》把多篇串进同一段。
+6. 对用户只说人话：禁止写出 itemId、工具英文名、内部字段或调试信息。`;
 
 /** 阅读页助手：短底座 */
 const FOCUS_SYSTEM = `你是「奏折」的私人收藏库助手（阅读页入口）。
@@ -43,7 +44,8 @@ const FOCUS_SYSTEM = `你是「奏折」的私人收藏库助手（阅读页入�
 5. needs_confirm 时不要写最终正文；draft_article streamed 后不要复述全文。
 6. 归类整理引导全局助手；长期方向 → remember_preference。
 7. 禁止编造；不要输出 JSON。
-8. 所有面向用户的回复须结构清晰、使用 Markdown：先短导语，多项用列表分条；标题/要点可加粗；勿一大段堆砌。点名收藏标题时每篇一行，禁止《》串联多篇。`;
+8. 所有面向用户的回复须结构清晰、使用 Markdown：先短导语，多项用列表分条；标题/要点可加粗；勿一大段堆砌。点名收藏标题时每篇一行，禁止《》串联多篇。
+9. 对用户只说人话：禁止写出 itemId、工具英文名、内部字段或调试信息。`;
 
 /**
  * @param {{
@@ -77,9 +79,9 @@ function buildAgentGraph(runtime) {
   }
 
   if (hasFocus) {
-    prompt += `\n\n当前用户正在阅读条目 itemId=${focusId}${
+    prompt += `\n\n当前用户正在阅读本篇${
       focusTitle ? `「${focusTitle.slice(0, 80)}」` : ''
-    }。`;
+    }（内部 id=${focusId}，仅供调用工具时使用，禁止写入对用户可见的回复）。`;
     prompt +=
       '问本篇务必基于摘录；找「类似」用 search_library（已排除本篇）；确定相关 cite_search_hits，拿不准再精读。';
     if (focusExcerpt) {

@@ -398,29 +398,34 @@ function buildTagConfirmContent(pendingAction) {
   const after = Array.isArray(pendingAction?.after)
     ? pendingAction.after.map((n) => String(n || '').trim()).filter(Boolean)
     : [];
-  const add = Array.isArray(pendingAction?.add)
-    ? pendingAction.add.map((n) => String(n || '').trim()).filter(Boolean)
-    : [];
   const remove = Array.isArray(pendingAction?.remove)
     ? pendingAction.remove.map((n) => String(n || '').trim()).filter(Boolean)
     : [];
   const willCreate = Array.isArray(pendingAction?.willCreate)
     ? pendingAction.willCreate.map((n) => String(n || '').trim()).filter(Boolean)
     : [];
+  const createSet = new Set(willCreate);
 
-  const parts = [`准备调整「${title}」的标签。`];
-  if (add.length) parts.push(`拟新增：${add.join('、')}。`);
-  if (remove.length) parts.push(`拟去掉：${remove.join('、')}。`);
+  const lines = ['准备调整本篇标签。', '', `**${title}**`, ''];
+
   if (after.length) {
-    parts.push(`确认后标签为：${after.join('、')}。`);
+    lines.push('**调整后**');
+    for (const name of after) {
+      lines.push(createSet.has(name) ? `- ${name}（新建）` : `- ${name}`);
+    }
   } else {
-    parts.push('确认后将清空该篇用户标签。');
+    lines.push('确认后将清空该篇用户标签。');
   }
-  if (willCreate.length) {
-    parts.push(`其中将新建：${willCreate.join('、')}。`);
+
+  if (remove.length) {
+    lines.push('', '**拟去掉**');
+    for (const name of remove) {
+      lines.push(`- ${name}`);
+    }
   }
-  parts.push('请点确认后再写入；未确认不会改库。');
-  return parts.join('');
+
+  lines.push('', '点「确认调整」后写入；未确认不会改库。');
+  return lines.join('\n');
 }
 
 function buildRenameConfirmContent(pendingAction) {
