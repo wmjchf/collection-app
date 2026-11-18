@@ -1,14 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:super_collection/features/items/cover_image.dart';
 import 'package:super_collection/features/items/item_models.dart';
-import 'package:super_collection/features/settings/usage_repository.dart';
 
 /// 列表行条目：左封面缩略图 + 标题/标签/副文案。
 /// 封面大卡 / 双列瀑布见 [ItemCoverCard]；布局偏好见 [ItemsLayoutPrefs]。
 ///
-/// 布局随档位（读 [UsageRefresh]）：
-/// - 太子 / 帝王：标题一行省略 + `#标签` 行（样式与原先一致）
-/// - 普通 / 免费：标题两行省略（不占标签行）
+/// 布局随是否有标签：
+/// - 有标签：标题一行省略 + `#标签` 行
+/// - 无标签：标题两行省略（不占标签行）
 class ItemListTile extends StatelessWidget {
   const ItemListTile({
     super.key,
@@ -93,24 +92,15 @@ class ItemListTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ListenableBuilder(
-      listenable: UsageRefresh.version,
-      builder: (context, _) {
-        final princeLayout = UsageRefresh.snapshot?.isPrince == true;
-        return _buildTile(princeLayout: princeLayout);
-      },
-    );
-  }
-
-  Widget _buildTile({required bool princeLayout}) {
-    final tagsLine = princeLayout ? _tagsLine(tags) : null;
+    final tagsLine = _tagsLine(tags);
+    final withTags = tagsLine != null;
 
     final body = Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         if (selecting) ...[
           Padding(
-            padding: EdgeInsets.only(top: princeLayout ? 20 : 18),
+            padding: EdgeInsets.only(top: withTags ? 20 : 18),
             child: Icon(
               selected
                   ? Icons.check_circle_rounded
@@ -133,7 +123,7 @@ class ItemListTile extends StatelessWidget {
         Expanded(
           child: SizedBox(
             height: 64,
-            child: princeLayout
+            child: withTags
                 ? Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -152,19 +142,17 @@ class ItemListTile extends StatelessWidget {
                       SizedBox(
                         height: 16,
                         width: double.infinity,
-                        child: tagsLine == null
-                            ? null
-                            : Text(
-                                tagsLine,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w500,
-                                  height: 16 / 12,
-                                  color: _tag,
-                                ),
-                              ),
+                        child: Text(
+                          tagsLine,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w500,
+                            height: 16 / 12,
+                            color: _tag,
+                          ),
+                        ),
                       ),
                       Text(
                         subtitle,

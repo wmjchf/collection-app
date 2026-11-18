@@ -2,11 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:super_collection/features/items/cover_aspect.dart';
 import 'package:super_collection/features/items/cover_image.dart';
 import 'package:super_collection/features/items/item_models.dart';
-import 'package:super_collection/features/settings/usage_repository.dart';
 
 /// 封面卡：上图下文（首页叠卡 / 列表瀑布流共用）。
 /// 列表行样式见 [ItemListTile]，两者并存。
-/// 标签行仅太子/帝王展示（与 [ItemListTile] 一致）；无标签不占高。
+/// 有标签才占标签行、标题一行；无标签标题两行（与 [ItemListTile] 一致）。
 class ItemCoverCard extends StatelessWidget {
   const ItemCoverCard({
     super.key,
@@ -104,15 +103,8 @@ class ItemCoverCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ListenableBuilder(
-      listenable: UsageRefresh.version,
-      builder: (context, _) {
-        final princeLayout = UsageRefresh.snapshot?.isPrince == true;
-        final tagsLine =
-            showMeta && princeLayout ? _tagsLine(tags) : null;
-        return _buildCard(tagsLine: tagsLine);
-      },
-    );
+    final tagsLine = showMeta ? _tagsLine(tags) : null;
+    return _buildCard(tagsLine: tagsLine);
   }
 
   Widget _buildCard({required String? tagsLine}) {
@@ -146,6 +138,7 @@ class ItemCoverCard extends StatelessWidget {
               tagsLine: tagsLine,
               showMeta: showMeta,
               expandTitle: true,
+              titleMaxLines: tagsLine != null ? 1 : 2,
             ),
           ),
         ],
@@ -169,6 +162,7 @@ class ItemCoverCard extends StatelessWidget {
             tagsLine: tagsLine,
             showMeta: showMeta,
             expandTitle: false,
+            titleMaxLines: tagsLine != null ? 1 : 2,
           ),
         ],
       );
@@ -188,6 +182,7 @@ class ItemCoverCard extends StatelessWidget {
             tagsLine: tagsLine,
             showMeta: showMeta,
             expandTitle: false,
+            titleMaxLines: tagsLine != null ? 1 : 2,
           ),
         ],
       );
@@ -251,6 +246,7 @@ class _MetaBlock extends StatelessWidget {
     required this.tagsLine,
     required this.showMeta,
     required this.expandTitle,
+    this.titleMaxLines = 2,
   });
 
   final String title;
@@ -258,6 +254,7 @@ class _MetaBlock extends StatelessWidget {
   final String? tagsLine;
   final bool showMeta;
   final bool expandTitle;
+  final int titleMaxLines;
 
   static const _text = Color(0xFF1F242E);
   static const _meta = Color(0xFF9AA0A8);
@@ -267,7 +264,7 @@ class _MetaBlock extends StatelessWidget {
   Widget build(BuildContext context) {
     final titleText = Text(
       title,
-      maxLines: 2,
+      maxLines: titleMaxLines,
       overflow: TextOverflow.ellipsis,
       style: const TextStyle(
         fontSize: 14,
