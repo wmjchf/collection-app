@@ -25,6 +25,7 @@ import 'package:super_collection/features/home/widgets/roam_quote_card.dart';
 import 'package:super_collection/features/items/ai_meta_models.dart';
 import 'package:super_collection/features/items/article_body_text.dart';
 import 'package:super_collection/features/items/article_content_blocks.dart';
+import 'package:super_collection/features/items/annotation_note_style.dart';
 import 'package:super_collection/features/items/article_markdown.dart';
 import 'package:super_collection/features/items/item_image_gallery.dart';
 import 'package:super_collection/features/items/item_models.dart';
@@ -91,7 +92,7 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
   static const _blue = Color(0xFF2F6FED);
   /// 图集正文 / 标签行：略淡于品牌蓝
   static const _tagSoftBlue = Color(0xFF6B9AE8);
-  static const _highlight = Color(0xFFFFF2C7);
+  static const _highlight = AnnotationNoteStyle.highlight;
 
   static const _chromeAnim = Duration(milliseconds: 240);
   static const _topBarHeight = 52.0;
@@ -675,12 +676,14 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
       ];
     }
     if (!gallery && ArticleContentBlocks.hasRichMarkup(_rawBody)) {
+      final ranges = _annotationRanges(body);
       return [
         _InlineArticleBody(
           blocks: _bodyBlocks,
           plainText: body,
           fontSize: _bodyFontSize,
-          annotationRanges: _annotationRanges(body),
+          annotationRanges: ranges,
+          noteIndexById: AnnotationNoteStyle.noteIndexById(ranges),
           toolbarAt: _toolbarAt,
           onTapAnnotation: _openAnnotation,
           focusAnnotationId:
@@ -696,11 +699,13 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
       ];
     }
     // 图集正文原样展示（含 #标签，不做高亮/剔除）
+    final ranges = _annotationRanges(body);
     return [
       _AnnotatedBodyStack(
         text: body,
         spans: _bodySpans(body),
-        annotations: _annotationRanges(body),
+        annotations: ranges,
+        noteIndexById: AnnotationNoteStyle.noteIndexById(ranges),
         contextMenuBuilder: _selectionToolbar,
         onTapAnnotation: _openAnnotation,
         textStyle: gallery ? _galleryCaptionStyle : _bodyTextStyle,
@@ -1821,13 +1826,14 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
       if (r.start > cursor) {
         spans.add(TextSpan(text: localText.substring(cursor, r.start)));
       }
+      final isNote = AnnotationNoteStyle.hasNote(r.ann);
       spans.add(
         TextSpan(
           text: localText.substring(r.start, r.end),
-          style: const TextStyle(
-            backgroundColor: _highlight,
-            color: _text,
-          ),
+          // 纯高亮底色由 Stack 圆角芯片绘制，避免 TextSpan 直角底
+          style: isNote
+              ? AnnotationNoteStyle.underlineStyle()
+              : const TextStyle(color: _text),
         ),
       );
       cursor = r.end;
@@ -2315,6 +2321,7 @@ class _InlineArticleBody extends StatelessWidget {
     required this.plainText,
     required this.fontSize,
     required this.annotationRanges,
+    required this.noteIndexById,
     required this.toolbarAt,
     required this.onTapAnnotation,
     this.onBodyTap,
@@ -2332,6 +2339,7 @@ class _InlineArticleBody extends StatelessWidget {
   final String plainText;
   final double fontSize;
   final List<({int start, int end, ItemAnnotation ann})> annotationRanges;
+  final Map<int, int> noteIndexById;
   final EditableTextContextMenuBuilder Function(int baseOffset) toolbarAt;
   final ValueChanged<ItemAnnotation> onTapAnnotation;
   final VoidCallback? onBodyTap;
@@ -2345,7 +2353,7 @@ class _InlineArticleBody extends StatelessWidget {
   final Future<String?> Function(int index)? onRefreshInlineVideo;
 
   static const _text = Color(0xFF1F242E);
-  static const _highlight = Color(0xFFFFF2C7);
+  static const _highlight = AnnotationNoteStyle.highlight;
 
   TextStyle get _bodyStyle => TextStyle(
         fontSize: fontSize,
@@ -2447,6 +2455,7 @@ class _InlineArticleBody extends StatelessWidget {
               ? [TextSpan(text: text, style: _bodyStyle)]
               : List<InlineSpan>.from(islandSpans),
           annotations: localAnns,
+          noteIndexById: noteIndexById,
           contextMenuBuilder: toolbarAt(base),
           onTapAnnotation: onTapAnnotation,
           onBodyTap: onBodyTap,
@@ -2513,11 +2522,19 @@ class _InlineArticleBody extends StatelessWidget {
           .where((r) => r.start < r.end)
           .toList();
       final bodyStyle = _bodyStyle;
+      // 表情段用 Text.rich，量不到 RenderEditable，高亮仍走 span 底色
       final spans = ArticleMarkdown.inlineSpans(
         md,
         style: bodyStyle,
         highlights: [
-          for (final a in localAnns) (start: a.start, end: a.end),
+          for (final a in localAnns)
+            if (AnnotationNoteStyle.isHighlightOnly(a.ann))
+              (start: a.start, end: a.end),
+        ],
+        noteUnderlines: [
+          for (final a in localAnns)
+            if (AnnotationNoteStyle.hasNote(a.ann))
+              (start: a.start, end: a.end),
         ],
         highlightColor: _highlight,
         imageBuilder: (url, w, h) => WidgetSpan(
@@ -2538,6 +2555,7 @@ class _InlineArticleBody extends StatelessWidget {
               ? [TextSpan(text: '', style: bodyStyle)]
               : spans,
           annotations: localAnns,
+          noteIndexById: noteIndexById,
           contextMenuBuilder: toolbarAt(posStart),
           onTapAnnotation: onTapAnnotation,
           onBodyTap: onBodyTap,
@@ -2608,7 +2626,11 @@ class _InlineArticleBody extends StatelessWidget {
                 (r.start - pos.start).clamp(0, visible.length),
                 (r.end - pos.start).clamp(0, visible.length),
               );
-              return (start: trimmed.start, end: trimmed.end);
+              return (
+                start: trimmed.start,
+                end: trimmed.end,
+                ann: r.ann,
+              );
             })
             .where((r) => r.start < r.end)
             .toList();
@@ -2616,7 +2638,12 @@ class _InlineArticleBody extends StatelessWidget {
         final spans = ArticleMarkdown.inlineSpans(
           md,
           style: style,
-          highlights: segAnns,
+          highlights: const [],
+          noteUnderlines: [
+            for (final a in segAnns)
+              if (AnnotationNoteStyle.hasNote(a.ann))
+                (start: a.start, end: a.end),
+          ],
           highlightColor: _highlight,
         );
         appendSelectableSegment(
@@ -2657,7 +2684,11 @@ class _InlineArticleBody extends StatelessWidget {
                 (r.start - pos.start).clamp(0, visible.length),
                 (r.end - pos.start).clamp(0, visible.length),
               );
-              return (start: trimmed.start, end: trimmed.end);
+              return (
+                start: trimmed.start,
+                end: trimmed.end,
+                ann: r.ann,
+              );
             })
             .where((r) => r.start < r.end)
             .toList();
@@ -2665,7 +2696,12 @@ class _InlineArticleBody extends StatelessWidget {
         final spans = ArticleMarkdown.inlineSpans(
           md,
           style: bodyStyle,
-          highlights: segAnns,
+          highlights: const [],
+          noteUnderlines: [
+            for (final a in segAnns)
+              if (AnnotationNoteStyle.hasNote(a.ann))
+                (start: a.start, end: a.end),
+          ],
           highlightColor: _highlight,
         );
         appendSelectableSegment(
@@ -2915,12 +2951,13 @@ TextSelection _trimReadingTextSelection(String text, TextSelection sel) {
   return TextSelection(baseOffset: t.end, extentOffset: t.start);
 }
 
-/// 正文可选中；批注热区与批注图标用 Stack 绝对定位，不抢 SelectableText 手势状态。
+/// 正文可选中；批注热区与序号角标用 Stack 绝对定位，不抢 SelectableText 手势状态。
 class _AnnotatedBodyStack extends StatefulWidget {
   const _AnnotatedBodyStack({
     required this.text,
     required this.spans,
     required this.annotations,
+    required this.noteIndexById,
     required this.contextMenuBuilder,
     required this.onTapAnnotation,
     this.onBodyTap,
@@ -2933,6 +2970,7 @@ class _AnnotatedBodyStack extends StatefulWidget {
   final String text;
   final List<InlineSpan> spans;
   final List<({int start, int end, ItemAnnotation ann})> annotations;
+  final Map<int, int> noteIndexById;
   final EditableTextContextMenuBuilder contextMenuBuilder;
   final ValueChanged<ItemAnnotation> onTapAnnotation;
   final VoidCallback? onBodyTap;
@@ -2943,7 +2981,7 @@ class _AnnotatedBodyStack extends StatefulWidget {
 
   static const _text = Color(0xFF1F242E);
   static const _blue = Color(0xFF2F6FED);
-  static const _highlight = Color(0xFFFFF2C7);
+  static const _highlight = AnnotationNoteStyle.highlight;
 
   static const bodyStyle = TextStyle(
     fontSize: 15,
@@ -2958,7 +2996,7 @@ class _AnnotatedBodyStack extends StatefulWidget {
 
 class _AnnotatedBodyStackState extends State<_AnnotatedBodyStack> {
   final GlobalKey _textKey = GlobalKey();
-  final List<({Rect rect, ItemAnnotation ann, bool showNoteIcon})> _hits = [];
+  final List<({Rect rect, ItemAnnotation ann, int? noteIndex})> _hits = [];
   double? _laidOutWidth;
   int _measureToken = 0;
   int _measureMisses = 0;
@@ -3095,7 +3133,7 @@ class _AnnotatedBodyStackState extends State<_AnnotatedBodyStack> {
     // RenderEditable 相对 Stack 的偏移（SelectableText 内部可能有 inset）
     final origin = editable.localToGlobal(Offset.zero, ancestor: stackBox);
 
-    final next = <({Rect rect, ItemAnnotation ann, bool showNoteIcon})>[];
+    final next = <({Rect rect, ItemAnnotation ann, int? noteIndex})>[];
     for (final r in widget.annotations) {
       final trimmed = _trimReadingSelectionRange(widget.text, r.start, r.end);
       if (trimmed.start >= trimmed.end) continue;
@@ -3108,8 +3146,9 @@ class _AnnotatedBodyStackState extends State<_AnnotatedBodyStack> {
       final boxes = _meaningfulBoxes(raw);
       if (boxes.isEmpty) continue;
 
-      final hasNote =
-          r.ann.note != null && r.ann.note!.trim().isNotEmpty;
+      final noteIndex = AnnotationNoteStyle.hasNote(r.ann)
+          ? widget.noteIndexById[r.ann.id]
+          : null;
       for (var i = 0; i < boxes.length; i++) {
         final box = boxes[i];
         next.add((
@@ -3120,7 +3159,9 @@ class _AnnotatedBodyStackState extends State<_AnnotatedBodyStack> {
             origin.dy + box.bottom,
           ),
           ann: r.ann,
-          showNoteIcon: hasNote && i == boxes.length - 1,
+          noteIndex: (noteIndex != null && i == boxes.length - 1)
+              ? noteIndex
+              : null,
         ));
       }
     }
@@ -3166,6 +3207,10 @@ class _AnnotatedBodyStackState extends State<_AnnotatedBodyStack> {
         return Stack(
           clipBehavior: Clip.none,
           children: [
+            // 纯高亮：浅蓝圆角底（按行盒），压在文字下方
+            for (final hit in _hits)
+              if (AnnotationNoteStyle.isHighlightOnly(hit.ann))
+                AnnotationNoteStyle.highlightChip(hit.rect),
             TextSelectionTheme(
               data: const TextSelectionThemeData(
                 selectionColor: _AnnotatedBodyStack._highlight,
@@ -3201,16 +3246,13 @@ class _AnnotatedBodyStackState extends State<_AnnotatedBodyStack> {
                 ),
               ),
             for (final hit in _hits)
-              if (hit.showNoteIcon)
+              if (hit.noteIndex != null)
                 Positioned(
-                  left: hit.rect.right - 2,
-                  top: hit.rect.top + (hit.rect.height - 12) / 2,
-                  child: const IgnorePointer(
-                    child: Icon(
-                      Icons.sticky_note_2_outlined,
-                      size: 16,
-                      color: _AnnotatedBodyStack._blue,
-                    ),
+                  left: hit.rect.right + 1,
+                  top: hit.rect.top +
+                      (hit.rect.height - AnnotationNoteBadge.size) / 2,
+                  child: IgnorePointer(
+                    child: AnnotationNoteBadge(index: hit.noteIndex!),
                   ),
                 ),
           ],
@@ -3220,15 +3262,15 @@ class _AnnotatedBodyStackState extends State<_AnnotatedBodyStack> {
   }
 }
 
-extension on List<({Rect rect, ItemAnnotation ann, bool showNoteIcon})> {
+extension on List<({Rect rect, ItemAnnotation ann, int? noteIndex})> {
   bool equal(
-    List<({Rect rect, ItemAnnotation ann, bool showNoteIcon})> other,
+    List<({Rect rect, ItemAnnotation ann, int? noteIndex})> other,
   ) {
     if (length != other.length) return false;
     for (var i = 0; i < length; i++) {
       final a = this[i];
       final b = other[i];
-      if (a.ann.id != b.ann.id || a.showNoteIcon != b.showNoteIcon) {
+      if (a.ann.id != b.ann.id || a.noteIndex != b.noteIndex) {
         return false;
       }
       if ((a.rect.left - b.rect.left).abs() > 0.5 ||

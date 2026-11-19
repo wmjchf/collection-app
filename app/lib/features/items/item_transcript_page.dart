@@ -7,6 +7,7 @@ import 'package:super_collection/core/network/api_client.dart';
 import 'package:super_collection/core/ui/app_bottom_sheet.dart';
 import 'package:super_collection/core/ui/app_toast.dart';
 import 'package:super_collection/core/ui/pro_copy.dart';
+import 'package:super_collection/features/items/annotation_note_style.dart';
 import 'package:super_collection/features/items/item_models.dart';
 import 'package:super_collection/features/items/items_repository.dart';
 import 'package:super_collection/features/items/reading_annotation_sheet.dart';
@@ -96,7 +97,7 @@ class ItemTranscriptPage extends StatefulWidget {
 class _ItemTranscriptPageState extends State<ItemTranscriptPage> {
   static const _text = Color(0xFF1F242E);
   static const _muted = Color(0xFF737A85);
-  static const _highlight = Color(0xFFFFF2C7);
+  static const _highlight = AnnotationNoteStyle.highlight;
   static const _handle = Color(0xFFD9DBE0);
 
   final _repo = ItemsRepository();
@@ -296,9 +297,25 @@ class _ItemTranscriptPageState extends State<ItemTranscriptPage> {
       if (a >= b) continue;
       final mid = (a + b) ~/ 2;
       final inLabel = labels.any((l) => mid >= l.start && mid < l.end);
-      final inHi = highlights.any((h) => mid >= h.start && mid < h.end);
+      var inNote = false;
+      for (final h in highlights) {
+        if (mid < h.start || mid >= h.end) continue;
+        if (AnnotationNoteStyle.hasNote(h.ann)) {
+          inNote = true;
+          break;
+        }
+      }
       var s = inLabel ? labelStyle : style;
-      if (inHi) s = s.copyWith(backgroundColor: _highlight);
+      if (inNote) {
+        s = s.copyWith(
+          decoration: TextDecoration.underline,
+          decorationStyle: TextDecorationStyle.dotted,
+          decorationColor: AnnotationNoteStyle.blue,
+          decorationThickness: 1.6,
+          backgroundColor: null,
+        );
+      }
+      // 纯高亮底色由 Stack 圆角芯片绘制
       spans.add(TextSpan(text: text.substring(a, b), style: s));
     }
     return spans;
@@ -557,6 +574,7 @@ class _ItemTranscriptPageState extends State<ItemTranscriptPage> {
                   spans: _spans(body, bodyStyle),
                   textStyle: bodyStyle,
                   annotations: ranges,
+                  noteIndexById: AnnotationNoteStyle.noteIndexById(ranges),
                   contextMenuBuilder: _selectionToolbar,
                   onTapAnnotation: _openAnnotation,
                   focusAnnotationId: widget.focusAnnotationId,
@@ -643,6 +661,7 @@ class _TranscriptAnnotatedBody extends StatefulWidget {
     required this.spans,
     required this.textStyle,
     required this.annotations,
+    required this.noteIndexById,
     required this.contextMenuBuilder,
     required this.onTapAnnotation,
     this.focusAnnotationId,
@@ -653,6 +672,7 @@ class _TranscriptAnnotatedBody extends StatefulWidget {
   final List<InlineSpan> spans;
   final TextStyle textStyle;
   final List<({int start, int end, ItemAnnotation ann})> annotations;
+  final Map<int, int> noteIndexById;
   final EditableTextContextMenuBuilder contextMenuBuilder;
   final ValueChanged<ItemAnnotation> onTapAnnotation;
   final int? focusAnnotationId;
@@ -665,12 +685,12 @@ class _TranscriptAnnotatedBody extends StatefulWidget {
 
 class _TranscriptAnnotatedBodyState extends State<_TranscriptAnnotatedBody> {
   final GlobalKey _textKey = GlobalKey();
-  final List<({Rect rect, ItemAnnotation ann, bool showNoteIcon})> _hits = [];
+  final List<({Rect rect, ItemAnnotation ann, int? noteIndex})> _hits = [];
   int _measureToken = 0;
   int _measureMisses = 0;
 
   static const _blue = Color(0xFF2F6FED);
-  static const _highlight = Color(0xFFFFF2C7);
+  static const _highlight = AnnotationNoteStyle.highlight;
 
   @override
   void didUpdateWidget(covariant _TranscriptAnnotatedBody oldWidget) {
@@ -725,7 +745,7 @@ class _TranscriptAnnotatedBodyState extends State<_TranscriptAnnotatedBody> {
     }
     _measureMisses = 0;
     final origin = editable.localToGlobal(Offset.zero, ancestor: stackBox);
-    final next = <({Rect rect, ItemAnnotation ann, bool showNoteIcon})>[];
+    final next = <({Rect rect, ItemAnnotation ann, int? noteIndex})>[];
     for (final r in widget.annotations) {
       if (r.ann.id < 0) continue;
       final trimmed = _trimRange(widget.text, r.start, r.end);
@@ -740,7 +760,9 @@ class _TranscriptAnnotatedBodyState extends State<_TranscriptAnnotatedBody> {
           .where((b) => (b.right - b.left) > 1 && (b.bottom - b.top) > 1)
           .toList(growable: false);
       if (boxes.isEmpty) continue;
-      final hasNote = (r.ann.note ?? '').trim().isNotEmpty;
+      final noteIndex = AnnotationNoteStyle.hasNote(r.ann)
+          ? widget.noteIndexById[r.ann.id]
+          : null;
       for (var i = 0; i < boxes.length; i++) {
         final box = boxes[i];
         next.add((
@@ -751,7 +773,9 @@ class _TranscriptAnnotatedBodyState extends State<_TranscriptAnnotatedBody> {
             origin.dy + box.bottom,
           ),
           ann: r.ann,
-          showNoteIcon: hasNote && i == boxes.length - 1,
+          noteIndex: (noteIndex != null && i == boxes.length - 1)
+              ? noteIndex
+              : null,
         ));
       }
     }
@@ -788,6 +812,9 @@ class _TranscriptAnnotatedBodyState extends State<_TranscriptAnnotatedBody> {
           child: Stack(
             clipBehavior: Clip.none,
             children: [
+              for (final hit in _hits)
+                if (AnnotationNoteStyle.isHighlightOnly(hit.ann))
+                  AnnotationNoteStyle.highlightChip(hit.rect),
               TextSelectionTheme(
                 data: const TextSelectionThemeData(
                   selectionColor: _highlight,
@@ -817,16 +844,13 @@ class _TranscriptAnnotatedBodyState extends State<_TranscriptAnnotatedBody> {
                   ),
                 ),
               for (final hit in _hits)
-                if (hit.showNoteIcon)
+                if (hit.noteIndex != null)
                   Positioned(
-                    left: hit.rect.right - 2,
-                    top: hit.rect.top + (hit.rect.height - 12) / 2,
-                    child: const IgnorePointer(
-                      child: Icon(
-                        Icons.sticky_note_2_outlined,
-                        size: 16,
-                        color: _blue,
-                      ),
+                    left: hit.rect.right + 1,
+                    top: hit.rect.top +
+                        (hit.rect.height - AnnotationNoteBadge.size) / 2,
+                    child: IgnorePointer(
+                      child: AnnotationNoteBadge(index: hit.noteIndex!),
                     ),
                   ),
             ],

@@ -85,7 +85,10 @@ class ArticleMarkdown {
     String markdown, {
     required TextStyle style,
     List<({int start, int end})> highlights = const [],
-    Color highlightColor = const Color(0xFFFFF2C7),
+    /// 批注：蓝虚线下划线（与 [highlights] 黄底高亮分开）
+    List<({int start, int end})> noteUnderlines = const [],
+    Color highlightColor = const Color(0xFFD6E4FF),
+    Color noteUnderlineColor = const Color(0xFF2F6FED),
     InlineSpan Function(String url, double width, double height)? imageBuilder,
   }) {
     final visible = StringBuffer();
@@ -193,6 +196,10 @@ class ArticleMarkdown {
       cut.add(h.start.clamp(0, plain.length));
       cut.add(h.end.clamp(0, plain.length));
     }
+    for (final n in noteUnderlines) {
+      cut.add(n.start.clamp(0, plain.length));
+      cut.add(n.end.clamp(0, plain.length));
+    }
     for (final r in runs) {
       cut.add(r.start);
       cut.add(r.end);
@@ -207,10 +214,25 @@ class ArticleMarkdown {
           break;
         }
       }
-      for (final h in highlights) {
-        if (i >= h.start && i < h.end) {
-          s = s.copyWith(backgroundColor: highlightColor);
+      var inNote = false;
+      for (final n in noteUnderlines) {
+        if (i >= n.start && i < n.end) {
+          inNote = true;
+          s = s.copyWith(
+            decoration: TextDecoration.underline,
+            decorationStyle: TextDecorationStyle.dotted,
+            decorationColor: noteUnderlineColor,
+            decorationThickness: 1.6,
+          );
           break;
+        }
+      }
+      if (!inNote) {
+        for (final h in highlights) {
+          if (i >= h.start && i < h.end) {
+            s = s.copyWith(backgroundColor: highlightColor);
+            break;
+          }
         }
       }
       return s;
