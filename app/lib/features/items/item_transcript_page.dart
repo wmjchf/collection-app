@@ -120,9 +120,9 @@ class _ItemTranscriptPageState extends State<ItemTranscriptPage> {
     final size = ReadingFontPrefs.clamp(widget.fontSize);
     return TextStyle(
       fontSize: size,
-      height: 1.85,
-      letterSpacing: 0.2,
-      color: _text,
+      height: 2.0,
+      letterSpacing: 0.15,
+      color: const Color(0xFF2A3038),
     );
   }
 
@@ -429,7 +429,9 @@ class _ItemTranscriptPageState extends State<ItemTranscriptPage> {
   Future<void> _copyAll() async {
     final text = _body;
     if (text.isEmpty) return;
-    await Clipboard.setData(ClipboardData(text: text));
+    // 无批注时复制润色后文本（句号空格/分段）；有批注仍用原文，避免与划选偏移不一致
+    final out = _canAnnotate ? text : TranscriptDisplay.polishForReading(text);
+    await Clipboard.setData(ClipboardData(text: out));
     if (!mounted) return;
     AppToast.show(context, '已复制');
   }
@@ -547,7 +549,7 @@ class _ItemTranscriptPageState extends State<ItemTranscriptPage> {
           )
         : ListView(
             controller: _scrollController,
-            padding: const EdgeInsets.fromLTRB(22, 8, 22, 28),
+            padding: const EdgeInsets.fromLTRB(22, 12, 22, 40),
             children: [
               if (_canAnnotate)
                 _TranscriptAnnotatedBody(
@@ -794,7 +796,8 @@ class _TranscriptAnnotatedBodyState extends State<_TranscriptAnnotatedBody> {
                 child: SelectableText.rich(
                   TextSpan(style: widget.textStyle, children: widget.spans),
                   key: _textKey,
-                  textAlign: TextAlign.justify,
+                  // 左齐：两端对齐会在英文词间拉出大空档（句号后缺空格时更明显）
+                  textAlign: TextAlign.start,
                   contextMenuBuilder: widget.contextMenuBuilder,
                   selectionWidthStyle: BoxWidthStyle.tight,
                   selectionHeightStyle:

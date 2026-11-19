@@ -20,17 +20,71 @@ class TranscriptDisplay extends StatelessWidget {
   final int? maxLines;
   final TextOverflow? overflow;
 
-  static const _text = Color(0xFF1F242E);
+  static const _text = Color(0xFF2A3038);
   static const _muted = Color(0xFF737A85);
 
   static const defaultBodyStyle = TextStyle(
-    fontSize: 15,
-    height: 1.85,
-    letterSpacing: 0.2,
+    fontSize: 16,
+    height: 2.0,
+    letterSpacing: 0.15,
     color: _text,
   );
 
   static final _speakerPrefix = RegExp(r'^说话人 (\d+)：(.*)$', dotAll: true);
+  static final _missingSpaceAfterPunct = RegExp(
+    r'([.!?。！？])([A-Za-z\u4e00-\u9fff])',
+  );
+  static final _sentenceChunk = RegExp(
+    r'[^.!?。！？]+[.!?。！？]+["\u201d\u2019]?|[^.!?。！？]+$',
+  );
+
+  /// 展示/复制用润色：句号后补空格；无段落时按句软分成段（不改库内原文）
+  static String polishForReading(String raw) {
+    var t = raw.replaceAll('\r\n', '\n').replaceAll('\r', '\n').trim();
+    if (t.isEmpty) return t;
+    t = polishSpaces(t);
+    if (RegExp(r'\n\s*\n').hasMatch(t)) return t;
+
+    final sentences = _splitSentences(t);
+    if (sentences.length <= 2) return t;
+
+    final paras = <String>[];
+    for (var i = 0; i < sentences.length; i += 2) {
+      final end = i + 2 <= sentences.length ? i + 2 : sentences.length;
+      paras.add(_joinSentences(sentences.sublist(i, end)));
+    }
+    return paras.where((p) => p.isNotEmpty).join('\n\n');
+  }
+
+  /// 仅补句号后空格（短 cue / 说话人块用）
+  static String polishSpaces(String raw) {
+    return raw.replaceAllMapped(
+      _missingSpaceAfterPunct,
+      (m) => '${m[1]} ${m[2]}',
+    );
+  }
+
+  static List<String> _splitSentences(String t) {
+    final out = <String>[];
+    for (final m in _sentenceChunk.allMatches(t)) {
+      final s = m.group(0)!.trim();
+      if (s.isNotEmpty) out.add(s);
+    }
+    return out.isEmpty ? [t] : out;
+  }
+
+  static String _joinSentences(List<String> parts) {
+    if (parts.isEmpty) return '';
+    final buf = StringBuffer(parts.first);
+    for (var i = 1; i < parts.length; i++) {
+      final prev = parts[i - 1].trimRight();
+      if (RegExp(r'[.!?]$').hasMatch(prev)) {
+        buf.write(' ');
+      }
+      buf.write(parts[i]);
+    }
+    return buf.toString().trim();
+  }
 
   static List<_TranscriptBlock> parse(String raw) {
     final trimmed = raw.trim();
@@ -62,7 +116,7 @@ class TranscriptDisplay extends StatelessWidget {
         if (cue.text.trim().isNotEmpty)
           _TranscriptBlock(
             speaker: cue.speaker,
-            body: cue.text.trim(),
+            body: polishSpaces(cue.text.trim()),
             startMs: cue.startMs,
           ),
     ];
@@ -71,21 +125,34 @@ class TranscriptDisplay extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final style = bodyStyle ?? defaultBodyStyle;
-    final blocks = cues.isNotEmpty ? blocksFromCues(cues) : parse(text);
+    final blocks = cues.isNotEmpty
+        ? blocksFromCues(cues)
+        : parse(polishForReading(text));
     if (blocks.isEmpty) return const SizedBox.shrink();
 
     final hasSpeakers = blocks.any((b) => b.speaker != null);
     final hasTimes = blocks.any((b) => b.startMs != null);
 
     if (!hasSpeakers && !hasTimes) {
-      return _textWidget(text.trim(), style);
+      if (blocks.length == 1) {
+        return _textWidget(blocks.first.body, style);
+      }
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          for (var i = 0; i < blocks.length; i++) ...[
+            if (i > 0) const SizedBox(height: 16),
+            _textWidget(blocks[i].body, style),
+          ],
+        ],
+      );
     }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         for (var i = 0; i < blocks.length; i++) ...[
-          if (i > 0) const SizedBox(height: 18),
+          if (i > 0) const SizedBox(height: 20),
           _SpeakerBlock(
             block: blocks[i],
             bodyStyle: style,

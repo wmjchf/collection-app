@@ -154,8 +154,14 @@ class AgentMarkdown extends StatelessWidget {
       }
       final qm = _quote.firstMatch(trimmed.trim());
       if (qm != null) {
+        final quoteText = (qm.group(1) ?? '').trim();
+        // 空 `>` 行常见于引用内换段，不渲成空白灰条
+        if (quoteText.isEmpty) {
+          flushPara(gap: 8);
+          continue;
+        }
         flushPara(gap: 8);
-        out.add(_QuoteBlock(qm.group(1) ?? ''));
+        out.add(_QuoteBlock(quoteText));
         continue;
       }
       final um = _ul.firstMatch(trimmed.trim());
