@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:super_collection/features/items/article_content_blocks.dart';
 
-/// 轻量 Markdown：标题 / 加粗 / 斜体 / 字号 / 图片（与后端 htmlToRichText 对齐）。
+/// 轻量 Markdown：标题 / 加粗 / 斜体 / 行内代码 / 字号 / 图片（与后端 htmlToRichText 对齐）。
 class ArticleMarkdown {
   ArticleMarkdown._();
 
@@ -9,6 +9,7 @@ class ArticleMarkdown {
   static final RegExp _size = RegExp(r'\{\{(\d+)\|([\s\S]*?)\}\}');
   static final RegExp _bold = RegExp(r'\*\*(.+?)\*\*');
   static final RegExp _italic = RegExp(r'(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)');
+  static final RegExp _code = RegExp(r'`([^`]+)`');
   static final RegExp _image = ArticleContentBlocks.imageInline;
 
   static String _replaceInlineEmoji(String text) {
@@ -28,6 +29,7 @@ class ArticleMarkdown {
     for (var i = 0; i < 8; i++) {
       final next = t
           .replaceAllMapped(_size, (m) => m.group(2)!)
+          .replaceAllMapped(_code, (m) => m.group(1)!)
           .replaceAllMapped(_bold, (m) => m.group(1)!)
           .replaceAllMapped(_italic, (m) => m.group(1)!);
       if (next == t) break;
@@ -104,6 +106,7 @@ class ArticleMarkdown {
         final size = _size.firstMatch(rest);
         final bold = _bold.firstMatch(rest);
         final italic = _italic.firstMatch(rest);
+        final code = _code.firstMatch(rest);
 
         Match? next;
         var kind = '';
@@ -116,6 +119,7 @@ class ArticleMarkdown {
         }
 
         consider(size, 's');
+        consider(code, 'c');
         consider(bold, 'b');
         consider(italic, 'i');
         consider(_image.firstMatch(rest), 'img');
@@ -152,6 +156,18 @@ class ArticleMarkdown {
             height: 1.45,
           );
           parseChunk(inner, sized);
+        } else if (kind == 'c') {
+          // 行内代码按字面展示，不再解析内部 Markdown
+          append(
+            m.group(1)!,
+            base.copyWith(
+              fontFamily: 'Menlo',
+              fontSize: (base.fontSize ?? 16) - 1,
+              height: 1.35,
+              backgroundColor: const Color(0xFFF0F2F5),
+              color: const Color(0xFF1F242E),
+            ),
+          );
         } else if (kind == 'b') {
           parseChunk(
             m.group(1)!,
