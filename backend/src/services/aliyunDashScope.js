@@ -274,7 +274,7 @@ async function embedTexts(texts) {
   }
 
   const baseUrl = (config.aliyun.dashScopeBaseUrl || '').replace(/\/$/, '');
-  const modelId = config.aliyun.embeddingModel || 'qwen3.7-text-embedding';
+  const modelId = config.aliyun.embeddingModel || 'qwen3.7-text-embedding-flash';
   const dims = Number(config.aliyun.embeddingDims) || 1024;
 
   const payload = {

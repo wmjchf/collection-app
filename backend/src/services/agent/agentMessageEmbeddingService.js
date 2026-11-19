@@ -21,7 +21,7 @@ function isEnabled() {
 }
 
 function textModel() {
-  return config.aliyun.embeddingModel || 'qwen3.7-text-embedding';
+  return config.aliyun.embeddingModel || 'qwen3.7-text-embedding-flash';
 }
 
 function contentHash(text) {

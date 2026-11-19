@@ -88,7 +88,7 @@ module.exports = {
       Number(process.env.GALLERY_DRAFT_MAX_IMAGES) || 24,
     /** 收藏知识库 embedding（OpenAI 兼容 /embeddings） */
     embeddingModel:
-      process.env.ALIYUN_EMBEDDING_MODEL || 'qwen3.7-text-embedding',
+      process.env.ALIYUN_EMBEDDING_MODEL || 'qwen3.7-text-embedding-flash',
     embeddingDims: Number(process.env.ALIYUN_EMBEDDING_DIMS) || 1024,
     /**
      * 图集真图向量（DashScope 原生 multimodal-embedding，与文本向量不同空间）。
@@ -103,10 +103,10 @@ module.exports = {
     agentKbEnabled: process.env.AGENT_KB_ENABLED !== 'false',
     /**
      * 看板 embedding 费用估（元 / 百万 token，华北2 目录价；可 env 覆盖）
-     * text = qwen3.7-text-embedding；vl* = qwen3-vl-embedding
+     * text = qwen3.7-text-embedding-flash；vl* = qwen3-vl-embedding
      */
     embeddingCostYuanPerMillion: {
-      text: Number(process.env.EMBEDDING_COST_TEXT_PER_M) || 0.5,
+      text: Number(process.env.EMBEDDING_COST_TEXT_PER_M) || 0.125,
       vlText: Number(process.env.EMBEDDING_COST_VL_TEXT_PER_M) || 0.7,
       vlImage: Number(process.env.EMBEDDING_COST_VL_IMAGE_PER_M) || 1.8,
     },
