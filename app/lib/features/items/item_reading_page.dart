@@ -96,6 +96,7 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
 
   static const _chromeAnim = Duration(milliseconds: 240);
   static const _topBarHeight = 52.0;
+  static const _progressBarHeight = _ReadingProgressBar.height;
   static const _bottomBarHeight = 56.0;
   static const _bottomBarHInset = 16.0;
   static const _bottomBarGap = 10.0;
@@ -111,6 +112,7 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
   List<ItemAnnotation> _annotations = const [];
   bool _loadingAnns = true;
   bool _chromeVisible = true;
+  double _readProgress = 0;
   late final ReadingMediaController _pageAudio = ReadingMediaController();
   Timer? _itemPollTimer;
   Timer? _markReadTimer;
@@ -138,6 +140,7 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
   void initState() {
     super.initState();
     _openedAt = DateTime.now();
+    _scrollController.addListener(_syncReadProgress);
     ItemTranscriptRefresh.version.addListener(_onExternalTranscriptRefresh);
     unawaited(_loadPro());
     unawaited(_loadBodyFontSize());
@@ -294,9 +297,21 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
     _itemPollTimer?.cancel();
     _summaryPollGen++;
     _mindmapPollGen++;
+    _scrollController.removeListener(_syncReadProgress);
     _scrollController.dispose();
     _pageAudio.dispose();
     super.dispose();
+  }
+
+  void _syncReadProgress() {
+    if (!mounted || !_scrollController.hasClients) return;
+    final max = _scrollController.position.maxScrollExtent;
+    // 内容一屏内装下时视为读完
+    final next = max <= 0
+        ? 1.0
+        : (_scrollController.offset / max).clamp(0.0, 1.0);
+    if ((next - _readProgress).abs() < 0.002) return;
+    setState(() => _readProgress = next);
   }
 
   Future<void> _bootstrapItem() async {
@@ -1983,7 +1998,9 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
     final canRead = _item.isSuccess;
 
     final mq = MediaQuery.of(context);
-    final topChrome = mq.padding.top + _topBarHeight;
+    final topChrome = mq.padding.top +
+        _topBarHeight +
+        (canRead ? _progressBarHeight : 0);
     // 壳内分栏阅读不占 Home Indicator，避免操作栏下方多出一条空白
     final bottomSafe = widget.embedded ? 0.0 : mq.padding.bottom;
     final bottomChrome =
@@ -2010,7 +2027,12 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
                   ? bottomChrome
                   : bottomSafe,
             ),
-            child: ListView(
+            child: NotificationListener<ScrollMetricsNotification>(
+              onNotification: (_) {
+                _syncReadProgress();
+                return false;
+              },
+              child: ListView(
                 controller: _scrollController,
                 physics: const BouncingScrollPhysics(
                   parent: AlwaysScrollableScrollPhysics(),
@@ -2103,6 +2125,7 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
                   ],
                 ],
               ),
+              ),
           ),
           Positioned(
             top: 0,
@@ -2116,33 +2139,40 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
                   curve: Curves.easeOutCubic,
                   offset:
                       _chromeVisible ? Offset.zero : const Offset(0, -1),
-                  child: _ReadingTopBar(
-                    onBack: _handleBack,
-                    showBack: !widget.embedded,
-                    menuEnabled: true,
-                    editEnabled: canRead,
-                    showMarkUnread: !_item.isUnread,
-                    isPro: _isPro,
-                    onEditContent: _onEditContent,
-                    onEditTitle: _onEditTitle,
-                    onCopyLink: _copyLink,
-                    onReparse: _reparseItem,
-                    onDelete: _confirmDelete,
-                    onMarkUnread: _markAsUnread,
-                    onFontSize: _openFontSizeSheet,
-                    onHighlights: canRead &&
-                            !_item.isImageGallery &&
-                            !_isTopBarTrueVideo
-                        ? _showHighlightList
-                        : null,
-                    onAnnotations: canRead &&
-                            !_item.isImageGallery &&
-                            !_isTopBarTrueVideo
-                        ? _showNoteAnnotationList
-                        : null,
-                    onTranscript: canRead && _showTranscriptHeaderEntry
-                        ? () => unawaited(_openTranscriptFromHeader())
-                        : null,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      _ReadingTopBar(
+                        onBack: _handleBack,
+                        showBack: !widget.embedded,
+                        menuEnabled: true,
+                        editEnabled: canRead,
+                        showMarkUnread: !_item.isUnread,
+                        isPro: _isPro,
+                        onEditContent: _onEditContent,
+                        onEditTitle: _onEditTitle,
+                        onCopyLink: _copyLink,
+                        onReparse: _reparseItem,
+                        onDelete: _confirmDelete,
+                        onMarkUnread: _markAsUnread,
+                        onFontSize: _openFontSizeSheet,
+                        onHighlights: canRead &&
+                                !_item.isImageGallery &&
+                                !_isTopBarTrueVideo
+                            ? _showHighlightList
+                            : null,
+                        onAnnotations: canRead &&
+                                !_item.isImageGallery &&
+                                !_isTopBarTrueVideo
+                            ? _showNoteAnnotationList
+                            : null,
+                        onTranscript: canRead && _showTranscriptHeaderEntry
+                            ? () => unawaited(_openTranscriptFromHeader())
+                            : null,
+                      ),
+                      if (canRead)
+                        _ReadingProgressBar(progress: _readProgress),
+                    ],
                   ),
                 ),
               ),
@@ -3324,6 +3354,37 @@ class _ToolbarAction extends StatelessWidget {
             fontWeight: FontWeight.w500,
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// 顶栏下方阅读进度：已读蓝、未读浅灰，2pt 全宽。
+class _ReadingProgressBar extends StatelessWidget {
+  const _ReadingProgressBar({required this.progress});
+
+  final double progress;
+
+  static const height = 2.0;
+  static const _track = Color(0xFFE8EAED);
+  static const _fill = Color(0xFF2F6FED);
+
+  @override
+  Widget build(BuildContext context) {
+    final p = progress.clamp(0.0, 1.0);
+    return SizedBox(
+      height: height,
+      width: double.infinity,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          const ColoredBox(color: _track),
+          FractionallySizedBox(
+            widthFactor: p,
+            alignment: Alignment.centerLeft,
+            child: const ColoredBox(color: _fill),
+          ),
+        ],
       ),
     );
   }
