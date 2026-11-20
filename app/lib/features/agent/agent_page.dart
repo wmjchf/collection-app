@@ -22,8 +22,10 @@ import 'package:super_collection/features/items/cover_image.dart';
 import 'package:super_collection/features/items/item_list_tile.dart';
 import 'package:super_collection/features/items/item_models.dart';
 import 'package:super_collection/features/items/item_reading_page.dart';
+import 'package:super_collection/features/items/item_thoughts.dart';
 import 'package:super_collection/features/items/items_repository.dart';
 import 'package:super_collection/features/items/reading_quote_share.dart';
+import 'package:super_collection/features/items/reading_thought_edit_page.dart';
 import 'package:super_collection/features/items/item_transcript_refresh.dart';
 import 'package:super_collection/features/items/transcript_models.dart';
 import 'package:super_collection/features/items/transcript_picker_sheet.dart';
@@ -1449,6 +1451,14 @@ class _AgentPageState extends State<AgentPage> {
                                         pendingAction: m.pendingAction,
                                         focusItemId: _focusItemId,
                                         showCopy: m.isDraftArticle,
+                                        onSaveArticle: m.isDraftArticle
+                                            ? () => unawaited(
+                                                  _saveDraftArticleToNotes(
+                                                    text: m.content,
+                                                    citations: m.citations,
+                                                  ),
+                                                )
+                                            : null,
                                         pickedIds: _pickedCitations.keys.toSet(),
                                         onOpen: _openCitation,
                                         onOpenTag: _openInventoryTag,
@@ -1533,7 +1543,7 @@ class _AgentPageState extends State<AgentPage> {
     return _AgentPresetRules.starters(focused: false);
   }
 
-  /// 划选工具条：复制纯文本；分享走阅读页摘句海报（先定出处篇）。
+  /// 划选工具条：复制；写想法（正文填选中）；分享海报（先定出处篇）。
   EditableTextContextMenuBuilder _selectionToolbar([
     List<AgentCitation> citations = const [],
   ]) {
@@ -1580,6 +1590,18 @@ class _AgentPageState extends State<AgentPage> {
             },
           ),
           _AgentToolbarAction(
+            label: '写想法',
+            onTap: () {
+              clearToolbar();
+              unawaited(
+                _writeThoughtFromSelection(
+                  quote: selected,
+                  citations: citations,
+                ),
+              );
+            },
+          ),
+          _AgentToolbarAction(
             label: '分享',
             onTapWithOrigin: (origin) {
               clearToolbar();
@@ -1595,6 +1617,107 @@ class _AgentPageState extends State<AgentPage> {
         ],
       );
     };
+  }
+
+  /// 划选进想法编辑页：选中文填正文，保存写入出处篇笔记。
+  Future<void> _writeThoughtFromSelection({
+    required String quote,
+    required List<AgentCitation> citations,
+  }) async {
+    if (!mounted) return;
+    final body = quote.trim();
+    if (body.isEmpty) return;
+
+    final cite = await _resolveShareCitation(citations);
+    if (!mounted) return;
+    if (cite == null) {
+      AppToast.show(context, '请先打开某篇或点选出处，再写想法');
+      return;
+    }
+
+    final clipped = body.length > 2000 ? body.substring(0, 2000) : body;
+    final result = await showReadingThoughtEditPage(
+      context,
+      initialText: clipped,
+    );
+    if (!mounted || result == null) return;
+    final text = result.text.trim();
+    if (text.isEmpty) return;
+
+    try {
+      final item = await _itemsRepo.getItem(cite.itemId);
+      if (!mounted) return;
+      final next = [
+        ...parseItemThoughts(item.note),
+        newItemThought(text, title: result.title, format: result.format),
+      ];
+      final updated = await _itemsRepo.updateNote(
+        cite.itemId,
+        serializeItemThoughts(next),
+      );
+      if (!mounted) return;
+      if (_focusItem?.id == cite.itemId) {
+        setState(() => _focusItem = updated);
+      }
+      AppToast.show(context, '想法已保存');
+    } on ApiException catch (e) {
+      if (mounted) AppToast.show(context, e.message);
+    } catch (error, stack) {
+      debugPrint('agent thought save failed: $error\n$stack');
+      if (mounted) AppToast.show(context, '保存失败，请稍后重试');
+    }
+  }
+
+  /// 助手 `draft_article` 成文后确认存入笔记（`kind=article`）。
+  Future<void> _saveDraftArticleToNotes({
+    required String text,
+    required List<AgentCitation> citations,
+  }) async {
+    if (!mounted) return;
+    final body = text.trim();
+    if (body.isEmpty) return;
+
+    final cite = await _resolveShareCitation(citations);
+    if (!mounted) return;
+    if (cite == null) {
+      AppToast.show(context, '请先打开某篇或点选出处，再存入笔记');
+      return;
+    }
+
+    final title = cite.title.trim().isEmpty ? '这篇收藏' : cite.title.trim();
+    final ok = await showAppConfirmDialog(
+      context,
+      title: '存入笔记？',
+      message: '将这篇整理成文存入「$title」的笔记（文章）。',
+      confirmLabel: '存入',
+      dangerConfirm: false,
+    );
+    if (ok != true || !mounted) return;
+
+    try {
+      final item = await _itemsRepo.getItem(cite.itemId);
+      if (!mounted) return;
+      final clipped =
+          body.length > 50000 ? body.substring(0, 50000) : body;
+      final next = [
+        ...parseItemThoughts(item.note),
+        newItemArticle(clipped),
+      ];
+      final updated = await _itemsRepo.updateNote(
+        cite.itemId,
+        serializeItemThoughts(next),
+      );
+      if (!mounted) return;
+      if (_focusItem?.id == cite.itemId) {
+        setState(() => _focusItem = updated);
+      }
+      AppToast.show(context, '已存入笔记');
+    } on ApiException catch (e) {
+      if (mounted) AppToast.show(context, e.message);
+    } catch (error, stack) {
+      debugPrint('draft article save failed: $error\n$stack');
+      if (mounted) AppToast.show(context, '保存失败，请稍后重试');
+    }
   }
 
   /// 海报需要篇目封面/链接：单篇直接用；多篇先选；阅读锚定优先当前篇。
@@ -2333,6 +2456,7 @@ class _AssistantBlock extends StatelessWidget {
     this.focusItemId,
     this.pendingAction,
     this.showCopy = false,
+    this.onSaveArticle,
     this.pickEnabled = true,
     this.confirmEnabled = true,
     this.onConfirmAction,
@@ -2352,6 +2476,8 @@ class _AssistantBlock extends StatelessWidget {
   final int? focusItemId;
   /// 仅「整理成文章」结果展示整篇复制
   final bool showCopy;
+  /// 成文确认存入笔记
+  final VoidCallback? onSaveArticle;
   final Set<int> pickedIds;
   final ValueChanged<AgentCitation> onOpen;
   final ValueChanged<AgentTagChip> onOpenTag;
@@ -2399,6 +2525,8 @@ class _AssistantBlock extends StatelessWidget {
     final progressSeg = _transcriptProgressSegment;
     final canCopy =
         showCopy && text.trim().isNotEmpty && progressSeg == null;
+    final canSaveArticle =
+        onSaveArticle != null && text.trim().isNotEmpty && progressSeg == null;
     final think = thinking.trim();
     final allCites = _visibleCitations;
     final limit = citationShownCount < 1 ? 1 : citationShownCount;
@@ -2447,20 +2575,47 @@ class _AssistantBlock extends StatelessWidget {
             ],
           ),
         ],
-        if (canCopy)
+        if (canCopy || canSaveArticle)
           Align(
             alignment: Alignment.centerRight,
-            child: IconButton(
-              onPressed: () => _copyAll(context),
-              tooltip: '复制',
-              visualDensity: VisualDensity.compact,
-              padding: EdgeInsets.zero,
-              constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-              icon: const Icon(
-                Icons.copy_outlined,
-                size: 18,
-                color: Color(0xFF9AA3AF),
-              ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (canSaveArticle)
+                  TextButton(
+                    onPressed: onSaveArticle,
+                    style: TextButton.styleFrom(
+                      foregroundColor: _brand,
+                      visualDensity: VisualDensity.compact,
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                      minimumSize: const Size(0, 32),
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    ),
+                    child: const Text(
+                      '存入笔记',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                if (canCopy)
+                  IconButton(
+                    onPressed: () => _copyAll(context),
+                    tooltip: '复制',
+                    visualDensity: VisualDensity.compact,
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(
+                      minWidth: 32,
+                      minHeight: 32,
+                    ),
+                    icon: const Icon(
+                      Icons.copy_outlined,
+                      size: 18,
+                      color: Color(0xFF9AA3AF),
+                    ),
+                  ),
+              ],
             ),
           ),
         if (_showCitations) ...[

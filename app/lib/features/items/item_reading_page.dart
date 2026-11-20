@@ -8,10 +8,7 @@ import 'package:super_collection/core/analytics/analytics.dart';
 import 'package:super_collection/core/analytics/screen_dwell_tracker.dart';
 import 'package:super_collection/core/network/api_client.dart';
 import 'package:super_collection/core/network/media_http_headers.dart';
-import 'package:super_collection/core/ui/app_bottom_sheet.dart';
 import 'package:super_collection/core/ui/app_confirm_dialog.dart';
-import 'package:super_collection/core/ui/app_orientation.dart';
-import 'package:super_collection/core/ui/app_side_drawer.dart';
 import 'package:super_collection/core/ui/app_toast.dart';
 import 'package:super_collection/core/ui/parse_progress_tracker.dart';
 import 'package:super_collection/core/ui/pro_copy.dart';
@@ -20,8 +17,6 @@ import 'package:super_collection/features/collection/items_browse_page.dart';
 import 'package:super_collection/features/collection/tag_models.dart';
 import 'package:super_collection/features/collection/tags_repository.dart';
 import 'package:super_collection/features/home/home_format.dart';
-import 'package:super_collection/features/home/roam_models.dart';
-import 'package:super_collection/features/home/widgets/roam_quote_card.dart';
 import 'package:super_collection/features/items/ai_meta_models.dart';
 import 'package:super_collection/features/items/article_body_text.dart';
 import 'package:super_collection/features/items/article_content_blocks.dart';
@@ -39,7 +34,7 @@ import 'package:super_collection/features/items/reading_font_size_sheet.dart';
 import 'package:super_collection/features/items/reading_more_sheet.dart';
 import 'package:super_collection/features/items/reading_content_edit_page.dart';
 import 'package:super_collection/features/items/reading_mindmap_sheet.dart';
-import 'package:super_collection/features/items/reading_note_sheet.dart';
+import 'package:super_collection/features/items/reading_item_notes_sheet.dart';
 import 'package:super_collection/features/items/reading_quote_share.dart';
 import 'package:super_collection/features/items/reading_reparse_confirm_dialog.dart';
 import 'package:super_collection/features/items/reading_title_edit_dialog.dart';
@@ -50,7 +45,7 @@ import 'package:super_collection/features/items/transcript_models.dart';
 import 'package:super_collection/features/items/item_transcript_page.dart';
 import 'package:super_collection/features/items/item_transcript_refresh.dart';
 
-/// 本地阅读页：标题 + 可读正文（含标注高亮）；底栏 助手 / 标签 / 感想 / 更多（思维导图）。
+/// 本地阅读页：标题 + 可读正文（含标注高亮）；底栏 助手 / 标签 / 笔记 / 更多（思维导图）。
 /// 单篇解读 / 转写改走助手；不再单独挂 AI 解读与「更多」转写入口。
 class ItemReadingPage extends StatefulWidget {
   const ItemReadingPage({
@@ -73,7 +68,7 @@ class ItemReadingPage extends StatefulWidget {
   /// 打开后滚动到该标注/批注在正文中的位置（如漫游进入）
   final int? focusAnnotationId;
 
-  /// 打开后直接弹出感想（如漫游点感想进入）
+  /// 打开后直接弹出笔记（如漫游点想法进入）
   final bool openNoteOnLaunch;
 
   /// iPad 分栏嵌入：无返回钮，删除后回调宿主而非 pop。
@@ -173,7 +168,7 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
     _noteSheetLaunched = true;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      unawaited(_onNote());
+      unawaited(_onNote(initialFilter: ReadingNotesFilter.thought));
     });
   }
 
@@ -214,11 +209,26 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
     unawaited(ReadingFontPrefs.save(next));
   }
 
-  Future<void> _openAgent() => openAgent(
-        context,
-        focusItemId: _item.id,
-        focusItem: _item,
-      );
+  Future<void> _openAgent() async {
+    await openAgent(
+      context,
+      focusItemId: _item.id,
+      focusItem: _item,
+    );
+    // 助手可能写回笔记/标签等，关闭后拉最新篇
+    if (!mounted) return;
+    await _refreshItemQuietly();
+  }
+
+  Future<void> _refreshItemQuietly() async {
+    try {
+      final item = await _repo.getItem(widget.itemId);
+      if (!mounted) return;
+      setState(() => _item = item);
+    } catch (_) {
+      // 刷新失败不打断阅读
+    }
+  }
 
   void _onExternalTranscriptRefresh() {
     final id = ItemTranscriptRefresh.lastItemId;
@@ -1227,7 +1237,9 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
         context,
         annotationSavedToast(isPro: _isPro),
         actionLabel: '查看',
-        onAction: _showNoteAnnotationList,
+        onAction: () => unawaited(
+          _onNote(initialFilter: ReadingNotesFilter.annotation),
+        ),
       );
     }
   }
@@ -1320,138 +1332,6 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
     );
   }
 
-  bool _annotationHasNote(ItemAnnotation ann) =>
-      ann.note != null && ann.note!.trim().isNotEmpty;
-
-  RoamSnippet _annotationToRoamSnippet(ItemAnnotation ann) {
-    final hasNote = _annotationHasNote(ann);
-    return RoamSnippet(
-      id: 'local-ann-${ann.id}',
-      kind: hasNote ? 'note' : 'highlight',
-      text: hasNote ? ann.note!.trim() : ann.selectedText,
-      quote: hasNote ? ann.selectedText : null,
-      itemId: _item.id,
-      annotationId: ann.id,
-      annotationSource: ann.source,
-      createdAt: ann.createdAt,
-    );
-  }
-
-  void _showHighlightList() => _showAnnotationList(notesOnly: false);
-
-  void _showNoteAnnotationList() => _showAnnotationList(notesOnly: true);
-
-  /// [notesOnly] false=仅高亮（无批注正文）；true=有批注正文的列表。
-  void _showAnnotationList({bool notesOnly = false}) {
-    var items = _annotations
-        .where((a) => notesOnly ? _annotationHasNote(a) : !_annotationHasNote(a))
-        .toList();
-    final empty = notesOnly
-        ? (_isPro ? '暂无朱批' : '暂无批注')
-        : '暂无高亮';
-    final emptyHint = notesOnly
-        ? '选中正文后可添加批注'
-        : '选中正文后点「高亮」即可记下';
-
-    Widget emptyBody(double top, double bottom) {
-      return Padding(
-        padding: EdgeInsets.fromLTRB(28, top, 28, bottom),
-        child: Center(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                notesOnly
-                    ? Icons.sticky_note_2_outlined
-                    : Icons.border_color_outlined,
-                size: 28,
-                color: _muted.withValues(alpha: 0.45),
-              ),
-              const SizedBox(height: 14),
-              Text(
-                empty,
-                style: const TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w600,
-                  color: _text,
-                ),
-              ),
-              const SizedBox(height: 6),
-              Text(
-                emptyHint,
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 13,
-                  height: 1.4,
-                  color: _muted.withValues(alpha: 0.9),
-                ),
-              ),
-            ],
-          ),
-        ),
-      );
-    }
-
-    showAppSideDrawer<void>(
-      context: context,
-      builder: (drawerContext) {
-        final top = MediaQuery.paddingOf(drawerContext).top;
-        final bottom = MediaQuery.paddingOf(drawerContext).bottom;
-        return StatefulBuilder(
-          builder: (context, setDrawerState) {
-            if (items.isEmpty) return emptyBody(top, bottom);
-            return ListView.separated(
-              padding: EdgeInsets.fromLTRB(16, 12 + top, 16, 28 + bottom),
-              itemCount: items.length,
-              separatorBuilder: (_, __) => const SizedBox(height: 10),
-              itemBuilder: (context, index) {
-                final ann = items[index];
-                return RoamQuoteCard(
-                  snippet: _annotationToRoamSnippet(ann),
-                  // 标注列表完整展示；高亮列表仍截断
-                  maxLines: notesOnly ? null : 6,
-                  onTap: () {
-                    Navigator.pop(drawerContext);
-                    WidgetsBinding.instance.addPostFrameCallback((_) {
-                      if (mounted) _locateAnnotation(ann);
-                    });
-                  },
-                  onDelete: () async {
-                    final ok = await showAppConfirmDialog(
-                      drawerContext,
-                      title: deleteAnnotationTitle(
-                        isPro: _isPro,
-                        highlightOnly: !notesOnly,
-                      ),
-                      message: '删除后不可恢复。',
-                      confirmLabel: '删除',
-                    );
-                    if (ok != true) return;
-                    try {
-                      await _repo.deleteAnnotation(_item.id, ann.id);
-                      if (!mounted) return;
-                      setState(() {
-                        _annotations =
-                            _annotations.where((a) => a.id != ann.id).toList();
-                      });
-                      setDrawerState(() {
-                        items = items.where((a) => a.id != ann.id).toList();
-                      });
-                      AppToast.show(context, '已删除');
-                    } on ApiException catch (e) {
-                      if (!mounted) return;
-                      AppToast.show(context, e.message);
-                    }
-                  },
-                );
-              },
-            );
-          },
-        );
-      },
-    );
-  }
-
   Future<void> _onEditContent() async {
     if (!_item.isSuccess) return;
     if (_annotations.isNotEmpty) {
@@ -1488,20 +1368,54 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
     AppToast.show(context, '标题已更新');
   }
 
-  Future<void> _onNote() async {
-    final updated = await showReadingNoteSheet(
-      context,
-      itemId: _item.id,
-      initialNote: _item.note,
-      title: (_item.title ?? '').trim(),
-      link: _linkToCopy,
-      coverUrl: _item.shareCoverUrl,
-      pageUrl: _item.sourcePageUrl,
-    );
-    if (updated != null && mounted) setState(() => _item = updated);
+  /// 笔记弹层「文稿」：优先顶栏视频段，否则任一成功转写。
+  String? _notesTranscriptText() {
+    var seg = _item.segmentTranscript(TranscriptTargets.segmentVideoUrl);
+    if (seg == null || !seg.hasText) {
+      for (final e in _item.transcriptSegments.entries) {
+        if (e.value.isSuccess && e.value.hasText) {
+          seg = e.value;
+          break;
+        }
+      }
+    }
+    if (seg == null || !seg.hasText) return null;
+    return seg.text!.trim();
   }
 
-  bool get _hasNote => _item.note != null && _item.note!.trim().isNotEmpty;
+  Future<void> _onNote({
+    ReadingNotesFilter? initialFilter,
+  }) async {
+    // 助手分栏写想法等可能已改 note，打开前先拉最新
+    await _refreshItemQuietly();
+    if (!mounted) return;
+    final result = await showReadingItemNotesSheet(
+      context,
+      itemId: _item.id,
+      annotations: _annotations,
+      initialNote: _item.note,
+      transcriptText: _item.hasVideo ? _notesTranscriptText() : null,
+      shareTitle: (_item.title ?? '').trim(),
+      shareLink: _linkToCopy,
+      shareCoverUrl: _item.shareCoverUrl,
+      sharePageUrl: _item.sourcePageUrl,
+      showArticleFilter: _item.hasVideo || _item.isImageGallery,
+      showTranscriptFilter: _item.hasVideo,
+      isPro: _isPro,
+      initialFilter: initialFilter,
+    );
+    if (result == null || !mounted) return;
+    setState(() {
+      if (result.item != null) _item = result.item!;
+      if (result.annotations != null) _annotations = result.annotations!;
+    });
+    final locate = result.locateAnnotation;
+    if (locate != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _locateAnnotation(locate);
+      });
+    }
+  }
 
   /// 更多操作 sheet（思维导图）；转写请走助手。
   Future<void> _onMore() async {
@@ -1949,8 +1863,6 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
               onReparse: _reparseItem,
               onDelete: _confirmDelete,
               onFontSize: _openFontSizeSheet,
-              onHighlights: null,
-              onAnnotations: null,
             ),
             const Expanded(
               child: Center(child: CircularProgressIndicator()),
@@ -1976,8 +1888,6 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
               onReparse: _reparseItem,
               onDelete: _confirmDelete,
               onFontSize: _openFontSizeSheet,
-              onHighlights: null,
-              onAnnotations: null,
             ),
             Expanded(
               child: Center(
@@ -2156,16 +2066,6 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
                         onDelete: _confirmDelete,
                         onMarkUnread: _markAsUnread,
                         onFontSize: _openFontSizeSheet,
-                        onHighlights: canRead &&
-                                !_item.isImageGallery &&
-                                !_isTopBarTrueVideo
-                            ? _showHighlightList
-                            : null,
-                        onAnnotations: canRead &&
-                                !_item.isImageGallery &&
-                                !_isTopBarTrueVideo
-                            ? _showNoteAnnotationList
-                            : null,
                         onTranscript: canRead && _showTranscriptHeaderEntry
                             ? () => unawaited(_openTranscriptFromHeader())
                             : null,
@@ -2244,9 +2144,7 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
                                         ),
                                         _ActionItem(
                                           icon: Icons.edit_note_outlined,
-                                          label: '感想',
-                                          iconColor:
-                                              _hasNote ? _blue : null,
+                                          label: '笔记',
                                           onTap: () =>
                                               unawaited(_onNote()),
                                         ),
@@ -3400,8 +3298,6 @@ class _ReadingTopBar extends StatelessWidget {
     required this.onEditTitle,
     required this.onFontSize,
     this.onMarkUnread,
-    this.onHighlights,
-    this.onAnnotations,
     this.onTranscript,
     this.showBack = true,
     this.menuEnabled = true,
@@ -3418,8 +3314,6 @@ class _ReadingTopBar extends StatelessWidget {
   final VoidCallback onEditTitle;
   final VoidCallback onFontSize;
   final VoidCallback? onMarkUnread;
-  final VoidCallback? onHighlights;
-  final VoidCallback? onAnnotations;
   /// 视频类文稿入口
   final VoidCallback? onTranscript;
   final bool showBack;
@@ -3433,7 +3327,6 @@ class _ReadingTopBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final noteLabel = annotationSectionTitle(isPro: isPro);
     return Material(
       color: Colors.white,
       child: SafeArea(
@@ -3461,26 +3354,6 @@ class _ReadingTopBar extends StatelessWidget {
                 else
                   const SizedBox(width: 8),
                 const Spacer(),
-                if (onHighlights != null)
-                  IconButton(
-                    tooltip: '高亮',
-                    onPressed: onHighlights,
-                    icon: const Icon(
-                      Icons.border_color_outlined,
-                      size: 22,
-                      color: _text,
-                    ),
-                  ),
-                if (onAnnotations != null)
-                  IconButton(
-                    tooltip: noteLabel,
-                    onPressed: onAnnotations,
-                    icon: const Icon(
-                      Icons.sticky_note_2_outlined,
-                      size: 22,
-                      color: _text,
-                    ),
-                  ),
                 if (onTranscript != null)
                   IconButton(
                     tooltip: '文稿',

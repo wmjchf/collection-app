@@ -1,5 +1,6 @@
 const systemFilterService = require('./systemFilterService');
 const { mapItem, attachTagsToItems } = require('./itemService');
+const { parseItemThoughts } = require('./itemThoughts');
 const { pool } = require('../db');
 
 async function section(userId, code, tzOffsetMinutes) {
@@ -47,6 +48,29 @@ function mapRoamRow(row) {
   };
 }
 
+/** 想法 JSON 拆成多条漫游卡片 */
+function expandRoamRows(rows) {
+  const out = [];
+  for (const row of rows) {
+    if (String(row.kind) !== 'thought') {
+      out.push(mapRoamRow(row));
+      continue;
+    }
+    const thoughts = parseItemThoughts(row.text);
+    for (const t of thoughts) {
+      out.push(
+        mapRoamRow({
+          ...row,
+          sid: `t:${row.item_id}:${t.id}`,
+          text: t.text,
+          sort_at: t.createdAt || row.sort_at,
+        }),
+      );
+    }
+  }
+  return out;
+}
+
 const roamUnionSql = `
   SELECT * FROM (
     SELECT
@@ -84,41 +108,56 @@ const roamUnionSql = `
   ) t
 `;
 
+async function countThoughtSnippets(userId) {
+  const [rows] = await pool.execute(
+    `SELECT note
+     FROM items
+     WHERE user_id = :userId
+       AND deleted_at IS NULL
+       AND is_archived = 0
+       AND note IS NOT NULL
+       AND TRIM(note) <> ''`,
+    { userId },
+  );
+  let n = 0;
+  for (const row of rows) {
+    n += parseItemThoughts(row.note).length;
+  }
+  return n;
+}
+
 async function listRoam(userId, { limit = 20, offset = 0 } = {}) {
   const safeLimit = Math.min(Math.max(Number(limit) || 20, 1), 50);
   const safeOffset = Math.max(Number(offset) || 0, 0);
 
-  const [[countRow]] = await pool.execute(
-    `SELECT
-      (
-        SELECT COUNT(*)
-        FROM annotations a
-        INNER JOIN items i ON i.id = a.item_id
-        WHERE i.user_id = :userId
-          AND i.deleted_at IS NULL
-          AND i.is_archived = 0
-      ) + (
-        SELECT COUNT(*)
-        FROM items i
-        WHERE i.user_id = :userId
-          AND i.deleted_at IS NULL
-          AND i.is_archived = 0
-          AND i.note IS NOT NULL
-          AND TRIM(i.note) <> ''
-      ) AS total`,
-    { userId },
-  );
+  const [[countRow], thoughtTotal] = await Promise.all([
+    pool.execute(
+      `SELECT COUNT(*) AS total
+       FROM annotations a
+       INNER JOIN items i ON i.id = a.item_id
+       WHERE i.user_id = :userId
+         AND i.deleted_at IS NULL
+         AND i.is_archived = 0`,
+      { userId },
+    ).then(([rows]) => rows),
+    countThoughtSnippets(userId),
+  ]);
 
+  // 先多取一些再拆想法，减轻 LIMIT 落在 JSON 行上导致页内条数偏少
+  const fetchLimit = Math.min(safeLimit * 3 + safeOffset + 10, 120);
   const [rows] = await pool.execute(
     `${roamUnionSql}
      ORDER BY t.sort_at DESC, t.sid DESC
-     LIMIT ${safeLimit} OFFSET ${safeOffset}`,
+     LIMIT ${fetchLimit}`,
     { userId },
   );
 
+  const expanded = expandRoamRows(rows);
+  const page = expanded.slice(safeOffset, safeOffset + safeLimit);
+
   return {
-    total: Number(countRow?.total || 0),
-    items: rows.map(mapRoamRow),
+    total: Number(countRow?.total || 0) + thoughtTotal,
+    items: page,
   };
 }
 
