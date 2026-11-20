@@ -13,7 +13,7 @@ class Analytics {
 
   static final Analytics instance = Analytics._();
 
-  static const _appVersion = '1.7.12';
+  static const _appVersion = '1.7.13';
   static const _flushInterval = Duration(seconds: 8);
   static const _maxQueue = 40;
 
