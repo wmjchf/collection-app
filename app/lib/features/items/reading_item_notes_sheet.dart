@@ -166,17 +166,8 @@ class _ReadingItemNotesSheetState extends State<_ReadingItemNotesSheet> {
     }
   }
 
-  ReadingNotesFilter _defaultFilter() {
-    if (_highlights.isNotEmpty) return ReadingNotesFilter.highlight;
-    if (_notes.isNotEmpty) return ReadingNotesFilter.annotation;
-    if (_thoughtTabItems.isNotEmpty) return ReadingNotesFilter.thought;
-    if (_showArticle && _articles.isNotEmpty) {
-      return ReadingNotesFilter.article;
-    }
-    if (_hasTranscript) return ReadingNotesFilter.transcript;
-    // 全空不默认想法，避免空态还露出输入框
-    return ReadingNotesFilter.highlight;
-  }
+  /// 打开笔记始终落在第一个筛（高亮）；不按「谁有内容」跳转。
+  ReadingNotesFilter _defaultFilter() => ReadingNotesFilter.highlight;
 
   @override
   void initState() {
