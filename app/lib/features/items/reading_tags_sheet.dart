@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:super_collection/core/analytics/analytics.dart';
 import 'package:super_collection/core/network/api_client.dart';
 import 'package:super_collection/core/ui/app_bottom_sheet.dart';
+import 'package:super_collection/core/ui/app_orientation.dart';
 import 'package:super_collection/core/ui/app_toast.dart';
 import 'package:super_collection/features/collection/tag_models.dart';
 import 'package:super_collection/features/collection/tag_module_models.dart';
@@ -693,9 +694,14 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
     final maxSheetHeight = media.size.height * 0.82;
     final safeBottom = media.padding.bottom;
 
+    final tablet = AppOrientation.isTablet(context);
+    final sheetRadius = tablet
+        ? BorderRadius.circular(20)
+        : const BorderRadius.vertical(top: Radius.circular(20));
+
     return Material(
       color: Colors.white,
-      borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+      borderRadius: sheetRadius,
       clipBehavior: Clip.antiAlias,
       child: SizedBox(
         height: maxSheetHeight,

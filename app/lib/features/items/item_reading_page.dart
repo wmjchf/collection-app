@@ -9,6 +9,7 @@ import 'package:super_collection/core/analytics/screen_dwell_tracker.dart';
 import 'package:super_collection/core/network/api_client.dart';
 import 'package:super_collection/core/network/media_http_headers.dart';
 import 'package:super_collection/core/ui/app_confirm_dialog.dart';
+import 'package:super_collection/core/ui/app_orientation.dart';
 import 'package:super_collection/core/ui/app_toast.dart';
 import 'package:super_collection/core/ui/parse_progress_tracker.dart';
 import 'package:super_collection/core/ui/pro_copy.dart';
@@ -97,6 +98,8 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
   static const _bottomBarGap = 10.0;
   static const _bottomBarRadius = 28.0;
   static const _bottomBarAgentGap = 10.0;
+  /// iPad：标签/笔记/更多胶囊固定宽，整组靠右，避免通栏过长。
+  static const _bottomBarTabletPillWidth = 240.0;
 
   final _repo = ItemsRepository();
   final _tagsRepo = TagsRepository();
@@ -2089,62 +2092,83 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
                           _bottomBarHInset,
                           _bottomBarGap,
                         ),
-                        child: SizedBox(
-                          height: _bottomBarHeight,
-                          child: Row(
-                            children: [
-                              _AgentActionItem(
-                                onTap: () => unawaited(_openAgent()),
+                        child: Builder(
+                          builder: (context) {
+                            final tablet =
+                                AppOrientation.isTablet(context);
+                            final pill = DecoratedBox(
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(
+                                  _bottomBarRadius,
+                                ),
+                                border: Border.all(
+                                  color: const Color(0xFFE6E8ED),
+                                ),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black
+                                        .withValues(alpha: 0.06),
+                                    blurRadius: 16,
+                                    offset: const Offset(0, 4),
+                                  ),
+                                ],
                               ),
-                              const SizedBox(width: _bottomBarAgentGap),
-                              Expanded(
-                                child: DecoratedBox(
-                                  decoration: BoxDecoration(
-                                    color: Colors.white,
-                                    borderRadius: BorderRadius.circular(
-                                      _bottomBarRadius,
+                              child: ClipRRect(
+                                borderRadius: BorderRadius.circular(
+                                  _bottomBarRadius,
+                                ),
+                                child: Row(
+                                  children: [
+                                    _ActionItem(
+                                      icon: Icons.tag_outlined,
+                                      label: '标签',
+                                      onTap: _openTagsSheet,
                                     ),
-                                    border: Border.all(
-                                      color: const Color(0xFFE6E8ED),
+                                    _ActionItem(
+                                      icon: Icons.edit_note_outlined,
+                                      label: '笔记',
+                                      onTap: () => unawaited(_onNote()),
                                     ),
-                                    boxShadow: [
-                                      BoxShadow(
-                                        color: Colors.black
-                                            .withValues(alpha: 0.06),
-                                        blurRadius: 16,
-                                        offset: const Offset(0, 4),
-                                      ),
-                                    ],
-                                  ),
-                                  child: ClipRRect(
-                                    borderRadius: BorderRadius.circular(
-                                      _bottomBarRadius,
+                                    _ActionItem(
+                                      icon: Icons.more_vert,
+                                      label: '更多',
+                                      onTap: _onMore,
                                     ),
-                                    child: Row(
-                                      children: [
-                                        _ActionItem(
-                                          icon: Icons.tag_outlined,
-                                          label: '标签',
-                                          onTap: _openTagsSheet,
-                                        ),
-                                        _ActionItem(
-                                          icon: Icons.edit_note_outlined,
-                                          label: '笔记',
-                                          onTap: () =>
-                                              unawaited(_onNote()),
-                                        ),
-                                        _ActionItem(
-                                          icon: Icons.more_vert,
-                                          label: '更多',
-                                          onTap: _onMore,
-                                        ),
-                                      ],
-                                    ),
-                                  ),
+                                  ],
                                 ),
                               ),
-                            ],
-                          ),
+                            );
+                            return Align(
+                              alignment: tablet
+                                  ? Alignment.centerRight
+                                  : Alignment.center,
+                              child: SizedBox(
+                                height: _bottomBarHeight,
+                                child: Row(
+                                  mainAxisSize: tablet
+                                      ? MainAxisSize.min
+                                      : MainAxisSize.max,
+                                  children: [
+                                    _AgentActionItem(
+                                      onTap: () =>
+                                          unawaited(_openAgent()),
+                                    ),
+                                    const SizedBox(
+                                      width: _bottomBarAgentGap,
+                                    ),
+                                    if (tablet)
+                                      SizedBox(
+                                        width: _bottomBarTabletPillWidth,
+                                        child: pill,
+                                      )
+                                    else
+                                      Expanded(child: pill),
+                                  ],
+                                ),
+                              ),
+                            );
+                          },
                         ),
                       ),
                     ),
@@ -3694,6 +3718,8 @@ class _ActionItem extends StatelessWidget {
     return Expanded(
       child: InkWell(
         onTap: onTap,
+        // 与助手圆钮一致：去掉默认深色方块水波纹/高亮
+        overlayColor: WidgetStateProperty.all(Colors.transparent),
         child: Column(
           children: [
             const Spacer(),

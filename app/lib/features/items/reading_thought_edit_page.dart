@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:super_collection/core/ui/app_confirm_dialog.dart';
+import 'package:super_collection/core/ui/app_orientation.dart';
 import 'package:super_collection/features/items/item_thoughts.dart';
 
 class ThoughtEditResult {
@@ -19,7 +20,8 @@ class ThoughtEditResult {
 
 enum ThoughtPageMode { reading, editing }
 
-/// 全屏想法页：阅读态 / 编辑态；正文均为纯文本（不用 Markdown / 富文本）。
+/// 想法页：阅读态 / 编辑态；正文均为纯文本。
+/// 手机全屏 push；平板居中浮卡（对齐设置子页）。
 Future<ThoughtEditResult?> showReadingThoughtEditPage(
   BuildContext context, {
   String? initialTitle,
@@ -28,15 +30,73 @@ Future<ThoughtEditResult?> showReadingThoughtEditPage(
   /// 已有想法默认阅读；新建 / 助手划选默认编辑。
   ThoughtPageMode initialMode = ThoughtPageMode.editing,
 }) {
-  return Navigator.of(context).push<ThoughtEditResult>(
-    MaterialPageRoute(
-      builder: (_) => ReadingThoughtEditPage(
-        initialTitle: initialTitle ?? '',
-        initialText: initialText ?? '',
-        initialFormat: initialFormat,
-        initialMode: initialMode,
-      ),
-    ),
+  final page = ReadingThoughtEditPage(
+    initialTitle: initialTitle ?? '',
+    initialText: initialText ?? '',
+    initialFormat: initialFormat,
+    initialMode: initialMode,
+  );
+
+  if (!AppOrientation.isTablet(context)) {
+    return Navigator.of(context).push<ThoughtEditResult>(
+      MaterialPageRoute(builder: (_) => page),
+    );
+  }
+
+  final size = MediaQuery.sizeOf(context);
+  final width = (size.width * 0.48).clamp(420.0, 560.0);
+  final height = (size.height * 0.78).clamp(420.0, 760.0);
+
+  return showGeneralDialog<ThoughtEditResult>(
+    context: context,
+    // 须走页内关闭以确认放弃修改 / 带回已保存结果
+    barrierDismissible: false,
+    barrierLabel: MaterialLocalizations.of(context).modalBarrierDismissLabel,
+    barrierColor: Colors.black.withValues(alpha: 0.36),
+    transitionDuration: const Duration(milliseconds: 220),
+    pageBuilder: (ctx, animation, secondaryAnimation) {
+      return SizedBox.expand(
+        child: Center(
+          child: Padding(
+            padding: EdgeInsets.only(
+              bottom: MediaQuery.viewInsetsOf(ctx).bottom,
+            ),
+            child: Material(
+              color: Colors.transparent,
+              child: SizedBox(
+                width: width,
+                height: height,
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(16),
+                  child: MediaQuery(
+                    data: MediaQuery.of(ctx).copyWith(
+                      size: Size(width, height),
+                      padding: EdgeInsets.zero,
+                      viewPadding: EdgeInsets.zero,
+                    ),
+                    child: page,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+    },
+    transitionBuilder: (ctx, animation, secondaryAnimation, child) {
+      final curved = CurvedAnimation(
+        parent: animation,
+        curve: Curves.easeOutCubic,
+        reverseCurve: Curves.easeInCubic,
+      );
+      return FadeTransition(
+        opacity: curved,
+        child: ScaleTransition(
+          scale: Tween<double>(begin: 0.96, end: 1).animate(curved),
+          child: child,
+        ),
+      );
+    },
   );
 }
 
@@ -47,12 +107,15 @@ class ReadingThoughtEditPage extends StatefulWidget {
     required this.initialText,
     this.initialFormat = ItemNoteFormat.plain,
     this.initialMode = ThoughtPageMode.editing,
+    /// 嵌入笔记浮卡等场景：关闭时回调而不 [Navigator.pop]。
+    this.onClose,
   });
 
   final String initialTitle;
   final String initialText;
   final ItemNoteFormat initialFormat;
   final ThoughtPageMode initialMode;
+  final ValueChanged<ThoughtEditResult?>? onClose;
 
   @override
   State<ReadingThoughtEditPage> createState() => _ReadingThoughtEditPageState();
@@ -137,7 +200,13 @@ class _ReadingThoughtEditPageState extends State<ReadingThoughtEditPage> {
   Future<void> _close() async {
     if (!await _confirmDiscard() || !mounted) return;
     // 仅当本会话点过开书提交时才回写；纯阅读关闭不触达写库。
-    Navigator.pop(context, _sessionSaved);
+    final result = _sessionSaved;
+    final onClose = widget.onClose;
+    if (onClose != null) {
+      onClose(result);
+    } else {
+      Navigator.pop(context, result);
+    }
   }
 
   void _enterReading() {
@@ -291,6 +360,14 @@ class _ReadingThoughtEditPageState extends State<ReadingThoughtEditPage> {
           leading: IconButton(
             icon: const Icon(Icons.close_rounded),
             onPressed: () => unawaited(_close()),
+          ),
+          title: const Text(
+            '想法',
+            style: TextStyle(
+              fontSize: 17,
+              fontWeight: FontWeight.w600,
+              color: _text,
+            ),
           ),
           actions: [
             if (_isReading)

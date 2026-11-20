@@ -12,9 +12,10 @@ Future<ReadingMoreAction?> showReadingMoreSheet(
     context: context,
     barrierColor: const Color(0x66000000),
     // sheet 自带 SafeArea；padding 仅补键盘，避免手机侧缝变大
+    // isScrollControlled: true 让壳铺满屏，iPad Align.center 才能垂直居中
     padding: EdgeInsets.zero,
     includeSafeArea: false,
-    isScrollControlled: false,
+    isScrollControlled: true,
     builder: (context) => _ReadingMoreSheet(
       mindmapPending: mindmapPending,
     ),

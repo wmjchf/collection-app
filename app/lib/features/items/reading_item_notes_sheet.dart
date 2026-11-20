@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:super_collection/core/network/api_client.dart';
 import 'package:super_collection/core/ui/app_bottom_sheet.dart';
 import 'package:super_collection/core/ui/app_confirm_dialog.dart';
+import 'package:super_collection/core/ui/app_orientation.dart';
 import 'package:super_collection/core/ui/app_toast.dart';
 import 'package:super_collection/core/ui/pro_copy.dart';
 import 'package:super_collection/features/agent/agent_markdown.dart';
@@ -126,6 +127,10 @@ class _ReadingItemNotesSheetState extends State<_ReadingItemNotesSheet> {
   CollectionItem? _updatedItem;
   bool _saving = false;
   bool _dirtyAnns = false;
+  /// iPad：想法嵌在本浮卡内，避免叠第二层弹框。
+  ItemThought? _embeddedThought;
+  bool _embeddedThoughtOpen = false;
+  Completer<ThoughtEditResult?>? _embeddedThoughtCompleter;
 
   List<ItemAnnotation> get _highlights =>
       _annotations.where((a) => !AnnotationNoteStyle.hasNote(a)).toList();
@@ -181,6 +186,13 @@ class _ReadingItemNotesSheetState extends State<_ReadingItemNotesSheet> {
         : _defaultFilter();
   }
 
+  @override
+  void dispose() {
+    final c = _embeddedThoughtCompleter;
+    if (c != null && !c.isCompleted) c.complete(null);
+    super.dispose();
+  }
+
   void _pop({ItemAnnotation? locate}) {
     Navigator.pop(
       context,
@@ -206,16 +218,37 @@ class _ReadingItemNotesSheetState extends State<_ReadingItemNotesSheet> {
   Future<void> _openThoughtEditor({ItemThought? thought}) async {
     if (_saving) return;
     if (thought != null && !thought.isThought) return;
+    if (_embeddedThoughtOpen) return;
     setState(() => _filter = ReadingNotesFilter.thought);
-    final result = await showReadingThoughtEditPage(
-      context,
-      initialTitle: thought?.title ?? '',
-      initialText: thought?.text ?? '',
-      initialFormat: thought?.format ?? ItemNoteFormat.plain,
-      initialMode: thought == null
-          ? ThoughtPageMode.editing
-          : ThoughtPageMode.reading,
-    );
+
+    final ThoughtEditResult? result;
+    if (AppOrientation.isTablet(context)) {
+      // 同一张笔记浮卡内打开，不另叠居中弹框
+      final completer = Completer<ThoughtEditResult?>();
+      setState(() {
+        _embeddedThought = thought;
+        _embeddedThoughtOpen = true;
+        _embeddedThoughtCompleter = completer;
+      });
+      result = await completer.future;
+      if (mounted) {
+        setState(() {
+          _embeddedThoughtOpen = false;
+          _embeddedThought = null;
+          _embeddedThoughtCompleter = null;
+        });
+      }
+    } else {
+      result = await showReadingThoughtEditPage(
+        context,
+        initialTitle: thought?.title ?? '',
+        initialText: thought?.text ?? '',
+        initialFormat: thought?.format ?? ItemNoteFormat.plain,
+        initialMode: thought == null
+            ? ThoughtPageMode.editing
+            : ThoughtPageMode.reading,
+      );
+    }
     if (!mounted || result == null) return;
     final trimmed = result.text.trim();
     if (trimmed.isEmpty) return;
@@ -729,142 +762,176 @@ class _ReadingItemNotesSheetState extends State<_ReadingItemNotesSheet> {
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final media = MediaQuery.of(context);
-    final height = media.size.height * 0.88;
-    final safeBottom = media.padding.bottom;
-
-    return Material(
-      color: _pageBg,
-      borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-      clipBehavior: Clip.antiAlias,
-      child: SizedBox(
-        height: height,
-        child: Column(
-          children: [
-            const Padding(
-              padding: EdgeInsets.only(top: 12),
-              child: Center(
-                child: SizedBox(
-                  width: 40,
-                  height: 4,
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      color: _handle,
-                      borderRadius: BorderRadius.all(Radius.circular(2)),
-                    ),
-                  ),
+  /// 笔记列表壳（筛选项 + 列表）；iPad 上作为内层 Navigator 首页。
+  Widget _buildNotesChrome() {
+    final safeBottom = MediaQuery.paddingOf(context).bottom;
+    return Column(
+      children: [
+        const Padding(
+          padding: EdgeInsets.only(top: 12),
+          child: Center(
+            child: SizedBox(
+              width: 40,
+              height: 4,
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: _handle,
+                  borderRadius: BorderRadius.all(Radius.circular(2)),
                 ),
               ),
             ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 12, 8, 0),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          '这篇的笔记',
-                          style: TextStyle(
-                            fontSize: 20,
-                            fontWeight: FontWeight.w700,
-                            color: _text,
-                          ),
-                        ),
-                        SizedBox(height: 4),
-                        Text(
-                          '划线、批注与整理文章，也可写想法',
-                          style: TextStyle(
-                            fontSize: 13,
-                            height: 1.35,
-                            color: _muted,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  IconButton(
-                    tooltip: '关闭',
-                    onPressed: () => _pop(),
-                    icon: const Icon(Icons.close, size: 22, color: _muted),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 12),
-            SizedBox(
-              height: 36,
-              child: ListView(
-                scrollDirection: Axis.horizontal,
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                children: [
-                  _chip(
-                    label: '高亮',
-                    count: _highlights.length,
-                    selected: _filter == ReadingNotesFilter.highlight,
-                    onTap: () => _setFilter(ReadingNotesFilter.highlight),
-                  ),
-                  const SizedBox(width: 8),
-                  _chip(
-                    label: widget.isPro ? '朱批' : '批注',
-                    count: _notes.length,
-                    selected: _filter == ReadingNotesFilter.annotation,
-                    onTap: () => _setFilter(ReadingNotesFilter.annotation),
-                  ),
-                  const SizedBox(width: 8),
-                  _chip(
-                    label: '想法',
-                    count: _thoughtTabItems.length,
-                    selected: _filter == ReadingNotesFilter.thought,
-                    onTap: () => _setFilter(ReadingNotesFilter.thought),
-                  ),
-                  if (_showArticle) ...[
-                    const SizedBox(width: 8),
-                    _chip(
-                      label: '文章',
-                      selected: _filter == ReadingNotesFilter.article,
-                      onTap: () => _setFilter(ReadingNotesFilter.article),
-                    ),
-                  ],
-                  if (_showTranscript) ...[
-                    const SizedBox(width: 8),
-                    _chip(
-                      label: '文稿',
-                      selected: _filter == ReadingNotesFilter.transcript,
-                      onTap: () => _setFilter(ReadingNotesFilter.transcript),
-                    ),
-                  ],
-                ],
-              ),
-            ),
-            const SizedBox(height: 12),
-            Expanded(
-              child: Builder(
-                builder: (context) {
-                  final content = _buildContent();
-                  if (content == null) return _emptyState();
-                  return ListView(
-                    padding: EdgeInsets.fromLTRB(
-                      16,
-                      0,
-                      16,
-                      _filter == ReadingNotesFilter.thought
-                          ? 12
-                          : 12 + safeBottom,
-                    ),
-                    children: content,
-                  );
-                },
-              ),
-            ),
-            if (_filter == ReadingNotesFilter.thought)
-              _thoughtComposerAffordance(),
-          ],
+          ),
         ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(20, 12, 8, 0),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '这篇的笔记',
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.w700,
+                        color: _text,
+                      ),
+                    ),
+                    SizedBox(height: 4),
+                    Text(
+                      '划线、批注与整理文章，也可写想法',
+                      style: TextStyle(
+                        fontSize: 13,
+                        height: 1.35,
+                        color: _muted,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              IconButton(
+                tooltip: '关闭',
+                onPressed: () => _pop(),
+                icon: const Icon(Icons.close, size: 22, color: _muted),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 12),
+        SizedBox(
+          height: 36,
+          child: ListView(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            children: [
+              _chip(
+                label: '高亮',
+                count: _highlights.length,
+                selected: _filter == ReadingNotesFilter.highlight,
+                onTap: () => _setFilter(ReadingNotesFilter.highlight),
+              ),
+              const SizedBox(width: 8),
+              _chip(
+                label: widget.isPro ? '朱批' : '批注',
+                count: _notes.length,
+                selected: _filter == ReadingNotesFilter.annotation,
+                onTap: () => _setFilter(ReadingNotesFilter.annotation),
+              ),
+              const SizedBox(width: 8),
+              _chip(
+                label: '想法',
+                count: _thoughtTabItems.length,
+                selected: _filter == ReadingNotesFilter.thought,
+                onTap: () => _setFilter(ReadingNotesFilter.thought),
+              ),
+              if (_showArticle) ...[
+                const SizedBox(width: 8),
+                _chip(
+                  label: '文章',
+                  selected: _filter == ReadingNotesFilter.article,
+                  onTap: () => _setFilter(ReadingNotesFilter.article),
+                ),
+              ],
+              if (_showTranscript) ...[
+                const SizedBox(width: 8),
+                _chip(
+                  label: '文稿',
+                  selected: _filter == ReadingNotesFilter.transcript,
+                  onTap: () => _setFilter(ReadingNotesFilter.transcript),
+                ),
+              ],
+            ],
+          ),
+        ),
+        const SizedBox(height: 12),
+        Expanded(
+          child: Builder(
+            builder: (context) {
+              final content = _buildContent();
+              if (content == null) return _emptyState();
+              return ListView(
+                padding: EdgeInsets.fromLTRB(
+                  16,
+                  0,
+                  16,
+                  _filter == ReadingNotesFilter.thought
+                      ? 12
+                      : 12 + safeBottom,
+                ),
+                children: content,
+              );
+            },
+          ),
+        ),
+        if (_filter == ReadingNotesFilter.thought) _thoughtComposerAffordance(),
+      ],
+    );
+  }
+
+  void _finishEmbeddedThought(ThoughtEditResult? result) {
+    final c = _embeddedThoughtCompleter;
+    if (c == null || c.isCompleted) return;
+    c.complete(result);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final height = MediaQuery.sizeOf(context).height * 0.88;
+    final tablet = AppOrientation.isTablet(context);
+    final sheetRadius = tablet
+        ? BorderRadius.circular(20)
+        : const BorderRadius.vertical(top: Radius.circular(20));
+
+    final thought = _embeddedThought;
+    final body = tablet
+        ? Stack(
+            children: [
+              _buildNotesChrome(),
+              if (_embeddedThoughtOpen)
+                Positioned.fill(
+                  child: ReadingThoughtEditPage(
+                    initialTitle: thought?.title ?? '',
+                    initialText: thought?.text ?? '',
+                    initialFormat: thought?.format ?? ItemNoteFormat.plain,
+                    initialMode: thought == null
+                        ? ThoughtPageMode.editing
+                        : ThoughtPageMode.reading,
+                    onClose: _finishEmbeddedThought,
+                  ),
+                ),
+            ],
+          )
+        : _buildNotesChrome();
+
+    return Material(
+      color: _pageBg,
+      borderRadius: sheetRadius,
+      clipBehavior: Clip.antiAlias,
+      child: SizedBox(
+        height: height,
+        child: body,
       ),
     );
   }

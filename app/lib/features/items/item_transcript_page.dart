@@ -5,6 +5,7 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:super_collection/core/network/api_client.dart';
 import 'package:super_collection/core/ui/app_bottom_sheet.dart';
+import 'package:super_collection/core/ui/app_orientation.dart';
 import 'package:super_collection/core/ui/app_toast.dart';
 import 'package:super_collection/core/ui/pro_copy.dart';
 import 'package:super_collection/features/items/annotation_note_style.dart';
@@ -589,9 +590,14 @@ class _ItemTranscriptPageState extends State<ItemTranscriptPage> {
             ],
           );
 
+    final tablet = AppOrientation.isTablet(context);
+    final sheetRadius = tablet
+        ? BorderRadius.circular(20)
+        : const BorderRadius.vertical(top: Radius.circular(20));
+
     return Material(
       color: Colors.white,
-      borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+      borderRadius: sheetRadius,
       clipBehavior: Clip.antiAlias,
       child: SafeArea(
         top: false,
