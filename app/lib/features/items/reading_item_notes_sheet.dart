@@ -219,7 +219,7 @@ class _ReadingItemNotesSheetState extends State<_ReadingItemNotesSheet> {
       context,
       initialTitle: thought?.title ?? '',
       initialText: thought?.text ?? '',
-      initialFormat: thought?.format ?? ItemNoteFormat.markdown,
+      initialFormat: thought?.format ?? ItemNoteFormat.plain,
       initialMode: thought == null
           ? ThoughtPageMode.editing
           : ThoughtPageMode.reading,

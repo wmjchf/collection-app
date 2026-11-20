@@ -2,31 +2,29 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:super_collection/core/ui/app_confirm_dialog.dart';
-import 'package:super_collection/features/agent/agent_markdown.dart';
 import 'package:super_collection/features/items/item_thoughts.dart';
 
 class ThoughtEditResult {
   const ThoughtEditResult({
     required this.title,
     required this.text,
-    this.format = ItemNoteFormat.markdown,
+    this.format = ItemNoteFormat.plain,
   });
 
   final String title;
-  /// 正文源：当前为 Markdown（可当纯文本写）；日后富文本编辑器仍序列化为此字段。
+  /// 纯文本正文。
   final String text;
   final ItemNoteFormat format;
 }
 
 enum ThoughtPageMode { reading, editing }
 
-/// 全屏想法页：阅读态（MD 渲染）/ 编辑态（标题+正文源）。
-/// 正文按 Markdown 源编辑/保存，便于日后换富文本壳而不改存储。
+/// 全屏想法页：阅读态 / 编辑态；正文均为纯文本（不用 Markdown / 富文本）。
 Future<ThoughtEditResult?> showReadingThoughtEditPage(
   BuildContext context, {
   String? initialTitle,
   String? initialText,
-  ItemNoteFormat initialFormat = ItemNoteFormat.markdown,
+  ItemNoteFormat initialFormat = ItemNoteFormat.plain,
   /// 已有想法默认阅读；新建 / 助手划选默认编辑。
   ThoughtPageMode initialMode = ThoughtPageMode.editing,
 }) {
@@ -47,7 +45,7 @@ class ReadingThoughtEditPage extends StatefulWidget {
     super.key,
     required this.initialTitle,
     required this.initialText,
-    this.initialFormat = ItemNoteFormat.markdown,
+    this.initialFormat = ItemNoteFormat.plain,
     this.initialMode = ThoughtPageMode.editing,
   });
 
@@ -161,7 +159,7 @@ class _ReadingThoughtEditPageState extends State<ReadingThoughtEditPage> {
       _sessionSaved = ThoughtEditResult(
         title: _title.text.trim(),
         text: _body.text.trim(),
-        format: ItemNoteFormat.markdown,
+        format: ItemNoteFormat.plain,
       );
       _baselineTitle = _title.text;
       _baselineText = _body.text;
@@ -197,7 +195,7 @@ class _ReadingThoughtEditPageState extends State<ReadingThoughtEditPage> {
             ),
           )
         else
-          AgentMarkdown(
+          Text(
             body,
             style: const TextStyle(
               fontSize: 17,

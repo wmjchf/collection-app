@@ -187,7 +187,7 @@ AI 可挪条件：`origin=ai` 且 `placement_origin<>'user'`。
 | **last_read_at** | DATETIME(3) NULL | **最近一次打开本地阅读页的时间**；NULL=从未阅读 |
 | **media_kind** | ENUM('article','gallery','video') | 内容形态；解析/改正文时写入；索引 `(user_id, media_kind, created_at)` |
 | … | … | url、解析字段等 |
-| **note** | TEXT NULL | 笔记 JSON 数组 `[{id,text,title?,kind?,format?,createdAt?}]`；`kind=thought` 想法（可有 `title`）/ `article` 助手整理成文；`format` 默认 `markdown`（正文以 MD 为真相，富文本编辑器序列化回 MD；预留 `html`/`delta`）；旧 `excerpt` 仍可解析（App 并入想法只读）；旧纯文本视为单条想法 |
+| **note** | TEXT NULL | 笔记 JSON 数组 `[{id,text,title?,kind?,format?,createdAt?}]`；`kind=thought` 想法（可有 `title`）/ `article` 助手整理成文；想法 `format` 默认 `plain`；文章默认 `markdown`（预留 `html`/`delta`）；旧 `excerpt` 仍可解析（App 并入想法只读）；旧纯文本视为单条想法 |
 
 去重：同一用户下按 `canonical_url`（或 url）判重，索引建议 `(user_id, canonical_url(255))`。  
 首页「最近阅读」索引：`(user_id, last_read_at)`。

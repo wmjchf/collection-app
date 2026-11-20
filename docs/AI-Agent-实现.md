@@ -460,7 +460,7 @@ Body: { conversationId, messageId, approve: true|false }
 ### 9.1 路由与入口
 
 - `HomePage` AppBar `actions`：在添加按钮左侧加 `助手` chip（视觉对齐 Figma）
-- `AgentPage`（或 `AssistantPage`）：空态 / 线程 / 输入框；出处用接近 `ItemListTile` 的卡片；划选消息出阅读页同款工具条（复制 / 分享）
+- `AgentPage`（或 `AssistantPage`）：空态 / 线程 / 输入框；出处用接近 `ItemListTile` 的卡片；助手回复 `AgentMarkdown` + `SelectionArea` 跨段划选，工具条复制 / 写想法 / 分享
 - 埋点：`agent_open` / `agent_send` / `agent_citation_open` / `agent_upgrade_gate`
 
 ### 9.2 状态

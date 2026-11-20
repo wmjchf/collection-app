@@ -1,8 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:super_collection/features/items/article_markdown.dart';
 
+/// 助手划选工具条：anchors + 选中纯文本 + 清除选区。
+typedef AgentSelectionMenuBuilder = Widget Function(
+  BuildContext context,
+  TextSelectionToolbarAnchors anchors,
+  String selected,
+  VoidCallback clearSelection,
+);
+
 /// 助手回复轻量 Markdown：标题 / 加粗斜体 / 行内代码 / 列表 / 引用 / 分隔线 / 代码块 / GFM 表格。
-/// [contextMenuBuilder] 非空时正文可划选（复制 / 分享工具条）。
+///
+/// [selectionMenuBuilder] 非空时用 [SelectionArea] 包整篇，块内为普通 Text，
+/// 划选可跨段落 / 标题 / 列表（引用条、代码块、表格单元格等同区域）。
 class AgentMarkdown extends StatelessWidget {
   const AgentMarkdown(
     this.source, {
@@ -12,12 +22,12 @@ class AgentMarkdown extends StatelessWidget {
       color: Color(0xFF1F242E),
       height: 1.55,
     ),
-    this.contextMenuBuilder,
+    this.selectionMenuBuilder,
   });
 
   final String source;
   final TextStyle style;
-  final EditableTextContextMenuBuilder? contextMenuBuilder;
+  final AgentSelectionMenuBuilder? selectionMenuBuilder;
 
   static final _heading = RegExp(r'^(#{1,3})\s+(.+)$');
   static final _ul = RegExp(r'^[-*•]\s+(.+)$');
@@ -34,29 +44,36 @@ class AgentMarkdown extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final blocks = _parseBlocks(source);
-    if (blocks.isEmpty) {
-      return _textWidget('', style);
-    }
-    return Column(
+    final column = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        for (var i = 0; i < blocks.length; i++) ...[
-          if (i > 0) SizedBox(height: blocks[i].gapBefore),
-          blocks[i].build(style, contextMenuBuilder),
-        ],
+        if (blocks.isEmpty)
+          Text('', style: style)
+        else
+          for (var i = 0; i < blocks.length; i++) ...[
+            if (i > 0) ...[
+              SizedBox(height: blocks[i].gapBefore),
+              // 可选中换行，让跨段划选的 plainText 带结构（视觉高度靠上方 SizedBox）
+              Text(
+                blocks[i - 1] is _ListItemBlock && blocks[i] is _ListItemBlock
+                    ? '\n'
+                    : '\n\n',
+                style: const TextStyle(
+                  fontSize: 0.1,
+                  height: 0.1,
+                  color: Color(0x00000000),
+                ),
+              ),
+            ],
+            blocks[i].build(style),
+          ],
       ],
     );
-  }
-
-  Widget _textWidget(String text, TextStyle s) {
-    final menu = contextMenuBuilder;
-    if (menu == null) {
-      return Text(text, style: s);
-    }
-    return SelectableText(
-      text,
-      style: s,
-      contextMenuBuilder: menu,
+    final menu = selectionMenuBuilder;
+    if (menu == null) return column;
+    return _AgentSelectableMarkdown(
+      selectionMenuBuilder: menu,
+      child: column,
     );
   }
 
@@ -173,7 +190,9 @@ class AgentMarkdown extends StatelessWidget {
       final om = _ol.firstMatch(trimmed.trim());
       if (om != null) {
         flushPara(gap: 8);
-        out.add(_ListItemBlock(om.group(2)!, bullet: '${om.group(1)}.'));
+        out.add(
+          _ListItemBlock(om.group(2)!, bullet: '${om.group(1)}.'),
+        );
         continue;
       }
       para.add(trimmed);
@@ -186,27 +205,58 @@ class AgentMarkdown extends StatelessWidget {
   }
 }
 
-abstract class _Block {
-  double get gapBefore => 10;
-  Widget build(
-    TextStyle base,
-    EditableTextContextMenuBuilder? contextMenuBuilder,
-  );
+/// [SelectionArea] 无公开 getSelectedContent，用 onSelectionChanged 缓存选中文。
+class _AgentSelectableMarkdown extends StatefulWidget {
+  const _AgentSelectableMarkdown({
+    required this.selectionMenuBuilder,
+    required this.child,
+  });
+
+  final AgentSelectionMenuBuilder selectionMenuBuilder;
+  final Widget child;
+
+  @override
+  State<_AgentSelectableMarkdown> createState() =>
+      _AgentSelectableMarkdownState();
 }
 
-Widget _richText(
-  TextSpan span, {
-  required TextStyle base,
-  EditableTextContextMenuBuilder? contextMenuBuilder,
-}) {
-  if (contextMenuBuilder == null) {
-    return Text.rich(span, style: base);
+class _AgentSelectableMarkdownState extends State<_AgentSelectableMarkdown> {
+  String _selected = '';
+
+  @override
+  Widget build(BuildContext context) {
+    return SelectionArea(
+      onSelectionChanged: (content) {
+        _selected = content?.plainText ?? '';
+      },
+      contextMenuBuilder: (context, state) {
+        final selected = _selected;
+        if (selected.trim().isEmpty) {
+          return const SizedBox.shrink();
+        }
+        return widget.selectionMenuBuilder(
+          context,
+          state.contextMenuAnchors,
+          selected,
+          () {
+            ContextMenuController.removeAny();
+            state.hideToolbar();
+            state.clearSelection();
+          },
+        );
+      },
+      child: widget.child,
+    );
   }
-  return SelectableText.rich(
-    span,
-    style: base,
-    contextMenuBuilder: contextMenuBuilder,
-  );
+}
+
+abstract class _Block {
+  double get gapBefore => 10;
+  Widget build(TextStyle base);
+}
+
+Widget _richText(TextSpan span, {required TextStyle base}) {
+  return Text.rich(span, style: base);
 }
 
 class _HrBlock extends _Block {
@@ -214,12 +264,8 @@ class _HrBlock extends _Block {
 
   @override
   double get gapBefore => 14;
-
   @override
-  Widget build(
-    TextStyle base,
-    EditableTextContextMenuBuilder? contextMenuBuilder,
-  ) {
+  Widget build(TextStyle base) {
     return const Padding(
       padding: EdgeInsets.symmetric(vertical: 4),
       child: Divider(
@@ -236,16 +282,11 @@ class _ParagraphBlock extends _Block {
   final String text;
   @override
   final double gapBefore;
-
   @override
-  Widget build(
-    TextStyle base,
-    EditableTextContextMenuBuilder? contextMenuBuilder,
-  ) {
+  Widget build(TextStyle base) {
     return _richText(
       TextSpan(children: ArticleMarkdown.inlineSpans(text, style: base)),
       base: base,
-      contextMenuBuilder: contextMenuBuilder,
     );
   }
 }
@@ -257,12 +298,8 @@ class _HeadingBlock extends _Block {
 
   @override
   double get gapBefore => 14;
-
   @override
-  Widget build(
-    TextStyle base,
-    EditableTextContextMenuBuilder? contextMenuBuilder,
-  ) {
+  Widget build(TextStyle base) {
     final size = switch (level) {
       1 => 20.0,
       2 => 17.0,
@@ -276,7 +313,6 @@ class _HeadingBlock extends _Block {
     return _richText(
       TextSpan(children: ArticleMarkdown.inlineSpans(text, style: s)),
       base: s,
-      contextMenuBuilder: contextMenuBuilder,
     );
   }
 }
@@ -290,10 +326,7 @@ class _ListItemBlock extends _Block {
   double get gapBefore => 4;
 
   @override
-  Widget build(
-    TextStyle base,
-    EditableTextContextMenuBuilder? contextMenuBuilder,
-  ) {
+  Widget build(TextStyle base) {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -305,7 +338,6 @@ class _ListItemBlock extends _Block {
           child: _richText(
             TextSpan(children: ArticleMarkdown.inlineSpans(text, style: base)),
             base: base,
-            contextMenuBuilder: contextMenuBuilder,
           ),
         ),
       ],
@@ -316,12 +348,8 @@ class _ListItemBlock extends _Block {
 class _QuoteBlock extends _Block {
   _QuoteBlock(this.text);
   final String text;
-
   @override
-  Widget build(
-    TextStyle base,
-    EditableTextContextMenuBuilder? contextMenuBuilder,
-  ) {
+  Widget build(TextStyle base) {
     final s = base.copyWith(color: const Color(0xFF5C6675));
     return Container(
       width: double.infinity,
@@ -337,7 +365,6 @@ class _QuoteBlock extends _Block {
           children: ArticleMarkdown.inlineSpans(text, style: s),
         ),
         base: s,
-        contextMenuBuilder: contextMenuBuilder,
       ),
     );
   }
@@ -346,12 +373,8 @@ class _QuoteBlock extends _Block {
 class _CodeBlock extends _Block {
   _CodeBlock(this.text);
   final String text;
-
   @override
-  Widget build(
-    TextStyle base,
-    EditableTextContextMenuBuilder? contextMenuBuilder,
-  ) {
+  Widget build(TextStyle base) {
     final s = base.copyWith(
       fontFamily: 'Menlo',
       fontSize: (base.fontSize ?? 15) - 1,
@@ -366,13 +389,7 @@ class _CodeBlock extends _Block {
         borderRadius: BorderRadius.circular(10),
         border: Border.all(color: const Color(0xFFE6E8EB)),
       ),
-      child: contextMenuBuilder == null
-          ? Text(text, style: s)
-          : SelectableText(
-              text,
-              style: s,
-              contextMenuBuilder: contextMenuBuilder,
-            ),
+      child: Text(text, style: s),
     );
   }
 }
@@ -388,10 +405,7 @@ class _TableBlock extends _Block {
   double get gapBefore => 12;
 
   @override
-  Widget build(
-    TextStyle base,
-    EditableTextContextMenuBuilder? contextMenuBuilder,
-  ) {
+  Widget build(TextStyle base) {
     final colCount = rows.fold<int>(
       0,
       (m, r) => r.length > m ? r.length : m,
@@ -425,7 +439,6 @@ class _TableBlock extends _Block {
             ),
           ),
           base: header ? headerStyle : cellStyle,
-          contextMenuBuilder: contextMenuBuilder,
         ),
       );
     }

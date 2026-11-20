@@ -1477,7 +1477,8 @@ class _AgentPageState extends State<AgentPage> {
                                                   approve,
                                                 )
                                             : null,
-                                        contextMenuBuilder: _selectionToolbar(
+                                        selectionMenuBuilder:
+                                            _assistantSelectionMenu(
                                           m.citations,
                                         ),
                                       ),
@@ -1543,7 +1544,7 @@ class _AgentPageState extends State<AgentPage> {
     return _AgentPresetRules.starters(focused: false);
   }
 
-  /// 划选工具条：复制；写想法（正文填选中）；分享海报（先定出处篇）。
+  /// 用户气泡：单段 SelectableText 工具条。
   EditableTextContextMenuBuilder _selectionToolbar([
     List<AgentCitation> citations = const [],
   ]) {
@@ -1557,66 +1558,94 @@ class _AgentPageState extends State<AgentPage> {
       if (selected.trim().isEmpty) {
         return const SizedBox.shrink();
       }
-      final anchors = state.contextMenuAnchors;
-
-      void clearToolbar() {
-        ContextMenuController.removeAny();
-        state.hideToolbar();
-        state.userUpdateTextEditingValue(
-          value.copyWith(selection: TextSelection.collapsed(offset: sel.end)),
-          SelectionChangedCause.toolbar,
-        );
-      }
-
-      return TextSelectionToolbar(
-        anchorAbove: anchors.primaryAnchor,
-        anchorBelow: anchors.secondaryAnchor ?? anchors.primaryAnchor,
-        toolbarBuilder: (context, child) {
-          return Material(
-            color: const Color(0xFF1F242E),
-            elevation: 6,
-            shadowColor: Colors.black26,
-            borderRadius: BorderRadius.circular(8),
-            child: child,
+      return _agentSelectionToolbar(
+        context: context,
+        anchors: state.contextMenuAnchors,
+        selected: selected,
+        citations: citations,
+        clearToolbar: () {
+          ContextMenuController.removeAny();
+          state.hideToolbar();
+          state.userUpdateTextEditingValue(
+            value.copyWith(selection: TextSelection.collapsed(offset: sel.end)),
+            SelectionChangedCause.toolbar,
           );
         },
-        children: [
-          _AgentToolbarAction(
-            label: '复制',
-            onTap: () async {
-              await Clipboard.setData(ClipboardData(text: selected));
-              clearToolbar();
-              if (mounted) AppToast.show(context, '已复制');
-            },
-          ),
-          _AgentToolbarAction(
-            label: '写想法',
-            onTap: () {
-              clearToolbar();
-              unawaited(
-                _writeThoughtFromSelection(
-                  quote: selected,
-                  citations: citations,
-                ),
-              );
-            },
-          ),
-          _AgentToolbarAction(
-            label: '分享',
-            onTapWithOrigin: (origin) {
-              clearToolbar();
-              unawaited(
-                _shareQuotePoster(
-                  quote: selected,
-                  citations: citations,
-                  shareOrigin: origin,
-                ),
-              );
-            },
-          ),
-        ],
       );
     };
+  }
+
+  /// 助手回复：SelectionArea 跨块划选工具条。
+  AgentSelectionMenuBuilder _assistantSelectionMenu([
+    List<AgentCitation> citations = const [],
+  ]) {
+    return (context, anchors, selected, clearToolbar) {
+      return _agentSelectionToolbar(
+        context: context,
+        anchors: anchors,
+        selected: selected,
+        citations: citations,
+        clearToolbar: clearToolbar,
+      );
+    };
+  }
+
+  /// 划选工具条：复制 / 写想法（纯文本）/ 分享。
+  Widget _agentSelectionToolbar({
+    required BuildContext context,
+    required TextSelectionToolbarAnchors anchors,
+    required String selected,
+    required List<AgentCitation> citations,
+    required VoidCallback clearToolbar,
+  }) {
+    return TextSelectionToolbar(
+      anchorAbove: anchors.primaryAnchor,
+      anchorBelow: anchors.secondaryAnchor ?? anchors.primaryAnchor,
+      toolbarBuilder: (context, child) {
+        return Material(
+          color: const Color(0xFF1F242E),
+          elevation: 6,
+          shadowColor: Colors.black26,
+          borderRadius: BorderRadius.circular(8),
+          child: child,
+        );
+      },
+      children: [
+        _AgentToolbarAction(
+          label: '复制',
+          onTap: () async {
+            await Clipboard.setData(ClipboardData(text: selected));
+            clearToolbar();
+            if (mounted) AppToast.show(context, '已复制');
+          },
+        ),
+        _AgentToolbarAction(
+          label: '写想法',
+          onTap: () {
+            clearToolbar();
+            unawaited(
+              _writeThoughtFromSelection(
+                quote: selected,
+                citations: citations,
+              ),
+            );
+          },
+        ),
+        _AgentToolbarAction(
+          label: '分享',
+          onTapWithOrigin: (origin) {
+            clearToolbar();
+            unawaited(
+              _shareQuotePoster(
+                quote: selected,
+                citations: citations,
+                shareOrigin: origin,
+              ),
+            );
+          },
+        ),
+      ],
+    );
   }
 
   /// 划选进想法编辑页：选中文填正文，保存写入出处篇笔记。
@@ -2449,7 +2478,7 @@ class _AssistantBlock extends StatelessWidget {
     required this.onOpen,
     required this.onOpenTag,
     required this.onPick,
-    required this.contextMenuBuilder,
+    required this.selectionMenuBuilder,
     this.thinking = '',
     this.thinkingLive = false,
     this.awaitingAnswer = false,
@@ -2482,7 +2511,7 @@ class _AssistantBlock extends StatelessWidget {
   final ValueChanged<AgentCitation> onOpen;
   final ValueChanged<AgentTagChip> onOpenTag;
   final ValueChanged<AgentCitation> onPick;
-  final EditableTextContextMenuBuilder contextMenuBuilder;
+  final AgentSelectionMenuBuilder selectionMenuBuilder;
   final bool pickEnabled;
   final bool confirmEnabled;
   final ValueChanged<bool>? onConfirmAction;
@@ -2557,7 +2586,7 @@ class _AssistantBlock extends StatelessWidget {
             ),
             child: AgentMarkdown(
               text,
-              contextMenuBuilder: contextMenuBuilder,
+              selectionMenuBuilder: selectionMenuBuilder,
             ),
           ),
         if (progressSeg != null) ...[

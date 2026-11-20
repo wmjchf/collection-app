@@ -25,22 +25,28 @@ enum ItemNoteKind {
       };
 }
 
-/// 正文存储格式：规范以 Markdown 为唯一真相；富文本编辑器序列化回 MD。
-/// 预留 `html` / `delta` 仅作将来扩展，当前写入一律 `markdown`。
+/// 正文存储格式：想法为纯文本；文章为 Markdown。
 enum ItemNoteFormat {
+  plain,
   markdown,
   html,
   delta;
 
-  static ItemNoteFormat parse(Object? raw) {
+  static ItemNoteFormat parse(
+    Object? raw, {
+    ItemNoteFormat fallback = ItemNoteFormat.plain,
+  }) {
     final s = (raw ?? '').toString().trim().toLowerCase();
+    if (s.isEmpty) return fallback;
+    if (s == 'plain' || s == 'text') return ItemNoteFormat.plain;
+    if (s == 'markdown' || s == 'md') return ItemNoteFormat.markdown;
     if (s == 'html') return ItemNoteFormat.html;
     if (s == 'delta' || s == 'quill') return ItemNoteFormat.delta;
-    // plain / md / 缺省 → markdown
-    return ItemNoteFormat.markdown;
+    return fallback;
   }
 
   String get wire => switch (this) {
+        ItemNoteFormat.plain => 'plain',
         ItemNoteFormat.markdown => 'markdown',
         ItemNoteFormat.html => 'html',
         ItemNoteFormat.delta => 'delta',
@@ -55,17 +61,17 @@ class ItemThought {
     this.title,
     this.createdAt,
     this.kind = ItemNoteKind.thought,
-    this.format = ItemNoteFormat.markdown,
+    this.format = ItemNoteFormat.plain,
   });
 
   final String id;
-  /// 正文（规范：Markdown 源）
+  /// 正文：想法为纯文本；文章为 Markdown 源
   final String text;
   /// 标题（想法用；旧数据可空）
   final String? title;
   final DateTime? createdAt;
   final ItemNoteKind kind;
-  /// 正文格式；缺省 / 旧数据视为 markdown
+  /// 正文格式；想法默认 plain，文章默认 markdown
   final ItemNoteFormat format;
 
   bool get isExcerpt => kind == ItemNoteKind.excerpt;
@@ -102,13 +108,20 @@ class ItemThought {
     if (ca != null) {
       createdAt = DateTime.tryParse(ca.toString());
     }
+    final kind = ItemNoteKind.parse(raw['kind'] ?? raw['type']);
+    final formatFallback = kind == ItemNoteKind.article
+        ? ItemNoteFormat.markdown
+        : ItemNoteFormat.plain;
     return ItemThought(
       id: id.isNotEmpty ? id : _newId(),
       text: text,
       title: titleRaw.isEmpty ? null : titleRaw,
       createdAt: createdAt,
-      kind: ItemNoteKind.parse(raw['kind'] ?? raw['type']),
-      format: ItemNoteFormat.parse(raw['format'] ?? raw['contentFormat']),
+      kind: kind,
+      format: ItemNoteFormat.parse(
+        raw['format'] ?? raw['contentFormat'],
+        fallback: formatFallback,
+      ),
     );
   }
 
@@ -137,7 +150,7 @@ String _newId() {
 ItemThought newItemThought(
   String text, {
   String? title,
-  ItemNoteFormat format = ItemNoteFormat.markdown,
+  ItemNoteFormat format = ItemNoteFormat.plain,
 }) =>
     ItemThought(
       id: _newId(),
@@ -153,7 +166,7 @@ ItemThought newItemExcerpt(String text) => ItemThought(
       text: text.trim(),
       createdAt: DateTime.now().toUtc(),
       kind: ItemNoteKind.excerpt,
-      format: ItemNoteFormat.markdown,
+      format: ItemNoteFormat.plain,
     );
 
 ItemThought newItemArticle(String text) => ItemThought(
@@ -203,7 +216,12 @@ List<ItemThought> parseItemThoughts(String? note) {
   }
 
   return [
-    ItemThought(id: 'legacy', text: raw, kind: ItemNoteKind.thought),
+    ItemThought(
+      id: 'legacy',
+      text: raw,
+      kind: ItemNoteKind.thought,
+      format: ItemNoteFormat.plain,
+    ),
   ];
 }
 

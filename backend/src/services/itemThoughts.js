@@ -1,7 +1,7 @@
 /**
  * items.note：笔记列表 JSON；旧纯文本视为单条想法。
- * [{ id, text, title?, kind?, format?: 'markdown'|'html'|'delta', createdAt? }, ...]
- * 规范：text 以 Markdown 为唯一真相；富文本编辑器序列化回 markdown。
+ * [{ id, text, title?, kind?, format?: 'plain'|'markdown'|'html'|'delta', createdAt? }, ...]
+ * 想法 / 旧摘录：纯文本；文章：Markdown。
  */
 
 function newThoughtId() {
@@ -21,13 +21,20 @@ function parseKind(raw) {
   return 'thought';
 }
 
-function parseFormat(raw) {
+function parseFormat(raw, fallback = 'plain') {
   const s = String(raw || '')
     .trim()
     .toLowerCase();
+  if (!s) return fallback;
+  if (s === 'plain' || s === 'text') return 'plain';
+  if (s === 'markdown' || s === 'md') return 'markdown';
   if (s === 'html') return 'html';
   if (s === 'delta' || s === 'quill') return 'delta';
-  return 'markdown';
+  return fallback;
+}
+
+function defaultFormatForKind(kind) {
+  return kind === 'article' ? 'markdown' : 'plain';
 }
 
 function normalizeTitle(raw) {
@@ -50,12 +57,16 @@ function parseItemThoughts(note) {
           if (!text) continue;
           const id = String(e.id || '').trim() || newThoughtId();
           const title = normalizeTitle(e.title);
+          const kind = parseKind(e.kind || e.type);
           out.push({
             id,
             text,
             ...(title ? { title } : {}),
-            kind: parseKind(e.kind || e.type),
-            format: parseFormat(e.format || e.contentFormat),
+            kind,
+            format: parseFormat(
+              e.format || e.contentFormat,
+              defaultFormatForKind(kind),
+            ),
             createdAt: e.createdAt || e.created_at || null,
           });
         }
@@ -77,13 +88,17 @@ function parseItemThoughts(note) {
         const text = String(obj.text || obj.body || '').trim();
         if (text) {
           const title = normalizeTitle(obj.title);
+          const kind = parseKind(obj.kind || obj.type);
           return [
             {
               id: String(obj.id || '').trim() || 'legacy',
               text,
               ...(title ? { title } : {}),
-              kind: parseKind(obj.kind || obj.type),
-              format: parseFormat(obj.format || obj.contentFormat),
+              kind,
+              format: parseFormat(
+                obj.format || obj.contentFormat,
+                defaultFormatForKind(kind),
+              ),
               createdAt: obj.createdAt || obj.created_at || null,
             },
           ];
@@ -99,7 +114,7 @@ function parseItemThoughts(note) {
       id: 'legacy',
       text: raw,
       kind: 'thought',
-      format: 'markdown',
+      format: 'plain',
       createdAt: null,
     },
   ];
@@ -111,12 +126,13 @@ function serializeItemThoughts(thoughts) {
     const text = String(t?.text || '').trim();
     if (!text) continue;
     const title = normalizeTitle(t.title);
+    const kind = parseKind(t.kind);
     cleaned.push({
       id: String(t.id || '').trim() || newThoughtId(),
       text,
       ...(title ? { title } : {}),
-      kind: parseKind(t.kind),
-      format: parseFormat(t.format),
+      kind,
+      format: parseFormat(t.format, defaultFormatForKind(kind)),
       ...(t.createdAt ? { createdAt: t.createdAt } : {}),
     });
   }
