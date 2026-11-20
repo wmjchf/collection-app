@@ -256,37 +256,6 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
     );
   }
 
-  /// 视频类顶栏「文稿」：有成功文稿则打开；否则提示去助手转写。
-  bool get _showTranscriptHeaderEntry => _item.hasVideo;
-
-  Future<void> _openTranscriptFromHeader() async {
-    var key = TranscriptTargets.segmentVideoUrl;
-    var seg = _item.segmentTranscript(key);
-    if (seg == null || !seg.hasText) {
-      for (final e in _item.transcriptSegments.entries) {
-        if (e.value.isSuccess && e.value.hasText) {
-          key = e.key;
-          seg = e.value;
-          break;
-        }
-      }
-    }
-    if (seg == null || !seg.hasText) {
-      if (!mounted) return;
-      AppToast.show(context, '暂无文稿，可在助手里生成');
-      return;
-    }
-    await showItemTranscriptSheet(
-      context,
-      text: seg.text!.trim(),
-      cues: seg.cues,
-      fontSize: _bodyFontSize,
-      itemId: _item.id,
-      segmentKey: key,
-      onShareQuote: _shareExistingQuote,
-    );
-  }
-
   @override
   void dispose() {
     final seconds = DateTime.now().difference(_openedAt).inSeconds;
@@ -807,78 +776,89 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
     ];
   }
 
-  List<Widget> _buildTopBarVideoReadingChildren({
+  /// 顶栏真视频：近黑影院壳吸顶 16:9 + 纸白信息区（紧凑标题 / 原简介）。
+  List<Widget> _buildTopBarVideoReadingSlivers({
     required String title,
     required String body,
   }) {
     final screenW = MediaQuery.sizeOf(context).width;
     final playerH = (screenW * 9 / 16).clamp(180.0, 420.0);
+    const cinemaPad = 10.0;
+    final player = ItemVideoPlayer(
+      key: ValueKey('item-video-${_item.id}'),
+      url: _item.videoUrl!.trim(),
+      coverUrl: _item.coverImageUrl ??
+          (_item.displayImages.isNotEmpty
+              ? _item.displayImages.first
+              : null),
+      pageUrl: _item.sourcePageUrl,
+      platform: _item.platform,
+      pageAudio: _pageAudio,
+      height: playerH,
+      borderRadius: 0,
+      onRefreshUrl: _platformNeedsVideoRefresh ? _refreshVideoUrl : null,
+    );
     return [
-      ItemVideoPlayer(
-        key: ValueKey('item-video-${_item.id}'),
-        url: _item.videoUrl!.trim(),
-        coverUrl: _item.coverImageUrl ??
-            (_item.displayImages.isNotEmpty
-                ? _item.displayImages.first
-                : null),
-        pageUrl: _item.sourcePageUrl,
-        platform: _item.platform,
-        pageAudio: _pageAudio,
-        height: playerH,
-        borderRadius: 0,
-        onRefreshUrl:
-            _platformNeedsVideoRefresh ? _refreshVideoUrl : null,
+      SliverPersistentHeader(
+        pinned: true,
+        delegate: _PinnedVideoHeaderDelegate(
+          height: playerH + cinemaPad * 2,
+          playerHeight: playerH,
+          child: player,
+        ),
       ),
-      Padding(
-        padding: const EdgeInsets.fromLTRB(22, 16, 22, 0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            SelectableText(
-              title,
-              style: const TextStyle(
-                fontSize: 17,
-                fontWeight: FontWeight.w600,
-                color: _text,
-                height: 1.35,
-                letterSpacing: 0.1,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              _metaLine(),
-              style: const TextStyle(
-                fontSize: 12,
-                color: _muted,
-                height: 1.4,
-              ),
-            ),
-            if (_itemTags.isNotEmpty) ...[
-              const SizedBox(height: 10),
-              _ArticleTagHashtags(
-                tags: _itemTags,
-                onTap: _openTagList,
-                color: _tagSoftBlue,
-              ),
-            ],
-            if (_rawBody.isNotEmpty) ...[
-              const SizedBox(height: 14),
-              ..._buildBodyContent(
-                body,
-                gallery: false,
-              ),
-            ],
-            if (_loadingAnns) ...[
-              const SizedBox(height: 16),
-              const Center(
-                child: SizedBox(
-                  width: 18,
-                  height: 18,
-                  child: CircularProgressIndicator(strokeWidth: 2),
+      SliverToBoxAdapter(
+        child: ColoredBox(
+          color: Colors.white,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(22, 16, 22, 28),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                SelectableText(
+                  title,
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                    color: _text,
+                    height: 1.3,
+                    letterSpacing: 0.05,
+                  ),
                 ),
-              ),
-            ],
-          ],
+                const SizedBox(height: 6),
+                Text(
+                  _metaLine(),
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: _muted,
+                    height: 1.35,
+                  ),
+                ),
+                if (_itemTags.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  _ArticleTagHashtags(
+                    tags: _itemTags,
+                    onTap: _openTagList,
+                    color: _tagSoftBlue,
+                  ),
+                ],
+                if (_rawBody.isNotEmpty) ...[
+                  const SizedBox(height: 14),
+                  ..._buildBodyContent(body, gallery: false),
+                ],
+                if (_loadingAnns) ...[
+                  const SizedBox(height: 16),
+                  const Center(
+                    child: SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
         ),
       ),
     ];
@@ -1942,100 +1922,108 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
                 _syncReadProgress();
                 return false;
               },
-              child: ListView(
-                controller: _scrollController,
-                physics: const BouncingScrollPhysics(
-                  parent: AlwaysScrollableScrollPhysics(),
-                ),
-                // 避免播放器滚出视口后被 Platform View 回收/暂停（尤其播客音频）
-                cacheExtent: mq.size.height * 2,
-                padding: canRead &&
-                        (_item.isImageGallery || _isTopBarTrueVideo)
-                    ? const EdgeInsets.only(bottom: 28)
-                    : const EdgeInsets.fromLTRB(22, 18, 22, 28),
-                children: [
-                  if (canRead && _item.isImageGallery)
-                    ..._buildGalleryReadingChildren(
-                      title: title,
-                      body: body,
+              child: canRead && _isTopBarTrueVideo
+                  ? CustomScrollView(
+                      controller: _scrollController,
+                      physics: const BouncingScrollPhysics(
+                        parent: AlwaysScrollableScrollPhysics(),
+                      ),
+                      cacheExtent: mq.size.height * 2,
+                      slivers: _buildTopBarVideoReadingSlivers(
+                        title: title,
+                        body: body,
+                      ),
                     )
-                  else if (canRead && _isTopBarTrueVideo)
-                    ..._buildTopBarVideoReadingChildren(
-                      title: title,
-                      body: body,
-                    )
-                  else ...[
-                    SelectableText(
-                      title,
-                      style: const TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.w700,
-                        color: _text,
-                        height: 1.4,
-                        letterSpacing: 0.2,
+                  : ListView(
+                      controller: _scrollController,
+                      physics: const BouncingScrollPhysics(
+                        parent: AlwaysScrollableScrollPhysics(),
                       ),
-                    ),
-                    const SizedBox(height: 12),
-                    Text(
-                      _metaLine(),
-                      style: const TextStyle(
-                        fontSize: 12,
-                        color: _muted,
-                        height: 1.4,
-                      ),
-                    ),
-                    if (canRead && _itemTags.isNotEmpty) ...[
-                      const SizedBox(height: 14),
-                      _ArticleTagHashtags(
-                        tags: _itemTags,
-                        onTap: _openTagList,
-                      ),
-                    ],
-                    const SizedBox(height: 22),
-                    if (!canRead) ...[
-                      _ReadingStatusChip(status: _item.status),
-                      const SizedBox(height: 16),
-                      if (_item.isPending)
-                        const _ReadingPendingCard()
-                      else if (_item.isFailed)
-                        _ReadingFailedCard(
-                          message: _item.errorMessage,
-                          onRetry: _reparseItem,
-                        ),
-                    ] else ...[
-                      if (_item.hasVideo && !_hasInlineVideos) ...[
-                        ItemVideoPlayer(
-                          key: ValueKey('item-video-${_item.id}'),
-                          url: _item.videoUrl!.trim(),
-                          coverUrl: _item.coverImageUrl ??
-                              (_item.displayImages.isNotEmpty
-                                  ? _item.displayImages.first
-                                  : null),
-                          pageUrl: _item.sourcePageUrl,
-                          platform: _item.platform,
-                          pageAudio: _pageAudio,
-                          onRefreshUrl: _platformNeedsVideoRefresh
-                              ? _refreshVideoUrl
-                              : null,
-                        ),
-                        const SizedBox(height: 18),
-                      ],
-                      ..._buildBodyContent(body, gallery: false),
-                      if (_loadingAnns) ...[
-                        const SizedBox(height: 16),
-                        const Center(
-                          child: SizedBox(
-                            width: 18,
-                            height: 18,
-                            child: CircularProgressIndicator(strokeWidth: 2),
+                      // 避免播放器滚出视口后被 Platform View 回收/暂停（尤其播客音频）
+                      cacheExtent: mq.size.height * 2,
+                      padding: canRead && _item.isImageGallery
+                          ? const EdgeInsets.only(bottom: 28)
+                          : const EdgeInsets.fromLTRB(22, 18, 22, 28),
+                      children: [
+                        if (canRead && _item.isImageGallery)
+                          ..._buildGalleryReadingChildren(
+                            title: title,
+                            body: body,
+                          )
+                        else ...[
+                          SelectableText(
+                            title,
+                            style: const TextStyle(
+                              fontSize: 20,
+                              fontWeight: FontWeight.w700,
+                              color: _text,
+                              height: 1.4,
+                              letterSpacing: 0.2,
+                            ),
                           ),
-                        ),
+                          const SizedBox(height: 12),
+                          Text(
+                            _metaLine(),
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: _muted,
+                              height: 1.4,
+                            ),
+                          ),
+                          if (canRead && _itemTags.isNotEmpty) ...[
+                            const SizedBox(height: 14),
+                            _ArticleTagHashtags(
+                              tags: _itemTags,
+                              onTap: _openTagList,
+                            ),
+                          ],
+                          const SizedBox(height: 22),
+                          if (!canRead) ...[
+                            _ReadingStatusChip(status: _item.status),
+                            const SizedBox(height: 16),
+                            if (_item.isPending)
+                              const _ReadingPendingCard()
+                            else if (_item.isFailed)
+                              _ReadingFailedCard(
+                                message: _item.errorMessage,
+                                onRetry: _reparseItem,
+                              ),
+                          ] else ...[
+                            if (_item.hasVideo && !_hasInlineVideos) ...[
+                              ItemVideoPlayer(
+                                key: ValueKey('item-video-${_item.id}'),
+                                url: _item.videoUrl!.trim(),
+                                coverUrl: _item.coverImageUrl ??
+                                    (_item.displayImages.isNotEmpty
+                                        ? _item.displayImages.first
+                                        : null),
+                                pageUrl: _item.sourcePageUrl,
+                                platform: _item.platform,
+                                pageAudio: _pageAudio,
+                                onRefreshUrl: _platformNeedsVideoRefresh
+                                    ? _refreshVideoUrl
+                                    : null,
+                              ),
+                              const SizedBox(height: 18),
+                            ],
+                            ..._buildBodyContent(body, gallery: false),
+                            if (_loadingAnns) ...[
+                              const SizedBox(height: 16),
+                              const Center(
+                                child: SizedBox(
+                                  width: 18,
+                                  height: 18,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ],
+                        ],
                       ],
-                    ],
-                  ],
-                ],
-              ),
-              ),
+                    ),
+            ),
           ),
           Positioned(
             top: 0,
@@ -2066,9 +2054,6 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
                         onDelete: _confirmDelete,
                         onMarkUnread: _markAsUnread,
                         onFontSize: _openFontSizeSheet,
-                        onTranscript: canRead && _showTranscriptHeaderEntry
-                            ? () => unawaited(_openTranscriptFromHeader())
-                            : null,
                       ),
                       if (canRead)
                         _ReadingProgressBar(progress: _readProgress),
@@ -3298,7 +3283,6 @@ class _ReadingTopBar extends StatelessWidget {
     required this.onEditTitle,
     required this.onFontSize,
     this.onMarkUnread,
-    this.onTranscript,
     this.showBack = true,
     this.menuEnabled = true,
     this.editEnabled = false,
@@ -3314,8 +3298,6 @@ class _ReadingTopBar extends StatelessWidget {
   final VoidCallback onEditTitle;
   final VoidCallback onFontSize;
   final VoidCallback? onMarkUnread;
-  /// 视频类文稿入口
-  final VoidCallback? onTranscript;
   final bool showBack;
   final bool menuEnabled;
   final bool editEnabled;
@@ -3354,16 +3336,6 @@ class _ReadingTopBar extends StatelessWidget {
                 else
                   const SizedBox(width: 8),
                 const Spacer(),
-                if (onTranscript != null)
-                  IconButton(
-                    tooltip: '文稿',
-                    onPressed: onTranscript,
-                    icon: const Icon(
-                      Icons.article_outlined,
-                      size: 22,
-                      color: _text,
-                    ),
-                  ),
                 IconButton(
                   tooltip: '文字大小',
                   onPressed: onFontSize,
@@ -3752,6 +3724,59 @@ class _ActionItem extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+/// 顶栏真视频吸顶影院壳：近黑底 + 窄上下黑边，画面居中 16:9。
+class _PinnedVideoHeaderDelegate extends SliverPersistentHeaderDelegate {
+  _PinnedVideoHeaderDelegate({
+    required this.height,
+    required this.playerHeight,
+    required this.child,
+  });
+
+  /// 含上下黑边的吸顶总高
+  final double height;
+  final double playerHeight;
+  final Widget child;
+
+  static const _cinema = Color(0xFF0C0C0C);
+
+  @override
+  double get minExtent => height;
+
+  @override
+  double get maxExtent => height;
+
+  @override
+  Widget build(
+    BuildContext context,
+    double shrinkOffset,
+    bool overlapsContent,
+  ) {
+    return Material(
+      color: _cinema,
+      elevation: overlapsContent ? 2 : 0,
+      shadowColor: Colors.black54,
+      child: SizedBox(
+        height: height,
+        width: double.infinity,
+        child: Center(
+          child: SizedBox(
+            height: playerHeight,
+            width: double.infinity,
+            child: child,
+          ),
+        ),
+      ),
+    );
+  }
+
+  @override
+  bool shouldRebuild(covariant _PinnedVideoHeaderDelegate oldDelegate) {
+    return height != oldDelegate.height ||
+        playerHeight != oldDelegate.playerHeight ||
+        child != oldDelegate.child;
   }
 }
 

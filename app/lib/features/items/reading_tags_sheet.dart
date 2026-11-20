@@ -33,6 +33,8 @@ Future<void> showReadingTagsSheet(
   if (!context.mounted) return;
   await showAppBottomSheet<void>(
     context: context,
+    padding: EdgeInsets.zero,
+    includeSafeArea: false,
     builder: (context) => _ReadingTagsSheet(
       itemId: itemId,
       session: session,
@@ -687,80 +689,94 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final maxSheetHeight = MediaQuery.sizeOf(context).height * 0.82;
+    final media = MediaQuery.of(context);
+    final maxSheetHeight = media.size.height * 0.82;
+    final safeBottom = media.padding.bottom;
 
     return Material(
       color: Colors.white,
-      borderRadius: BorderRadius.circular(24),
+      borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
       clipBehavior: Clip.antiAlias,
       child: SizedBox(
         height: maxSheetHeight,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Center(
-                child: Container(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const Padding(
+              padding: EdgeInsets.only(top: 12),
+              child: Center(
+                child: SizedBox(
                   width: 40,
                   height: 4,
-                  decoration: BoxDecoration(
-                    color: _handle,
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 12),
-              _buildTitleRow(),
-              const SizedBox(height: 12),
-              _buildSearchField(),
-              const SizedBox(height: 12),
-              Expanded(
-                child: NotificationListener<ScrollNotification>(
-                  onNotification: (n) {
-                    if (n is ScrollStartNotification &&
-                        n.dragDetails != null) {
-                      _dismissSearchFocus();
-                    }
-                    return false;
-                  },
-                  child: GestureDetector(
-                    onTap: _dismissSearchFocus,
-                    behavior: HitTestBehavior.translucent,
-                    child: SingleChildScrollView(
-                      child: _buildBody(),
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: _handle,
+                      borderRadius: BorderRadius.all(Radius.circular(2)),
                     ),
                   ),
                 ),
               ),
-              const SizedBox(height: 12),
-              SizedBox(
-                width: double.infinity,
-                height: 48,
-                child: FilledButton(
-                  onPressed: _loading || _saving
-                      ? null
-                      : () {
-                          _dismissSearchFocus();
-                          unawaited(_save());
+            ),
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    _buildTitleRow(),
+                    const SizedBox(height: 12),
+                    _buildSearchField(),
+                    const SizedBox(height: 12),
+                    Expanded(
+                      child: NotificationListener<ScrollNotification>(
+                        onNotification: (n) {
+                          if (n is ScrollStartNotification &&
+                              n.dragDetails != null) {
+                            _dismissSearchFocus();
+                          }
+                          return false;
                         },
-                  style: FilledButton.styleFrom(
-                    backgroundColor: _blue,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
+                        child: GestureDetector(
+                          onTap: _dismissSearchFocus,
+                          behavior: HitTestBehavior.translucent,
+                          child: SingleChildScrollView(
+                            child: _buildBody(),
+                          ),
+                        ),
+                      ),
                     ),
-                  ),
-                  child: Text(
-                    _saving ? '保存中…' : '完成 ($_selectedCount)',
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      width: double.infinity,
+                      height: 48,
+                      child: FilledButton(
+                        onPressed: _loading || _saving
+                            ? null
+                            : () {
+                                _dismissSearchFocus();
+                                unawaited(_save());
+                              },
+                        style: FilledButton.styleFrom(
+                          backgroundColor: _blue,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                        child: Text(
+                          _saving ? '保存中…' : '完成 ($_selectedCount)',
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
                     ),
-                  ),
+                  ],
                 ),
               ),
-            ],
-          ),
+            ),
+            SizedBox(height: 12 + safeBottom),
+          ],
         ),
       ),
     );

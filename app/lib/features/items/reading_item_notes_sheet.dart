@@ -113,10 +113,11 @@ class _ReadingItemNotesSheetState extends State<_ReadingItemNotesSheet> {
   static const _text = Color(0xFF1F242E);
   static const _muted = Color(0xFF737A85);
   static const _blue = Color(0xFF2F6FED);
-  static const _pageBg = Color(0xFFF3F4F6);
+  static const _pageBg = Colors.white;
   static const _chipIdle = Color(0xFFF5F7FA);
   static const _yellowBar = Color(0xFFE8B84A);
   static const _noteBubble = Color(0xFFEAF1FF);
+  static const _handle = Color(0xFFE5E8ED);
 
   final _repo = ItemsRepository();
   late List<ItemAnnotation> _annotations;
@@ -399,6 +400,7 @@ class _ReadingItemNotesSheetState extends State<_ReadingItemNotesSheet> {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFE6E8EB)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -606,6 +608,7 @@ class _ReadingItemNotesSheetState extends State<_ReadingItemNotesSheet> {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFE6E8EB)),
       ),
       child: Text(
         polished,
@@ -740,8 +743,23 @@ class _ReadingItemNotesSheetState extends State<_ReadingItemNotesSheet> {
         height: height,
         child: Column(
           children: [
+            const Padding(
+              padding: EdgeInsets.only(top: 12),
+              child: Center(
+                child: SizedBox(
+                  width: 40,
+                  height: 4,
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: _handle,
+                      borderRadius: BorderRadius.all(Radius.circular(2)),
+                    ),
+                  ),
+                ),
+              ),
+            ),
             Padding(
-              padding: const EdgeInsets.fromLTRB(20, 16, 8, 0),
+              padding: const EdgeInsets.fromLTRB(20, 12, 8, 0),
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
