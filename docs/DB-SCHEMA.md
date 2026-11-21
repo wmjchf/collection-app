@@ -188,10 +188,6 @@ AI 可挪条件：`origin=ai` 且 `placement_origin<>'user'`。
 | **media_kind** | ENUM('article','gallery','video') | 内容形态；解析/改正文时写入；索引 `(user_id, media_kind, created_at)` |
 | … | … | url、解析字段等 |
 | **note** | TEXT NULL | 笔记 JSON 数组 `[{id,text,title?,kind?,format?,createdAt?}]`；`kind=thought` 想法（可有 `title`）/ `article` 助手整理成文；想法 `format` 默认 `plain`；文章默认 `markdown`（预留 `html`/`delta`）；旧 `excerpt` 仍可解析（App 并入想法只读）；旧纯文本视为单条想法 |
-| **agent_digest** | VARCHAR(600) NULL | 助手搜库用检索卡（粗摘要）；解析/转写/改正文后自动生成；**不展示给用户**、不计解读额度 |
-| **agent_digest_hash** | CHAR(24) NULL | 生成 digest 时的内容哈希；正文变了再重跑 |
-
-迁移：`backend/sql/045_item_agent_digest.sql`；执行：`cd backend && pnpm db:migrate`（或指定 `045`）。
 
 去重：同一用户下按 `canonical_url`（或 url）判重，索引建议 `(user_id, canonical_url(255))`。  
 首页「最近阅读」索引：`(user_id, last_read_at)`。
@@ -214,6 +210,37 @@ API：`GET …/transcript-targets`、`POST …/transcript`（body.segmentKey）�
 ## 6. `item_tags` / 7. `annotations`
 
 同前；数据隔离通过 `items.user_id` 间接保证（操作前校验 item 归属）。
+
+---
+
+## 6b. LLM Wiki（助手检索用；用户无感）
+
+`raw` = `items` 正文/转写；Wiki 只读 raw、不改 raw。ingest 免费、不计解读/Agent 额度。
+
+### `wiki_pages`
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| user_id | BIGINT UNSIGNED | FK → users |
+| kind | ENUM(`source`,`entity`,`concept`,`index`) | 源页 / 实体 / 概念 / 每用户目录 |
+| slug | VARCHAR(191) | 用户内唯一（与 kind 组合） |
+| title / body / summary | … | Markdown body；可含 `[[slug]]` |
+| item_id | BIGINT UNSIGNED NULL | 仅 `source`：一对一绑定收藏 |
+| content_hash | CHAR(24) NULL | 源页对 item 内容哈希；未变则跳过 ingest |
+
+唯一：`(user_id, kind, slug)`；`source` 另唯一 `(user_id, item_id)`。
+
+### `wiki_links`
+
+| 字段 | 说明 |
+| --- | --- |
+| from_page_id / to_page_id / rel | 交叉链接；`rel` 如 `mentions`；唯一 `(from, to, rel)`；反向查询 = 日后双链 backlinks |
+
+### `wiki_log`
+
+append-only：`op`=`ingest`/`lint` 等，便于排障（不进 App）。
+
+迁移：`046_user_wiki.sql`；退役检索卡列：`047_drop_item_agent_digest.sql`（原 `045` 曾加 `items.agent_digest`）。执行：`cd backend && pnpm db:migrate`。
 
 ---
 

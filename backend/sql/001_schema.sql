@@ -109,8 +109,6 @@ CREATE TABLE `items` (
   `media_kind` ENUM('article', 'gallery', 'video') NOT NULL DEFAULT 'article' COMMENT '内容形态：文章/图集/视频',
   `transcript_segments` JSON DEFAULT NULL COMMENT '分段转写 {segmentKey:{status,text,...}}',
   `ai_meta` JSON DEFAULT NULL COMMENT 'AI 建议/导图状态 {tags,mindmap,model}',
-  `agent_digest` VARCHAR(600) DEFAULT NULL COMMENT 'Agent 检索卡：粗摘要，不展示给用户',
-  `agent_digest_hash` CHAR(24) DEFAULT NULL COMMENT '生成 digest 时的内容哈希',
   `platform` VARCHAR(32) NOT NULL DEFAULT 'web',
   `status` ENUM('pending', 'success', 'failed') NOT NULL DEFAULT 'pending',
   `error_message` VARCHAR(512) DEFAULT NULL,

@@ -53,6 +53,8 @@ const MIGRATION_FILES = [
   '043_agent_message_embeddings.sql',
   '044_user_agent_profile.sql',
   '045_item_agent_digest.sql',
+  '046_user_wiki.sql',
+  '047_drop_item_agent_digest.sql',
 ];
 
 async function getConnection() {
@@ -519,6 +521,32 @@ async function apply045(conn, dbName) {
   }
 }
 
+async function apply046(conn, dbName) {
+  if (await tableExists(conn, dbName, 'wiki_pages')) {
+    console.log('[db:migrate] 046: wiki_pages 已存在，跳过');
+    return;
+  }
+  await runSqlFile(conn, '046_user_wiki.sql');
+  console.log('[db:migrate] 046: wiki_pages / wiki_links / wiki_log');
+}
+
+async function apply047(conn, dbName) {
+  if (await columnExists(conn, dbName, 'items', 'agent_digest_hash')) {
+    await conn.query('ALTER TABLE `items` DROP COLUMN `agent_digest_hash`');
+    console.log('[db:migrate] 047: drop items.agent_digest_hash');
+  }
+  if (await columnExists(conn, dbName, 'items', 'agent_digest')) {
+    await conn.query('ALTER TABLE `items` DROP COLUMN `agent_digest`');
+    console.log('[db:migrate] 047: drop items.agent_digest');
+  }
+  if (
+    !(await columnExists(conn, dbName, 'items', 'agent_digest')) &&
+    !(await columnExists(conn, dbName, 'items', 'agent_digest_hash'))
+  ) {
+    console.log('[db:migrate] 047: agent_digest 列已不存在');
+  }
+}
+
 async function applyMigration(conn, dbName, file) {
   if (file === '002_last_read_at.sql') {
     await apply002(conn, dbName);
@@ -586,6 +614,14 @@ async function applyMigration(conn, dbName, file) {
   }
   if (file === '045_item_agent_digest.sql') {
     await apply045(conn, dbName);
+    return;
+  }
+  if (file === '046_user_wiki.sql') {
+    await apply046(conn, dbName);
+    return;
+  }
+  if (file === '047_drop_item_agent_digest.sql') {
+    await apply047(conn, dbName);
     return;
   }
   await runSqlFile(conn, file);

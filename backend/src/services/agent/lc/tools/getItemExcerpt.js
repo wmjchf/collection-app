@@ -37,7 +37,7 @@ function mergePeekUsage(runtime, usage) {
  */
 function createGetItemExcerptTool(runtime) {
   return tool(
-    async ({ itemId, maxChars, cite, peekImages, preferDigest }) => {
+    async ({ itemId, maxChars, cite, peekImages, preferDigest, preferWikiSource }) => {
       const rawId = Number(itemId);
       const hasExplicitId = Number.isFinite(rawId) && rawId > 0;
       let id = hasExplicitId ? rawId : NaN;
@@ -49,12 +49,14 @@ function createGetItemExcerptTool(runtime) {
       const shouldCite =
         cite === true || (cite !== false && !hasExplicitId);
 
-      // 点名候选默认读检索卡；本篇 / 显式 preferDigest:false 才啃正文
-      const useDigest =
-        preferDigest === true ||
-        (preferDigest !== false && hasExplicitId);
+      // 点名候选默认读 Wiki 源页；本篇 / 显式 preferWikiSource:false 才啃正文
+      // preferDigest 为兼容旧参数名
+      const preferWikiArg =
+        preferWikiSource !== undefined ? preferWikiSource : preferDigest;
+      const useWiki =
+        preferWikiArg === true ||
+        (preferWikiArg !== false && hasExplicitId);
 
-      // 本篇/深挖用长摘录；主题搜点名候选用短摘录压 token（仍可显式传 maxChars）
       const defaultMax = hasExplicitId
         ? EXCERPT_JUDGE_MAX_CHARS
         : EXCERPT_MAX_CHARS;
@@ -65,9 +67,9 @@ function createGetItemExcerptTool(runtime) {
         {
           itemId: id,
           maxChars: resolvedMax,
-          preferDigest: useDigest,
-          // 读检索卡时不看图；否则未显式传时图集默认看图
-          peekImages: useDigest
+          preferWikiSource: useWiki,
+          preferDigest: useWiki,
+          peekImages: useWiki
             ? false
             : peekImages === false
               ? false
@@ -77,6 +79,8 @@ function createGetItemExcerptTool(runtime) {
 
       mergePeekUsage(runtime, obs?.usage);
 
+      const fromWiki = Boolean(obs?.data?.fromWiki || obs?.data?.fromDigest);
+
       runtime.toolTrace.push({
         tool: 'get_item_excerpt',
         ok: Boolean(obs?.ok),
@@ -84,9 +88,11 @@ function createGetItemExcerptTool(runtime) {
           itemId: id,
           maxChars: resolvedMax,
           cite: shouldCite,
-          preferDigest: useDigest,
-          fromDigest: Boolean(obs?.data?.fromDigest),
-          peekImages: useDigest
+          preferWikiSource: useWiki,
+          preferDigest: useWiki,
+          fromWiki,
+          fromDigest: fromWiki,
+          peekImages: useWiki
             ? false
             : peekImages === false
               ? false
@@ -119,11 +125,12 @@ function createGetItemExcerptTool(runtime) {
       let note;
       if (data.empty) {
         note = '该篇暂无可用正文/文稿，请如实告知用户。';
-      } else if (data.fromDigest) {
+      } else if (fromWiki) {
         note = shouldCite
-          ? '已读检索卡且 cite=true：本篇进入用户「出处」。检索卡仅供判断相关；勿编造卡外细节。'
-          : '已读检索卡（未进出处）。用检索卡对照收窄限定判断；符合再 cite:true；' +
-            '不要为确认相关去读全文；用户明确要讲/总结这篇时再 preferDigest:false。';
+          ? '已读 Wiki 源页且 cite=true：本篇进入用户「出处」。源页仅供判断相关；勿编造页外细节。'
+          : '已读 Wiki 源页（未进出处）。对照收窄限定判断；符合再 cite:true；' +
+            '不要为确认相关去读全文；主题可再 get_wiki_page 读实体页；' +
+            '用户明确要讲/总结这篇时再 preferWikiSource:false。';
       } else if (shouldCite) {
         note =
           '已精读且 cite=true：本篇进入用户「出处」。可作答依据；勿编造摘录外内容。';
@@ -144,7 +151,8 @@ function createGetItemExcerptTool(runtime) {
         tagNames: data.tagNames || [],
         empty: Boolean(data.empty),
         cited: shouldCite && !data.empty,
-        fromDigest: Boolean(data.fromDigest),
+        fromWiki,
+        fromDigest: fromWiki,
         peekedImages: Boolean(data.peekedImages),
         excerpt: data.excerpt || '',
         note,
@@ -154,9 +162,10 @@ function createGetItemExcerptTool(runtime) {
       name: 'get_item_excerpt',
       description:
         '精读某篇。问「这篇/总结」省略 itemId（读正文/文稿、默认 cite）。' +
-        '主题检索拿不准：点名 itemId（默认读检索卡 agent_digest，不读全文、默认不进出处；符合再 cite:true）。' +
+        '主题检索拿不准：点名 itemId（默认读 Wiki 源页，不读全文、默认不进出处；符合再 cite:true）。' +
         '标题/snippet 已能判断相关时用 cite_search_hits。' +
-        '用户明确要讲某候选内容时传 preferDigest:false。' +
+        '主题收窄可先 get_wiki_page 读实体/概念页。' +
+        '用户明确要讲某候选内容时传 preferWikiSource:false。' +
         '图集读全文时默认看前 1～2 张真图；已看过可 peekImages:false。',
       schema: z.object({
         itemId: z
@@ -172,7 +181,7 @@ function createGetItemExcerptTool(runtime) {
           .max(20000)
           .optional()
           .describe(
-            '摘录最大字符数；点名候选默认约 2500，本篇默认约 8000；读检索卡时忽略',
+            '摘录最大字符数；点名候选默认约 2500，本篇默认约 8000；读 Wiki 源页时忽略',
           ),
         cite: z
           .boolean()
@@ -180,17 +189,21 @@ function createGetItemExcerptTool(runtime) {
           .describe(
             '是否纳入用户出处。主题检索确认符合限定后传 true；先判断时传 false 或不传（点名 itemId 时默认 false）',
           ),
-        preferDigest: z
+        preferWikiSource: z
           .boolean()
           .optional()
           .describe(
-            '点名候选默认 true（读检索卡）；要正文/文稿传 false。省略 itemId（本篇）时忽略',
+            '点名候选默认 true（读 Wiki 源页）；要正文/文稿传 false。省略 itemId（本篇）时忽略',
           ),
+        preferDigest: z
+          .boolean()
+          .optional()
+          .describe('兼容旧名，同 preferWikiSource'),
         peekImages: z
           .boolean()
           .optional()
           .describe(
-            '图集是否看真图（读全文时默认 true）。读检索卡时忽略；已看过可 false',
+            '图集是否看真图（读全文时默认 true）。读 Wiki 源页时忽略；已看过可 false',
           ),
       }),
     },

@@ -73,8 +73,8 @@ function createSearchLibraryTool(runtime) {
           ? '无候选。可换关键词再 search_library，或对专名用 grep_library。不要编造篇目。'
           : `候选 ${hits.length} 条（约相关 ${total}），尚未进出处。` +
             '标题/snippet 已能判断相关 → cite_search_hits(itemIds)；' +
-            '拿不准 → get_item_excerpt 点名读检索卡再判断，符合再 cite:true；' +
-            '明显无关跳过。有收窄且拿不准时用检索卡严卡，勿硬挂、勿读全文。';
+            '拿不准 → get_item_excerpt 点名读 Wiki 源页再判断，符合再 cite:true；' +
+            '主题收窄可 get_wiki_page；明显无关跳过。有收窄且拿不准时用源页严卡，勿硬挂、勿读全文。';
 
       return JSON.stringify({
         query: obs?.data?.query || query,

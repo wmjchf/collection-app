@@ -4,6 +4,7 @@ const { EXCERPT_MAX_CHARS } = require('../agentPolicy');
 const { citationMediaFields } = require('../agentCitationFields');
 const { peekGalleryVisual } = require('./peekGalleryVisual');
 const { isGalleryItem } = require('./draftFromGallery');
+const wikiStore = require('../../wiki/wikiStore');
 
 const tool = {
   name: 'get_item_excerpt',
@@ -16,6 +17,7 @@ const tool = {
       maxChars: { type: 'number' },
       peekImages: { type: 'boolean' },
       preferDigest: { type: 'boolean' },
+      preferWikiSource: { type: 'boolean' },
     },
     required: ['itemId'],
   },
@@ -26,6 +28,7 @@ const tool = {
    *   maxChars?: number,
    *   peekImages?: boolean,
    *   preferDigest?: boolean,
+   *   preferWikiSource?: boolean,
    * }} args
    */
   async execute(ctx, args) {
@@ -60,36 +63,68 @@ const tool = {
     const tagNames = tagRows.map((r) => r.name).filter(Boolean);
     const title = row.title || row.url || `条目 ${itemId}`;
     const media = citationMediaFields(row);
-    const digest = String(row.agent_digest || '').trim();
 
-    // 主题检索候选：优先读检索卡，不啃全文
-    if (args?.preferDigest === true && digest) {
-      return {
-        ok: true,
-        data: {
-          itemId,
-          title,
-          excerpt: `检索卡：${digest}`,
-          tagNames,
-          coverImageUrl: media.coverImageUrl,
-          pageUrl: media.pageUrl,
-          empty: false,
-          fromDigest: true,
-          peekedImages: false,
-          imagesPeeked: 0,
-          imagesTotal: 0,
-        },
-        citations: [
-          {
+    // preferWikiSource（兼容旧 preferDigest）：有源页则读 Wiki，不啃全文
+    const preferWiki =
+      args?.preferWikiSource === true || args?.preferDigest === true;
+
+    if (preferWiki) {
+      const sourcePage = await wikiStore.getSourcePageByItem(
+        ctx.userId,
+        itemId,
+      );
+      if (sourcePage?.body) {
+        const entities = await wikiStore.listLinkedEntities(
+          ctx.userId,
+          sourcePage.id,
+          5,
+        );
+        const entityLines = entities.map((e) => {
+          const one = (e.summary || e.title || e.slug || '')
+            .replace(/\s+/g, ' ')
+            .trim()
+            .slice(0, 80);
+          return `- ${e.title}${one && one !== e.title ? `：${one}` : ''}`;
+        });
+        let excerpt = `Wiki 源页：${String(sourcePage.body).trim()}`;
+        if (entityLines.length) {
+          excerpt += `\n\n相关实体：\n${entityLines.join('\n')}`;
+        }
+        const snippet = String(sourcePage.summary || sourcePage.body)
+          .replace(/\s+/g, ' ')
+          .trim()
+          .slice(0, 160);
+        return {
+          ok: true,
+          data: {
             itemId,
             title,
-            snippet: digest.slice(0, 160),
+            excerpt,
             tagNames,
             coverImageUrl: media.coverImageUrl,
             pageUrl: media.pageUrl,
+            empty: false,
+            fromWiki: true,
+            fromDigest: true,
+            wikiPageId: sourcePage.id,
+            wikiSlug: sourcePage.slug,
+            peekedImages: false,
+            imagesPeeked: 0,
+            imagesTotal: 0,
           },
-        ],
-      };
+          citations: [
+            {
+              itemId,
+              title,
+              snippet,
+              tagNames,
+              coverImageUrl: media.coverImageUrl,
+              pageUrl: media.pageUrl,
+            },
+          ],
+        };
+      }
+      // 无 Wiki：回退短摘录（兼容旧篇）
     }
 
     const wantPeek =
@@ -137,7 +172,10 @@ const tool = {
       };
     }
 
-    if (excerpt.length > maxChars) {
+    // 无 Wiki 且点名候选：短摘录兜底（与旧无检索卡行为一致）
+    if (preferWiki && excerpt.length > maxChars) {
+      excerpt = `${excerpt.slice(0, maxChars)}…`;
+    } else if (excerpt.length > maxChars) {
       excerpt = `${excerpt.slice(0, maxChars)}…`;
     }
 
@@ -157,6 +195,7 @@ const tool = {
         peekedImages: Boolean(visual?.notes),
         imagesPeeked: visual?.imagesUsed || 0,
         imagesTotal: visual?.imagesTotal || 0,
+        fromWiki: false,
         fromDigest: false,
       },
       citations: [

@@ -349,9 +349,17 @@ Body: { conversationId, messageId, approve: true|false }
 
 | 项 | 说明 |
 | --- | --- |
-| Args | `{ itemId?, maxChars?, cite?, preferDigest?, peekImages? }`；省略 `itemId`=当前阅读篇 |
-| 实现 | 点名候选默认 `preferDigest`：有 `items.agent_digest` 则只返回检索卡；本篇 / `preferDigest:false` 才 `buildInputText` 截断；图集读全文时可 VL 看前 1～2 张 |
-| 返回 | `{ title, excerpt, tagNames, fromDigest?, … }` |
+| Args | `{ itemId?, maxChars?, cite?, preferWikiSource?, preferDigest?, peekImages? }`；省略 `itemId`=当前阅读篇 |
+| 实现 | 点名候选默认 `preferWikiSource`：有 `wiki_pages` 源页则返回源页正文 + 相关实体短列表；无源页回退短摘录；本篇 / `preferWikiSource:false` 才 `buildInputText` 截断；图集读全文时可 VL 看前 1～2 张 |
+| 返回 | `{ title, excerpt, tagNames, fromWiki?, … }` |
+
+#### `get_wiki_page`
+
+| 项 | 说明 |
+| --- | --- |
+| Args | `{ slug?, pageId?, kind?, maxChars? }` |
+| 实现 | 读用户 Wiki 页（entity/concept/source/index）；search 向挂载；返回 body + related |
+| 用途 | 主题收窄先实体后源页；用户无感 |
 
 #### `generate_transcript`
 
@@ -484,11 +492,11 @@ Body: { conversationId, messageId, approve: true|false }
 
 ## 10. 检索质量（Phase 1 → 知识库）
 
-1. **Skill 库内检索**（`lc/skills/librarySearchSkill.js`）：仅 search 向注入；`search`/`grep` → 确定相关 `cite_search_hits` → 拿不准读 `agent_digest` 检索卡再 cite → 换词；讲/总结某篇才读全文  
-2. **检索卡**：解析/转写/改正文后自动生成（`agentDigestService`，免费、不进 App；图集先 VL 前 1～2 张写入画面要点）；点名候选 `get_item_excerpt` 默认 `preferDigest`  
-3. **图集精读**：读全文时默认 VL 看前 1～2 张；读检索卡不看图；阅读页预取不看图；视频仍靠文稿  
-4. **摘录长度**：主题搜点名候选约 2500 字（无卡时）；阅读页本篇/深挖约 8000 字  
-5. **用户限定**：有收窄且标题拿不准须用检索卡严卡，勿硬挂；不符不 cite  
+1. **Skill 库内检索**（`lc/skills/librarySearchSkill.js`）：仅 search 向注入；`search`/`grep` → 确定相关 `cite_search_hits` → 拿不准读 Wiki 源页（可先 `get_wiki_page` 实体页）再 cite → 换词；讲/总结某篇才读全文  
+2. **LLM Wiki**：解析/转写/改正文后 `wikiIngestService` 编译源页 + 实体/概念 + `wiki_links`（免费、不进 App；图集先 VL 前 1～2 张）；点名候选 `get_item_excerpt` 默认 `preferWikiSource`；存量 `pnpm wiki:backfill`  
+3. **图集精读**：读全文时默认 VL 看前 1～2 张；读 Wiki 源页不看图；阅读页预取不看图；视频仍靠文稿  
+4. **摘录长度**：主题搜点名候选约 2500 字（无源页时）；阅读页本篇/深挖约 8000 字  
+5. **用户限定**：有收窄且标题拿不准须用 Wiki 源页/实体页严卡，勿硬挂；不符不 cite  
 6. **搜索作答**：只点名已进出处标题；禁止梗概、列落选、「想听细节」收尾  
 6. **召回层**：`search_library` / `grep_library` / `list_library`  
 7. **索引时机**：解析/改正文后 `scheduleIndexItem`；`guide` 不入库；`AGENT_KB_ENABLED` 可关  

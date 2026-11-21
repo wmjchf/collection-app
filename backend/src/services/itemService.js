@@ -432,7 +432,7 @@ async function runContentParse(itemId) {
           .catch(() => {});
       });
       require('./itemEmbeddingService').scheduleIndexItem(row.user_id, itemId);
-      require('./agentDigestService').scheduleAfterContentChange(itemId);
+      require('./wiki/wikiIngestService').schedule(itemId);
       return;
     }
 
@@ -642,7 +642,7 @@ async function parseWithClientHtml(userId, itemId, html) {
         .catch(() => {});
     });
     require('./itemEmbeddingService').scheduleIndexItem(userId, itemId);
-    require('./agentDigestService').scheduleAfterContentChange(itemId);
+    require('./wiki/wikiIngestService').schedule(itemId);
     return getByIdForUser(userId, itemId);
   }
 
@@ -806,7 +806,7 @@ async function parseWithClientAdapter(userId, itemId, body = {}) {
       .catch(() => {});
   });
   require('./itemEmbeddingService').scheduleIndexItem(userId, itemId);
-  require('./agentDigestService').scheduleAfterContentChange(itemId);
+  require('./wiki/wikiIngestService').schedule(itemId);
   return getByIdForUser(userId, itemId);
 }
 
@@ -1114,7 +1114,7 @@ async function updateTitle(userId, itemId, title) {
     { itemId, userId, title: value },
   );
   require('./itemEmbeddingService').scheduleIndexItem(userId, itemId);
-  require('./agentDigestService').scheduleAfterContentChange(itemId);
+  require('./wiki/wikiIngestService').schedule(itemId);
   return getByIdForUser(userId, itemId);
 }
 
@@ -1144,7 +1144,7 @@ async function updateContent(userId, itemId, content) {
     { itemId, userId, content: value, mediaKind },
   );
   require('./itemEmbeddingService').scheduleIndexItem(userId, itemId);
-  require('./agentDigestService').scheduleAfterContentChange(itemId);
+  require('./wiki/wikiIngestService').schedule(itemId);
   return getByIdForUser(userId, itemId);
 }
 
@@ -1789,7 +1789,7 @@ async function runTranscriptJob(itemId) {
         );
       }
       try {
-        require('./agentDigestService').scheduleAfterContentChange(itemId);
+        require('./wiki/wikiIngestService').schedule(itemId);
       } catch (digestErr) {
         console.warn(
           `[runTranscriptJob] agent-digest schedule failed item=${itemId}`,

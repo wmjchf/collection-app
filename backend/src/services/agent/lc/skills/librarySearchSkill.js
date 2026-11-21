@@ -4,9 +4,9 @@
 const LIBRARY_SEARCH_SKILL = `【Skill: 库内检索】
 1. search_library / grep_library 只出候选，不进出处。专名用 grep，模糊主题用 search。browse_library_map 可选。snippet 保持短摘录即可，勿为候选去读全文。
 2. 标题/snippet 已能判断相关 → cite_search_hits(itemIds)，不要精读。
-3. 拿不准 → get_item_excerpt 点名候选（默认读检索卡，不读正文/文稿；图集也不看图）→ 符合再 cite:true。无检索卡时工具会退回短摘录。
-4. 有收窄（科普/教程等）且标题看不出 → 用检索卡严卡，勿硬挂；不符不 cite、不当推荐、不点名落选。禁止为「确认相关」去读全文。
-5. 用户明确要讲/总结某候选内容时，再 get_item_excerpt 且 preferDigest:false（或省略 itemId 读本篇）。
+3. 拿不准 → get_item_excerpt 点名候选（默认读 Wiki 源页，不读正文/文稿；图集也不看图）→ 符合再 cite:true。无源页时工具会退回短摘录。主题收窄可先 get_wiki_page 读实体/概念页。
+4. 有收窄（科普/教程等）且标题看不出 → 用 Wiki 源页/实体页严卡，勿硬挂；不符不 cite、不当推荐、不点名落选。禁止为「确认相关」去读全文。
+5. 用户明确要讲/总结某候选内容时，再 get_item_excerpt 且 preferWikiSource:false（或省略 itemId 读本篇）。
 6. 不够则换词再搜；禁止劝用户「说得更具体」代替你换词。
 7. 作答格式：先一句交代找到几篇（可写主题），再用 Markdown 无序列表列出已进出处的标题（每项一行，标题可加粗）。禁止多篇挤进同一段、用《》串联。禁止内容梗概、列落选、点评、「想听细节」收尾；用户明确要总结/讲这篇时再展开。
 8. 盘点用 list_library，禁止 search/grep「近期收藏」等空词。`;
