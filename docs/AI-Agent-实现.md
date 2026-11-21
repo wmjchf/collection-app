@@ -73,7 +73,7 @@
 
 | Tool | 阶段 | 说明 |
 | --- | --- | --- |
-| **`draft_article`（已落地）** | P3a | **视频转写 → 文章**；`intent=compose`；须成功转写；SSE 真流式 Markdown；口播→书面、禁回指；App「复制全文」+「存入笔记」（确认后 `items.note` `kind=article`）；不用正文 |
+| **`draft_article`（已落地）** | P3a | **视频转写 → 文章**；`intent=compose`；须成功转写；SSE 真流式 Markdown；轻整理（尽量保留原句，只改口播腔）、禁回指；App「复制全文」+「存入笔记」（确认后 `items.note` `kind=article`）；不用正文 |
 | **`draft_gallery_article`（已落地）** | P3a | **图集 → 知识向文章**；同 `intent=compose`；VL（默认 `qwen3-vl-plus`）看图；尽量全图（默认最多 24，与向量 6 张上限分开）；流式展示、默认不写回条目（同「存入笔记」）；预设「根据图片整理成文章」 |
 | **动态预设（已落地）** | UX | `POST /api/agent/conversations/:id/presets`：按阅读篇/上一轮生成 3～4 条口语预设；**不计用户 AI 额度**；失败回退客户端规则预设 |
 | `draft_share_copy` | P3a 预留 | 基于 1～N 个 citation 写分享短文案 / 推荐语 |
@@ -369,7 +369,7 @@ Body: { conversationId, messageId, approve: true|false }
 | 项 | 说明 |
 | --- | --- |
 | Args | `{ itemId? }`；省略则当前阅读篇 |
-| 视频 | 复用 `draftFromTranscript`；须成功文稿；口播→书面 Markdown 流式 |
+| 视频 | 复用 `draftFromTranscript`；须成功文稿；轻整理 Markdown 流式（尽量保留原句） |
 | 图集 | 复用 `draftFromGallery`；VL 看图（`ALIYUN_AI_MODEL_AGENT_VISION`）；知识向成文 / 生活向短拒 |
 | 无文稿 | 返回 `need_transcript`，模型应改调 `generate_transcript(thenCompose=true)` |
 | 流式 | Tool 内 `chatTextStream` → SSE `token`；`runtime.draftContent` 落库；默认不写回条目；App 确认「存入笔记」后写入 `items.note`（`kind=article`） |
