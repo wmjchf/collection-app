@@ -485,7 +485,7 @@ Body: { conversationId, messageId, approve: true|false }
 ## 10. 检索质量（Phase 1 → 知识库）
 
 1. **Skill 库内检索**（`lc/skills/librarySearchSkill.js`）：仅 search 向注入；`search`/`grep` → 确定相关 `cite_search_hits` → 拿不准读 `agent_digest` 检索卡再 cite → 换词；讲/总结某篇才读全文  
-2. **检索卡**：解析/转写/改正文后自动生成（`agentDigestService`，免费、不进 App）；点名候选 `get_item_excerpt` 默认 `preferDigest`  
+2. **检索卡**：解析/转写/改正文后自动生成（`agentDigestService`，免费、不进 App；图集先 VL 前 1～2 张写入画面要点）；点名候选 `get_item_excerpt` 默认 `preferDigest`  
 3. **图集精读**：读全文时默认 VL 看前 1～2 张；读检索卡不看图；阅读页预取不看图；视频仍靠文稿  
 4. **摘录长度**：主题搜点名候选约 2500 字（无卡时）；阅读页本篇/深挖约 8000 字  
 5. **用户限定**：有收窄且标题拿不准须用检索卡严卡，勿硬挂；不符不 cite  
