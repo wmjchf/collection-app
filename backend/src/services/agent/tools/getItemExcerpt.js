@@ -15,12 +15,18 @@ const tool = {
       itemId: { type: 'number' },
       maxChars: { type: 'number' },
       peekImages: { type: 'boolean' },
+      preferDigest: { type: 'boolean' },
     },
     required: ['itemId'],
   },
   /**
    * @param {{ userId: number }} ctx
-   * @param {{ itemId: number, maxChars?: number, peekImages?: boolean }} args
+   * @param {{
+   *   itemId: number,
+   *   maxChars?: number,
+   *   peekImages?: boolean,
+   *   preferDigest?: boolean,
+   * }} args
    */
   async execute(ctx, args) {
     const itemId = Number(args?.itemId);
@@ -52,6 +58,39 @@ const tool = {
       { itemId },
     );
     const tagNames = tagRows.map((r) => r.name).filter(Boolean);
+    const title = row.title || row.url || `条目 ${itemId}`;
+    const media = citationMediaFields(row);
+    const digest = String(row.agent_digest || '').trim();
+
+    // 主题检索候选：优先读检索卡，不啃全文
+    if (args?.preferDigest === true && digest) {
+      return {
+        ok: true,
+        data: {
+          itemId,
+          title,
+          excerpt: `检索卡：${digest}`,
+          tagNames,
+          coverImageUrl: media.coverImageUrl,
+          pageUrl: media.pageUrl,
+          empty: false,
+          fromDigest: true,
+          peekedImages: false,
+          imagesPeeked: 0,
+          imagesTotal: 0,
+        },
+        citations: [
+          {
+            itemId,
+            title,
+            snippet: digest.slice(0, 160),
+            tagNames,
+            coverImageUrl: media.coverImageUrl,
+            pageUrl: media.pageUrl,
+          },
+        ],
+      };
+    }
 
     const wantPeek =
       args?.peekImages !== false && isGalleryItem(row);
@@ -61,7 +100,7 @@ const tool = {
         ok: true,
         data: {
           itemId,
-          title: row.title || row.url || `条目 ${itemId}`,
+          title,
           excerpt: '',
           tagNames,
           empty: true,
@@ -88,7 +127,7 @@ const tool = {
         ok: true,
         data: {
           itemId,
-          title: row.title || row.url || `条目 ${itemId}`,
+          title,
           excerpt: '',
           tagNames,
           empty: true,
@@ -102,11 +141,9 @@ const tool = {
       excerpt = `${excerpt.slice(0, maxChars)}…`;
     }
 
-    const title = row.title || row.url || `条目 ${itemId}`;
     const snippet =
       (row.summary && String(row.summary).trim()) ||
       excerpt.replace(/^标题：[^\n]*\n*/, '').slice(0, 160);
-    const media = citationMediaFields(row);
 
     return {
       ok: true,
@@ -120,6 +157,7 @@ const tool = {
         peekedImages: Boolean(visual?.notes),
         imagesPeeked: visual?.imagesUsed || 0,
         imagesTotal: visual?.imagesTotal || 0,
+        fromDigest: false,
       },
       citations: [
         {

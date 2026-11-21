@@ -188,6 +188,10 @@ AI 可挪条件：`origin=ai` 且 `placement_origin<>'user'`。
 | **media_kind** | ENUM('article','gallery','video') | 内容形态；解析/改正文时写入；索引 `(user_id, media_kind, created_at)` |
 | … | … | url、解析字段等 |
 | **note** | TEXT NULL | 笔记 JSON 数组 `[{id,text,title?,kind?,format?,createdAt?}]`；`kind=thought` 想法（可有 `title`）/ `article` 助手整理成文；想法 `format` 默认 `plain`；文章默认 `markdown`（预留 `html`/`delta`）；旧 `excerpt` 仍可解析（App 并入想法只读）；旧纯文本视为单条想法 |
+| **agent_digest** | VARCHAR(600) NULL | 助手搜库用检索卡（粗摘要）；解析/转写/改正文后自动生成；**不展示给用户**、不计解读额度 |
+| **agent_digest_hash** | CHAR(24) NULL | 生成 digest 时的内容哈希；正文变了再重跑 |
+
+迁移：`backend/sql/045_item_agent_digest.sql`；执行：`cd backend && pnpm db:migrate`（或指定 `045`）。
 
 去重：同一用户下按 `canonical_url`（或 url）判重，索引建议 `(user_id, canonical_url(255))`。  
 首页「最近阅读」索引：`(user_id, last_read_at)`。

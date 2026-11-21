@@ -52,6 +52,7 @@ const MIGRATION_FILES = [
   '042_item_embeddings.sql',
   '043_agent_message_embeddings.sql',
   '044_user_agent_profile.sql',
+  '045_item_agent_digest.sql',
 ];
 
 async function getConnection() {
@@ -488,6 +489,36 @@ async function apply044(conn, dbName) {
   console.log('[db:migrate] 044: users.agent_profile');
 }
 
+async function apply045(conn, dbName) {
+  if (!(await columnExists(conn, dbName, 'items', 'agent_digest'))) {
+    const after = (await columnExists(conn, dbName, 'items', 'ai_meta'))
+      ? ' AFTER `ai_meta`'
+      : '';
+    await conn.query(
+      'ALTER TABLE `items` ADD COLUMN `agent_digest` VARCHAR(600) DEFAULT NULL' +
+        " COMMENT 'Agent 检索卡：粗摘要，不展示给用户'" +
+        after,
+    );
+    console.log('[db:migrate] 045: items.agent_digest');
+  } else {
+    console.log('[db:migrate] 045: agent_digest 已存在，跳过');
+  }
+
+  if (!(await columnExists(conn, dbName, 'items', 'agent_digest_hash'))) {
+    const after = (await columnExists(conn, dbName, 'items', 'agent_digest'))
+      ? ' AFTER `agent_digest`'
+      : '';
+    await conn.query(
+      'ALTER TABLE `items` ADD COLUMN `agent_digest_hash` CHAR(24) DEFAULT NULL' +
+        " COMMENT '生成 digest 时的内容哈希，变了再重跑'" +
+        after,
+    );
+    console.log('[db:migrate] 045: items.agent_digest_hash');
+  } else {
+    console.log('[db:migrate] 045: agent_digest_hash 已存在，跳过');
+  }
+}
+
 async function applyMigration(conn, dbName, file) {
   if (file === '002_last_read_at.sql') {
     await apply002(conn, dbName);
@@ -551,6 +582,10 @@ async function applyMigration(conn, dbName, file) {
   }
   if (file === '044_user_agent_profile.sql') {
     await apply044(conn, dbName);
+    return;
+  }
+  if (file === '045_item_agent_digest.sql') {
+    await apply045(conn, dbName);
     return;
   }
   await runSqlFile(conn, file);

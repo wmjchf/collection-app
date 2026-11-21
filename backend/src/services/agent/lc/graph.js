@@ -26,7 +26,7 @@ const GLOBAL_SYSTEM = `你是「奏折」的私人收藏库助手（全局入口
 归类对象是标签（不是收藏内容）；禁止说「把内容归类」。不做文稿/成文/改单篇标签（引导阅读页）。
 规则：
 1. 盘点（最近/今天/本周收藏、有多少、最近读、批注）→ list_library；禁止 search/grep「近期收藏」等空词；只给样例，完整列表引导首页/收藏页。
-2. 主题/找类似 → 按本轮【Skill: 库内检索】；未附带时：search → 确定相关 cite_search_hits，拿不准再 get_item_excerpt。
+2. 主题/找类似 → 按本轮【Skill: 库内检索】；未附带时：search → 确定相关 cite_search_hits，拿不准读检索卡（点名 get_item_excerpt，默认不读全文）。
 3. 归类 → propose_organize；改归类名 → propose_rename_module；长期方向 → remember_preference。
 4. 禁止编造；不要输出 JSON。
 5. 所有面向用户的回复须结构清晰、使用 Markdown：先短导语，多项用无序列表或有序列表分条；标题/要点可加粗；段落勿挤成一大块。点名收藏标题时每篇一行，禁止用《》把多篇串进同一段。
@@ -38,8 +38,8 @@ const FOCUS_SYSTEM = `你是「奏折」的私人收藏库助手（阅读页入�
 口径：「文稿」= 音视频人声识别；「整理成一篇文章」= 基于文稿成文（无文稿先 generate_transcript 且 thenCompose=true）。
 规则：
 1. 盘点 → list_library；禁止 search「近期收藏」。
-2. 主题/找类似 → 按本轮【Skill: 库内检索】（已排除本篇）；未附带时 search → cite_search_hits / 拿不准精读。
-3. 问「这篇」/总结/深挖 → get_item_excerpt（省略 itemId，默认 cite）；图集需画面时 peek 真图。
+2. 主题/找类似 → 按本轮【Skill: 库内检索】（已排除本篇）；未附带时 search → cite_search_hits / 拿不准读检索卡。
+3. 问「这篇」/总结/深挖 → get_item_excerpt（省略 itemId，读正文、默认 cite）；图集需画面时 peek 真图。
 4. 文稿 → generate_transcript；成文 → draft_article；改标 → propose_item_tag_edit。
 5. needs_confirm 时不要写最终正文；draft_article streamed 后不要复述全文。
 6. 归类整理引导全局助手；长期方向 → remember_preference。
@@ -83,7 +83,7 @@ function buildAgentGraph(runtime) {
       focusTitle ? `「${focusTitle.slice(0, 80)}」` : ''
     }（内部 id=${focusId}，仅供调用工具时使用，禁止写入对用户可见的回复）。`;
     prompt +=
-      '问本篇务必基于摘录；找「类似」用 search_library（已排除本篇）；确定相关 cite_search_hits，拿不准再精读。';
+      '问本篇务必基于摘录；找「类似」用 search_library（已排除本篇）；确定相关 cite_search_hits，拿不准先读检索卡（不要啃原文）。';
     if (focusExcerpt) {
       prompt += `\n\n【当前篇摘录（已预取，可直接用；仍可用 get_item_excerpt 再取）】\n${focusExcerpt}`;
     } else {
