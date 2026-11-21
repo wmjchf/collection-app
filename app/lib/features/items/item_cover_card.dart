@@ -194,10 +194,9 @@ class ItemCoverCard extends StatelessWidget {
       shadowColor: const Color(0x33000000),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
-        side: BorderSide(
-          color: selected ? _selectedBorder : const Color(0xFFE6E8ED),
-          width: selected ? 1.5 : 1,
-        ),
+        side: selected
+            ? const BorderSide(color: _selectedBorder, width: 1.5)
+            : BorderSide.none,
       ),
       clipBehavior: Clip.antiAlias,
       child: InkWell(

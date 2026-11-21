@@ -81,57 +81,54 @@ class HomeUnreadSection extends StatelessWidget {
           ],
         ),
         const SizedBox(height: 8),
-        Container(
-          height: bodyH + 2,
-          width: double.infinity,
-          clipBehavior: Clip.antiAlias,
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: const Color(0xFFE6E8ED)),
-          ),
-          child: items.isEmpty
-              ? Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const Icon(
-                      Icons.mark_email_unread_outlined,
-                      size: 42,
-                      color: _iconMuted,
-                    ),
-                    const SizedBox(height: 10),
-                    Text(
-                      unreadEmptyText(isPro: isPro),
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(fontSize: 14, color: _muted),
-                    ),
-                  ],
-                )
-              : Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    for (var i = 0; i < items.length && i < slotCount; i++) ...[
-                      if (i > 0) const SizedBox(height: tileGap),
-                      ItemListTile.fromItem(
-                        items[i],
-                        subtitle: _subtitle(items[i]),
-                        onTap: () {
-                          AppHaptics.select();
-                          onOpen(items[i]);
-                        },
+        ColoredBox(
+          color: Colors.white,
+          child: SizedBox(
+            height: bodyH,
+            width: double.infinity,
+            child: items.isEmpty
+                ? Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(
+                        Icons.mark_email_unread_outlined,
+                        size: 42,
+                        color: _iconMuted,
+                      ),
+                      const SizedBox(height: 10),
+                      Text(
+                        unreadEmptyText(isPro: isPro),
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(fontSize: 14, color: _muted),
                       ),
                     ],
-                    if (items.length < slotCount)
-                      const Expanded(
-                        child: Center(
-                          child: Text(
-                            '未读就这些了',
-                            style: TextStyle(fontSize: 13, color: _muted),
+                  )
+                : Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      for (var i = 0; i < items.length && i < slotCount; i++) ...[
+                        if (i > 0) const SizedBox(height: tileGap),
+                        ItemListTile.fromItem(
+                          items[i],
+                          subtitle: _subtitle(items[i]),
+                          onTap: () {
+                            AppHaptics.select();
+                            onOpen(items[i]);
+                          },
+                        ),
+                      ],
+                      if (items.length < slotCount)
+                        const Expanded(
+                          child: Center(
+                            child: Text(
+                              '未读就这些了',
+                              style: TextStyle(fontSize: 13, color: _muted),
+                            ),
                           ),
                         ),
-                      ),
-                  ],
-                ),
+                    ],
+                  ),
+          ),
         ),
       ],
     );

@@ -48,7 +48,6 @@ class CollectionTagModulesSection extends StatefulWidget {
 
   static const ink = Color(0xFF1F242E);
   static const muted = Color(0xFF8B929C);
-  static const hairline = Color(0xFFE9EBEF);
   static const brand = Color(0xFF2F6FED);
   static const brandSoft = Color(0xFFE5EDFF);
   static const panel = Color(0xFFFFFFFF);
@@ -161,15 +160,6 @@ class _CollectionTagModulesSectionState
           decoration: BoxDecoration(
             color: CollectionTagModulesSection.panel,
             borderRadius: radius,
-            border: widget.bodyOnly
-                ? const Border(
-                    left: BorderSide(color: CollectionTagModulesSection.hairline),
-                    right:
-                        BorderSide(color: CollectionTagModulesSection.hairline),
-                    bottom:
-                        BorderSide(color: CollectionTagModulesSection.hairline),
-                  )
-                : Border.all(color: CollectionTagModulesSection.hairline),
           ),
           padding: widget.bodyOnly
               ? const EdgeInsets.fromLTRB(14, 4, 12, 14)
