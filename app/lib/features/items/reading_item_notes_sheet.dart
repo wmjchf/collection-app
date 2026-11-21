@@ -14,14 +14,12 @@ import 'package:super_collection/features/items/item_thoughts.dart';
 import 'package:super_collection/features/items/items_repository.dart';
 import 'package:super_collection/features/items/reading_quote_share.dart';
 import 'package:super_collection/features/items/reading_thought_edit_page.dart';
-import 'package:super_collection/features/items/transcript_display.dart';
 
 enum ReadingNotesFilter {
   highlight,
   annotation,
   thought,
   article,
-  transcript,
 }
 
 class ReadingItemNotesResult {
@@ -42,8 +40,6 @@ Future<ReadingItemNotesResult?> showReadingItemNotesSheet(
   required int itemId,
   required List<ItemAnnotation> annotations,
   String? initialNote,
-  /// 已有转写文稿（只读展示）
-  String? transcriptText,
   /// 分享海报元数据
   String? shareTitle,
   String? shareLink,
@@ -51,8 +47,6 @@ Future<ReadingItemNotesResult?> showReadingItemNotesSheet(
   String? sharePageUrl,
   /// 视频 / 图集才展示「文章」
   bool showArticleFilter = false,
-  /// 仅视频展示「文稿」
-  bool showTranscriptFilter = false,
   bool isPro = false,
   ReadingNotesFilter? initialFilter,
 }) {
@@ -64,13 +58,11 @@ Future<ReadingItemNotesResult?> showReadingItemNotesSheet(
       itemId: itemId,
       annotations: annotations,
       initialNote: initialNote,
-      transcriptText: transcriptText,
       shareTitle: shareTitle,
       shareLink: shareLink,
       shareCoverUrl: shareCoverUrl,
       sharePageUrl: sharePageUrl,
       showArticleFilter: showArticleFilter,
-      showTranscriptFilter: showTranscriptFilter,
       isPro: isPro,
       initialFilter: initialFilter,
     ),
@@ -82,13 +74,11 @@ class _ReadingItemNotesSheet extends StatefulWidget {
     required this.itemId,
     required this.annotations,
     this.initialNote,
-    this.transcriptText,
     this.shareTitle,
     this.shareLink,
     this.shareCoverUrl,
     this.sharePageUrl,
     this.showArticleFilter = false,
-    this.showTranscriptFilter = false,
     this.isPro = false,
     this.initialFilter,
   });
@@ -96,13 +86,11 @@ class _ReadingItemNotesSheet extends StatefulWidget {
   final int itemId;
   final List<ItemAnnotation> annotations;
   final String? initialNote;
-  final String? transcriptText;
   final String? shareTitle;
   final String? shareLink;
   final String? shareCoverUrl;
   final String? sharePageUrl;
   final bool showArticleFilter;
-  final bool showTranscriptFilter;
   final bool isPro;
   final ReadingNotesFilter? initialFilter;
 
@@ -146,27 +134,18 @@ class _ReadingItemNotesSheetState extends State<_ReadingItemNotesSheet> {
   List<ItemThought> get _articles =>
       _thoughts.where((t) => t.isArticle).toList();
 
-  String get _transcript => (widget.transcriptText ?? '').trim();
-
   bool get _showArticle => widget.showArticleFilter;
-
-  bool get _showTranscript => widget.showTranscriptFilter;
-
-  bool get _hasTranscript => _showTranscript && _transcript.isNotEmpty;
 
   int get _allCount =>
       _highlights.length +
       _notes.length +
       _thoughtTabItems.length +
-      (_showArticle ? _articles.length : 0) +
-      (_hasTranscript ? 1 : 0);
+      (_showArticle ? _articles.length : 0);
 
   bool _isFilterVisible(ReadingNotesFilter f) {
     switch (f) {
       case ReadingNotesFilter.article:
         return _showArticle;
-      case ReadingNotesFilter.transcript:
-        return _showTranscript;
       default:
         return true;
     }
@@ -632,28 +611,6 @@ class _ReadingItemNotesSheetState extends State<_ReadingItemNotesSheet> {
     );
   }
 
-  Widget _transcriptCard() {
-    final polished = TranscriptDisplay.polishForReading(_transcript);
-    return Container(
-      width: double.infinity,
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFFE6E8EB)),
-      ),
-      child: Text(
-        polished,
-        style: const TextStyle(
-          fontSize: 15,
-          height: 1.55,
-          color: _text,
-        ),
-      ),
-    );
-  }
-
   Widget _emptyState() {
     return Center(
       child: Column(
@@ -685,7 +642,6 @@ class _ReadingItemNotesSheetState extends State<_ReadingItemNotesSheet> {
     final showAnn = _filter == ReadingNotesFilter.annotation;
     final showThought = _filter == ReadingNotesFilter.thought;
     final showArticle = _filter == ReadingNotesFilter.article;
-    final showTranscript = _filter == ReadingNotesFilter.transcript;
 
     final out = <Widget>[];
     if (showHi && _highlights.isNotEmpty) {
@@ -718,9 +674,6 @@ class _ReadingItemNotesSheetState extends State<_ReadingItemNotesSheet> {
       for (final t in _articles) {
         out.add(_thoughtBlock(t));
       }
-    }
-    if (showTranscript && _hasTranscript) {
-      out.add(_transcriptCard());
     }
 
     return out.isEmpty ? null : out;
@@ -852,14 +805,6 @@ class _ReadingItemNotesSheetState extends State<_ReadingItemNotesSheet> {
                   label: '文章',
                   selected: _filter == ReadingNotesFilter.article,
                   onTap: () => _setFilter(ReadingNotesFilter.article),
-                ),
-              ],
-              if (_showTranscript) ...[
-                const SizedBox(width: 8),
-                _chip(
-                  label: '文稿',
-                  selected: _filter == ReadingNotesFilter.transcript,
-                  onTap: () => _setFilter(ReadingNotesFilter.transcript),
                 ),
               ],
             ],

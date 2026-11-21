@@ -1351,19 +1351,50 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
     AppToast.show(context, '标题已更新');
   }
 
-  /// 笔记弹层「文稿」：优先顶栏视频段，否则任一成功转写。
-  String? _notesTranscriptText() {
-    var seg = _item.segmentTranscript(TranscriptTargets.segmentVideoUrl);
+  /// 顶栏「文稿」：优先顶栏视频段，否则任一成功转写。
+  ({String text, List<TranscriptCue> cues, String segmentKey})?
+      _primaryTranscript() {
+    String? key = TranscriptTargets.segmentVideoUrl;
+    var seg = _item.segmentTranscript(key);
     if (seg == null || !seg.hasText) {
+      key = null;
+      seg = null;
       for (final e in _item.transcriptSegments.entries) {
         if (e.value.isSuccess && e.value.hasText) {
+          key = e.key;
           seg = e.value;
           break;
         }
       }
     }
-    if (seg == null || !seg.hasText) return null;
-    return seg.text!.trim();
+    if (key == null || seg == null || !seg.hasText) return null;
+    final text = seg.text!.trim();
+    if (text.isEmpty) return null;
+    return (text: text, cues: seg.cues, segmentKey: key);
+  }
+
+  bool get _showTopTranscript =>
+      _item.hasVideo && _primaryTranscript() != null;
+
+  Future<void> _openPrimaryTranscript() async {
+    final pack = _primaryTranscript();
+    if (pack == null) {
+      if (mounted) AppToast.show(context, '还没有文稿');
+      return;
+    }
+    await showItemTranscriptSheet(
+      context,
+      text: pack.text,
+      cues: pack.cues,
+      fontSize: _bodyFontSize,
+      itemId: _item.id,
+      segmentKey: pack.segmentKey,
+      onShareQuote: _shareExistingQuote,
+      shareTitle: (_item.title ?? '').trim(),
+      shareLink: _linkToCopy,
+      shareCoverUrl: _item.shareCoverUrl,
+      sharePageUrl: _item.sourcePageUrl,
+    );
   }
 
   Future<void> _onNote({
@@ -1377,13 +1408,11 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
       itemId: _item.id,
       annotations: _annotations,
       initialNote: _item.note,
-      transcriptText: _item.hasVideo ? _notesTranscriptText() : null,
       shareTitle: (_item.title ?? '').trim(),
       shareLink: _linkToCopy,
       shareCoverUrl: _item.shareCoverUrl,
       sharePageUrl: _item.sourcePageUrl,
       showArticleFilter: _item.hasVideo || _item.isImageGallery,
-      showTranscriptFilter: _item.hasVideo,
       isPro: _isPro,
       initialFilter: initialFilter,
     );
@@ -2050,6 +2079,9 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
                         editEnabled: canRead,
                         showMarkUnread: !_item.isUnread,
                         isPro: _isPro,
+                        showTranscript: _showTopTranscript,
+                        onTranscript: () =>
+                            unawaited(_openPrimaryTranscript()),
                         onEditContent: _onEditContent,
                         onEditTitle: _onEditTitle,
                         onCopyLink: _copyLink,
@@ -3307,10 +3339,12 @@ class _ReadingTopBar extends StatelessWidget {
     required this.onEditTitle,
     required this.onFontSize,
     this.onMarkUnread,
+    this.onTranscript,
     this.showBack = true,
     this.menuEnabled = true,
     this.editEnabled = false,
     this.showMarkUnread = false,
+    this.showTranscript = false,
     this.isPro = false,
   });
 
@@ -3322,10 +3356,12 @@ class _ReadingTopBar extends StatelessWidget {
   final VoidCallback onEditTitle;
   final VoidCallback onFontSize;
   final VoidCallback? onMarkUnread;
+  final VoidCallback? onTranscript;
   final bool showBack;
   final bool menuEnabled;
   final bool editEnabled;
   final bool showMarkUnread;
+  final bool showTranscript;
   final bool isPro;
 
   static const _text = Color(0xFF1F242E);
@@ -3360,6 +3396,16 @@ class _ReadingTopBar extends StatelessWidget {
                 else
                   const SizedBox(width: 8),
                 const Spacer(),
+                if (showTranscript && onTranscript != null)
+                  IconButton(
+                    tooltip: '文稿',
+                    onPressed: onTranscript,
+                    icon: const Icon(
+                      Icons.article_outlined,
+                      size: 22,
+                      color: _text,
+                    ),
+                  ),
                 IconButton(
                   tooltip: '文字大小',
                   onPressed: onFontSize,
