@@ -25,7 +25,7 @@ class SettingsPanel extends StatefulWidget {
 class _SettingsPanelState extends State<SettingsPanel> {
   final _auth = AuthRepository();
 
-  static const _version = 'v1.7.13';
+  static const _version = 'v1.8.0';
 
   Future<void> _logout() async {
     final ok = await showLogoutConfirmDialog(context);
