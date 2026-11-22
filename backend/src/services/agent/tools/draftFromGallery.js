@@ -2,6 +2,7 @@ const itemService = require('../../itemService');
 const aliyunDashScope = require('../../aliyunDashScope');
 const config = require('../../../config');
 const itemMediaKind = require('../../itemMediaKind');
+const { toVisionDataUrls } = require('../../visionImage');
 
 /** 图成文：尽量全图；超过上限才截断（与向量库 MAX_IMAGE_EMBEDS=6 分开） */
 function maxDraftImages() {
@@ -235,6 +236,14 @@ async function prepareGalleryDraft(ctx, itemIdRaw) {
     };
   }
 
+  const pageUrl =
+    String(item.url || item.canonicalUrl || item.canonical_url || '').trim() ||
+    null;
+  // 私有 OSS / 防盗链 CDN：本机下载成 data URL，避免百炼直拉失败
+  const visionUrls = pack.imageUrls.length
+    ? await toVisionDataUrls(pack.imageUrls, { pageUrl })
+    : [];
+
   const titleHint =
     (item.title && String(item.title).trim()) || `条目 ${itemId}`;
 
@@ -244,7 +253,7 @@ async function prepareGalleryDraft(ctx, itemIdRaw) {
     item,
     titleHint,
     caption,
-    imageUrls: pack.imageUrls,
+    imageUrls: visionUrls,
     totalImageCount: pack.totalCount,
     imagesTruncated: pack.truncated,
     imageMax: pack.max,

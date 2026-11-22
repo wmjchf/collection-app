@@ -107,6 +107,14 @@ function sendUsersAdmin(_req, res) {
 }
 app.get('/internal/users', sendUsersAdmin);
 
+/** 活跃用户排名（app_open；需 ANALYTICS_DASHBOARD_TOKEN） */
+function sendActiveUsersAdmin(_req, res) {
+  res.setHeader('X-Robots-Tag', 'noindex, nofollow');
+  res.setHeader('Cache-Control', 'no-store');
+  res.sendFile(path.join(publicDir, 'active-users.html'));
+}
+app.get('/internal/active-users', sendActiveUsersAdmin);
+
 app.use('/api', healthRouter);
 app.use('/api/app', require('./routes/appVersion'));
 app.use('/api/auth', authRouter);

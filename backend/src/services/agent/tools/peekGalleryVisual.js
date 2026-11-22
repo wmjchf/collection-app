@@ -6,6 +6,7 @@ const {
   EXCERPT_VISUAL_NOTES_MAX_CHARS,
 } = require('../agentPolicy');
 const { parseImageUrlList } = require('../../aiInput');
+const { toVisionDataUrls } = require('../../visionImage');
 
 function peekImageCount() {
   const n = Number(EXCERPT_PEEK_IMAGES);
@@ -14,6 +15,14 @@ function peekImageCount() {
 
 function listHttpsImages(row) {
   return parseImageUrlList(row).filter((u) => /^https?:\/\//i.test(u));
+}
+
+function pageUrlFromRow(row) {
+  return (
+    String(row?.canonical_url || row?.canonicalUrl || '').trim() ||
+    String(row?.url || '').trim() ||
+    null
+  );
 }
 
 /**
@@ -31,7 +40,12 @@ async function peekGalleryVisual(row, opts = {}) {
     Math.max(Number(opts.maxImages) || peekImageCount(), 1),
     4,
   );
-  const urls = all.slice(0, max);
+  const sourceUrls = all.slice(0, max);
+  const urls = await toVisionDataUrls(sourceUrls, {
+    pageUrl: pageUrlFromRow(row),
+  });
+  if (!urls.length) return null;
+
   const model =
     config.aliyun.aiModelAgentVision || visionModel() || 'qwen3-vl-plus';
 
