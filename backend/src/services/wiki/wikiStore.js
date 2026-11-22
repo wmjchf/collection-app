@@ -308,8 +308,15 @@ async function listPages(userId, { kinds, limit = 100, withBody = false } = {}) 
   return rows;
 }
 
+/** 关联：选中词与实体的最低相似度（语境不得单独拉高无关实体） */
+const RELATE_TERM_MIN_SCORE = 0.46;
+/** 关联：选中词与收藏的最低相似度 */
+const RELATE_ITEM_MIN_SCORE = 0.48;
+
 /**
- * 划选关联：带当前篇语境的语义召回（Wiki 实体向量 + 收藏向量过滤同词异义）。
+ * 划选关联：
+ * 1) 语境只做同词异义消歧（Token≠imToken）
+ * 2) 实体/文章必须与选中词本身相关，不能只因同属本篇主题邻域而召回
  * 向量未就绪时回退关键字实体匹配。
  * @param {number} userId
  * @param {string} rawQuery
@@ -330,8 +337,8 @@ async function matchRelatedByText(userId, rawQuery, opts = {}) {
   }
 
   const context = await buildRelateContext(uid, excludeItemId);
-  const searchQ = context
-    ? `语境：${context}\n选中：${q}`
+  const disambiguateQ = context
+    ? `${q}\n（消歧语境：${context.slice(0, 160)}）`
     : q;
 
   let entities = [];
@@ -339,21 +346,69 @@ async function matchRelatedByText(userId, rawQuery, opts = {}) {
   try {
     const wikiEmbeddingService = require('./wikiEmbeddingService');
     if (wikiEmbeddingService.isEnabled()) {
-      const hits = await wikiEmbeddingService.searchSimilarPages(uid, searchQ, {
-        limit: eLim,
+      // Pass A：只按选中词召回（必须贴词）
+      const termHits = await wikiEmbeddingService.searchSimilarPages(uid, q, {
+        limit: Math.max(eLim, 16),
         purpose: 'relate',
+        minScore: RELATE_TERM_MIN_SCORE,
+        scoreGap: 0.16,
       });
-      if (hits.length) {
-        mode = 'semantic';
-        entities = hits.map((h) => ({
-          pageId: Number(h.pageId),
-          kind: h.kind,
-          slug: h.slug,
-          title: h.title,
-          summary: h.summary || null,
-          score: h.score,
-        }));
+
+      let picked = termHits;
+      // Pass B：多个候选时才用语境消歧，且不得引入 Pass A 之外的实体
+      if (context && termHits.length > 1) {
+        const ctxHits = await wikiEmbeddingService.searchSimilarPages(
+          uid,
+          disambiguateQ,
+          {
+            limit: eLim,
+            purpose: 'relate',
+            minScore: RELATE_TERM_MIN_SCORE - 0.02,
+            scoreGap: 0.16,
+          },
+        );
+        const termSet = new Set(termHits.map((h) => Number(h.pageId)));
+        const disambiguated = ctxHits.filter((h) =>
+          termSet.has(Number(h.pageId)),
+        );
+        if (disambiguated.length) picked = disambiguated;
       }
+
+      // 字面命中补齐（语义阈值可能漏掉短精确名）
+      const lexical = await keywordMatchEntities(uid, q, eLim);
+      const byId = new Map();
+      for (const lex of lexical) {
+        byId.set(Number(lex.pageId), {
+          pageId: Number(lex.pageId),
+          kind: lex.kind,
+          slug: lex.slug,
+          title: lex.title,
+          summary: lex.summary || null,
+          score: 1,
+          lexical: true,
+        });
+      }
+      for (const h of picked) {
+        const id = Number(h.pageId);
+        if (!byId.has(id)) {
+          byId.set(id, {
+            pageId: id,
+            kind: h.kind,
+            slug: h.slug,
+            title: h.title,
+            summary: h.summary || null,
+            score: h.score,
+          });
+        }
+      }
+      entities = [...byId.values()]
+        .sort(
+          (a, b) =>
+            Number(b.lexical) - Number(a.lexical) ||
+            (b.score || 0) - (a.score || 0),
+        )
+        .slice(0, eLim);
+      if (entities.length) mode = 'semantic';
     }
   } catch (err) {
     console.warn(
@@ -401,19 +456,20 @@ async function matchRelatedByText(userId, rawQuery, opts = {}) {
   let items = [];
   try {
     const itemEmbeddingService = require('../itemEmbeddingService');
-    if (itemEmbeddingService.isEnabled()) {
-      const similar = await itemEmbeddingService.searchSimilar(uid, searchQ, {
+    if (itemEmbeddingService.isEnabled() && linkedIds.length) {
+      // 文章只按选中词打分；消歧已由实体阶段完成，避免语境再次冲偏
+      const similar = await itemEmbeddingService.searchSimilar(uid, q, {
         excludeItemIds: excludeItemId > 0 ? [excludeItemId] : [],
         limit: Math.max(iLim, 12),
         maxCap: 40,
         purpose: 'relate',
         skipMultimodal: true,
+        minScore: RELATE_ITEM_MIN_SCORE,
+        scoreGap: 0.16,
       });
       const linkedSet = new Set(linkedIds);
       const both = similar.filter((h) => linkedSet.has(h.itemId));
-      // 有 Wiki 链时优先同链且语义近的；否则直接用收藏语义结果（消歧）
-      const ranked = both.length ? both : similar;
-      items = ranked.slice(0, iLim).map((h) => ({
+      items = both.slice(0, iLim).map((h) => ({
         itemId: h.itemId,
         title: h.title,
         coverImageUrl: h.coverImageUrl || null,
@@ -431,14 +487,35 @@ async function matchRelatedByText(userId, rawQuery, opts = {}) {
     );
   }
 
+  // 语义不够时：仅保留「已链到贴词实体、且标题字面含选中词」的篇，不推主题邻文
   if (!items.length && linkedIds.length) {
-    items = linkedIds.slice(0, iLim).map((iid) => ({
-      itemId: iid,
-      title: null,
-      coverImageUrl: null,
-      mediaKind: 'article',
-      viaTitle: viaByItem.get(iid) || null,
-    }));
+    const idPh = linkedIds.map((_, i) => `:lid${i}`).join(',');
+    const lp = { userId: uid };
+    linkedIds.forEach((id, i) => {
+      lp[`lid${i}`] = id;
+    });
+    const [titleRows] = await pool.execute(
+      `SELECT id, title, cover_image_url, media_kind
+       FROM items
+       WHERE user_id = :userId
+         AND deleted_at IS NULL
+         AND id IN (${idPh})`,
+      lp,
+    );
+    const qLower = q.toLowerCase();
+    items = titleRows
+      .filter((r) => {
+        const t = String(r.title || '').toLowerCase();
+        return t.includes(qLower) || (qLower.length >= 2 && qLower.includes(t));
+      })
+      .slice(0, iLim)
+      .map((r) => ({
+        itemId: Number(r.id),
+        title: r.title || `条目 ${r.id}`,
+        coverImageUrl: r.cover_image_url || null,
+        mediaKind: r.media_kind || 'article',
+        viaTitle: viaByItem.get(Number(r.id)) || null,
+      }));
   }
 
   if (items.length) {
