@@ -215,6 +215,7 @@ async function runWikiIngestJob(itemId) {
 
 /**
  * 存量批 ingest：status=success 且尚无 source 页（或强制）。
+ * CLI 会串行 await 跑完（不再入队后立刻退出）。
  * @param {{ userId?: number, limit?: number, force?: boolean }} opts
  */
 async function backfillMissing({ userId, limit = 50, force = false } = {}) {
@@ -238,10 +239,25 @@ async function backfillMissing({ userId, limit = 50, force = false } = {}) {
   sql += ` ORDER BY i.id DESC LIMIT ${lim}`;
 
   const [rows] = await pool.execute(sql, params);
-  for (const r of rows) {
-    schedule(r.id);
+  let ok = 0;
+  let failed = 0;
+  const total = rows.length;
+  for (let i = 0; i < total; i += 1) {
+    const id = Number(rows[i].id);
+    const n = i + 1;
+    try {
+      await runWikiIngestJob(id);
+      ok += 1;
+      console.log(`[wiki-backfill] ${n}/${total} item=${id} ok`);
+    } catch (err) {
+      failed += 1;
+      console.error(
+        `[wiki-backfill] ${n}/${total} item=${id} fail:`,
+        err?.message || err,
+      );
+    }
   }
-  return { queued: rows.length };
+  return { queued: total, ok, failed };
 }
 
 module.exports = {

@@ -101,19 +101,31 @@ function buildPageChunks(page) {
   return chunks.slice(0, MAX_CHUNKS);
 }
 
+/** CLI 退出前可 flush，避免 setImmediate 未跑完就被 process.exit 掐掉 */
+const pendingIndexes = new Set();
+
 function scheduleIndexPage(userId, pageId) {
   if (!isEnabled()) return;
   const uid = Number(userId);
   const pid = Number(pageId);
   if (!uid || !pid) return;
-  setImmediate(() => {
-    indexPage(uid, pid).catch((err) => {
+  const job = indexPage(uid, pid)
+    .catch((err) => {
       console.warn(
         `[wikiEmbedding] index fail page=${pid}:`,
         err?.message || err,
       );
+    })
+    .finally(() => {
+      pendingIndexes.delete(job);
     });
-  });
+  pendingIndexes.add(job);
+}
+
+async function flushPendingIndexes() {
+  while (pendingIndexes.size) {
+    await Promise.all([...pendingIndexes]);
+  }
 }
 
 /**
@@ -313,10 +325,10 @@ async function searchSimilarPages(userId, query, {
 }
 
 /**
- * 存量：为尚无向量的 entity/concept 建索引。
+ * 存量：为尚无向量的 entity/concept 建索引（串行 await，CLI 可安全退出）。
  */
 async function backfillMissing({ userId, limit = 100 } = {}) {
-  if (!isEnabled()) return { queued: 0, reason: 'disabled' };
+  if (!isEnabled()) return { queued: 0, ok: 0, failed: 0, reason: 'disabled' };
   const lim = Math.min(Math.max(Number(limit) || 100, 1), 500);
   let sql = `
     SELECT p.id, p.user_id
@@ -333,15 +345,32 @@ async function backfillMissing({ userId, limit = 100 } = {}) {
   }
   sql += ` ORDER BY p.id DESC LIMIT ${lim}`;
   const [rows] = await pool.execute(sql, params);
-  for (const r of rows) {
-    scheduleIndexPage(r.user_id, r.id);
+  let ok = 0;
+  let failed = 0;
+  const total = rows.length;
+  for (let i = 0; i < total; i += 1) {
+    const pageId = Number(rows[i].id);
+    const uid = Number(rows[i].user_id);
+    const n = i + 1;
+    try {
+      await indexPage(uid, pageId);
+      ok += 1;
+      console.log(`[wiki-embed-backfill] ${n}/${total} page=${pageId} ok`);
+    } catch (err) {
+      failed += 1;
+      console.error(
+        `[wiki-embed-backfill] ${n}/${total} page=${pageId} fail:`,
+        err?.message || err,
+      );
+    }
   }
-  return { queued: rows.length };
+  return { queued: total, ok, failed };
 }
 
 module.exports = {
   isEnabled,
   scheduleIndexPage,
+  flushPendingIndexes,
   indexPage,
   deleteForPage,
   searchSimilarPages,
