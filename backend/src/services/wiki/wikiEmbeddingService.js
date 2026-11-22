@@ -227,11 +227,16 @@ async function searchSimilarPages(userId, query, {
   minScore = MIN_SCORE,
   scoreGap = SCORE_GAP,
   kinds = ['entity', 'concept'],
+  /** 记账 purpose：search | relate */
+  purpose = 'search',
 } = {}) {
   if (!isEnabled()) return [];
   const uid = Number(userId);
   const q = String(query || '').trim();
   if (!uid || !q) return [];
+
+  const usagePurpose =
+    purpose === 'relate' ? 'relate' : 'search';
 
   const textEmb = await aliyunDashScope.embedTexts([q.slice(0, 2000)]);
   const qVec = textEmb.vectors[0];
@@ -245,7 +250,7 @@ async function searchSimilarPages(userId, query, {
         tokens: textEmb.usage.totalTokens,
         textTokens: textEmb.usage.textTokens || textEmb.usage.totalTokens,
         model: textEmb.model,
-        purpose: 'search',
+        purpose: usagePurpose,
         generatedAt: new Date().toISOString(),
       })
       .catch((err) => {

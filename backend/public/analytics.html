@@ -447,9 +447,10 @@
       $('embeddingCostStats').innerHTML = [
         kpi('费用估', fmtYuan(stats.estimatedYuan), '本月合计'),
         kpi('索引', fmtYuan(stats.indexYuan), '入库向量'),
-        kpi('检索', fmtYuan(stats.searchYuan), '查询向量'),
+        kpi('检索', fmtYuan(stats.searchYuan), '助手/搜库'),
+        kpi('关联', fmtYuan(stats.relateYuan), `${fmtNum(stats.relateCalls ?? 0)} 次 · ${fmtNum(stats.relateTokens ?? 0)} tok`),
         kpi('Token', fmtNum(stats.totalTokens ?? 0), '全部 modality'),
-        kpi('调用次数', fmtNum(stats.events ?? 0), 'usage_events'),
+        kpi('Embed 事件', fmtNum(stats.events ?? 0), 'usage_events.embedding'),
       ].join('');
       $('embeddingCostStats').className = 'grid';
 
@@ -458,7 +459,7 @@
         vl_image: '图集 VL 图',
         vl_text: 'VL 文',
         vl_mixed: 'VL 混合',
-        query_text: '检索 text',
+        query_text: '检索/关联 text',
         query_mm: '检索 VL 文',
         image: '图（旧）',
       };
@@ -466,9 +467,13 @@
         const label = modLabels[k] || k;
         return `${label} ${fmtYuan(v.estimatedYuan)}（${fmtNum(v.tokens)} tok / ${fmtNum(v.events)} 次）`;
       });
+      const relateHint =
+        (stats.relateCalls || stats.relateTokens)
+          ? ` · 划选关联 ${fmtNum(stats.relateCalls ?? 0)} 次 / ${fmtNum(stats.relateTokens ?? 0)} tok / ${fmtYuan(stats.relateYuan)}`
+          : '';
       $('embeddingCostDetail').textContent = parts.length
-        ? `分项：${parts.join(' · ')}`
-        : '本月暂无 embedding 记账（新索引/检索后会写入 usage_events.kind=embedding）';
+        ? `分项：${parts.join(' · ')}${relateHint}`
+        : `本月暂无 embedding 记账（新索引/检索/关联后会写入 usage_events）${relateHint}`;
     }
 
     function kpi(label, value, hint) {

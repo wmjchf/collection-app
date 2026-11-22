@@ -450,10 +450,17 @@ async function searchSimilar(userId, query, {
   scoreGap = SCORE_GAP,
   /** 返回条数硬顶（默认 20；助手大类可提到 50） */
   maxCap = 20,
+  /** 记账 purpose：search | relate */
+  purpose = 'search',
+  /** 划选关联只做正文向量，跳过多模态以省费用 */
+  skipMultimodal = false,
 } = {}) {
   if (!isEnabled()) return [];
   const q = String(query || '').trim();
   if (!q) return [];
+
+  const usagePurpose =
+    purpose === 'relate' ? 'relate' : 'search';
 
   const textEmb = await aliyunDashScope.embedTexts([q.slice(0, 2000)]);
   const qTextVec = textEmb.vectors[0];
@@ -468,7 +475,7 @@ async function searchSimilar(userId, query, {
         tokens: textEmb.usage.totalTokens,
         textTokens: textEmb.usage.textTokens || textEmb.usage.totalTokens,
         model: textEmb.model,
-        purpose: 'search',
+        purpose: usagePurpose,
         generatedAt: `${stamp}:qtext`,
       })
       .catch((err) => {
@@ -480,33 +487,35 @@ async function searchSimilar(userId, query, {
   }
 
   let qMmVec = null;
-  try {
-    const mm = await aliyunDashScope.embedMultimodalText(q);
-    if (mm.vectors[0]?.length) qMmVec = mm.vectors[0];
-    if (mm.usage?.totalTokens > 0) {
-      usageService
-        .recordEmbeddingUsage({
-          userId: Number(userId),
-          modality: 'query_mm',
-          tokens: mm.usage.totalTokens,
-          textTokens: mm.usage.textTokens || mm.usage.totalTokens,
-          imageTokens: mm.usage.imageTokens || 0,
-          model: mm.model,
-          purpose: 'search',
-          generatedAt: `${stamp}:qmm`,
-        })
-        .catch((err) => {
-          console.warn(
-            '[itemEmbedding] record search mm usage fail:',
-            err?.message || err,
-          );
-        });
+  if (!skipMultimodal) {
+    try {
+      const mm = await aliyunDashScope.embedMultimodalText(q);
+      if (mm.vectors[0]?.length) qMmVec = mm.vectors[0];
+      if (mm.usage?.totalTokens > 0) {
+        usageService
+          .recordEmbeddingUsage({
+            userId: Number(userId),
+            modality: 'query_mm',
+            tokens: mm.usage.totalTokens,
+            textTokens: mm.usage.textTokens || mm.usage.totalTokens,
+            imageTokens: mm.usage.imageTokens || 0,
+            model: mm.model,
+            purpose: usagePurpose,
+            generatedAt: `${stamp}:qmm`,
+          })
+          .catch((err) => {
+            console.warn(
+              '[itemEmbedding] record search mm usage fail:',
+              err?.message || err,
+            );
+          });
+      }
+    } catch (err) {
+      console.warn(
+        '[itemEmbedding] multimodal query embed fail:',
+        err?.message || err,
+      );
     }
-  } catch (err) {
-    console.warn(
-      '[itemEmbedding] multimodal query embed fail:',
-      err?.message || err,
-    );
   }
 
   const exclude = new Set(

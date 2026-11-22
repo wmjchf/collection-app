@@ -9,6 +9,8 @@ const KIND_AI = 'ai';
 const KIND_STORAGE = 'storage';
 /** 知识库向量：不计用户月额度，仅看板成本 */
 const KIND_EMBEDDING = 'embedding';
+/** 划选关联：每次 API 调用记 1 次（不计用户额度） */
+const KIND_WIKI_RELATE = 'wiki_relate';
 
 const QUOTA_MESSAGES = {
   transcript: '本月转写分钟已用完，请下月再试或联系支持',
@@ -345,7 +347,7 @@ function estimateEmbeddingYuan({
  *   textTokens?: number,
  *   imageTokens?: number,
  *   model?: string,
- *   purpose?: 'index'|'search',
+ *   purpose?: 'index'|'search'|'relate',
  *   generatedAt?: string,
  *   meta?: object,
  * }} args
@@ -399,6 +401,41 @@ async function recordEmbeddingUsage({
 }
 
 /**
+ * 划选关联：每次 API 调用记 1 次（不计用户额度；token 另记 purpose=relate 的 embedding）
+ */
+async function recordRelateCall({
+  userId,
+  itemId = null,
+  query = null,
+  mode = null,
+  entityCount = 0,
+  itemCount = 0,
+}) {
+  const uid = Number(userId);
+  if (!Number.isFinite(uid) || uid <= 0) {
+    return { recorded: false, reason: 'no_user' };
+  }
+  const stamp = Date.now();
+  const key = `wiki_relate:${uid}:${itemId || 0}:${stamp}`;
+  return recordEvent({
+    userId: uid,
+    itemId: itemId != null ? Number(itemId) : null,
+    kind: KIND_WIKI_RELATE,
+    amount: 1,
+    unit: 'calls',
+    idempotencyKey: key.slice(0, 160),
+    meta: {
+      feature: 'wiki_relate',
+      billableToUser: false,
+      query: query != null ? String(query).slice(0, 80) : null,
+      mode: mode != null ? String(mode) : null,
+      entityCount: Number(entityCount) || 0,
+      itemCount: Number(itemCount) || 0,
+    },
+  });
+}
+
+/**
  * 看板：本月 embedding token / 费用估（Asia/Shanghai 自然月）
  */
 async function getEmbeddingCostSummary({ userId = null } = {}) {
@@ -439,7 +476,9 @@ async function getEmbeddingCostSummary({ userId = null } = {}) {
 
   const rates = config.aliyun?.embeddingCostYuanPerMillion || {};
   const byModality = {};
-  const byPurpose = { index: 0, search: 0 };
+  const byPurpose = { index: 0, search: 0, relate: 0 };
+  const byPurposeTokens = { index: 0, search: 0, relate: 0 };
+  const byPurposeEvents = { index: 0, search: 0, relate: 0 };
   let totalTokens = 0;
   let totalYuan = 0;
   let totalEvents = 0;
@@ -467,9 +506,30 @@ async function getEmbeddingCostSummary({ userId = null } = {}) {
     byModality[mod].tokens += tokens;
     byModality[mod].yuan += yuan;
     byModality[mod].events += Number(r.events) || 0;
-    if (purpose === 'search') byPurpose.search += yuan;
-    else byPurpose.index += yuan;
+    const purposeKey =
+      purpose === 'search' || purpose === 'relate' ? purpose : 'index';
+    byPurpose[purposeKey] += yuan;
+    byPurposeTokens[purposeKey] += tokens;
+    byPurposeEvents[purposeKey] += Number(r.events) || 0;
   }
+
+  // 关联次数：每次 /api/wiki/relate 一条 wiki_relate
+  const relateCallParams = { start, end, kind: KIND_WIKI_RELATE };
+  let relateCallFilter = '';
+  if (uid != null && Number.isFinite(uid) && uid > 0) {
+    relateCallFilter = ' AND user_id = :userId';
+    relateCallParams.userId = uid;
+  }
+  const [relateCallRows] = await pool.execute(
+    `SELECT COUNT(*) AS calls
+     FROM usage_events
+     WHERE kind = :kind
+       AND created_at >= :start
+       AND created_at < :end
+       ${relateCallFilter}`,
+    relateCallParams,
+  );
+  const relateCalls = Number(relateCallRows[0]?.calls) || 0;
 
   const round6 = (n) => Math.round(Number(n || 0) * 1e6) / 1e6;
   return {
@@ -491,6 +551,10 @@ async function getEmbeddingCostSummary({ userId = null } = {}) {
       estimatedYuan: round6(totalYuan),
       indexYuan: round6(byPurpose.index),
       searchYuan: round6(byPurpose.search),
+      relateYuan: round6(byPurpose.relate),
+      relateTokens: Math.round(byPurposeTokens.relate),
+      relateEmbedEvents: byPurposeEvents.relate,
+      relateCalls,
     },
     byModality: Object.fromEntries(
       Object.entries(byModality).map(([k, v]) => [
@@ -1134,6 +1198,7 @@ module.exports = {
   KIND_AI,
   KIND_STORAGE,
   KIND_EMBEDDING,
+  KIND_WIKI_RELATE,
   freeQuotas,
   quotasForPlan,
   planQuotasTable,
@@ -1145,6 +1210,7 @@ module.exports = {
   recordTranscriptUsage,
   recordAiTokenUsage,
   recordEmbeddingUsage,
+  recordRelateCall,
   getEmbeddingCostSummary,
   billableAiTokensFromUsage,
   tokensToCredits,

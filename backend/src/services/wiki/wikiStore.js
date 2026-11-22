@@ -341,6 +341,7 @@ async function matchRelatedByText(userId, rawQuery, opts = {}) {
     if (wikiEmbeddingService.isEnabled()) {
       const hits = await wikiEmbeddingService.searchSimilarPages(uid, searchQ, {
         limit: eLim,
+        purpose: 'relate',
       });
       if (hits.length) {
         mode = 'semantic';
@@ -366,7 +367,9 @@ async function matchRelatedByText(userId, rawQuery, opts = {}) {
   }
 
   if (!entities.length) {
-    return { query: q, entities: [], items: [], mode };
+    const empty = { query: q, entities: [], items: [], mode };
+    recordRelateCallSafe(uid, excludeItemId, empty);
+    return empty;
   }
 
   const viaByItem = new Map();
@@ -403,6 +406,8 @@ async function matchRelatedByText(userId, rawQuery, opts = {}) {
         excludeItemIds: excludeItemId > 0 ? [excludeItemId] : [],
         limit: Math.max(iLim, 12),
         maxCap: 40,
+        purpose: 'relate',
+        skipMultimodal: true,
       });
       const linkedSet = new Set(linkedIds);
       const both = similar.filter((h) => linkedSet.has(h.itemId));
@@ -483,7 +488,37 @@ async function matchRelatedByText(userId, rawQuery, opts = {}) {
     summary: e.summary || null,
   }));
 
-  return { query: q, entities: cleanedEntities, items: cleanedItems, mode };
+  const result = {
+    query: q,
+    entities: cleanedEntities,
+    items: cleanedItems,
+    mode,
+  };
+  recordRelateCallSafe(uid, excludeItemId, result);
+  return result;
+}
+
+function recordRelateCallSafe(userId, excludeItemId, result) {
+  try {
+    const usageService = require('../usageService');
+    usageService
+      .recordRelateCall({
+        userId,
+        itemId: excludeItemId > 0 ? excludeItemId : null,
+        query: result.query,
+        mode: result.mode,
+        entityCount: (result.entities || []).length,
+        itemCount: (result.items || []).length,
+      })
+      .catch((err) => {
+        console.warn(
+          '[wiki] record relate call fail:',
+          err?.message || err,
+        );
+      });
+  } catch (err) {
+    console.warn('[wiki] record relate call fail:', err?.message || err);
+  }
 }
 
 async function buildRelateContext(userId, excludeItemId) {
