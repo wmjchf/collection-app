@@ -309,6 +309,143 @@ async function listPages(userId, { kinds, limit = 100, withBody = false } = {}) 
 }
 
 /**
+ * 用选中文字匹配 Wiki 实体，并汇总链到的相关收藏。
+ * @param {number} userId
+ * @param {string} rawQuery
+ * @param {{ excludeItemId?: number, entityLimit?: number, itemLimit?: number }} [opts]
+ */
+async function matchRelatedByText(userId, rawQuery, opts = {}) {
+  const uid = Number(userId);
+  const q = String(rawQuery || '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 80);
+  const excludeItemId = Number(opts.excludeItemId) || 0;
+  const eLim = Math.min(Math.max(Number(opts.entityLimit) || 12, 1), 24);
+  const iLim = Math.min(Math.max(Number(opts.itemLimit) || 12, 1), 24);
+
+  if (!uid || !q) {
+    return { query: q, entities: [], items: [] };
+  }
+
+  // 防 LIKE 通配；过短只做精确/包含标题
+  const safe = q.replace(/[%_\\]/g, '').trim();
+  if (!safe) {
+    return { query: q, entities: [], items: [] };
+  }
+  const like = `%${safe}%`;
+
+  const [entRows] = await pool.execute(
+    `SELECT id, kind, slug, title, summary
+     FROM wiki_pages
+     WHERE user_id = :userId
+       AND kind IN ('entity', 'concept')
+       AND (
+         title = :exact
+         OR title LIKE :like
+         OR slug LIKE :like
+         OR IFNULL(summary, '') LIKE :like
+         OR body LIKE :like
+         OR :exact LIKE CONCAT('%', title, '%')
+       )
+     ORDER BY
+       CASE
+         WHEN title = :exact THEN 0
+         WHEN :exact LIKE CONCAT('%', title, '%') AND CHAR_LENGTH(title) >= 2 THEN 1
+         WHEN title LIKE :like THEN 2
+         ELSE 3
+       END,
+       updated_at DESC
+     LIMIT ${eLim}`,
+    { userId: uid, exact: safe, like },
+  );
+
+  const entities = entRows.map((e) => ({
+    pageId: Number(e.id),
+    kind: e.kind,
+    slug: e.slug,
+    title: e.title,
+    summary: e.summary || null,
+  }));
+
+  if (!entities.length) {
+    return { query: q, entities: [], items: [] };
+  }
+
+  const items = [];
+  const seen = new Set();
+  for (const ent of entities) {
+    const sources = await listLinkedSources(uid, ent.pageId, 20);
+    const [back] = await pool.execute(
+      `SELECT p.id, p.kind, p.slug, p.title, p.summary, p.item_id
+       FROM wiki_links l
+       INNER JOIN wiki_pages p ON p.id = l.from_page_id
+       WHERE l.user_id = :userId
+         AND l.to_page_id = :entityId
+         AND p.kind = 'source'
+         AND p.item_id IS NOT NULL
+       ORDER BY p.updated_at DESC
+       LIMIT 20`,
+      { userId: uid, entityId: ent.pageId },
+    );
+    for (const s of [...sources, ...back]) {
+      const iid = Number(s.item_id);
+      if (!iid || iid === excludeItemId || seen.has(iid)) continue;
+      seen.add(iid);
+      items.push({
+        itemId: iid,
+        title: null,
+        coverImageUrl: null,
+        mediaKind: 'article',
+        viaTitle: ent.title,
+      });
+      if (items.length >= iLim) break;
+    }
+    if (items.length >= iLim) break;
+  }
+
+  if (items.length) {
+    const ids = items.map((x) => x.itemId);
+    const idPh = ids.map((_, i) => `:iid${i}`).join(',');
+    const ip = { userId: uid };
+    ids.forEach((id, i) => {
+      ip[`iid${i}`] = id;
+    });
+    const [rows] = await pool.execute(
+      `SELECT id, title, cover_image_url, media_kind
+       FROM items
+       WHERE user_id = :userId
+         AND deleted_at IS NULL
+         AND id IN (${idPh})`,
+      ip,
+    );
+    const byId = new Map(rows.map((r) => [Number(r.id), r]));
+    for (const it of items) {
+      const r = byId.get(it.itemId);
+      if (!r) {
+        it.title = null;
+        continue;
+      }
+      it.title = r.title || `条目 ${it.itemId}`;
+      it.coverImageUrl = r.cover_image_url || null;
+      it.mediaKind = r.media_kind || 'article';
+    }
+  }
+
+  const cleanedItems = items
+    .filter((it) => it.title != null)
+    .map((it) => ({
+      itemId: it.itemId,
+      title: it.title,
+      coverImageUrl: it.coverImageUrl,
+      mediaKind: it.mediaKind,
+      viaTitle: it.viaTitle || null,
+    }));
+
+  return { query: q, entities, items: cleanedItems };
+}
+
+/**
  * 无出链的实体/概念（孤儿候选）
  */
 async function listOrphanEntityPages(userId, limit = 50) {
@@ -339,6 +476,7 @@ module.exports = {
   upsertLink,
   listLinkedEntities,
   listLinkedSources,
+  matchRelatedByText,
   refreshIndexPage,
   appendLog,
   listPages,

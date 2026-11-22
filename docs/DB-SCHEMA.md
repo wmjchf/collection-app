@@ -236,6 +236,8 @@ API：`GET …/transcript-targets`、`POST …/transcript`（body.segmentKey）�
 | --- | --- |
 | from_page_id / to_page_id / rel | 交叉链接；`rel` 如 `mentions`；唯一 `(from, to, rel)`；反向查询 = 日后双链 backlinks |
 
+App 划选「关联」：`GET /api/wiki/relate?q=&excludeItemId=` 用选中文字匹配实体/概念并汇总链到的收藏（只读）。
+
 ### `wiki_log`
 
 append-only：`op`=`ingest`/`lint` 等，便于排障（不进 App）。

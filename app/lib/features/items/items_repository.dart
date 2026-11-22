@@ -4,6 +4,7 @@ import 'package:super_collection/features/collection/tag_models.dart';
 import 'package:super_collection/features/items/ai_meta_models.dart';
 import 'package:super_collection/features/items/item_models.dart';
 import 'package:super_collection/features/items/transcript_models.dart';
+import 'package:super_collection/features/items/wiki_relate_models.dart';
 
 class ItemsRepository {
   ItemsRepository({
@@ -42,6 +43,23 @@ class ItemsRepository {
     final json = await _api.get('/api/items/$id', accessToken: token);
     final itemJson = json['item'] as Map<String, dynamic>? ?? {};
     return CollectionItem.fromJson(itemJson);
+  }
+
+  /// 划选文字匹配 Wiki 实体与相关收藏。
+  Future<WikiRelatePayload> fetchWikiRelate(
+    String q, {
+    int? excludeItemId,
+  }) async {
+    final token = await _token();
+    final encoded = Uri.encodeQueryComponent(q.trim());
+    final exclude = excludeItemId != null && excludeItemId > 0
+        ? '&excludeItemId=$excludeItemId'
+        : '';
+    final json = await _api.get(
+      '/api/wiki/relate?q=$encoded$exclude',
+      accessToken: token,
+    );
+    return WikiRelatePayload.fromJson(json);
   }
 
   Future<({List<SearchHit> items, List<Tag> tags, int total, String query})>

@@ -113,6 +113,7 @@ app.use('/api/auth', authRouter);
 app.use('/api/onboarding', require('./routes/onboarding'));
 app.use('/api/feedback', require('./routes/feedback'));
 app.use('/api/items', itemsRouter);
+app.use('/api/wiki', require('./routes/wiki'));
 app.use('/api/tags', tagsRouter);
 app.use('/api/tag-modules', require('./routes/tagModules'));
 app.use('/api/system-filters', systemFiltersRouter);

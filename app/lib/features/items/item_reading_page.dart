@@ -39,6 +39,7 @@ import 'package:super_collection/features/items/reading_item_notes_sheet.dart';
 import 'package:super_collection/features/items/reading_quote_share.dart';
 import 'package:super_collection/features/items/reading_reparse_confirm_dialog.dart';
 import 'package:super_collection/features/items/reading_title_edit_dialog.dart';
+import 'package:super_collection/features/items/reading_wiki_relate_sheet.dart';
 import 'package:super_collection/features/settings/quota_gate.dart';
 import 'package:super_collection/features/settings/usage_repository.dart';
 import 'package:super_collection/features/items/reading_tags_sheet.dart';
@@ -1237,6 +1238,21 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
     AppToast.show(context, '已复制');
   }
 
+  Future<void> _onWikiRelate(
+    EditableTextState state,
+    String text,
+  ) async {
+    final selected = text.trim();
+    _clearToolbar(state);
+    if (selected.isEmpty || !mounted) return;
+    await showReadingWikiRelateSheet(
+      context,
+      selectedText: selected,
+      excludeItemId: _item.id,
+      repository: _repo,
+    );
+  }
+
   Future<void> _onShareQuote(
     EditableTextState state,
     String text, {
@@ -1834,6 +1850,12 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
             selected,
             start,
             end,
+          ),
+        ),
+        _ToolbarAction(
+          label: '关联',
+          onTap: () => unawaited(
+            _onWikiRelate(editableTextState, selected),
           ),
         ),
         _ToolbarAction(
@@ -3253,7 +3275,7 @@ extension on List<({Rect rect, ItemAnnotation ann, int? noteIndex})> {
   }
 }
 
-/// 深色圆角工具条「高亮 / 加批注 / 复制 / 分享」
+/// 深色圆角工具条「高亮 / 加批注 / 关联 / 复制 / 分享」
 class _ToolbarAction extends StatelessWidget {
   const _ToolbarAction({
     required this.label,
