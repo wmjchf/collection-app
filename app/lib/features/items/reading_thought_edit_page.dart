@@ -7,6 +7,7 @@ import 'package:super_collection/core/ui/app_orientation.dart';
 import 'package:super_collection/core/ui/app_toast.dart';
 import 'package:super_collection/features/items/item_thoughts.dart';
 import 'package:super_collection/features/items/items_repository.dart';
+import 'package:super_collection/features/items/reading_font_prefs.dart';
 import 'package:super_collection/features/items/reading_wiki_relate_sheet.dart';
 
 class ThoughtEditResult {
@@ -163,13 +164,29 @@ class _ReadingThoughtEditPageState extends State<ReadingThoughtEditPage> {
   /// 本会话内点开书提交过的版本；关闭时带回给外层写库。
   ThoughtEditResult? _sessionSaved;
   bool _dirty = false;
+  /// 与阅读页正文同字号（ReadingFontPrefs）。
+  double _bodyFontSize = ReadingFontPrefs.defaultSize;
 
   bool get _isReading => _mode == ThoughtPageMode.reading;
+
+  TextStyle get _bodyTextStyle => TextStyle(
+        fontSize: _bodyFontSize,
+        height: 1.85,
+        letterSpacing: 0.2,
+        color: _text,
+        fontWeight: FontWeight.w400,
+      );
 
   bool get _canCommit {
     final title = _title.text.trim();
     final text = _body.text.trim();
     return title.isNotEmpty && text.isNotEmpty;
+  }
+
+  Future<void> _loadBodyFontSize() async {
+    final size = await ReadingFontPrefs.load();
+    if (!mounted || size == _bodyFontSize) return;
+    setState(() => _bodyFontSize = size);
   }
 
   @override
@@ -178,6 +195,7 @@ class _ReadingThoughtEditPageState extends State<ReadingThoughtEditPage> {
     _mode = widget.initialMode;
     _baselineTitle = widget.initialTitle;
     _baselineText = widget.initialText;
+    unawaited(_loadBodyFontSize());
     _title = TextEditingController(text: widget.initialTitle);
     _body = TextEditingController(text: widget.initialText);
     _titleFocus = FocusNode();
@@ -374,22 +392,14 @@ class _ReadingThoughtEditPageState extends State<ReadingThoughtEditPage> {
         ),
         const SizedBox(height: 14),
         if (body.isEmpty)
-          const Text(
+          Text(
             '暂无正文',
-            style: TextStyle(
-              fontSize: 17,
-              color: Color(0xFFC5CAD3),
-              height: 1.55,
-            ),
+            style: _bodyTextStyle.copyWith(color: const Color(0xFFC5CAD3)),
           )
         else
           SelectableText(
             body,
-            style: const TextStyle(
-              fontSize: 17,
-              color: _text,
-              height: 1.55,
-            ),
+            style: _bodyTextStyle,
             contextMenuBuilder: _readingContextMenu,
           ),
       ],
@@ -443,12 +453,7 @@ class _ReadingThoughtEditPageState extends State<ReadingThoughtEditPage> {
             maxLength: 2000,
             textAlignVertical: TextAlignVertical.top,
             onChanged: (_) => setState(() {}),
-            style: const TextStyle(
-              fontSize: 17,
-              fontWeight: FontWeight.w400,
-              color: _text,
-              height: 1.55,
-            ),
+            style: _bodyTextStyle,
             cursorColor: _blue,
             decoration: const InputDecoration(
               isDense: true,
