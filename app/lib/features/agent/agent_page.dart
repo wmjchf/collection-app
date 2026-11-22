@@ -1669,7 +1669,7 @@ class _AgentPageState extends State<AgentPage> {
       context,
       initialText: clipped,
     );
-    if (!mounted || result == null) return;
+    if (!mounted || result == null || result.deleted) return;
     final text = result.text.trim();
     if (text.isEmpty) return;
 

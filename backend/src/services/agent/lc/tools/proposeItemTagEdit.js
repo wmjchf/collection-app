@@ -127,7 +127,8 @@ function createProposeItemTagEditTool(runtime) {
       description:
         '为指定收藏预览加减/替换标签（不写库）。用户说「打上标签」「去掉标签」「改成这些标签」时调用。' +
         '确认后才写入。itemId 可省略（默认当前阅读篇）。优先复用库里已有标签名，少造近义新标签。' +
-        '不要用于归类整理或全库标签盘点。',
+        '用户未点名具体标签名时：调用前须先 get_item_excerpt(preferWikiSource:true) 看源页与相关实体，用实体名对齐已有标签再提出 add/replace；' +
+        '用户已点名标签或只要 remove 时可直接调用。不要用于归类整理或全库标签盘点。',
       schema: z.object({
         itemId: z
           .number()

@@ -7,7 +7,7 @@ router.use(requireAuth);
 
 /**
  * GET /api/wiki/relate?q=&excludeItemId=
- * 用选中文字匹配 Wiki 实体 + 相关收藏（只读）
+ * 划选关联：当前篇语境 + 选中字 → Wiki 实体向量召回，再用收藏向量过滤同词异义（只读）
  */
 router.get('/relate', async (req, res, next) => {
   try {

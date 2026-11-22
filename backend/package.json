@@ -25,6 +25,7 @@
     "fix:douyin-covers": "node scripts/fix-douyin-covers.js",
     "kb:index": "node scripts/index-item-embeddings.js",
     "wiki:backfill": "node scripts/wiki-backfill.js",
+    "wiki:embed-backfill": "node scripts/wiki-embed-backfill.js",
     "help:upload-images": "node scripts/upload-help-images.js",
     "apk:upload": "node scripts/upload-android-apk.js"
   },

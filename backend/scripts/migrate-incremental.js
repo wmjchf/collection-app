@@ -55,6 +55,7 @@ const MIGRATION_FILES = [
   '045_item_agent_digest.sql',
   '046_user_wiki.sql',
   '047_drop_item_agent_digest.sql',
+  '048_wiki_page_embeddings.sql',
 ];
 
 async function getConnection() {
@@ -547,6 +548,15 @@ async function apply047(conn, dbName) {
   }
 }
 
+async function apply048(conn, dbName) {
+  if (await tableExists(conn, dbName, 'wiki_page_embeddings')) {
+    console.log('[db:migrate] 048: wiki_page_embeddings 已存在，跳过');
+    return;
+  }
+  await runSqlFile(conn, '048_wiki_page_embeddings.sql');
+  console.log('[db:migrate] 048: wiki_page_embeddings');
+}
+
 async function applyMigration(conn, dbName, file) {
   if (file === '002_last_read_at.sql') {
     await apply002(conn, dbName);
@@ -622,6 +632,10 @@ async function applyMigration(conn, dbName, file) {
   }
   if (file === '047_drop_item_agent_digest.sql') {
     await apply047(conn, dbName);
+    return;
+  }
+  if (file === '048_wiki_page_embeddings.sql') {
+    await apply048(conn, dbName);
     return;
   }
   await runSqlFile(conn, file);

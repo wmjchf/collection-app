@@ -309,7 +309,8 @@ async function listPages(userId, { kinds, limit = 100, withBody = false } = {}) 
 }
 
 /**
- * 用选中文字匹配 Wiki 实体，并汇总链到的相关收藏。
+ * 划选关联：带当前篇语境的语义召回（Wiki 实体向量 + 收藏向量过滤同词异义）。
+ * 向量未就绪时回退关键字实体匹配。
  * @param {number} userId
  * @param {string} rawQuery
  * @param {{ excludeItemId?: number, entityLimit?: number, itemLimit?: number }} [opts]
@@ -328,52 +329,48 @@ async function matchRelatedByText(userId, rawQuery, opts = {}) {
     return { query: q, entities: [], items: [] };
   }
 
-  // 防 LIKE 通配；过短只做精确/包含标题
-  const safe = q.replace(/[%_\\]/g, '').trim();
-  if (!safe) {
-    return { query: q, entities: [], items: [] };
+  const context = await buildRelateContext(uid, excludeItemId);
+  const searchQ = context
+    ? `语境：${context}\n选中：${q}`
+    : q;
+
+  let entities = [];
+  let mode = 'keyword';
+  try {
+    const wikiEmbeddingService = require('./wikiEmbeddingService');
+    if (wikiEmbeddingService.isEnabled()) {
+      const hits = await wikiEmbeddingService.searchSimilarPages(uid, searchQ, {
+        limit: eLim,
+      });
+      if (hits.length) {
+        mode = 'semantic';
+        entities = hits.map((h) => ({
+          pageId: Number(h.pageId),
+          kind: h.kind,
+          slug: h.slug,
+          title: h.title,
+          summary: h.summary || null,
+          score: h.score,
+        }));
+      }
+    }
+  } catch (err) {
+    console.warn(
+      '[wiki] semantic relate fail, fallback keyword:',
+      err?.message || err,
+    );
   }
-  const like = `%${safe}%`;
-
-  const [entRows] = await pool.execute(
-    `SELECT id, kind, slug, title, summary
-     FROM wiki_pages
-     WHERE user_id = :userId
-       AND kind IN ('entity', 'concept')
-       AND (
-         title = :exact
-         OR title LIKE :like
-         OR slug LIKE :like
-         OR IFNULL(summary, '') LIKE :like
-         OR body LIKE :like
-         OR :exact LIKE CONCAT('%', title, '%')
-       )
-     ORDER BY
-       CASE
-         WHEN title = :exact THEN 0
-         WHEN :exact LIKE CONCAT('%', title, '%') AND CHAR_LENGTH(title) >= 2 THEN 1
-         WHEN title LIKE :like THEN 2
-         ELSE 3
-       END,
-       updated_at DESC
-     LIMIT ${eLim}`,
-    { userId: uid, exact: safe, like },
-  );
-
-  const entities = entRows.map((e) => ({
-    pageId: Number(e.id),
-    kind: e.kind,
-    slug: e.slug,
-    title: e.title,
-    summary: e.summary || null,
-  }));
 
   if (!entities.length) {
-    return { query: q, entities: [], items: [] };
+    entities = await keywordMatchEntities(uid, q, eLim);
   }
 
-  const items = [];
-  const seen = new Set();
+  if (!entities.length) {
+    return { query: q, entities: [], items: [], mode };
+  }
+
+  const viaByItem = new Map();
+  const linkedIds = [];
   for (const ent of entities) {
     const sources = await listLinkedSources(uid, ent.pageId, 20);
     const [back] = await pool.execute(
@@ -390,18 +387,53 @@ async function matchRelatedByText(userId, rawQuery, opts = {}) {
     );
     for (const s of [...sources, ...back]) {
       const iid = Number(s.item_id);
-      if (!iid || iid === excludeItemId || seen.has(iid)) continue;
-      seen.add(iid);
-      items.push({
-        itemId: iid,
-        title: null,
-        coverImageUrl: null,
-        mediaKind: 'article',
-        viaTitle: ent.title,
-      });
-      if (items.length >= iLim) break;
+      if (!iid || iid === excludeItemId) continue;
+      if (!viaByItem.has(iid)) {
+        viaByItem.set(iid, ent.title);
+        linkedIds.push(iid);
+      }
     }
-    if (items.length >= iLim) break;
+  }
+
+  let items = [];
+  try {
+    const itemEmbeddingService = require('../itemEmbeddingService');
+    if (itemEmbeddingService.isEnabled()) {
+      const similar = await itemEmbeddingService.searchSimilar(uid, searchQ, {
+        excludeItemIds: excludeItemId > 0 ? [excludeItemId] : [],
+        limit: Math.max(iLim, 12),
+        maxCap: 40,
+      });
+      const linkedSet = new Set(linkedIds);
+      const both = similar.filter((h) => linkedSet.has(h.itemId));
+      // 有 Wiki 链时优先同链且语义近的；否则直接用收藏语义结果（消歧）
+      const ranked = both.length ? both : similar;
+      items = ranked.slice(0, iLim).map((h) => ({
+        itemId: h.itemId,
+        title: h.title,
+        coverImageUrl: h.coverImageUrl || null,
+        mediaKind: 'article',
+        viaTitle: viaByItem.get(h.itemId) || null,
+      }));
+      if (items.length) {
+        mode = mode === 'semantic' ? 'semantic' : 'item_semantic';
+      }
+    }
+  } catch (err) {
+    console.warn(
+      '[wiki] item semantic filter fail:',
+      err?.message || err,
+    );
+  }
+
+  if (!items.length && linkedIds.length) {
+    items = linkedIds.slice(0, iLim).map((iid) => ({
+      itemId: iid,
+      title: null,
+      coverImageUrl: null,
+      mediaKind: 'article',
+      viaTitle: viaByItem.get(iid) || null,
+    }));
   }
 
   if (items.length) {
@@ -442,7 +474,110 @@ async function matchRelatedByText(userId, rawQuery, opts = {}) {
       viaTitle: it.viaTitle || null,
     }));
 
-  return { query: q, entities, items: cleanedItems };
+  // 实体列表不把内部 score 暴露给 App（保持原字段）
+  const cleanedEntities = entities.map((e) => ({
+    pageId: e.pageId,
+    kind: e.kind,
+    slug: e.slug,
+    title: e.title,
+    summary: e.summary || null,
+  }));
+
+  return { query: q, entities: cleanedEntities, items: cleanedItems, mode };
+}
+
+async function buildRelateContext(userId, excludeItemId) {
+  const iid = Number(excludeItemId);
+  if (!iid) return '';
+  const source = await getSourcePageByItem(userId, iid);
+  if (source) {
+    const title = String(source.title || '').trim();
+    const summary = String(source.summary || '')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .slice(0, 240);
+    const body = String(source.body || '')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .slice(0, 280);
+    return [title, summary || body].filter(Boolean).join('。').slice(0, 420);
+  }
+  const [rows] = await pool.execute(
+    `SELECT title, summary FROM items
+     WHERE id = :itemId AND user_id = :userId AND deleted_at IS NULL
+     LIMIT 1`,
+    { itemId: iid, userId },
+  );
+  const row = rows[0];
+  if (!row) return '';
+  return [row.title, row.summary]
+    .map((s) => String(s || '').replace(/\s+/g, ' ').trim())
+    .filter(Boolean)
+    .join('。')
+    .slice(0, 420);
+}
+
+async function keywordMatchEntities(userId, q, eLim) {
+  const safe = q.replace(/[%_\\]/g, '').trim();
+  if (!safe) return [];
+  // 英文短词：整词倾向（避免 Token→imToken）；中文仍可用包含
+  const isLatin = /^[A-Za-z][A-Za-z0-9+._-]{0,47}$/.test(safe);
+  const like = `%${safe}%`;
+  let sql;
+  const params = { userId, exact: safe, like };
+  if (isLatin) {
+    sql = `SELECT id, kind, slug, title, summary
+     FROM wiki_pages
+     WHERE user_id = :userId
+       AND kind IN ('entity', 'concept')
+       AND (
+         title = :exact
+         OR slug = :exact
+         OR title REGEXP :wordRe
+         OR slug REGEXP :wordRe
+         OR :exact LIKE CONCAT('%', title, '%') AND CHAR_LENGTH(title) >= 3
+       )
+     ORDER BY
+       CASE
+         WHEN title = :exact THEN 0
+         WHEN slug = :exact THEN 1
+         WHEN title REGEXP :wordRe THEN 2
+         ELSE 3
+       END,
+       updated_at DESC
+     LIMIT ${eLim}`;
+    // MySQL：非字母数字边界包住查询词
+    params.wordRe = `(^|[^A-Za-z0-9])${safe.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}([^A-Za-z0-9]|$)`;
+  } else {
+    sql = `SELECT id, kind, slug, title, summary
+     FROM wiki_pages
+     WHERE user_id = :userId
+       AND kind IN ('entity', 'concept')
+       AND (
+         title = :exact
+         OR title LIKE :like
+         OR slug LIKE :like
+         OR IFNULL(summary, '') LIKE :like
+         OR :exact LIKE CONCAT('%', title, '%') AND CHAR_LENGTH(title) >= 2
+       )
+     ORDER BY
+       CASE
+         WHEN title = :exact THEN 0
+         WHEN :exact LIKE CONCAT('%', title, '%') AND CHAR_LENGTH(title) >= 2 THEN 1
+         WHEN title LIKE :like THEN 2
+         ELSE 3
+       END,
+       updated_at DESC
+     LIMIT ${eLim}`;
+  }
+  const [entRows] = await pool.execute(sql, params);
+  return entRows.map((e) => ({
+    pageId: Number(e.id),
+    kind: e.kind,
+    slug: e.slug,
+    title: e.title,
+    summary: e.summary || null,
+  }));
 }
 
 /**

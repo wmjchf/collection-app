@@ -19,10 +19,6 @@ Future<CollectionItem?> showReadingNoteSheet(
     itemId: itemId,
     annotations: annotations,
     initialNote: initialNote,
-    shareTitle: title,
-    shareLink: link,
-    shareCoverUrl: coverUrl,
-    sharePageUrl: pageUrl,
     isPro: isPro,
     initialFilter: ReadingNotesFilter.thought,
   );

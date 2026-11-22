@@ -188,6 +188,12 @@ async function runWikiIngestJob(itemId) {
     );
     await wikiStore.upsertLink(userId, entPage.id, sourcePage.id, 'about');
     linked += 1;
+    try {
+      const wikiEmbeddingService = require('./wikiEmbeddingService');
+      wikiEmbeddingService.scheduleIndexPage(userId, entPage.id);
+    } catch (_) {
+      /* optional */
+    }
   }
 
   await wikiStore.refreshIndexPage(userId);

@@ -236,13 +236,22 @@ API：`GET …/transcript-targets`、`POST …/transcript`（body.segmentKey）�
 | --- | --- |
 | from_page_id / to_page_id / rel | 交叉链接；`rel` 如 `mentions`；唯一 `(from, to, rel)`；反向查询 = 日后双链 backlinks |
 
-App 划选「关联」：`GET /api/wiki/relate?q=&excludeItemId=` 用选中文字匹配实体/概念并汇总链到的收藏（只读）。
+App 划选「关联」：`GET /api/wiki/relate?q=&excludeItemId=` —— 用当前篇 Wiki 源页作语境 + 选中字，**语义召回**实体/概念（`wiki_page_embeddings`），再用 `item_embeddings` 过滤同词异义；向量未就绪时回退关键字。
+
+### `wiki_page_embeddings`
+
+| 字段 | 说明 |
+| --- | --- |
+| page_id | FK → wiki_pages；仅索引 `entity` / `concept` |
+| chunk_index / chunk_text / content_hash / embedding / model / dims | 对齐 `item_embeddings`；同文本 embedding 模型 |
+
+ingest 后异步索引；存量：`pnpm wiki:embed-backfill`。
 
 ### `wiki_log`
 
 append-only：`op`=`ingest`/`lint` 等，便于排障（不进 App）。
 
-迁移：`046_user_wiki.sql`；退役检索卡列：`047_drop_item_agent_digest.sql`（原 `045` 曾加 `items.agent_digest`）。执行：`cd backend && pnpm db:migrate`。
+迁移：`046_user_wiki.sql`；退役检索卡列：`047_drop_item_agent_digest.sql`；Wiki 向量：`048_wiki_page_embeddings.sql`。执行：`cd backend && pnpm db:migrate`。
 
 ---
 

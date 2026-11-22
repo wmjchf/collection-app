@@ -1,10 +1,23 @@
 import 'package:flutter/material.dart';
 import 'package:super_collection/core/network/api_client.dart';
 import 'package:super_collection/core/ui/app_bottom_sheet.dart';
+import 'package:super_collection/core/ui/app_confirm_dialog.dart';
 import 'package:super_collection/core/ui/app_toast.dart';
 import 'package:super_collection/core/ui/pro_copy.dart';
 import 'package:super_collection/features/items/item_models.dart';
 import 'package:super_collection/features/items/items_repository.dart';
+
+/// 详情 sheet 关闭结果：点「删除」先关 sheet，由外层确认。
+class _AnnotationDetailClose {
+  const _AnnotationDetailClose({
+    this.requestDelete = false,
+    this.draftNote,
+  });
+
+  final bool requestDelete;
+  /// 关闭时输入框内容，取消删除后重开可带回。
+  final String? draftNote;
+}
 
 Future<void> showAnnotationDetailSheet(
   BuildContext context, {
@@ -13,19 +26,49 @@ Future<void> showAnnotationDetailSheet(
   required VoidCallback onChanged,
   bool isPro = false,
   Future<void> Function(String quote, Rect? shareOrigin, {String? note})? onShare,
-}) {
-  return showAppBottomSheet<void>(
-    context: context,
-    builder: (context) => _AnnotationNoteSheet(
-      itemId: itemId,
-      annotation: annotation,
-      selectedText: annotation.selectedText,
-      initialNote: annotation.note,
-      onChanged: onChanged,
-      isPro: isPro,
-      onShare: onShare,
-    ),
-  );
+}) async {
+  var draftNote = annotation.note;
+  final repo = ItemsRepository();
+  while (context.mounted) {
+    final close = await showAppBottomSheet<_AnnotationDetailClose>(
+      context: context,
+      builder: (context) => _AnnotationNoteSheet(
+        itemId: itemId,
+        annotation: annotation,
+        selectedText: annotation.selectedText,
+        initialNote: draftNote,
+        onChanged: onChanged,
+        isPro: isPro,
+        onShare: onShare,
+      ),
+    );
+    if (!context.mounted) return;
+    if (close?.requestDelete != true) return;
+
+    final ok = await showAppConfirmBottomSheet(
+      context,
+      title: deleteAnnotationTitle(isPro: isPro),
+      message: '删除后不可恢复。',
+      confirmLabel: '删除',
+      dangerConfirm: true,
+    );
+    if (!context.mounted) return;
+    if (ok == true) {
+      try {
+        await repo.deleteAnnotation(itemId, annotation.id);
+        if (!context.mounted) return;
+        onChanged();
+        AppToast.show(context, '已删除');
+      } on ApiException catch (e) {
+        if (context.mounted) AppToast.show(context, e.message);
+      } catch (_) {
+        if (context.mounted) AppToast.show(context, '删除失败');
+      }
+      return;
+    }
+    // 取消删除：带回草稿，重新打开批注
+    draftNote = close?.draftNote ?? draftNote;
+  }
 }
 
 /// 选中文字后「加批注」：创建标注并写入批注。
@@ -153,6 +196,17 @@ class _AnnotationNoteSheetState extends State<_AnnotationNoteSheet> {
       if (!mounted) return;
       setState(() => _saving = false);
     }
+  }
+
+  void _requestDelete() {
+    if (_saving || widget.isCreate || widget.annotation == null) return;
+    Navigator.pop(
+      context,
+      _AnnotationDetailClose(
+        requestDelete: true,
+        draftNote: _controller.text,
+      ),
+    );
   }
 
   Future<void> _share(BuildContext buttonContext) async {
@@ -287,7 +341,11 @@ class _AnnotationNoteSheetState extends State<_AnnotationNoteSheet> {
                   child: SizedBox(
                     height: 48,
                     child: FilledButton(
-                      onPressed: () => Navigator.pop(context),
+                      onPressed: _saving
+                          ? null
+                          : (widget.isCreate
+                              ? () => Navigator.pop(context)
+                              : _requestDelete),
                       style: FilledButton.styleFrom(
                         backgroundColor: _fieldBg,
                         foregroundColor: _text,
@@ -296,9 +354,9 @@ class _AnnotationNoteSheetState extends State<_AnnotationNoteSheet> {
                           borderRadius: BorderRadius.circular(12),
                         ),
                       ),
-                      child: const Text(
-                        '取消',
-                        style: TextStyle(
+                      child: Text(
+                        widget.isCreate ? '取消' : '删除',
+                        style: const TextStyle(
                           fontSize: 15,
                           fontWeight: FontWeight.w500,
                         ),

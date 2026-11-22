@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:ui' show BoxHeightStyle, BoxWidthStyle;
 
 import 'package:flutter/material.dart';
@@ -5,6 +6,7 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:super_collection/core/network/api_client.dart';
 import 'package:super_collection/core/ui/app_bottom_sheet.dart';
+import 'package:super_collection/core/ui/app_confirm_dialog.dart';
 import 'package:super_collection/core/ui/app_orientation.dart';
 import 'package:super_collection/core/ui/app_toast.dart';
 import 'package:super_collection/core/ui/pro_copy.dart';
@@ -483,8 +485,68 @@ class _ItemTranscriptPageState extends State<ItemTranscriptPage> {
     }
   }
 
+  Future<void> _deleteAnnotation(
+    ItemAnnotation ann, {
+    required bool highlightOnly,
+  }) async {
+    final itemId = widget.itemId;
+    if (itemId == null || ann.id < 0) return;
+    final title = deleteAnnotationTitle(
+      isPro: _isPro,
+      highlightOnly: highlightOnly,
+    );
+    final message =
+        highlightOnly ? '取消后该处不再高亮。' : '删除后不可恢复。';
+    final confirmLabel = highlightOnly
+        ? '确定'
+        : deleteAnnotationLabel(
+            isPro: _isPro,
+            highlightOnly: false,
+          );
+    final ok = highlightOnly
+        ? await showAppConfirmBottomSheet(
+            context,
+            title: title,
+            message: message,
+            confirmLabel: confirmLabel,
+            dangerConfirm: true,
+          )
+        : await showAppConfirmDialog(
+            context,
+            title: title,
+            message: message,
+            confirmLabel: confirmLabel,
+          );
+    if (ok != true || !mounted) return;
+    try {
+      await _repo.deleteAnnotation(itemId, ann.id);
+      if (!mounted) return;
+      await _load();
+      if (mounted) {
+        AppToast.show(
+          context,
+          highlightOnly ? '已取消高亮' : '已删除',
+        );
+      }
+    } on ApiException catch (e) {
+      if (mounted) AppToast.show(context, e.message);
+    } catch (_) {
+      if (mounted) {
+        AppToast.show(
+          context,
+          highlightOnly ? '取消失败' : '删除失败',
+        );
+      }
+    }
+  }
+
   void _openAnnotation(ItemAnnotation ann) {
     if (widget.itemId == null || ann.id < 0) return;
+    // 纯高亮：点按确认删除，不弹出「加批注」
+    if (!AnnotationNoteStyle.hasNote(ann)) {
+      unawaited(_deleteAnnotation(ann, highlightOnly: true));
+      return;
+    }
     showAnnotationDetailSheet(
       context,
       itemId: widget.itemId!,

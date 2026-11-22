@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:super_collection/core/ui/app_bottom_sheet.dart';
 import 'package:super_collection/core/ui/app_orientation.dart';
 
 /// 统一确认弹框（对齐回收站「彻底删除」/ 阅读页删除确认）
@@ -14,6 +15,29 @@ Future<bool?> showAppConfirmDialog(
     context: context,
     barrierColor: const Color(0x66000000),
     builder: (context) => _AppConfirmDialog(
+      title: title,
+      message: message,
+      cancelLabel: cancelLabel,
+      confirmLabel: confirmLabel,
+      dangerConfirm: dangerConfirm,
+    ),
+  );
+}
+
+/// 底部确认条（手机贴底；iPad 居中，与 [showAppBottomSheet] 一致）
+Future<bool?> showAppConfirmBottomSheet(
+  BuildContext context, {
+  required String title,
+  required String message,
+  String cancelLabel = '取消',
+  String confirmLabel = '确定',
+  bool dangerConfirm = false,
+}) {
+  return showAppBottomSheet<bool>(
+    context: context,
+    padding: EdgeInsets.zero,
+    includeSafeArea: false,
+    builder: (context) => _AppConfirmBottomSheet(
       title: title,
       message: message,
       cancelLabel: cancelLabel,
@@ -116,6 +140,99 @@ class _AppConfirmDialog extends StatelessWidget {
               ],
             ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+class _AppConfirmBottomSheet extends StatelessWidget {
+  const _AppConfirmBottomSheet({
+    required this.title,
+    required this.message,
+    required this.cancelLabel,
+    required this.confirmLabel,
+    required this.dangerConfirm,
+  });
+
+  final String title;
+  final String message;
+  final String cancelLabel;
+  final String confirmLabel;
+  final bool dangerConfirm;
+
+  static const _text = Color(0xFF1F242E);
+  static const _muted = Color(0xFF737A85);
+  static const _cancelBg = Color(0xFFF5F7FA);
+  static const _danger = Color(0xFFBF3333);
+  static const _primary = Color(0xFF2F6FED);
+  static const _handle = Color(0xFFE5E8ED);
+
+  @override
+  Widget build(BuildContext context) {
+    final bottom = MediaQuery.paddingOf(context).bottom;
+    return Material(
+      color: Colors.white,
+      borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+      clipBehavior: Clip.antiAlias,
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(20, 12, 20, 18 + bottom),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: _handle,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              title,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                fontSize: 17,
+                fontWeight: FontWeight.w700,
+                color: _text,
+                height: 1.2,
+              ),
+            ),
+            const SizedBox(height: 10),
+            Text(
+              message,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w400,
+                color: _muted,
+                height: 1.35,
+              ),
+            ),
+            const SizedBox(height: 18),
+            Row(
+              children: [
+                Expanded(
+                  child: _ActionButton(
+                    label: cancelLabel,
+                    background: _cancelBg,
+                    foreground: _text,
+                    onTap: () => Navigator.pop(context, false),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: _ActionButton(
+                    label: confirmLabel,
+                    background: dangerConfirm ? _danger : _primary,
+                    foreground: Colors.white,
+                    onTap: () => Navigator.pop(context, true),
+                  ),
+                ),
+              ],
+            ),
+          ],
         ),
       ),
     );

@@ -163,6 +163,7 @@ function createGetItemExcerptTool(runtime) {
       description:
         '精读某篇。问「这篇/总结」省略 itemId（读正文/文稿、默认 cite）。' +
         '主题检索拿不准：点名 itemId（默认读 Wiki 源页，不读全文、默认不进出处；符合再 cite:true）。' +
+        '本篇打标且用户未点名标签时：省略 itemId 并传 preferWikiSource:true，用源页与相关实体定标签候选。' +
         '标题/snippet 已能判断相关时用 cite_search_hits。' +
         '主题收窄可先 get_wiki_page 读实体/概念页。' +
         '用户明确要讲某候选内容时传 preferWikiSource:false。' +

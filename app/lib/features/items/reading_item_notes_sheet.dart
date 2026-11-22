@@ -1,19 +1,18 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:super_collection/core/network/api_client.dart';
 import 'package:super_collection/core/ui/app_bottom_sheet.dart';
-import 'package:super_collection/core/ui/app_confirm_dialog.dart';
 import 'package:super_collection/core/ui/app_orientation.dart';
 import 'package:super_collection/core/ui/app_toast.dart';
-import 'package:super_collection/core/ui/pro_copy.dart';
 import 'package:super_collection/features/agent/agent_markdown.dart';
 import 'package:super_collection/features/items/annotation_note_style.dart';
 import 'package:super_collection/features/items/item_models.dart';
 import 'package:super_collection/features/items/item_thoughts.dart';
 import 'package:super_collection/features/items/items_repository.dart';
-import 'package:super_collection/features/items/reading_quote_share.dart';
 import 'package:super_collection/features/items/reading_thought_edit_page.dart';
+import 'package:super_collection/features/items/reading_wiki_relate_sheet.dart';
 
 enum ReadingNotesFilter {
   highlight,
@@ -41,11 +40,6 @@ Future<ReadingItemNotesResult?> showReadingItemNotesSheet(
   required int itemId,
   required List<ItemAnnotation> annotations,
   String? initialNote,
-  /// 分享海报元数据
-  String? shareTitle,
-  String? shareLink,
-  String? shareCoverUrl,
-  String? sharePageUrl,
   /// 视频 / 图集才展示「文章」
   bool showArticleFilter = false,
   bool isPro = false,
@@ -55,10 +49,6 @@ Future<ReadingItemNotesResult?> showReadingItemNotesSheet(
     itemId: itemId,
     annotations: annotations,
     initialNote: initialNote,
-    shareTitle: shareTitle,
-    shareLink: shareLink,
-    shareCoverUrl: shareCoverUrl,
-    sharePageUrl: sharePageUrl,
     showArticleFilter: showArticleFilter,
     isPro: isPro,
     initialFilter: initialFilter,
@@ -82,10 +72,6 @@ class _ReadingItemNotesSheet extends StatefulWidget {
     required this.itemId,
     required this.annotations,
     this.initialNote,
-    this.shareTitle,
-    this.shareLink,
-    this.shareCoverUrl,
-    this.sharePageUrl,
     this.showArticleFilter = false,
     this.isPro = false,
     this.initialFilter,
@@ -95,10 +81,6 @@ class _ReadingItemNotesSheet extends StatefulWidget {
   final int itemId;
   final List<ItemAnnotation> annotations;
   final String? initialNote;
-  final String? shareTitle;
-  final String? shareLink;
-  final String? shareCoverUrl;
-  final String? sharePageUrl;
   final bool showArticleFilter;
   final bool isPro;
   final ReadingNotesFilter? initialFilter;
@@ -239,9 +221,32 @@ class _ReadingItemNotesSheetState extends State<_ReadingItemNotesSheet> {
         initialMode: thought == null
             ? ThoughtPageMode.editing
             : ThoughtPageMode.reading,
+        relateItemId: widget.itemId,
+        repository: _repo,
+        canDelete: thought != null,
       );
     }
     if (!mounted || result == null) return;
+    if (result.deleted) {
+      if (thought == null) return;
+      setState(() => _saving = true);
+      try {
+        final next = _thoughts.where((t) => t.id != thought.id).toList();
+        await _persistThoughts(next);
+        if (!mounted) return;
+        setState(() => _filter = ReadingNotesFilter.thought);
+        AppToast.show(context, '已删除');
+      } on ApiException catch (e) {
+        if (!mounted) return;
+        setState(() => _saving = false);
+        AppToast.show(context, e.message);
+      } catch (_) {
+        if (!mounted) return;
+        setState(() => _saving = false);
+        AppToast.show(context, '删除失败');
+      }
+      return;
+    }
     final trimmed = result.text.trim();
     if (trimmed.isEmpty) return;
     final title = result.title.trim();
@@ -285,68 +290,6 @@ class _ReadingItemNotesSheetState extends State<_ReadingItemNotesSheet> {
     }
   }
 
-  /// 确认并删除；成功返回 true（供左滑 Dismissible）。
-  Future<bool> _deleteThought(ItemThought thought) async {
-    final title = thought.isArticle
-        ? '删除文章？'
-        : thought.isExcerpt
-            ? '删除 AI 摘录？'
-            : '删除想法？';
-    final ok = await showAppConfirmDialog(
-      context,
-      title: title,
-      message: '删除后不可恢复。',
-      confirmLabel: '删除',
-    );
-    if (ok != true || !mounted) return false;
-    setState(() => _saving = true);
-    try {
-      final next = _thoughts.where((t) => t.id != thought.id).toList();
-      await _persistThoughts(next);
-      if (!mounted) return false;
-      AppToast.show(context, '已删除');
-      return true;
-    } on ApiException catch (e) {
-      if (!mounted) return false;
-      setState(() => _saving = false);
-      AppToast.show(context, e.message);
-      return false;
-    } catch (_) {
-      if (!mounted) return false;
-      setState(() => _saving = false);
-      AppToast.show(context, '删除失败');
-      return false;
-    }
-  }
-
-  Future<bool> _deleteAnnotation(ItemAnnotation ann) async {
-    final highlightOnly = !AnnotationNoteStyle.hasNote(ann);
-    final ok = await showAppConfirmDialog(
-      context,
-      title: deleteAnnotationTitle(
-        isPro: widget.isPro,
-        highlightOnly: highlightOnly,
-      ),
-      message: '删除后不可恢复。',
-      confirmLabel: '删除',
-    );
-    if (ok != true || !mounted) return false;
-    try {
-      await _repo.deleteAnnotation(widget.itemId, ann.id);
-      if (!mounted) return false;
-      setState(() {
-        _annotations = _annotations.where((a) => a.id != ann.id).toList();
-        _dirtyAnns = true;
-      });
-      AppToast.show(context, '已删除');
-      return true;
-    } on ApiException catch (e) {
-      if (!mounted) return false;
-      AppToast.show(context, e.message);
-      return false;
-    }
-  }
-
   void _setFilter(ReadingNotesFilter next) {
     if (_filter == next) return;
     setState(() => _filter = next);
@@ -383,112 +326,132 @@ class _ReadingItemNotesSheetState extends State<_ReadingItemNotesSheet> {
     );
   }
 
-  static const _danger = Color(0xFFE34D59);
-
-  Future<void> _shareNote({
-    required String quote,
-    String? note,
-    ReadingShareKind kind = ReadingShareKind.quote,
-    Rect? shareOrigin,
-  }) async {
-    final body = quote.trim();
-    if (body.isEmpty) return;
-    try {
-      await shareReadingQuote(
-        context: context,
-        quote: body,
-        note: note,
-        kind: kind,
-        title: (widget.shareTitle ?? '').trim(),
-        link: widget.shareLink,
-        coverUrl: widget.shareCoverUrl,
-        pageUrl: widget.sharePageUrl,
-        sharePositionOrigin: shareOrigin,
-        screenSize: MediaQuery.sizeOf(context),
-      );
-    } catch (error, stack) {
-      debugPrint('notes share failed: $error\n$stack');
-      if (mounted) AppToast.show(context, '分享失败，请稍后重试');
-    }
+  Future<void> _onWikiRelate(String text, VoidCallback clearSelection) async {
+    final selected = text.trim();
+    clearSelection();
+    if (selected.isEmpty || !mounted) return;
+    await showReadingWikiRelateSheet(
+      context,
+      selectedText: selected,
+      excludeItemId: widget.itemId,
+      repository: _repo,
+    );
   }
 
-  /// 每条独立白卡；右下角分享 + 删除图标。
-  Widget _itemCard({
-    required Widget child,
-    required VoidCallback onShare,
-    required VoidCallback onDelete,
+  /// 划选工具条：关联 / 复制（与阅读页口径一致）。
+  Widget _notesSelectionToolbar({
+    required TextSelectionToolbarAnchors anchors,
+    required String selected,
+    required VoidCallback clearSelection,
   }) {
+    return TextSelectionToolbar(
+      anchorAbove: anchors.primaryAnchor,
+      anchorBelow: anchors.secondaryAnchor ?? anchors.primaryAnchor,
+      toolbarBuilder: (context, child) {
+        return Material(
+          color: const Color(0xFF1F242E),
+          elevation: 6,
+          shadowColor: Colors.black26,
+          borderRadius: BorderRadius.circular(8),
+          child: child,
+        );
+      },
+      children: [
+        _NotesToolbarAction(
+          label: '关联',
+          onTap: () => unawaited(_onWikiRelate(selected, clearSelection)),
+        ),
+        _NotesToolbarAction(
+          label: '复制',
+          onTap: () async {
+            await Clipboard.setData(ClipboardData(text: selected));
+            clearSelection();
+            if (mounted) AppToast.show(context, '已复制');
+          },
+        ),
+      ],
+    );
+  }
+
+  EditableTextContextMenuBuilder get _selectableContextMenu {
+    return (context, state) {
+      final value = state.textEditingValue;
+      final sel = value.selection;
+      if (!sel.isValid || sel.isCollapsed) {
+        return const SizedBox.shrink();
+      }
+      final selected = sel.textInside(value.text);
+      if (selected.trim().isEmpty) {
+        return const SizedBox.shrink();
+      }
+      final anchors = state.contextMenuAnchors;
+      return _notesSelectionToolbar(
+        anchors: anchors,
+        selected: selected,
+        clearSelection: () {
+          ContextMenuController.removeAny();
+          state.hideToolbar();
+          state.userUpdateTextEditingValue(
+            value.copyWith(
+              selection: TextSelection.collapsed(offset: sel.end),
+            ),
+            SelectionChangedCause.toolbar,
+          );
+        },
+      );
+    };
+  }
+
+  AgentSelectionMenuBuilder get _markdownSelectionMenu {
+    return (context, anchors, selected, clearSelection) {
+      return _notesSelectionToolbar(
+        anchors: anchors,
+        selected: selected,
+        clearSelection: clearSelection,
+      );
+    };
+  }
+
+  Widget _selectablePlain(
+    String text, {
+    TextStyle? style,
+    int? maxLines,
+  }) {
+    return SelectableText(
+      text,
+      style: style,
+      maxLines: maxLines,
+      contextMenuBuilder: _selectableContextMenu,
+    );
+  }
+
+  /// 每条独立白卡（无分享 / 删除；划选工具条可关联、复制）。
+  Widget _itemCard({required Widget child}) {
     return Container(
       width: double.infinity,
       margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.fromLTRB(14, 12, 10, 6),
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(14),
         border: Border.all(color: const Color(0xFFE6E8EB)),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Padding(
-            padding: const EdgeInsets.only(right: 4),
-            child: child,
-          ),
-          Align(
-            alignment: Alignment.centerRight,
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                IconButton(
-                  onPressed: onShare,
-                  tooltip: '分享',
-                  visualDensity: VisualDensity.compact,
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(
-                    minWidth: 36,
-                    minHeight: 36,
-                  ),
-                  icon: const Icon(
-                    Icons.ios_share_rounded,
-                    size: 18,
-                    color: _muted,
-                  ),
-                ),
-                IconButton(
-                  onPressed: onDelete,
-                  tooltip: '删除',
-                  visualDensity: VisualDensity.compact,
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(
-                    minWidth: 36,
-                    minHeight: 36,
-                  ),
-                  icon: Icon(
-                    Icons.delete_outline_rounded,
-                    size: 20,
-                    color: _danger.withValues(alpha: 0.85),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
+      child: child,
     );
   }
 
   Widget _quoteRow({
     required Color barColor,
     required String text,
-    VoidCallback? onTap,
+    VoidCallback? onBarTap,
   }) {
-    return GestureDetector(
-      onTap: onTap,
-      behavior: HitTestBehavior.opaque,
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        GestureDetector(
+          onTap: onBarTap,
+          behavior: HitTestBehavior.opaque,
+          child: Container(
             width: 3,
             height: 18,
             margin: const EdgeInsets.only(top: 3),
@@ -497,19 +460,19 @@ class _ReadingItemNotesSheetState extends State<_ReadingItemNotesSheet> {
               borderRadius: BorderRadius.circular(2),
             ),
           ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              text,
-              style: const TextStyle(
-                fontSize: 15,
-                height: 1.55,
-                color: _text,
-              ),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: _selectablePlain(
+            text,
+            style: const TextStyle(
+              fontSize: 15,
+              height: 1.55,
+              color: _text,
             ),
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 
@@ -517,40 +480,29 @@ class _ReadingItemNotesSheetState extends State<_ReadingItemNotesSheet> {
     final quote = ann.selectedText.trim();
     final note = (ann.note ?? '').trim();
     return _itemCard(
-      onShare: () => unawaited(
-        _shareNote(
-          quote: quote,
-          note: note.isEmpty ? null : note,
-        ),
-      ),
-      onDelete: () => unawaited(_deleteAnnotation(ann)),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           _quoteRow(
             barColor: _blue,
             text: quote,
-            onTap: () => _pop(locate: ann),
+            onBarTap: () => _pop(locate: ann),
           ),
           if (note.isNotEmpty) ...[
             const SizedBox(height: 8),
-            GestureDetector(
-              onTap: () => _pop(locate: ann),
-              behavior: HitTestBehavior.opaque,
-              child: Container(
-                width: double.infinity,
-                padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
-                decoration: BoxDecoration(
-                  color: _noteBubble,
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Text(
-                  note,
-                  style: const TextStyle(
-                    fontSize: 14,
-                    height: 1.5,
-                    color: _text,
-                  ),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+              decoration: BoxDecoration(
+                color: _noteBubble,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: _selectablePlain(
+                note,
+                style: const TextStyle(
+                  fontSize: 14,
+                  height: 1.5,
+                  color: _text,
                 ),
               ),
             ),
@@ -589,10 +541,13 @@ class _ReadingItemNotesSheetState extends State<_ReadingItemNotesSheet> {
         ],
       );
     } else if (thought.isArticle) {
-      // 助手成文：按 Markdown 渲染（与 Agent 气泡一致）
-      body = AgentMarkdown(thought.text);
+      // 助手成文：按 Markdown 渲染；可划选关联
+      body = AgentMarkdown(
+        thought.text,
+        selectionMenuBuilder: _markdownSelectionMenu,
+      );
     } else {
-      body = Text(
+      body = _selectablePlain(
         thought.text,
         style: const TextStyle(
           fontSize: 15,
@@ -601,15 +556,14 @@ class _ReadingItemNotesSheetState extends State<_ReadingItemNotesSheet> {
         ),
       );
     }
-    // 存量摘录 / 文章只读；想法点进编辑页
-    final content = !thought.isThought
-        ? body
-        : GestureDetector(
+    // 想法：整卡点进详情，到里面划选关联；摘录 / 文章在列表划选
+    final content = thought.isThought
+        ? GestureDetector(
             onTap: () => unawaited(_openThoughtEditor(thought: thought)),
             behavior: HitTestBehavior.opaque,
             child: body,
-          );
-    // 与高亮/批注同形竖线，颜色单独（青绿）
+          )
+        : body;
     final withBar = Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -626,19 +580,7 @@ class _ReadingItemNotesSheetState extends State<_ReadingItemNotesSheet> {
         Expanded(child: content),
       ],
     );
-    final shareQuote = thought.isThought && thought.titleTrimmed.isNotEmpty
-        ? '${thought.displayTitle}\n\n${thought.text}'
-        : thought.text;
-    return _itemCard(
-      onShare: () => unawaited(
-        _shareNote(
-          quote: shareQuote,
-          kind: ReadingShareKind.note,
-        ),
-      ),
-      onDelete: () => unawaited(_deleteThought(thought)),
-      child: withBar,
-    );
+    return _itemCard(child: withBar);
   }
 
   Widget _emptyState() {
@@ -679,12 +621,10 @@ class _ReadingItemNotesSheetState extends State<_ReadingItemNotesSheet> {
         final text = a.selectedText.trim();
         out.add(
           _itemCard(
-            onShare: () => unawaited(_shareNote(quote: text)),
-            onDelete: () => unawaited(_deleteAnnotation(a)),
             child: _quoteRow(
               barColor: _yellowBar,
               text: text,
-              onTap: () => _pop(locate: a),
+              onBarTap: () => _pop(locate: a),
             ),
           ),
         );
@@ -942,6 +882,9 @@ class _ReadingItemNotesSheetState extends State<_ReadingItemNotesSheet> {
                     initialMode: thought == null
                         ? ThoughtPageMode.editing
                         : ThoughtPageMode.reading,
+                    relateItemId: widget.itemId,
+                    repository: _repo,
+                    canDelete: thought != null,
                     onClose: _finishEmbeddedThought,
                   ),
                 ),
@@ -956,6 +899,35 @@ class _ReadingItemNotesSheetState extends State<_ReadingItemNotesSheet> {
       child: SizedBox(
         height: height,
         child: body,
+      ),
+    );
+  }
+}
+
+class _NotesToolbarAction extends StatelessWidget {
+  const _NotesToolbarAction({
+    required this.label,
+    required this.onTap,
+  });
+
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(6),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        child: Text(
+          label,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 13,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
       ),
     );
   }

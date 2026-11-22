@@ -1,21 +1,34 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:super_collection/core/ui/app_confirm_dialog.dart';
 import 'package:super_collection/core/ui/app_orientation.dart';
+import 'package:super_collection/core/ui/app_toast.dart';
 import 'package:super_collection/features/items/item_thoughts.dart';
+import 'package:super_collection/features/items/items_repository.dart';
+import 'package:super_collection/features/items/reading_wiki_relate_sheet.dart';
 
 class ThoughtEditResult {
   const ThoughtEditResult({
     required this.title,
     required this.text,
     this.format = ItemNoteFormat.plain,
+    this.deleted = false,
   });
+
+  const ThoughtEditResult.deleted()
+      : title = '',
+        text = '',
+        format = ItemNoteFormat.plain,
+        deleted = true;
 
   final String title;
   /// 纯文本正文。
   final String text;
   final ItemNoteFormat format;
+  /// 用户在想法页点删除并确认。
+  final bool deleted;
 }
 
 enum ThoughtPageMode { reading, editing }
@@ -29,12 +42,20 @@ Future<ThoughtEditResult?> showReadingThoughtEditPage(
   ItemNoteFormat initialFormat = ItemNoteFormat.plain,
   /// 已有想法默认阅读；新建 / 助手划选默认编辑。
   ThoughtPageMode initialMode = ThoughtPageMode.editing,
+  /// 阅读态划选「关联」时排除当前收藏；来自笔记页时传入。
+  int? relateItemId,
+  ItemsRepository? repository,
+  /// 右上角显示删除（已有想法）；新建不展示。
+  bool canDelete = false,
 }) {
   final page = ReadingThoughtEditPage(
     initialTitle: initialTitle ?? '',
     initialText: initialText ?? '',
     initialFormat: initialFormat,
     initialMode: initialMode,
+    relateItemId: relateItemId,
+    repository: repository,
+    canDelete: canDelete,
   );
 
   if (!AppOrientation.isTablet(context)) {
@@ -109,6 +130,9 @@ class ReadingThoughtEditPage extends StatefulWidget {
     this.initialMode = ThoughtPageMode.editing,
     /// 嵌入笔记浮卡等场景：关闭时回调而不 [Navigator.pop]。
     this.onClose,
+    this.relateItemId,
+    this.repository,
+    this.canDelete = false,
   });
 
   final String initialTitle;
@@ -116,6 +140,9 @@ class ReadingThoughtEditPage extends StatefulWidget {
   final ItemNoteFormat initialFormat;
   final ThoughtPageMode initialMode;
   final ValueChanged<ThoughtEditResult?>? onClose;
+  final int? relateItemId;
+  final ItemsRepository? repository;
+  final bool canDelete;
 
   @override
   State<ReadingThoughtEditPage> createState() => _ReadingThoughtEditPageState();
@@ -209,6 +236,23 @@ class _ReadingThoughtEditPageState extends State<ReadingThoughtEditPage> {
     }
   }
 
+  Future<void> _onDelete() async {
+    final ok = await showAppConfirmDialog(
+      context,
+      title: '删除想法？',
+      message: '删除后不可恢复。',
+      confirmLabel: '删除',
+    );
+    if (ok != true || !mounted) return;
+    const result = ThoughtEditResult.deleted();
+    final onClose = widget.onClose;
+    if (onClose != null) {
+      onClose(result);
+    } else {
+      Navigator.pop(context, result);
+    }
+  }
+
   void _enterReading() {
     _titleFocus.unfocus();
     _bodyFocus.unfocus();
@@ -237,13 +281,87 @@ class _ReadingThoughtEditPageState extends State<ReadingThoughtEditPage> {
     _enterReading();
   }
 
+  Future<void> _onWikiRelate(String text, VoidCallback clearSelection) async {
+    final selected = text.trim();
+    clearSelection();
+    if (selected.isEmpty || !mounted) return;
+    await showReadingWikiRelateSheet(
+      context,
+      selectedText: selected,
+      excludeItemId: widget.relateItemId,
+      repository: widget.repository ?? ItemsRepository(),
+    );
+  }
+
+  Widget _readingSelectionToolbar({
+    required TextSelectionToolbarAnchors anchors,
+    required String selected,
+    required VoidCallback clearSelection,
+  }) {
+    return TextSelectionToolbar(
+      anchorAbove: anchors.primaryAnchor,
+      anchorBelow: anchors.secondaryAnchor ?? anchors.primaryAnchor,
+      toolbarBuilder: (context, child) {
+        return Material(
+          color: const Color(0xFF1F242E),
+          elevation: 6,
+          shadowColor: Colors.black26,
+          borderRadius: BorderRadius.circular(8),
+          child: child,
+        );
+      },
+      children: [
+        _ThoughtToolbarAction(
+          label: '关联',
+          onTap: () => unawaited(_onWikiRelate(selected, clearSelection)),
+        ),
+        _ThoughtToolbarAction(
+          label: '复制',
+          onTap: () async {
+            await Clipboard.setData(ClipboardData(text: selected));
+            clearSelection();
+            if (mounted) AppToast.show(context, '已复制');
+          },
+        ),
+      ],
+    );
+  }
+
+  EditableTextContextMenuBuilder get _readingContextMenu {
+    return (context, state) {
+      final value = state.textEditingValue;
+      final sel = value.selection;
+      if (!sel.isValid || sel.isCollapsed) {
+        return const SizedBox.shrink();
+      }
+      final selected = sel.textInside(value.text);
+      if (selected.trim().isEmpty) {
+        return const SizedBox.shrink();
+      }
+      return _readingSelectionToolbar(
+        anchors: state.contextMenuAnchors,
+        selected: selected,
+        clearSelection: () {
+          ContextMenuController.removeAny();
+          state.hideToolbar();
+          state.userUpdateTextEditingValue(
+            value.copyWith(
+              selection: TextSelection.collapsed(offset: sel.end),
+            ),
+            SelectionChangedCause.toolbar,
+          );
+        },
+      );
+    };
+  }
+
   Widget _readingBody() {
     final title = _title.text.trim();
     final body = _body.text.trim();
     return ListView(
       padding: const EdgeInsets.fromLTRB(22, 8, 22, 40),
       children: [
-        Text(
+        SelectableText(
           title.isEmpty ? '未命名' : title,
           style: TextStyle(
             fontSize: 28,
@@ -252,6 +370,7 @@ class _ReadingThoughtEditPageState extends State<ReadingThoughtEditPage> {
             height: 1.25,
             letterSpacing: -0.3,
           ),
+          contextMenuBuilder: title.isEmpty ? null : _readingContextMenu,
         ),
         const SizedBox(height: 14),
         if (body.isEmpty)
@@ -264,13 +383,14 @@ class _ReadingThoughtEditPageState extends State<ReadingThoughtEditPage> {
             ),
           )
         else
-          Text(
+          SelectableText(
             body,
             style: const TextStyle(
               fontSize: 17,
               color: _text,
               height: 1.55,
             ),
+            contextMenuBuilder: _readingContextMenu,
           ),
       ],
     );
@@ -370,6 +490,16 @@ class _ReadingThoughtEditPageState extends State<ReadingThoughtEditPage> {
             ),
           ),
           actions: [
+            if (widget.canDelete)
+              IconButton(
+                tooltip: '删除',
+                onPressed: () => unawaited(_onDelete()),
+                icon: const Icon(
+                  Icons.delete_outline_rounded,
+                  size: 22,
+                  color: Color(0xFFE34D59),
+                ),
+              ),
             if (_isReading)
               IconButton(
                 tooltip: '编辑',
@@ -389,6 +519,35 @@ class _ReadingThoughtEditPageState extends State<ReadingThoughtEditPage> {
           ],
         ),
         body: _isReading ? _readingBody() : _editingBody(),
+      ),
+    );
+  }
+}
+
+class _ThoughtToolbarAction extends StatelessWidget {
+  const _ThoughtToolbarAction({
+    required this.label,
+    required this.onTap,
+  });
+
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(6),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        child: Text(
+          label,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 13,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
       ),
     );
   }

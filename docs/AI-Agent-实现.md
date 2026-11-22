@@ -390,7 +390,7 @@ Body: { conversationId, messageId, approve: true|false }
 | 实现 | 校验属主；`listItemTags` 算 before/after/willCreate；**不写库**；挂 `pendingAction: item_tag_edit` |
 | 返回 | `{ title, before, after, add, remove, willCreate, noop }` + citations；`noop` 不挂确认条 |
 | 写入 | 用户点确认 → `POST /api/agent/actions/confirm` → find-or-create + `setItemTags` |
-| 口径 | 优先复用已有标签名；未确认禁止声称已改好 |
+| 口径 | 优先复用已有标签名；未确认禁止声称已改好。**未点名标签时**：先 `get_item_excerpt(preferWikiSource:true)` 用源页「相关实体」对齐已有标签再提出；已点名加删或只要 `remove` 可直接调用 |
 
 #### `propose_organize`（只读预览 · 仅全局）
 

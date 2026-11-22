@@ -1300,7 +1300,66 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
     }
   }
 
+  Future<void> _deleteAnnotation(
+    ItemAnnotation ann, {
+    required bool highlightOnly,
+  }) async {
+    if (ann.id < 0) return;
+    final title = deleteAnnotationTitle(
+      isPro: _isPro,
+      highlightOnly: highlightOnly,
+    );
+    final message =
+        highlightOnly ? '取消后该处不再高亮。' : '删除后不可恢复。';
+    final confirmLabel = highlightOnly
+        ? '确定'
+        : deleteAnnotationLabel(
+            isPro: _isPro,
+            highlightOnly: false,
+          );
+    final ok = highlightOnly
+        ? await showAppConfirmBottomSheet(
+            context,
+            title: title,
+            message: message,
+            confirmLabel: confirmLabel,
+            dangerConfirm: true,
+          )
+        : await showAppConfirmDialog(
+            context,
+            title: title,
+            message: message,
+            confirmLabel: confirmLabel,
+          );
+    if (ok != true || !mounted) return;
+    try {
+      await _repo.deleteAnnotation(_item.id, ann.id);
+      if (!mounted) return;
+      await _loadAnnotations();
+      if (mounted) {
+        AppToast.show(
+          context,
+          highlightOnly ? '已取消高亮' : '已删除',
+        );
+      }
+    } on ApiException catch (e) {
+      if (mounted) AppToast.show(context, e.message);
+    } catch (_) {
+      if (mounted) {
+        AppToast.show(
+          context,
+          highlightOnly ? '取消失败' : '删除失败',
+        );
+      }
+    }
+  }
+
   void _openAnnotation(ItemAnnotation ann) {
+    // 纯高亮：点按确认删除，不弹出「加批注」
+    if (!AnnotationNoteStyle.hasNote(ann)) {
+      unawaited(_deleteAnnotation(ann, highlightOnly: true));
+      return;
+    }
     final segmentKey = ann.transcriptSegmentKey;
     if (segmentKey != null) {
       final seg = _item.segmentTranscript(segmentKey);
@@ -1424,10 +1483,6 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
       itemId: _item.id,
       annotations: _annotations,
       initialNote: _item.note,
-      shareTitle: (_item.title ?? '').trim(),
-      shareLink: _linkToCopy,
-      shareCoverUrl: _item.shareCoverUrl,
-      sharePageUrl: _item.sourcePageUrl,
       showArticleFilter: _item.hasVideo || _item.isImageGallery,
       isPro: _isPro,
       initialFilter: initialFilter,

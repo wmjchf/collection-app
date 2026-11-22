@@ -59,12 +59,12 @@ String annotationSheetTitle({
 String annotationNoteHint({required bool isPro}) =>
     isPro ? '可选：写一句朱批' : '可选：写一句批注';
 
-/// [highlightOnly]：仅高亮、尚无批注正文时用「删除高亮」
+/// [highlightOnly]：仅高亮、尚无批注正文时用「取消高亮」
 String deleteAnnotationTitle({
   required bool isPro,
   bool highlightOnly = false,
 }) {
-  if (highlightOnly) return '删除高亮？';
+  if (highlightOnly) return '取消高亮？';
   return isPro ? '删除朱批？' : '删除批注？';
 }
 
@@ -72,7 +72,7 @@ String deleteAnnotationLabel({
   required bool isPro,
   bool highlightOnly = false,
 }) {
-  if (highlightOnly) return '删除高亮';
+  if (highlightOnly) return '取消高亮';
   return isPro ? '删除朱批' : '删除批注';
 }
 

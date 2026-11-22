@@ -691,7 +691,7 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
   @override
   Widget build(BuildContext context) {
     final media = MediaQuery.of(context);
-    final maxSheetHeight = media.size.height * 0.82;
+    final maxSheetHeight = media.size.height * 0.68;
     final safeBottom = media.padding.bottom;
 
     final tablet = AppOrientation.isTablet(context);
