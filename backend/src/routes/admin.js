@@ -30,13 +30,17 @@ function maskPhone(phone) {
 }
 
 /**
- * GET /api/admin/users/active-rank?days=7&limit=200
- * 近 N 天按 app_open 活跃排名（活跃天数 → 打开次数 → 最近打开）
+ * GET /api/admin/users/active-rank?days=7&limit=200&sort=active|recent
+ * 近 N 天 app_open：active=活跃天数优先；recent=最近打开优先
  */
 router.get('/users/active-rank', requireDashboardToken, async (req, res, next) => {
   try {
     const daysRaw = Number(req.query.days);
     const days = [7, 14, 30, 60, 90].includes(daysRaw) ? daysRaw : 7;
+    const sort =
+      String(req.query.sort || 'active').toLowerCase() === 'recent'
+        ? 'recent'
+        : 'active';
     const lim = Math.min(
       500,
       Math.max(1, Number(req.query.limit) || 200),
@@ -44,6 +48,11 @@ router.get('/users/active-rank', requireDashboardToken, async (req, res, next) =
     const start = new Date();
     start.setHours(0, 0, 0, 0);
     start.setDate(start.getDate() - (days - 1));
+
+    const orderBy =
+      sort === 'recent'
+        ? 'last_open_at DESC, active_days DESC, open_count DESC, e.user_id ASC'
+        : 'active_days DESC, open_count DESC, last_open_at DESC, e.user_id ASC';
 
     const [rows] = await pool.execute(
       `SELECT e.user_id,
@@ -64,7 +73,7 @@ router.get('/users/active-rank', requireDashboardToken, async (req, res, next) =
        WHERE e.created_at >= :start
        GROUP BY e.user_id, u.nickname, u.phone, u.status, u.created_at, u.last_login_at
        HAVING open_count > 0
-       ORDER BY active_days DESC, open_count DESC, last_open_at DESC, e.user_id ASC
+       ORDER BY ${orderBy}
        LIMIT ${lim}`,
       { start },
     );
@@ -119,6 +128,7 @@ router.get('/users/active-rank', requireDashboardToken, async (req, res, next) =
 
     return res.json({
       days,
+      sort,
       from: start.toISOString(),
       to: new Date().toISOString(),
       stats: { activeUsers, totalOpens, avgActiveDays },

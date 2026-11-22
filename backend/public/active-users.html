@@ -118,12 +118,16 @@
           <option value="60">近 60 天</option>
           <option value="90">近 90 天</option>
         </select>
+        <select id="sort" title="排序">
+          <option value="active">按活跃天数</option>
+          <option value="recent">按最近打开</option>
+        </select>
         <input id="q" type="search" placeholder="搜 ID / 昵称 / 手机尾号" />
         <button type="button" class="ghost" id="saveToken">记住 Token</button>
         <button type="button" id="load">刷新</button>
       </div>
     </header>
-    <p class="hint">排序：活跃天数 → 打开次数 → 最近打开。活跃天数与 DAU 同口径（按 <code>DATE(created_at)</code>）。</p>
+    <p class="hint">默认按活跃天数；可切「最近打开」。活跃天数与 DAU 同口径（按 <code>DATE(created_at)</code>）。</p>
     <div id="err" class="err" hidden></div>
     <div id="stats" class="grid" hidden></div>
     <div class="panel">
@@ -152,7 +156,7 @@
     const TOKEN_KEY = 'conflux_analytics_token';
     const $ = (id) => document.getElementById(id);
     let cache = [];
-    let meta = { days: 7 };
+    let meta = { days: 7, sort: 'active' };
 
     function token() { return $('token').value.trim(); }
 
@@ -230,9 +234,11 @@
       $('load').disabled = true;
       showErr('');
       const days = Number($('days').value) || 7;
+      const sort = $('sort').value === 'recent' ? 'recent' : 'active';
       try {
+        const qs = new URLSearchParams({ days: String(days), sort });
         const res = await fetch(
-          `/api/admin/users/active-rank?days=${encodeURIComponent(days)}`,
+          `/api/admin/users/active-rank?${qs}`,
           { headers: { 'X-Analytics-Token': t } },
         );
         const data = await res.json().catch(() => ({}));
@@ -240,6 +246,7 @@
           throw new Error(data.message || `请求失败 ${res.status}`);
         }
         meta.days = data.days || days;
+        meta.sort = data.sort || sort;
         cache = Array.isArray(data.users) ? data.users : [];
         renderStats(data.stats || { activeUsers: 0, totalOpens: 0, avgActiveDays: 0 });
         renderTable();
@@ -257,6 +264,7 @@
     });
     $('load').addEventListener('click', load);
     $('days').addEventListener('change', load);
+    $('sort').addEventListener('change', load);
     $('q').addEventListener('input', renderTable);
     $('token').addEventListener('keydown', (e) => {
       if (e.key === 'Enter') load();
