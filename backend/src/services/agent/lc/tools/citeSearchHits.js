@@ -60,23 +60,22 @@ function createCiteSearchHitsTool(runtime) {
         skipped,
         note:
           cited.length > 0
-            ? `已将 ${cited.length} 篇（标题/snippet 已能判断相关）写入出处，未精读。` +
-              '拿不准的篇请 get_item_excerpt；作答用 Markdown 列表点名已进出处的标题。'
-            : '未写入出处。itemIds 须来自本轮 search/grep 候选；拿不准请 get_item_excerpt。',
+            ? `已将 ${cited.length} 篇写入出处（未精读）。作答导语篇数须等于 ${cited.length}，列表只点名这 ${cited.length} 篇标题；不要再提未 cite 的落选。`
+            : '未写入出处。itemIds 须来自本轮 search/grep 候选且直接相关；拿不准请 get_item_excerpt。',
       });
     },
     {
       name: 'cite_search_hits',
       description:
-        '把本轮 search/grep 候选中「标题/短摘录已能判断相关」的篇直接写入用户出处（不精读、不读正文）。' +
-        '仅用于确定相关的 itemId；拿不准的不要用本工具，改 get_item_excerpt。' +
-        '有科普/教程等收窄限定、仅凭标题拿不准时，不要用本工具硬挂。',
+        '把本轮 search/grep 候选中「标题/短摘录已能判断与用户问题直接相关」的篇写入用户出处（不精读）。' +
+        '只传最终会在回答里点名的 itemId；禁止整页候选照抄；事后要排除的篇不要先挂上。' +
+        '拿不准的不要用本工具，改 get_item_excerpt。有科普/买手机等收窄、仅凭标题拿不准时，不要硬挂。',
       schema: z.object({
         itemIds: z
           .array(z.number().int().positive())
           .min(1)
           .max(6)
-          .describe('本轮候选中已确定相关的 itemId 列表'),
+          .describe('本轮候选中已确定相关、且会在回答中点名的 itemId（勿塞落选）'),
       }),
     },
   );

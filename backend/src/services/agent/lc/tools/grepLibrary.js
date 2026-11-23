@@ -61,7 +61,7 @@ function createGrepLibraryTool(runtime) {
         note:
           obs?.data?.note ||
           (hits.length
-            ? '字面候选。标题已能判断相关 → cite_search_hits；拿不准 → get_item_excerpt 读 Wiki 源页。'
+            ? '字面候选。仅对直接相关的篇 cite_search_hits（勿整页挂上）；拿不准 → get_item_excerpt 读 Wiki 源页。'
             : '无命中，可换词或改用 search_library。'),
       });
     },
