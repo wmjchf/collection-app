@@ -133,7 +133,11 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
 
   String get _query => _searchController.text.trim();
 
-  String get _queryKey => _query.toLowerCase().replaceFirst(RegExp(r'^#'), '');
+  /// 去掉前导 #，保留大小写（建标 / 展示用）
+  String get _queryName => _query.replaceFirst(RegExp(r'^#'), '');
+
+  /// 仅用于匹配（不分大小写）
+  String get _queryKey => _queryName.toLowerCase();
 
   bool _tagMatches(Tag tag) {
     final q = _queryKey;
@@ -294,7 +298,7 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
   }
 
   Future<void> _createFromQuery() async {
-    final name = _queryKey;
+    final name = _queryName;
     if (name.isEmpty || _creating) return;
     final parentId = _browsePath.isEmpty ? null : _browsePath.last.id;
     setState(() => _creating = true);
@@ -595,6 +599,9 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
         onSubmitted: (_) => _dismissSearchFocus(),
         onTapOutside: (_) => _dismissSearchFocus(),
         textInputAction: TextInputAction.search,
+        textCapitalization: TextCapitalization.none,
+        autocorrect: false,
+        enableSuggestions: false,
         style: const TextStyle(fontSize: 14, color: _text),
         decoration: InputDecoration(
           hintText: '搜索或新建标签',
@@ -901,44 +908,48 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
         return a.id.compareTo(b.id);
       });
     if (hits.isEmpty) return const SizedBox.shrink();
-    return Wrap(
-      spacing: 8,
-      runSpacing: 8,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        for (final tag in hits)
-          Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              if (_ancestryPath(tag).isNotEmpty)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 4, left: 2),
-                  child: SizedBox(
-                    width: 160,
-                    child: Text(
-                      _ancestryPath(tag),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontSize: 11,
-                        height: 1.2,
-                        color: _pathMuted,
+        for (var i = 0; i < hits.length; i++) ...[
+          if (i > 0) const SizedBox(height: 8),
+          Builder(
+            builder: (context) {
+              final tag = hits[i];
+              final path = _ancestryPath(tag);
+              return Row(
+                children: [
+                  _pill(
+                    label: tag.name,
+                    selected: _selected.contains(tag.id),
+                    showDrillChevron: _hasChildren(tag),
+                    onTap: _hasChildren(tag)
+                        ? () => _drillInto(tag)
+                        : () => _toggleTag(tag.id),
+                    onLongPress: _hasChildren(tag)
+                        ? () => _toggleTag(tag.id)
+                        : null,
+                  ),
+                  if (path.isNotEmpty) ...[
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        path,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 12,
+                          height: 1.2,
+                          color: _pathMuted,
+                        ),
                       ),
                     ),
-                  ),
-                ),
-              _pill(
-                label: tag.name,
-                selected: _selected.contains(tag.id),
-                showDrillChevron: _hasChildren(tag),
-                onTap: _hasChildren(tag)
-                    ? () => _drillInto(tag)
-                    : () => _toggleTag(tag.id),
-                onLongPress:
-                    _hasChildren(tag) ? () => _toggleTag(tag.id) : null,
-              ),
-            ],
+                  ],
+                ],
+              );
+            },
           ),
+        ],
       ],
     );
   }
@@ -981,8 +992,8 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
                         _creating
                             ? '创建中…'
                             : (_browsePath.isEmpty
-                                ? '新建 ${_hashLabel(_queryKey)}'
-                                : '在「${_browsePath.last.name}」下新建 ${_hashLabel(_queryKey)}'),
+                                ? '新建 ${_hashLabel(_queryName)}'
+                                : '在「${_browsePath.last.name}」下新建 ${_hashLabel(_queryName)}'),
                         style: TextStyle(
                           fontSize: 14,
                           fontWeight: FontWeight.w600,

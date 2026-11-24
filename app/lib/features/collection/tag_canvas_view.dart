@@ -22,7 +22,9 @@ class TagCanvasView extends StatefulWidget {
     this.draggable = true,
     this.draggingTagId,
     this.selectedTagId,
+    this.selectedTagIds,
     this.sampleTagKey,
+    this.sampleTagId,
   });
 
   final List<Tag> tags;
@@ -41,8 +43,12 @@ class TagCanvasView extends StatefulWidget {
   final int? draggingTagId;
   final int? selectedTagId;
 
-  /// 新手引导：挂在稳定选中的示例标签上（按 id 最小）。
+  /// 多选高亮（如阅读页选标）；与 [selectedTagId] 可同时生效。
+  final Set<int>? selectedTagIds;
+
+  /// 新手引导：挂在指定 / 稳定示例标签上（默认 id 最小）。
   final Key? sampleTagKey;
+  final int? sampleTagId;
 
   @override
   State<TagCanvasView> createState() => _TagCanvasViewState();
@@ -389,11 +395,12 @@ class _TagCanvasViewState extends State<TagCanvasView> {
             final be = _emphasized(b) ? 1 : 0;
             return ae.compareTo(be);
           });
-        final sampleId = widget.tags.isEmpty
-            ? null
-            : ([...widget.tags]..sort((a, b) => a.id.compareTo(b.id)))
-                .first
-                .id;
+        final sampleId = widget.sampleTagId ??
+            (widget.tags.isEmpty
+                ? null
+                : ([...widget.tags]..sort((a, b) => a.id.compareTo(b.id)))
+                    .first
+                    .id);
         final positions = {
           for (final t in widget.tags)
             t.id: _pixelPos(t.id, size) +
@@ -467,7 +474,10 @@ class _TagCanvasViewState extends State<TagCanvasView> {
                                       !_emphasized(tag),
                                   softDim: widget.draggingTagId != tag.id &&
                                       !_emphasized(tag),
-                                  selected: widget.selectedTagId == tag.id,
+                                  selected: widget.selectedTagId == tag.id ||
+                                      (widget.selectedTagIds
+                                              ?.contains(tag.id) ??
+                                          false),
                                   lifting: _repositionId == tag.id,
                                   draggable: widget.draggable,
                                   onNestAsParent: widget.onNestTag == null
