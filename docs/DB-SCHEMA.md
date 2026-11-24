@@ -145,18 +145,21 @@
 | name | VARCHAR(64) NOT NULL | |
 | is_system | TINYINT(1) NOT NULL DEFAULT 0 | |
 | sort_order | INT NOT NULL DEFAULT 0 | |
-| module_id | BIGINT UNSIGNED NULL | 仅 `section=tag`；FK → `tag_modules`，模块删除时置 NULL |
+| module_id | BIGINT UNSIGNED NULL | **遗留**；层级改用 `parent_id`（迁移 `049` 后清空） |
+| parent_id | BIGINT UNSIGNED NULL | 父标签；NULL=顶层；FK → `categories.id` ON DELETE SET NULL（`049`）；任意层（应用层防环） |
 | origin | ENUM('user','ai') NOT NULL DEFAULT 'user' | 标签创建来源（迁移 `037`） |
-| placement_origin | ENUM('user','ai') NULL | 归类放置来源；用户拖动后为 `user`（AI 不可再挪）；NULL=未归类或 AI 留未归类 |
+| placement_origin | ENUM('user','ai') NULL | 挂到父标签的来源；用户移动后为 `user`；NULL=顶层或 AI 留顶层 |
 | created_at / updated_at | DATETIME(3) | |
 
 约束：`UNIQUE (user_id, section, name)`
 系统 `code` 由 seed 保证唯一（`user_id=0`）。  
 AI 可挪条件：`origin=ai` 且 `placement_origin<>'user'`。
 
-### `tag_modules`（迁移 `022`；来源 `037`）
+产品口径：**只有标签**（可父子）。旧「归类」`tag_modules` 在 `049` 迁成同名父标签；`/api/tag-modules` 兼容。
 
-归类标签的**展示分组**（有独立标题，无父子层级）。
+### `tag_modules`（迁移 `022`；遗留）
+
+历史归类匣表；`049` 起以 `categories.parent_id` 为准，新逻辑不依赖。
 
 | 字段 | 说明 |
 | --- | --- |

@@ -7,9 +7,9 @@ import 'package:super_collection/features/collection/tag_canvas_layout_prefs.dar
 import 'package:super_collection/features/collection/tag_dot_colors.dart';
 import 'package:super_collection/features/collection/tag_models.dart';
 
-/// 二维画布：标签上下排布（点上字下），按 id 稳定随机散落；
-/// 短拖改位置（本地记忆）、长按拖到归类；捏合缩放、空白处拖移画布。
-/// 归类色点；筛选时非当前归类半透明仍显示。白底点阵。
+/// 二维画布：标签上下排布（点上字下）；
+/// 同屏内若有父子，父在左、子在右并画连线（连线在「外面一层」）；
+/// 短拖改位置、长按挂下级、捏合缩放、空白拖移。
 class TagCanvasView extends StatefulWidget {
   const TagCanvasView({
     super.key,
@@ -18,21 +18,28 @@ class TagCanvasView extends StatefulWidget {
     this.isEmphasized,
     this.onDragStarted,
     this.onDragEnded,
+    this.onNestTag,
     this.draggable = true,
     this.draggingTagId,
+    this.selectedTagId,
     this.sampleTagKey,
   });
 
   final List<Tag> tags;
   final ValueChanged<Tag> onTapTag;
 
-  /// `null` 或恒 true = 全部实色；筛归类时非匹配返回 false → 半透明。
+  /// `null` 或恒 true = 全部实色；筛选时非匹配返回 false → 半透明。
   final bool Function(Tag tag)? isEmphasized;
 
   final ValueChanged<Tag>? onDragStarted;
   final VoidCallback? onDragEnded;
+
+  /// 长按拖到另一个标签上 = 挂到其下
+  final void Function(Tag dragged, Tag target)? onNestTag;
+
   final bool draggable;
   final int? draggingTagId;
+  final int? selectedTagId;
 
   /// 新手引导：挂在稳定选中的示例标签上（按 id 最小）。
   final Key? sampleTagKey;
@@ -69,8 +76,8 @@ class _TagCanvasViewState extends State<TagCanvasView> {
   static const _edge = 14.0;
   /// 首屏外可放置边距：平移画布后仍能把标签拖到可见区域。
   static const _worldPad = 280.0;
-  /// 散落参数变更时递增，强制重算默认坐标（用户拖位仍覆盖）。
-  static const _layoutVersion = 'v2';
+  /// 散落 / 簇布局参数变更时递增，强制重算默认坐标（用户拖位仍覆盖）。
+  static const _layoutVersion = 'v4-cluster';
 
   Matrix4 _homeTransform() =>
       Matrix4.translationValues(-_worldPad, -_worldPad, 0);
@@ -92,7 +99,7 @@ class _TagCanvasViewState extends State<TagCanvasView> {
   void didUpdateWidget(covariant TagCanvasView oldWidget) {
     super.didUpdateWidget(oldWidget);
     _ensureNormLayout(widget.tags);
-    // 归类拖开始时取消未完成的改位。
+    // 长按挂层级开始时取消未完成的改位。
     if (widget.draggingTagId != null &&
         oldWidget.draggingTagId == null &&
         _repositionId != null) {
@@ -127,7 +134,11 @@ class _TagCanvasViewState extends State<TagCanvasView> {
 
   String _idsKey(List<Tag> tags) {
     final ids = [for (final t in tags) t.id]..sort();
-    return '$_layoutVersion:${ids.join(',')}';
+    final edges = [
+      for (final t in tags)
+        if (t.effectiveParentId != null) '${t.effectiveParentId}->${t.id}',
+    ]..sort();
+    return '$_layoutVersion:${ids.join(',')}|${edges.join(',')}';
   }
 
   void _ensureNormLayout(List<Tag> tags) {
@@ -137,8 +148,79 @@ class _TagCanvasViewState extends State<TagCanvasView> {
       return;
     }
     _layoutKey = key;
-    _normById = _computeNormLayout(tags);
+    final hubs = _hubIds(tags);
+    _normById = hubs.isEmpty
+        ? _computeNormLayout(tags)
+        : _computeClusterLayout(tags, hubs);
     _applyUserOverlay();
+  }
+
+  /// 同屏内有子标签的节点 = 枢纽（画同心环 + 连线起点）
+  Set<int> _hubIds(List<Tag> tags) {
+    final ids = {for (final t in tags) t.id};
+    final hubs = <int>{};
+    for (final t in tags) {
+      final p = t.effectiveParentId;
+      if (p != null && ids.contains(p)) hubs.add(p);
+    }
+    return hubs;
+  }
+
+  /// 有父子时：父偏左成簇，子在右侧；无父子的叶子再散落。
+  Map<int, Offset> _computeClusterLayout(List<Tag> tags, Set<int> hubIds) {
+    final byId = {for (final t in tags) t.id: t};
+    final kidsOf = <int, List<Tag>>{};
+    final childIds = <int>{};
+    for (final t in tags) {
+      final p = t.effectiveParentId;
+      if (p == null || !byId.containsKey(p)) continue;
+      childIds.add(t.id);
+      kidsOf.putIfAbsent(p, () => []).add(t);
+    }
+    for (final list in kidsOf.values) {
+      list.sort((a, b) {
+        final o = a.sortOrder.compareTo(b.sortOrder);
+        return o != 0 ? o : a.id.compareTo(b.id);
+      });
+    }
+
+    final hubs = [
+      for (final t in tags)
+        if (hubIds.contains(t.id)) t,
+    ]..sort((a, b) {
+        final o = a.sortOrder.compareTo(b.sortOrder);
+        return o != 0 ? o : a.id.compareTo(b.id);
+      });
+
+    final out = <int, Offset>{};
+    final hubN = hubs.length;
+    for (var i = 0; i < hubN; i++) {
+      final hy = hubN == 1 ? 0.46 : (0.18 + 0.64 * i / (hubN - 1));
+      out[hubs[i].id] = Offset(0.20, hy);
+      final kids = kidsOf[hubs[i].id] ?? const <Tag>[];
+      final kn = kids.length;
+      for (var j = 0; j < kn; j++) {
+        final span = math.min(0.28, 0.10 * kn);
+        final ky = kn == 1
+            ? hy
+            : hy - span / 2 + span * j / (kn - 1);
+        final x = 0.62 + (j.isEven ? 0.03 : -0.01);
+        out[kids[j].id] = Offset(x.clamp(0.52, 0.85), ky.clamp(0.10, 0.90));
+      }
+    }
+
+    final lone = [
+      for (final t in tags)
+        if (!hubIds.contains(t.id) && !childIds.contains(t.id)) t,
+    ];
+    if (lone.isNotEmpty) {
+      final scattered = _computeNormLayout(lone);
+      for (final e in scattered.entries) {
+        // 挤到偏下区域，少挡簇
+        out[e.key] = Offset(e.value.dx * 0.9 + 0.05, e.value.dy * 0.35 + 0.62);
+      }
+    }
+    return out;
   }
 
   /// 单位正方形内稳定散落；与画布像素尺寸无关。
@@ -165,6 +247,12 @@ class _TagCanvasViewState extends State<TagCanvasView> {
       out[tag.id] = chosen;
     }
     return out;
+  }
+
+  /// 节点圆点中心（相对 Positioned 左上角）
+  Offset _dotCenterInItem({required bool hub}) {
+    final halo = hub ? 44.0 : 22.0;
+    return Offset(_itemW / 2, halo / 2);
   }
 
   Size _resolveStableSize(BoxConstraints constraints) {
@@ -291,8 +379,12 @@ class _TagCanvasViewState extends State<TagCanvasView> {
             _repositionId == null &&
             widget.draggingTagId == null;
 
-        // 强调标签后绘，便于点中。
+        final hubs = _hubIds(widget.tags);
+        // 枢纽后绘，便于点中；子标签稍前。
         final ordered = [...widget.tags]..sort((a, b) {
+            final ah = hubs.contains(a.id) ? 1 : 0;
+            final bh = hubs.contains(b.id) ? 1 : 0;
+            if (ah != bh) return ah.compareTo(bh);
             final ae = _emphasized(a) ? 1 : 0;
             final be = _emphasized(b) ? 1 : 0;
             return ae.compareTo(be);
@@ -302,6 +394,11 @@ class _TagCanvasViewState extends State<TagCanvasView> {
             : ([...widget.tags]..sort((a, b) => a.id.compareTo(b.id)))
                 .first
                 .id;
+        final positions = {
+          for (final t in widget.tags)
+            t.id: _pixelPos(t.id, size) +
+                _dotCenterInItem(hub: hubs.contains(t.id)),
+        };
 
         // 外层可视区可能被下拉挤矮；内部仍按稳定尺寸排布，只裁剪不压缩。
         // 点阵铺在视口层，按变换矩阵反算可见范围，平移/缩放始终铺满。
@@ -341,6 +438,15 @@ class _TagCanvasViewState extends State<TagCanvasView> {
                       child: Stack(
                         clipBehavior: Clip.none,
                         children: [
+                          if (hubs.isNotEmpty)
+                            Positioned.fill(
+                              child: CustomPaint(
+                                painter: _ParentChildLinkPainter(
+                                  tags: widget.tags,
+                                  positions: positions,
+                                ),
+                              ),
+                            ),
                           for (final tag in ordered)
                             Positioned(
                               left: _pixelPos(tag.id, size).dx,
@@ -351,13 +457,23 @@ class _TagCanvasViewState extends State<TagCanvasView> {
                                     : null,
                                 child: _CanvasTagNode(
                                   tag: tag,
-                                  color: TagDotColors.forModule(tag.moduleId),
+                                  color: TagDotColors.forModule(
+                                    hubs.contains(tag.id)
+                                        ? tag.id
+                                        : (tag.effectiveParentId ?? tag.id),
+                                  ),
+                                  focus: hubs.contains(tag.id),
                                   dimmed: widget.draggingTagId == tag.id ||
                                       !_emphasized(tag),
                                   softDim: widget.draggingTagId != tag.id &&
                                       !_emphasized(tag),
+                                  selected: widget.selectedTagId == tag.id,
                                   lifting: _repositionId == tag.id,
                                   draggable: widget.draggable,
+                                  onNestAsParent: widget.onNestTag == null
+                                      ? null
+                                      : (dragged) =>
+                                          widget.onNestTag!(dragged, tag),
                                   onTap: () => widget.onTapTag(tag),
                                   onDragStarted: widget.onDragStarted == null
                                       ? null
@@ -456,6 +572,51 @@ class _ViewportDotGridPainter extends CustomPainter {
       oldDelegate.matrix != matrix;
 }
 
+class _ParentChildLinkPainter extends CustomPainter {
+  _ParentChildLinkPainter({
+    required this.tags,
+    required this.positions,
+  });
+
+  final List<Tag> tags;
+  final Map<int, Offset> positions;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final ids = positions.keys.toSet();
+    for (final t in tags) {
+      final p = t.effectiveParentId;
+      if (p == null || !ids.contains(p) || !ids.contains(t.id)) continue;
+      final from = positions[p]!;
+      final to = positions[t.id]!;
+      final color = TagDotColors.forModule(p);
+      final paint = Paint()
+        ..color = color.withValues(alpha: 0.42)
+        ..strokeWidth = 1.4
+        ..style = PaintingStyle.stroke
+        ..strokeCap = StrokeCap.round;
+      final midX = (from.dx + to.dx) / 2;
+      final path = Path()
+        ..moveTo(from.dx, from.dy)
+        ..cubicTo(midX, from.dy, midX, to.dy, to.dx, to.dy);
+      canvas.drawPath(path, paint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _ParentChildLinkPainter old) {
+    if (old.tags.length != tags.length ||
+        old.positions.length != positions.length) {
+      return true;
+    }
+    for (final e in positions.entries) {
+      final o = old.positions[e.key];
+      if (o == null || o != e.value) return true;
+    }
+    return false;
+  }
+}
+
 class _CanvasTagNode extends StatelessWidget {
   const _CanvasTagNode({
     required this.tag,
@@ -465,6 +626,9 @@ class _CanvasTagNode extends StatelessWidget {
     required this.dimmed,
     required this.softDim,
     required this.lifting,
+    required this.selected,
+    required this.focus,
+    this.onNestAsParent,
     this.onDragStarted,
     this.onDragEnded,
     this.onFingerDown,
@@ -481,6 +645,9 @@ class _CanvasTagNode extends StatelessWidget {
   final bool dimmed;
   final bool softDim;
   final bool lifting;
+  final bool selected;
+  final bool focus;
+  final ValueChanged<Tag>? onNestAsParent;
   final VoidCallback? onDragStarted;
   final VoidCallback? onDragEnded;
   final VoidCallback? onFingerDown;
@@ -496,13 +663,12 @@ class _CanvasTagNode extends StatelessWidget {
           softDim ? 0.55 : 0.22,
         )!
         .withValues(alpha: feedback ? 0.95 : (softDim ? 0.75 : 0.90));
-    final big = feedback || lifting;
-    final core = big ? 8.5 : 6.5;
-    final halo = big ? 20.0 : 16.0;
+    final emphasize = focus || feedback || lifting || selected;
+    final core = focus ? 14.0 : (emphasize ? 9.0 : 7.0);
+    final halo = focus ? 44.0 : (emphasize ? 24.0 : 18.0);
 
-    // 长按/拖动反馈：不投影，只略放大，避免出现阴影方块。
     return Transform.scale(
-      scale: big ? 1.12 : 1,
+      scale: (feedback || lifting) ? 1.12 : 1,
       child: SizedBox(
         width: 104,
         child: Column(
@@ -514,15 +680,66 @@ class _CanvasTagNode extends StatelessWidget {
               child: DecoratedBox(
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: color.withValues(alpha: softDim ? 0.10 : 0.16),
+                  color: color.withValues(
+                    alpha: focus ? 0.10 : (softDim ? 0.10 : 0.16),
+                  ),
+                  border: focus
+                      ? Border.all(
+                          color: color.withValues(alpha: 0.28),
+                          width: 2.2,
+                        )
+                      : (selected
+                          ? Border.all(
+                              color: color.withValues(alpha: 0.55),
+                              width: 2,
+                            )
+                          : null),
+                  boxShadow: focus
+                      ? [
+                          BoxShadow(
+                            color: color.withValues(alpha: 0.28),
+                            blurRadius: 14,
+                            offset: const Offset(0, 4),
+                          ),
+                        ]
+                      : null,
                 ),
                 child: Center(
-                  child: Container(
-                    width: core,
-                    height: core,
+                  child: DecoratedBox(
                     decoration: BoxDecoration(
-                      color: color,
                       shape: BoxShape.circle,
+                      color: focus
+                          ? color.withValues(alpha: 0.18)
+                          : Colors.transparent,
+                      border: focus
+                          ? Border.all(
+                              color: color.withValues(alpha: 0.40),
+                              width: 1.6,
+                            )
+                          : null,
+                    ),
+                    child: SizedBox(
+                      width: focus ? 28 : core,
+                      height: focus ? 28 : core,
+                      child: Center(
+                        child: Container(
+                          width: core,
+                          height: core,
+                          decoration: BoxDecoration(
+                            color: color,
+                            shape: BoxShape.circle,
+                            boxShadow: focus
+                                ? [
+                                    BoxShadow(
+                                      color: color.withValues(alpha: 0.35),
+                                      blurRadius: 6,
+                                      offset: const Offset(0, 2),
+                                    ),
+                                  ]
+                                : null,
+                          ),
+                        ),
+                      ),
                     ),
                   ),
                 ),
@@ -535,8 +752,10 @@ class _CanvasTagNode extends StatelessWidget {
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
-                fontSize: big ? 14.5 : 13,
-                fontWeight: softDim ? FontWeight.w500 : FontWeight.w600,
+                fontSize: focus ? 15 : (emphasize ? 14 : 13),
+                fontWeight: focus || selected || !softDim
+                    ? FontWeight.w700
+                    : FontWeight.w500,
                 height: 1.15,
                 letterSpacing: 0.2,
                 color: ink,
@@ -577,21 +796,40 @@ class _CanvasTagNode extends StatelessWidget {
       ),
     );
 
-    if (!draggable) return child;
+    Widget node = child;
+    if (draggable) {
+      node = LongPressDraggable<Tag>(
+        data: tag,
+        hapticFeedbackOnStart: false,
+        feedbackOffset: const Offset(0, -20),
+        onDragStarted: () {
+          AppHaptics.select();
+          onDragStarted?.call();
+        },
+        onDragEnd: (_) => onDragEnded?.call(),
+        onDraggableCanceled: (velocity, offset) => onDragEnded?.call(),
+        feedback: UnconstrainedBox(child: _visual(feedback: true)),
+        childWhenDragging: child,
+        child: child,
+      );
+    }
 
-    return LongPressDraggable<Tag>(
-      data: tag,
-      hapticFeedbackOnStart: false,
-      feedbackOffset: const Offset(0, -20),
-      onDragStarted: () {
+    if (onNestAsParent == null) return node;
+
+    return DragTarget<Tag>(
+      onWillAcceptWithDetails: (d) => d.data.id != tag.id,
+      onAcceptWithDetails: (d) {
         AppHaptics.select();
-        onDragStarted?.call();
+        onNestAsParent!(d.data);
       },
-      onDragEnd: (_) => onDragEnded?.call(),
-      onDraggableCanceled: (velocity, offset) => onDragEnded?.call(),
-      feedback: UnconstrainedBox(child: _visual(feedback: true)),
-      childWhenDragging: child,
-      child: child,
+      builder: (context, candidate, rejected) {
+        final hover = candidate.isNotEmpty;
+        return AnimatedScale(
+          scale: hover ? 1.14 : 1,
+          duration: const Duration(milliseconds: 120),
+          child: node,
+        );
+      },
     );
   }
 }

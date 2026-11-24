@@ -16,11 +16,12 @@ router.get('/', async (req, res, next) => {
   }
 });
 
-/** POST /api/tags — 新建标签；可选 moduleId / description */
+/** POST /api/tags — 新建标签；可选 parentId/moduleId / description */
 router.post('/', async (req, res, next) => {
   try {
     const tag = await tagService.createTag(req.auth.userId, req.body?.name, {
       moduleId: req.body?.moduleId,
+      parentId: req.body?.parentId,
       description: req.body?.description,
     });
     return res.status(201).json({
@@ -77,15 +78,20 @@ router.patch('/:id', async (req, res, next) => {
     const body = req.body || {};
     const hasName = body.name !== undefined;
     const hasDescription = body.description !== undefined;
-    const hasPlace = Object.prototype.hasOwnProperty.call(body, 'moduleId');
+    const hasPlace =
+      Object.prototype.hasOwnProperty.call(body, 'moduleId') ||
+      Object.prototype.hasOwnProperty.call(body, 'parentId');
     if (!hasName && !hasDescription && !hasPlace) {
-      return res.status(400).json({ message: '请提供 name、description 或 moduleId' });
+      return res.status(400).json({
+        message: '请提供 name、description、moduleId 或 parentId',
+      });
     }
 
     let tag = null;
     if (hasPlace) {
       tag = await tagService.placeTag(req.auth.userId, id, {
         moduleId: body.moduleId,
+        parentId: body.parentId,
         beforeTagId: body.beforeTagId,
       });
     }

@@ -4,12 +4,12 @@ import 'package:super_collection/core/ui/app_bottom_sheet.dart';
 import 'package:super_collection/features/collection/tag_module_models.dart';
 import 'package:super_collection/features/collection/tag_modules_repository.dart';
 
-/// 弹出「创建归类」弹框；成功返回 [TagModule]。
+/// 弹出「新建顶层标签」弹框；成功返回 [TagModule]（id=标签 id）。
 Future<TagModule?> showCreateModuleSheet(BuildContext context) {
   return _showModuleNameSheet(context);
 }
 
-/// 弹出「修改归类名」弹框；成功返回更新后的 [TagModule]。
+/// 弹出「修改标签名」弹框；成功返回更新后的 [TagModule]。
 Future<TagModule?> showRenameModuleSheet(
   BuildContext context, {
   required TagModule module,
@@ -73,7 +73,7 @@ class _ModuleNameSheetState extends State<_ModuleNameSheet> {
     if (_submitting) return;
     final name = _controller.text.trim();
     if (name.isEmpty) {
-      setState(() => _error = '请输入归类名称');
+      setState(() => _error = '请输入标签名称');
       return;
     }
     if (name.length > 64) {
@@ -164,7 +164,7 @@ class _ModuleNameSheetState extends State<_ModuleNameSheet> {
               child: Align(
                 alignment: Alignment.centerLeft,
                 child: Text(
-                  _isRename ? '修改名称' : '创建归类',
+                  _isRename ? '修改名称' : '新建标签',
                   style: const TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.w700,

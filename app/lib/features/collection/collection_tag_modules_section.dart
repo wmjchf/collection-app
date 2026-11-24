@@ -1,13 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:super_collection/core/ui/app_bottom_sheet.dart';
 import 'package:super_collection/core/ui/app_haptics.dart';
 import 'package:super_collection/features/collection/tag_canvas_view.dart';
-import 'package:super_collection/features/collection/tag_dot_colors.dart';
 import 'package:super_collection/features/collection/tag_models.dart';
 import 'package:super_collection/features/collection/tag_module_models.dart';
 
-/// 归类标签：顶栏归类 chip + 二维散落画布（可缩放）；
-/// 点开 / 短拖改位置 / 长按拖到归类；筛归类时其它标签半透明仍显示。
+/// 标签页：沿用散落画布（短拖改位 / 捏合缩放 / 长按挂下级）；
+/// 面包屑下钻；点选底栏「查看内容」与「深入下钻」分开（不做搜索）。
 class CollectionTagModulesSection extends StatefulWidget {
   const CollectionTagModulesSection({
     super.key,
@@ -36,12 +36,11 @@ class CollectionTagModulesSection extends StatefulWidget {
   final VoidCallback onCreateModule;
   final ValueChanged<TagModule>? onRenameModule;
   final ValueChanged<TagModule>? onDeleteModule;
-  final void Function(Tag tag, int? targetModuleId)? onPlaceTag;
+  final void Function(Tag tag, int? targetParentId)? onPlaceTag;
   final bool fillRemaining;
   final bool showHeader;
   final bool bodyOnly;
 
-  /// 新手引导镂空用。
   final Key? chipsKey;
   final Key? addTagKey;
   final Key? sampleTagKey;
@@ -53,8 +52,7 @@ class CollectionTagModulesSection extends StatefulWidget {
   static const panel = Color(0xFFFFFFFF);
   static const chipFill = Color(0xFFF5F7FA);
   static const caseLine = Color(0xFFE8EAF0);
-  static const ungroupedTag = Color(0xFF5C6675);
-  static const ungroupedTagSoft = Color(0xFFECEEF2);
+  static const accent = Color(0xFF3D9B6E);
 
   @override
   State<CollectionTagModulesSection> createState() =>
@@ -63,40 +61,162 @@ class CollectionTagModulesSection extends StatefulWidget {
 
 class _CollectionTagModulesSectionState
     extends State<CollectionTagModulesSection> {
-  static const _filterAll = -2;
-  static const _filterUngrouped = -1;
-
-  int _filter = _filterAll;
-  int? _dropHover;
+  /// 面包屑路径（不含「全部」）；末项 = 当前焦点
+  final List<Tag> _path = [];
+  Tag? _selected;
   int? _draggingTagId;
+
+  List<Tag> _allTags() {
+    final byId = <int, Tag>{};
+    for (final t in widget.ungrouped) {
+      byId[t.id] = t;
+    }
+    for (final m in widget.modules) {
+      for (final t in m.tags) {
+        byId[t.id] = t;
+      }
+    }
+    return byId.values.toList();
+  }
+
+  Map<int?, List<Tag>> _childrenMap(List<Tag> all) {
+    final byId = {for (final t in all) t.id: t};
+    final map = <int?, List<Tag>>{};
+    for (final t in all) {
+      final p = t.effectiveParentId;
+      final key = (p != null && byId.containsKey(p)) ? p : null;
+      map.putIfAbsent(key, () => []).add(t);
+    }
+    for (final list in map.values) {
+      list.sort((a, b) {
+        final o = a.sortOrder.compareTo(b.sortOrder);
+        return o != 0 ? o : a.id.compareTo(b.id);
+      });
+    }
+    return map;
+  }
+
+  bool _hasChildren(Tag tag) {
+    final kids = _childrenMap(_allTags())[tag.id];
+    return kids != null && kids.isNotEmpty;
+  }
+
+  Tag? get _focus => _path.isEmpty ? null : _path.last;
+
+  List<Tag> get _levelChildren {
+    final map = _childrenMap(_allTags());
+    final focus = _focus;
+    if (focus == null) return map[null] ?? const [];
+    return map[focus.id] ?? const [];
+  }
+
+  /// 当前层标签 + 其直接子标签（连线画在这一层）。
+  /// 下钻进「科技」后画布上不再出现「科技」本身。
+  List<Tag> get _canvasTags {
+    final level = _levelChildren;
+    final map = _childrenMap(_allTags());
+    final byId = <int, Tag>{};
+    for (final t in level) {
+      byId[t.id] = t;
+      for (final c in map[t.id] ?? const <Tag>[]) {
+        byId[c.id] = c;
+      }
+    }
+    return byId.values.toList();
+  }
+
+  void _place(Tag tag, int? parentId) {
+    if (widget.onPlaceTag == null) return;
+    if (tag.effectiveParentId == parentId) return;
+    if (parentId != null && tag.id == parentId) return;
+    AppHaptics.select();
+    widget.onPlaceTag!(tag, parentId);
+    setState(() => _selected = null);
+  }
 
   @override
   void didUpdateWidget(covariant CollectionTagModulesSection oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (_filter == _filterUngrouped || _filter == _filterAll) return;
-    if (!widget.modules.any((m) => m.id == _filter)) {
-      _filter = _filterAll;
+    final byId = {for (final t in _allTags()) t.id: t};
+    _path.removeWhere((t) => !byId.containsKey(t.id));
+    for (var i = 0; i < _path.length; i++) {
+      _path[i] = byId[_path[i].id]!;
+    }
+    if (_selected != null) {
+      _selected = byId[_selected!.id];
     }
   }
 
-  List<Tag> _allTags() {
-    return [
-      ...widget.ungrouped,
-      for (final m in widget.modules) ...m.tags,
-    ];
+  void _select(Tag tag) {
+    setState(() => _selected = tag);
   }
 
-  bool _isEmphasized(Tag tag) {
-    if (_filter == _filterAll) return true;
-    if (_filter == _filterUngrouped) return tag.moduleId == null;
-    return tag.moduleId == _filter;
+  void _goRoot() {
+    setState(() {
+      _path.clear();
+      _selected = null;
+    });
   }
 
-  void _place(Tag tag, int? moduleId) {
-    if (widget.onPlaceTag == null) return;
-    if (tag.moduleId == moduleId) return;
+  void _goToBreadcrumb(int index) {
+    // index -1 = 全部；0.. = path[0..index]
+    setState(() {
+      if (index < 0) {
+        _path.clear();
+      } else if (index < _path.length - 1) {
+        _path.removeRange(index + 1, _path.length);
+      }
+      _selected = null;
+    });
+  }
+
+  void _drillInto(Tag tag) {
+    if (!_hasChildren(tag)) return;
     AppHaptics.select();
-    widget.onPlaceTag!(tag, moduleId);
+    setState(() {
+      // 若选中的不在当前 path 上，先走到其父链
+      final byId = {for (final t in _allTags()) t.id: t};
+      final chain = <Tag>[];
+      var cursor = tag.effectiveParentId;
+      final seen = <int>{};
+      while (cursor != null && byId.containsKey(cursor) && seen.add(cursor)) {
+        chain.insert(0, byId[cursor]!);
+        cursor = byId[cursor]!.effectiveParentId;
+      }
+      _path
+        ..clear()
+        ..addAll(chain)
+        ..add(tag);
+      _selected = null;
+    });
+  }
+
+  Future<void> _onMoveLevel(Tag tag) async {
+    if (widget.onPlaceTag == null) return;
+    final all = _allTags();
+    final descendants = <int>{tag.id};
+    final kids = _childrenMap(all);
+    final queue = [...(kids[tag.id] ?? const <Tag>[])];
+    while (queue.isNotEmpty) {
+      final n = queue.removeAt(0);
+      if (!descendants.add(n.id)) continue;
+      queue.addAll(kids[n.id] ?? const []);
+    }
+    final candidates = all.where((t) => !descendants.contains(t.id)).toList()
+      ..sort((a, b) => a.name.compareTo(b.name));
+
+    final result = await showAppBottomSheet<_MoveResult>(
+      context: context,
+      builder: (context) => _MoveParentSheet(
+        tagName: tag.name,
+        candidates: candidates,
+        currentParentId: tag.effectiveParentId,
+      ),
+    );
+    if (!mounted || result == null) return;
+    AppHaptics.select();
+    widget.onPlaceTag!(tag, result.parentId);
+    setState(() => _selected = null);
   }
 
   @override
@@ -112,49 +232,16 @@ class _CollectionTagModulesSectionState
     return LayoutBuilder(
       builder: (context, constraints) {
         final minH = !widget.fillRemaining
-            ? 0.0
+            ? 320.0
             : constraints.hasBoundedHeight && constraints.maxHeight.isFinite
                 ? constraints.maxHeight
-                : (constraints.minHeight.isFinite ? constraints.minHeight : 0.0);
+                : (constraints.minHeight.isFinite ? constraints.minHeight : 320.0);
         final fill = minH > 0;
-
-        final tags = _allTags();
-
-        void onAdd() {
-          if (_filter == _filterAll || _filter == _filterUngrouped) {
-            widget.onAddTag(null);
-          } else {
-            widget.onAddTag(_filter);
-          }
-        }
-
-        final canvas = tags.isEmpty
-            ? _EmptyTags(
-                label: '还没有标签',
-                onAdd: onAdd,
-                addButtonKey: widget.addTagKey,
-              )
-            : TagCanvasView(
-                tags: tags,
-                sampleTagKey: widget.sampleTagKey,
-                isEmphasized: _isEmphasized,
-                draggingTagId: _draggingTagId,
-                draggable: widget.onPlaceTag != null,
-                onTapTag: widget.onOpenTag,
-                onDragStarted: (tag) {
-                  setState(() => _draggingTagId = tag.id);
-                },
-                onDragEnded: () {
-                  setState(() {
-                    _draggingTagId = null;
-                    _dropHover = null;
-                  });
-                },
-              );
+        final canvasTags = _canvasTags;
+        final empty = canvasTags.isEmpty;
 
         return Container(
           width: double.infinity,
-          // 填满剩余高度时用确定高度，画布 Expanded 吃掉中间，上下只留卡片 padding。
           height: fill ? minH : null,
           alignment: Alignment.topCenter,
           decoration: BoxDecoration(
@@ -166,52 +253,451 @@ class _CollectionTagModulesSectionState
               : const EdgeInsets.fromLTRB(14, 14, 12, 14),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
-            mainAxisSize: fill ? MainAxisSize.max : MainAxisSize.min,
             children: [
               if (includeHeader) ...[
                 CollectionTagsSectionHeader(
                   onCreateModule: widget.onCreateModule,
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 10),
               ],
               KeyedSubtree(
                 key: widget.chipsKey,
-                child: _ModuleFilterChips(
-                  modules: widget.modules,
-                  ungroupedCount: widget.ungrouped.length,
-                  filter: _filter,
-                  filterAll: _filterAll,
-                  filterUngrouped: _filterUngrouped,
-                  dropHover: _dropHover,
-                  dragging: _draggingTagId != null,
-                  onFilter: (v) => setState(() => _filter = v),
-                  onOpenModule: widget.onOpenModule,
-                  onAddTag: widget.onAddTag,
-                  onRenameModule: widget.onRenameModule,
-                  onDeleteModule: widget.onDeleteModule,
-                  onWillAccept: (tag, target) =>
-                      widget.onPlaceTag != null && tag.moduleId != target,
-                  onAccept: (tag, target) => _place(tag, target),
-                  onHover: (target) {
-                    if (_dropHover == target) return;
-                    setState(() => _dropHover = target);
-                    if (target != null) AppHaptics.tap();
-                  },
-                  onLeave: () {
-                    if (_dropHover == null) return;
-                    setState(() => _dropHover = null);
-                  },
+                child: _BreadcrumbBar(
+                  path: _path,
+                  dropEnabled: widget.onPlaceTag != null,
+                  onRoot: _goRoot,
+                  onTapIndex: _goToBreadcrumb,
+                  onAcceptRoot: (tag) => _place(tag, null),
+                  onAcceptAt: (tag, parent) => _place(tag, parent.id),
                 ),
               ),
-              const SizedBox(height: 10),
-              if (fill)
-                Expanded(child: canvas)
-              else
-                SizedBox(height: 280, child: canvas),
+              const SizedBox(height: 8),
+              Expanded(
+                child: empty
+                    ? _EmptyTags(
+                        label: '还没有标签',
+                        onAdd: () => widget.onAddTag(null),
+                        addButtonKey: widget.addTagKey,
+                      )
+                    : TagCanvasView(
+                        tags: canvasTags,
+                        sampleTagKey: widget.sampleTagKey,
+                        selectedTagId: _selected?.id,
+                        draggingTagId: _draggingTagId,
+                        draggable: widget.onPlaceTag != null,
+                        onTapTag: _select,
+                        onNestTag: widget.onPlaceTag == null
+                            ? null
+                            : (dragged, target) => _place(dragged, target.id),
+                        onDragStarted: (tag) {
+                          setState(() {
+                            _draggingTagId = tag.id;
+                            _selected = null;
+                          });
+                        },
+                        onDragEnded: () {
+                          setState(() => _draggingTagId = null);
+                        },
+                      ),
+              ),
+              if (_selected != null) ...[
+                const SizedBox(height: 8),
+                _TagActionBar(
+                  tag: _selected!,
+                  canDrill: _hasChildren(_selected!),
+                  onViewContent: () {
+                    final t = _selected!;
+                    setState(() => _selected = null);
+                    widget.onOpenTag(t);
+                  },
+                  onDrill: () => _drillInto(_selected!),
+                  onAddChild: () {
+                    final id = _selected!.id;
+                    setState(() => _selected = null);
+                    widget.onAddTag(id);
+                  },
+                  onMove: widget.onPlaceTag == null
+                      ? null
+                      : () => _onMoveLevel(_selected!),
+                ),
+              ],
             ],
           ),
         );
       },
+    );
+  }
+}
+
+class _MoveResult {
+  const _MoveResult(this.parentId);
+  final int? parentId;
+}
+
+class _BreadcrumbBar extends StatelessWidget {
+  const _BreadcrumbBar({
+    required this.path,
+    required this.onRoot,
+    required this.onTapIndex,
+    this.dropEnabled = false,
+    this.onAcceptRoot,
+    this.onAcceptAt,
+  });
+
+  final List<Tag> path;
+  final VoidCallback onRoot;
+  final ValueChanged<int> onTapIndex;
+  final bool dropEnabled;
+  final ValueChanged<Tag>? onAcceptRoot;
+  final void Function(Tag dragged, Tag parent)? onAcceptAt;
+
+  @override
+  Widget build(BuildContext context) {
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        children: [
+          _Crumb(
+            label: '全部',
+            active: path.isEmpty,
+            onTap: onRoot,
+            onAccept: dropEnabled ? onAcceptRoot : null,
+          ),
+          for (var i = 0; i < path.length; i++) ...[
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 4),
+              child: Icon(
+                Icons.chevron_right_rounded,
+                size: 16,
+                color: CollectionTagModulesSection.muted.withValues(alpha: 0.7),
+              ),
+            ),
+            _Crumb(
+              label: path[i].name,
+              active: i == path.length - 1,
+              onTap: () => onTapIndex(i),
+              onAccept: !dropEnabled || onAcceptAt == null
+                  ? null
+                  : (dragged) {
+                      if (dragged.id == path[i].id) return;
+                      onAcceptAt!(dragged, path[i]);
+                    },
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _Crumb extends StatelessWidget {
+  const _Crumb({
+    required this.label,
+    required this.active,
+    required this.onTap,
+    this.onAccept,
+  });
+
+  final String label;
+  final bool active;
+  final VoidCallback onTap;
+  final ValueChanged<Tag>? onAccept;
+
+  @override
+  Widget build(BuildContext context) {
+    Widget crumb = GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 2),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 13,
+            fontWeight: active ? FontWeight.w700 : FontWeight.w500,
+            color: active
+                ? CollectionTagModulesSection.ink
+                : CollectionTagModulesSection.muted,
+          ),
+        ),
+      ),
+    );
+
+    if (onAccept == null) return crumb;
+
+    return DragTarget<Tag>(
+      onWillAcceptWithDetails: (_) => true,
+      onAcceptWithDetails: (d) => onAccept!(d.data),
+      builder: (context, candidate, rejected) {
+        final hover = candidate.isNotEmpty;
+        return AnimatedContainer(
+          duration: const Duration(milliseconds: 120),
+          padding: const EdgeInsets.symmetric(horizontal: 6),
+          decoration: BoxDecoration(
+            color: hover
+                ? CollectionTagModulesSection.brandSoft
+                : Colors.transparent,
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: crumb,
+        );
+      },
+    );
+  }
+}
+
+class _TagActionBar extends StatelessWidget {
+  const _TagActionBar({
+    required this.tag,
+    required this.canDrill,
+    required this.onViewContent,
+    required this.onDrill,
+    required this.onAddChild,
+    this.onMove,
+  });
+
+  final Tag tag;
+  final bool canDrill;
+  final VoidCallback onViewContent;
+  final VoidCallback onDrill;
+  final VoidCallback onAddChild;
+  final VoidCallback? onMove;
+
+  static const _handle = Color(0xFFD8DCE3);
+  static const _chipBg = Color(0xFFF3F5F8);
+  static const _chipLine = Color(0xFFE4E7EC);
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.10),
+            blurRadius: 24,
+            spreadRadius: 0,
+            offset: const Offset(0, 8),
+          ),
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.06),
+            blurRadius: 8,
+            spreadRadius: -1,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 10, 16, 14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const Center(
+              child: SizedBox(
+                width: 36,
+                height: 4,
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: _handle,
+                    borderRadius: BorderRadius.all(Radius.circular(2)),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            Text.rich(
+              TextSpan(
+                children: [
+                  TextSpan(
+                    text: tag.name,
+                    style: const TextStyle(
+                      fontSize: 17,
+                      fontWeight: FontWeight.w700,
+                      height: 1.25,
+                      color: CollectionTagModulesSection.ink,
+                    ),
+                  ),
+                  TextSpan(
+                    text: '  ·  ${tag.itemCount}条内容',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                      height: 1.25,
+                      color: CollectionTagModulesSection.muted
+                          .withValues(alpha: 0.95),
+                    ),
+                  ),
+                ],
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+            const SizedBox(height: 14),
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  _ActionChip(
+                    label: '查看内容',
+                    onTap: onViewContent,
+                  ),
+                  const SizedBox(width: 8),
+                  _ActionChip(
+                    label: '深入下钻',
+                    onTap: canDrill ? onDrill : null,
+                  ),
+                  const SizedBox(width: 8),
+                  _ActionChip(
+                    label: '添加子标签',
+                    onTap: onAddChild,
+                  ),
+                  if (onMove != null) ...[
+                    const SizedBox(width: 8),
+                    _ActionChip(
+                      label: '移动层级',
+                      onTap: onMove,
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ActionChip extends StatelessWidget {
+  const _ActionChip({
+    required this.label,
+    required this.onTap,
+  });
+
+  final String label;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final enabled = onTap != null;
+    return GestureDetector(
+      onTap: onTap == null
+          ? null
+          : () {
+              HapticFeedback.selectionClick();
+              onTap!();
+            },
+      child: Opacity(
+        opacity: enabled ? 1 : 0.45,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+          decoration: BoxDecoration(
+            color: _TagActionBar._chipBg,
+            borderRadius: BorderRadius.circular(999),
+            border: Border.all(color: _TagActionBar._chipLine),
+          ),
+          child: Text(
+            label,
+            style: const TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              color: CollectionTagModulesSection.ink,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _MoveParentSheet extends StatelessWidget {
+  const _MoveParentSheet({
+    required this.tagName,
+    required this.candidates,
+    required this.currentParentId,
+  });
+
+  final String tagName;
+  final List<Tag> candidates;
+  final int? currentParentId;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(20),
+      child: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const Center(
+                child: SizedBox(
+                  width: 40,
+                  height: 4,
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: Color(0xFFE5E8ED),
+                      borderRadius: BorderRadius.all(Radius.circular(2)),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                '移动「$tagName」',
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                  color: CollectionTagModulesSection.ink,
+                ),
+              ),
+              const SizedBox(height: 4),
+              const Text(
+                '选择新的上级标签，或放到顶层',
+                style: TextStyle(
+                  fontSize: 13,
+                  color: CollectionTagModulesSection.muted,
+                ),
+              ),
+              const SizedBox(height: 12),
+              ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxHeight: MediaQuery.sizeOf(context).height * 0.45,
+                ),
+                child: ListView(
+                  shrinkWrap: true,
+                  children: [
+                    ListTile(
+                      title: const Text('顶层（全部）'),
+                      trailing: currentParentId == null
+                          ? const Icon(Icons.check_rounded, size: 20)
+                          : null,
+                      onTap: () => Navigator.pop(
+                        context,
+                        const _MoveResult(null),
+                      ),
+                    ),
+                    for (final t in candidates)
+                      ListTile(
+                        title: Text(t.name),
+                        trailing: currentParentId == t.id
+                            ? const Icon(Icons.check_rounded, size: 20)
+                            : null,
+                        onTap: () =>
+                            Navigator.pop(context, _MoveResult(t.id)),
+                      ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
@@ -234,49 +720,29 @@ class _EmptyTags extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           Icon(
-            Icons.label_outline_rounded,
+            Icons.sell_outlined,
             size: 36,
             color: CollectionTagModulesSection.muted.withValues(alpha: 0.45),
           ),
           const SizedBox(height: 10),
           Text(
             label,
-            textAlign: TextAlign.center,
             style: TextStyle(
               fontSize: 14,
               color: CollectionTagModulesSection.muted.withValues(alpha: 0.9),
             ),
           ),
           const SizedBox(height: 14),
-          TextButton(
+          KeyedSubtree(
             key: addButtonKey,
-            onPressed: () {
-              HapticFeedback.selectionClick();
-              onAdd();
-            },
-            style: TextButton.styleFrom(
-              foregroundColor: CollectionTagModulesSection.brand,
-              backgroundColor: CollectionTagModulesSection.brandSoft,
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-              minimumSize: Size.zero,
-              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-              shape: const StadiumBorder(
-                side: BorderSide(color: Color(0xFFD0DFFC)),
+            child: TextButton(
+              onPressed: onAdd,
+              style: TextButton.styleFrom(
+                foregroundColor: CollectionTagModulesSection.brand,
+                backgroundColor: CollectionTagModulesSection.brandSoft,
+                shape: const StadiumBorder(),
               ),
-            ),
-            child: const Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(Icons.add_rounded, size: 16),
-                SizedBox(width: 2),
-                Text(
-                  '添加标签',
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ],
+              child: const Text('添加标签'),
             ),
           ),
         ],
@@ -285,7 +751,7 @@ class _EmptyTags extends StatelessWidget {
   }
 }
 
-/// 归类标签标题；吸顶条与卡片内共用，保证顶边距一致。
+/// 标签区标题；吸顶条与卡片内共用。
 class CollectionTagsSectionHeader extends StatelessWidget {
   const CollectionTagsSectionHeader({
     super.key,
@@ -313,7 +779,7 @@ class CollectionTagsSectionHeader extends StatelessWidget {
             children: [
               const Expanded(
                 child: Text(
-                  '归类标签',
+                  '标签',
                   style: TextStyle(
                     fontSize: 17,
                     fontWeight: FontWeight.w600,
@@ -332,7 +798,7 @@ class CollectionTagsSectionHeader extends StatelessWidget {
           ),
           const SizedBox(height: 4),
           Text(
-            '双指缩放画布 · 长按拖到归类',
+            '短拖改位 · 长按挂下级 · 点选下钻/看内容',
             style: TextStyle(
               fontSize: 12,
               height: 1.35,
@@ -387,7 +853,7 @@ class CollectionCreateModuleButton extends StatelessWidget {
               Icon(Icons.add_rounded, size: 16),
               SizedBox(width: 2),
               Text(
-                '创建归类',
+                '新建',
                 style: TextStyle(
                   fontSize: 13,
                   fontWeight: FontWeight.w600,
@@ -398,382 +864,5 @@ class CollectionCreateModuleButton extends StatelessWidget {
         ),
       ),
     );
-  }
-}
-
-class _ModuleFilterChips extends StatelessWidget {
-  const _ModuleFilterChips({
-    required this.modules,
-    required this.ungroupedCount,
-    required this.filter,
-    required this.filterAll,
-    required this.filterUngrouped,
-    required this.dropHover,
-    required this.dragging,
-    required this.onFilter,
-    this.onOpenModule,
-    required this.onAddTag,
-    this.onRenameModule,
-    this.onDeleteModule,
-    required this.onWillAccept,
-    required this.onAccept,
-    required this.onHover,
-    required this.onLeave,
-  });
-
-  final List<TagModule> modules;
-  final int ungroupedCount;
-  final int filter;
-  final int filterAll;
-  final int filterUngrouped;
-  final int? dropHover;
-  final bool dragging;
-  final ValueChanged<int> onFilter;
-  final ValueChanged<TagModule>? onOpenModule;
-  final ValueChanged<int?> onAddTag;
-  final ValueChanged<TagModule>? onRenameModule;
-  final ValueChanged<TagModule>? onDeleteModule;
-  final bool Function(Tag tag, int? targetModuleId) onWillAccept;
-  final void Function(Tag tag, int? targetModuleId) onAccept;
-  final ValueChanged<int?> onHover;
-  final VoidCallback onLeave;
-
-  Widget _dropWrap({
-    required int? targetModuleId,
-    required int hoverId,
-    required Widget child,
-  }) {
-    return DragTarget<Tag>(
-      onWillAcceptWithDetails: (d) => onWillAccept(d.data, targetModuleId),
-      onMove: (d) {
-        if (onWillAccept(d.data, targetModuleId)) onHover(hoverId);
-      },
-      onLeave: (_) => onLeave(),
-      onAcceptWithDetails: (d) {
-        onLeave();
-        onAccept(d.data, targetModuleId);
-      },
-      builder: (context, candidate, rejected) => child,
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      height: 36,
-      child: Stack(
-        children: [
-          ListView(
-            scrollDirection: Axis.horizontal,
-            physics: dragging
-                ? const NeverScrollableScrollPhysics()
-                : const BouncingScrollPhysics(),
-            padding: const EdgeInsets.only(right: 20),
-            children: [
-              _FilterChip(
-                label: '全部',
-                selected: filter == filterAll,
-                onTap: () => onFilter(filterAll),
-                dimmed: dragging,
-              ),
-              const SizedBox(width: 8),
-              _dropWrap(
-                targetModuleId: null,
-                hoverId: filterUngrouped,
-                child: _FilterChip(
-                  label: ungroupedCount > 0 ? '未归类 $ungroupedCount' : '未归类',
-                  selected: filter == filterUngrouped,
-                  dropTarget: dropHover == filterUngrouped,
-                  dotColor: TagDotColors.ungrouped,
-                  onTap: () => onFilter(filterUngrouped),
-                ),
-              ),
-              for (final m in modules) ...[
-                const SizedBox(width: 8),
-                Builder(
-                  builder: (chipContext) {
-                    final count = m.tags.length;
-                    return _dropWrap(
-                      targetModuleId: m.id,
-                      hoverId: m.id,
-                      child: _FilterChip(
-                        label: count > 0 ? '${m.name} $count' : m.name,
-                        selected: filter == m.id,
-                        dropTarget: dropHover == m.id,
-                        dotColor: TagDotColors.forModule(m.id),
-                        onTap: () => onFilter(m.id),
-                        onLongPress: () {
-                          HapticFeedback.selectionClick();
-                          onOpenModule?.call(m);
-                        },
-                        trailing: () {
-                          HapticFeedback.selectionClick();
-                          _showModuleActionsMenu(
-                            chipContext,
-                            onRename: onRenameModule == null
-                                ? null
-                                : () => onRenameModule!(m),
-                            onAddTag: () => onAddTag(m.id),
-                            onDelete: onDeleteModule == null
-                                ? null
-                                : () => onDeleteModule!(m),
-                          );
-                        },
-                      ),
-                    );
-                  },
-                ),
-              ],
-            ],
-          ),
-          // 右侧淡出，暗示还可左右滑动。
-          Positioned(
-            right: 0,
-            top: 0,
-            bottom: 0,
-            width: 28,
-            child: IgnorePointer(
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.centerLeft,
-                    end: Alignment.centerRight,
-                    colors: [
-                      CollectionTagModulesSection.panel.withValues(alpha: 0),
-                      CollectionTagModulesSection.panel,
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _FilterChip extends StatelessWidget {
-  const _FilterChip({
-    required this.label,
-    required this.selected,
-    required this.onTap,
-    this.onLongPress,
-    this.trailing,
-    this.dotColor,
-    this.dropTarget = false,
-    this.dimmed = false,
-  });
-
-  final String label;
-  final bool selected;
-  final VoidCallback onTap;
-  final VoidCallback? onLongPress;
-  final VoidCallback? trailing;
-  final Color? dotColor;
-  final bool dropTarget;
-  final bool dimmed;
-
-  @override
-  Widget build(BuildContext context) {
-    const accent = CollectionTagModulesSection.brand;
-    const soft = CollectionTagModulesSection.brandSoft;
-    final active = selected || dropTarget;
-    return Opacity(
-      opacity: dimmed ? 0.45 : 1,
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: () {
-            HapticFeedback.selectionClick();
-            onTap();
-          },
-          onLongPress: onLongPress,
-          borderRadius: BorderRadius.circular(18),
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 140),
-            padding: EdgeInsets.fromLTRB(
-              12,
-              7,
-              trailing != null ? 4 : 12,
-              7,
-            ),
-            decoration: BoxDecoration(
-              color: active ? soft : CollectionTagModulesSection.chipFill,
-              borderRadius: BorderRadius.circular(18),
-              border: Border.all(
-                color: dropTarget
-                    ? accent
-                    : (selected
-                        ? const Color(0xFFD0DFFC)
-                        : CollectionTagModulesSection.caseLine),
-                width: dropTarget ? 1.6 : 1,
-              ),
-              boxShadow: dropTarget
-                  ? [
-                      BoxShadow(
-                        color: accent.withValues(alpha: 0.22),
-                        blurRadius: 10,
-                        offset: const Offset(0, 2),
-                      ),
-                    ]
-                  : null,
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                if (dotColor != null) ...[
-                  Container(
-                    width: 7,
-                    height: 7,
-                    decoration: BoxDecoration(
-                      color: dotColor,
-                      shape: BoxShape.circle,
-                    ),
-                  ),
-                  const SizedBox(width: 6),
-                ],
-                Text(
-                  label,
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: active ? FontWeight.w600 : FontWeight.w500,
-                    height: 1.1,
-                    color: CollectionTagModulesSection.ink
-                        .withValues(alpha: active ? 0.92 : 0.78),
-                  ),
-                ),
-                if (trailing != null) ...[
-                  const SizedBox(width: 2),
-                  InkWell(
-                    onTap: trailing,
-                    borderRadius: BorderRadius.circular(10),
-                    child: Padding(
-                      padding: const EdgeInsets.all(4),
-                      child: Icon(
-                        Icons.more_horiz,
-                        size: 16,
-                        color: CollectionTagModulesSection.muted
-                            .withValues(alpha: 0.75),
-                      ),
-                    ),
-                  ),
-                ],
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-Future<void> _showModuleActionsMenu(
-  BuildContext context, {
-  VoidCallback? onRename,
-  VoidCallback? onAddTag,
-  VoidCallback? onDelete,
-}) async {
-  if (onRename == null && onAddTag == null && onDelete == null) return;
-
-  final box = context.findRenderObject() as RenderBox?;
-  final overlay = Overlay.of(context).context.findRenderObject() as RenderBox?;
-  if (box == null || !box.hasSize || overlay == null) return;
-
-  final topLeft = box.localToGlobal(Offset.zero, ancestor: overlay);
-  final size = box.size;
-  const menuWidth = 160.0;
-  final left = (topLeft.dx + size.width - menuWidth)
-      .clamp(12.0, overlay.size.width - menuWidth - 12.0);
-  final position = RelativeRect.fromLTRB(
-    left,
-    topLeft.dy + size.height + 4,
-    overlay.size.width - left - menuWidth,
-    overlay.size.height - (topLeft.dy + size.height + 4),
-  );
-
-  const text = Color(0xFF1F242E);
-  const danger = Color(0xFFD14343);
-
-  final action = await showMenu<String>(
-    context: context,
-    position: position,
-    elevation: 8,
-    color: Colors.white,
-    shadowColor: Colors.black.withValues(alpha: 0.14),
-    shape: RoundedRectangleBorder(
-      borderRadius: BorderRadius.circular(12),
-      side: const BorderSide(color: Color(0xFFE6E8EB)),
-    ),
-    constraints: const BoxConstraints(minWidth: 160, maxWidth: 160),
-    items: [
-      if (onRename != null)
-        const PopupMenuItem<String>(
-          value: 'rename',
-          height: 44,
-          child: Row(
-            children: [
-              Icon(Icons.edit_outlined, size: 20, color: text),
-              SizedBox(width: 10),
-              Text(
-                '修改名称',
-                style: TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w500,
-                  color: text,
-                ),
-              ),
-            ],
-          ),
-        ),
-      if (onAddTag != null)
-        const PopupMenuItem<String>(
-          value: 'add',
-          height: 44,
-          child: Row(
-            children: [
-              Icon(Icons.add_rounded, size: 20, color: text),
-              SizedBox(width: 10),
-              Text(
-                '添加标签',
-                style: TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w500,
-                  color: text,
-                ),
-              ),
-            ],
-          ),
-        ),
-      if (onDelete != null)
-        const PopupMenuItem<String>(
-          value: 'delete',
-          height: 44,
-          child: Row(
-            children: [
-              Icon(Icons.delete_outline_rounded, size: 20, color: danger),
-              SizedBox(width: 10),
-              Text(
-                '删除归类',
-                style: TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w500,
-                  color: danger,
-                ),
-              ),
-            ],
-          ),
-        ),
-    ],
-  );
-
-  if (action == null || !context.mounted) return;
-  switch (action) {
-    case 'rename':
-      onRename?.call();
-    case 'add':
-      onAddTag?.call();
-    case 'delete':
-      onDelete?.call();
   }
 }

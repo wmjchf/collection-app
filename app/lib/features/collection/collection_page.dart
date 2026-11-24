@@ -278,35 +278,34 @@ class _CollectionPageState extends State<CollectionPage> {
     switch (step) {
       case _stepCreate:
         targetKey = _createModuleKey;
-        title = '创建归类';
-        message = '点右上角「+」，新建一个归类匣，用来收纳相关标签。';
+        title = '新建标签';
+        message = '点右上角「+」，新建一个顶层标签，之后可再挂下级。';
         confirm = '下一步';
         holeRadius = 18;
         inflate = 4;
       case _stepChips:
         targetKey = _chipsKey;
-        title = '筛选归类';
-        message =
-            '左右滑动可看更多归类；点选后筛选，当前归类高亮，其它标签会变淡但仍可见。';
+        title = '面包屑导航';
+        message = '从「全部」点进标签后可下钻；点面包屑可回到上层。';
         confirm = '下一步';
       case _stepAddTag:
         targetKey = _addTagKey;
         title = '添加标签';
-        message = '还没有标签。先点「添加标签」建一个，后面才能练习拖动。';
+        message = '还没有标签。先点「添加标签」建一个。';
         confirm = '下一步';
         holeRadius = 14;
       case _stepShortDrag:
         targetKey = _sampleTagKey;
-        title = '短拖改位置';
-        message = '按住这个标签直接拖动，摆到你喜欢的位置，松手后会记住。';
+        title = '点选标签';
+        message = '点这个标签，下方会出现「查看内容」和「深入下钻」。';
         confirm = '下一步';
         holeRadius = 14;
         inflate = 10;
       default:
         targetKey = _sampleTagKey;
-        title = '长按换归类';
+        title = '查看与下钻';
         message =
-            '长按这个标签，拖到上方归类 chip 即可换匣；双指可缩放，双击空白复位。';
+            '「查看内容」进列表；「深入下钻」进入下一层子标签。两者分开，不会点一下就进列表。';
         confirm = '开始整理';
         holeRadius = 14;
         inflate = 10;
@@ -374,15 +373,15 @@ class _CollectionPageState extends State<CollectionPage> {
   Future<void> _deleteModule(TagModule module) async {
     final ok = await showAppConfirmDialog(
       context,
-      title: '删除归类',
-      message: '确定删除归类「${module.name}」？组内标签会回到未归类，不会删除标签。',
+      title: '删除标签',
+      message: '确定删除「${module.name}」？下级标签会升到上一级，不会删除内容。',
       confirmLabel: '删除',
     );
     if (ok != true || !mounted) return;
     try {
       await _tagModulesRepo.deleteModule(module.id);
       if (!mounted) return;
-      AppToast.show(context, '已删除归类「${module.name}」');
+      AppToast.show(context, '已删除「${module.name}」');
       await _load(quiet: true);
     } on ApiException catch (e) {
       if (!mounted) return;
@@ -394,44 +393,13 @@ class _CollectionPageState extends State<CollectionPage> {
   }
 
   Future<void> _placeTag(Tag tag, int? moduleId) async {
-    if (tag.moduleId == moduleId) return;
-
-    final moved = moduleId == null
-        ? tag.copyWith(clearModuleId: true)
-        : tag.copyWith(moduleId: moduleId);
-
-    setState(() {
-      var nextUngrouped = List<Tag>.from(_ungrouped);
-      var nextModules = _modules
-          .map((m) => m.copyWith(tags: List<Tag>.from(m.tags)))
-          .toList();
-
-      if (tag.moduleId == null) {
-        nextUngrouped.removeWhere((t) => t.id == tag.id);
-      } else {
-        nextModules = nextModules.map((m) {
-          if (m.id != tag.moduleId) return m;
-          return m.copyWith(
-            tags: m.tags.where((t) => t.id != tag.id).toList(),
-          );
-        }).toList();
-      }
-
-      if (moduleId == null) {
-        nextUngrouped = [...nextUngrouped, moved];
-      } else {
-        nextModules = nextModules.map((m) {
-          if (m.id != moduleId) return m;
-          return m.copyWith(tags: [...m.tags, moved]);
-        }).toList();
-      }
-
-      _ungrouped = nextUngrouped;
-      _modules = nextModules;
-    });
+    if (tag.effectiveParentId == moduleId) return;
+    if (moduleId != null && tag.id == moduleId) return;
 
     try {
       await _tagsRepo.placeTag(tag.id, moduleId: moduleId);
+      if (!mounted) return;
+      await _load(quiet: true);
     } on ApiException catch (e) {
       if (!mounted) return;
       AppToast.show(context, e.message);

@@ -56,6 +56,7 @@ const MIGRATION_FILES = [
   '046_user_wiki.sql',
   '047_drop_item_agent_digest.sql',
   '048_wiki_page_embeddings.sql',
+  '049_tag_parent.sql',
 ];
 
 async function getConnection() {

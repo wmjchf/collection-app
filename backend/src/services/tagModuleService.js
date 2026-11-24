@@ -1,9 +1,14 @@
 const { pool } = require('../db');
-const { mapTag } = require('./tagService');
+const { mapTag, createTag, getOwnedTag } = require('./tagService');
 
-function mapModule(row) {
+/**
+ * 兼容旧「归类」API：归类 = 有子标签的父标签（或空的新建顶层标签）。
+ * 对外仍返回 { modules, ungrouped }，module.id = 顶层/父标签 id。
+ */
+
+function mapModuleFromParentTag(row) {
   return {
-    id: row.id,
+    id: Number(row.id),
     name: row.name,
     sortOrder: row.sort_order,
     origin: row.origin === 'ai' ? 'ai' : 'user',
@@ -13,30 +18,10 @@ function mapModule(row) {
 }
 
 async function getOwnedModule(userId, moduleId) {
-  const [rows] = await pool.execute(
-    `SELECT * FROM tag_modules
-     WHERE id = :moduleId AND user_id = :userId
-     LIMIT 1`,
-    { moduleId, userId },
-  );
-  const row = rows[0];
-  if (!row) {
-    throw Object.assign(new Error('归类不存在'), { status: 404 });
-  }
-  return row;
+  return getOwnedTag(userId, moduleId);
 }
 
-/**
- * 模块列表（含组内标签）+ 未归类标签
- */
-async function listModules(userId) {
-  const [moduleRows] = await pool.execute(
-    `SELECT * FROM tag_modules
-     WHERE user_id = :userId
-     ORDER BY sort_order ASC, id ASC`,
-    { userId },
-  );
-
+async function listAllUserTags(userId) {
   const [tagRows] = await pool.execute(
     `SELECT
        c.id,
@@ -48,6 +33,7 @@ async function listModules(userId) {
        c.is_system,
        c.sort_order,
        c.module_id,
+       c.parent_id,
        c.origin,
        c.placement_origin,
        c.created_at,
@@ -64,153 +50,140 @@ async function listModules(userId) {
      ORDER BY c.sort_order ASC, c.id ASC`,
     { userId },
   );
+  return tagRows;
+}
 
-  const tagsByModule = new Map();
-  const ungrouped = [];
-  for (const row of tagRows) {
-    const tag = mapTag(row);
-    const mid = row.module_id == null ? null : Number(row.module_id);
-    if (mid == null) {
-      ungrouped.push(tag);
-    } else {
-      if (!tagsByModule.has(mid)) tagsByModule.set(mid, []);
-      tagsByModule.get(mid).push(tag);
-    }
+async function listModules(userId) {
+  const tagRows = await listAllUserTags(userId);
+  const tags = tagRows.map(mapTag);
+  const byId = new Map(tags.map((t) => [t.id, t]));
+
+  const childrenByParent = new Map();
+  for (const t of tags) {
+    if (t.parentId == null) continue;
+    if (!childrenByParent.has(t.parentId)) childrenByParent.set(t.parentId, []);
+    childrenByParent.get(t.parentId).push(t);
   }
 
-  const modules = moduleRows.map((row) => ({
-    ...mapModule(row),
-    tags: tagsByModule.get(Number(row.id)) || [],
-  }));
+  function collectDescendants(rootId) {
+    const out = [];
+    const queue = [...(childrenByParent.get(rootId) || [])];
+    while (queue.length) {
+      const n = queue.shift();
+      out.push(n);
+      for (const c of childrenByParent.get(n.id) || []) queue.push(c);
+    }
+    return out;
+  }
 
+  const modules = [];
+  const ungrouped = [];
+
+  for (const t of tags) {
+    if (t.parentId != null) continue;
+    const descendants = collectDescendants(t.id);
+    modules.push({
+      ...mapModuleFromParentTag({
+        id: t.id,
+        name: t.name,
+        sort_order: t.sortOrder,
+        origin: t.origin,
+        created_at: t.createdAt,
+        updated_at: t.updatedAt,
+      }),
+      tags: [t, ...descendants],
+    });
+  }
+
+  for (const t of tags) {
+    if (t.parentId == null) continue;
+    if (byId.has(t.parentId)) continue;
+    ungrouped.push(t);
+  }
+
+  modules.sort((a, b) => a.sortOrder - b.sortOrder || a.id - b.id);
   return { modules, ungrouped };
 }
 
 async function createModule(userId, rawName, { origin: rawOrigin } = {}) {
-  const name = String(rawName || '').trim();
-  if (!name) {
-    throw Object.assign(new Error('请输入归类名称'), { status: 400 });
-  }
-  if (name.length > 64) {
-    throw Object.assign(new Error('名称最多 64 个字'), { status: 400 });
-  }
-  const origin = rawOrigin === 'ai' ? 'ai' : 'user';
-
-  const [existing] = await pool.execute(
-    `SELECT id FROM tag_modules
-     WHERE user_id = :userId AND name = :name
-     LIMIT 1`,
-    { userId, name },
-  );
-  if (existing[0]) {
-    throw Object.assign(new Error('同名归类已存在'), { status: 409 });
-  }
-
-  const [sortRows] = await pool.execute(
-    `SELECT COALESCE(MAX(sort_order), 0) AS max_sort
-     FROM tag_modules WHERE user_id = :userId`,
-    { userId },
-  );
-  const sortOrder = Number(sortRows[0]?.max_sort || 0) + 10;
-
-  try {
-    const [result] = await pool.execute(
-      `INSERT INTO tag_modules (user_id, name, sort_order, origin)
-       VALUES (:userId, :name, :sortOrder, :origin)`,
-      { userId, name, sortOrder, origin },
-    );
-    const [rows] = await pool.execute(
-      `SELECT * FROM tag_modules WHERE id = :id LIMIT 1`,
-      { id: result.insertId },
-    );
-    return { ...mapModule(rows[0]), tags: [] };
-  } catch (err) {
-    if (err && err.code === 'ER_DUP_ENTRY') {
-      throw Object.assign(new Error('同名归类已存在'), { status: 409 });
-    }
-    throw err;
-  }
+  const tag = await createTag(userId, rawName, {
+    origin: rawOrigin,
+    parentId: null,
+  });
+  return {
+    id: tag.id,
+    name: tag.name,
+    sortOrder: tag.sortOrder,
+    origin: tag.origin,
+    createdAt: tag.createdAt,
+    updatedAt: tag.updatedAt,
+    tags: [],
+  };
 }
 
-/** 删除无标签的 AI 归类（全量重排后收尾） */
 async function pruneEmptyAiModules(userId) {
   await pool.execute(
-    `DELETE tm FROM tag_modules tm
-     LEFT JOIN categories c
-       ON c.module_id = tm.id AND c.section = 'tag' AND c.user_id = tm.user_id
-     WHERE tm.user_id = :userId AND tm.origin = 'ai' AND c.id IS NULL`,
+    `DELETE parent FROM categories parent
+     LEFT JOIN categories child
+       ON child.parent_id = parent.id
+      AND child.section = 'tag'
+      AND child.user_id = parent.user_id
+     WHERE parent.user_id = :userId
+       AND parent.section = 'tag'
+       AND parent.parent_id IS NULL
+       AND parent.origin = 'ai'
+       AND child.id IS NULL
+       AND NOT EXISTS (
+         SELECT 1 FROM item_tags it WHERE it.category_id = parent.id
+       )`,
     { userId },
   );
 }
 
 async function renameModule(userId, moduleId, rawName) {
-  const mid = Number(moduleId);
-  if (!Number.isFinite(mid) || mid <= 0) {
-    throw Object.assign(new Error('无效的归类 ID'), { status: 400 });
-  }
-  const name = String(rawName || '').trim();
-  if (!name) {
-    throw Object.assign(new Error('请输入归类名称'), { status: 400 });
-  }
-  if (name.length > 64) {
-    throw Object.assign(new Error('名称最多 64 个字'), { status: 400 });
-  }
-
-  await getOwnedModule(userId, mid);
-
-  const [existing] = await pool.execute(
-    `SELECT id FROM tag_modules
-     WHERE user_id = :userId AND name = :name AND id <> :moduleId
-     LIMIT 1`,
-    { userId, name, moduleId: mid },
-  );
-  if (existing[0]) {
-    throw Object.assign(new Error('同名归类已存在'), { status: 409 });
-  }
-
-  try {
-    await pool.execute(
-      `UPDATE tag_modules
-       SET name = :name
-       WHERE id = :moduleId AND user_id = :userId`,
-      { name, moduleId: mid, userId },
-    );
-  } catch (err) {
-    if (err && err.code === 'ER_DUP_ENTRY') {
-      throw Object.assign(new Error('同名归类已存在'), { status: 409 });
-    }
-    throw err;
-  }
-
-  const [rows] = await pool.execute(
-    `SELECT * FROM tag_modules WHERE id = :id LIMIT 1`,
-    { id: mid },
-  );
-  return mapModule(rows[0]);
+  const { updateTag } = require('./tagService');
+  const tag = await updateTag(userId, moduleId, { name: rawName });
+  return {
+    id: tag.id,
+    name: tag.name,
+    sortOrder: tag.sortOrder,
+    origin: tag.origin,
+    createdAt: tag.createdAt,
+    updatedAt: tag.updatedAt,
+  };
 }
 
-/**
- * 归类下全部条目：挂有该模块内任一标签的活跃条目（去重分页）。
- */
 async function listModuleItems(userId, moduleId, { limit = 50, offset = 0 } = {}) {
   const mid = Number(moduleId);
   if (!Number.isFinite(mid) || mid <= 0) {
-    throw Object.assign(new Error('无效的归类 ID'), { status: 400 });
+    throw Object.assign(new Error('无效的标签 ID'), { status: 400 });
   }
   const safeLimit = Math.min(Math.max(Number(limit) || 50, 1), 100);
   const safeOffset = Math.max(Number(offset) || 0, 0);
 
   const moduleRow = await getOwnedModule(userId, mid);
 
-  const [tagRows] = await pool.execute(
-    `SELECT id FROM categories
-     WHERE section = 'tag' AND user_id = :userId AND module_id = :moduleId`,
-    { userId, moduleId: mid },
-  );
-  const tagIds = tagRows.map((r) => Number(r.id)).filter((id) => id > 0);
+  const allTags = await listAllUserTags(userId);
+  const childrenByParent = new Map();
+  for (const row of allTags) {
+    const pid = row.parent_id == null ? null : Number(row.parent_id);
+    if (pid == null) continue;
+    if (!childrenByParent.has(pid)) childrenByParent.set(pid, []);
+    childrenByParent.get(pid).push(Number(row.id));
+  }
+  const tagIds = [];
+  const queue = [mid];
+  const seen = new Set();
+  while (queue.length) {
+    const id = queue.shift();
+    if (seen.has(id)) continue;
+    seen.add(id);
+    tagIds.push(id);
+    for (const c of childrenByParent.get(id) || []) queue.push(c);
+  }
   if (tagIds.length === 0) {
     return {
-      module: mapModule(moduleRow),
+      module: mapModuleFromParentTag(moduleRow),
       total: 0,
       items: [],
       limit: safeLimit,
@@ -250,7 +223,7 @@ async function listModuleItems(userId, moduleId, { limit = 50, offset = 0 } = {}
   );
 
   return {
-    module: mapModule(moduleRow),
+    module: mapModuleFromParentTag(moduleRow),
     total,
     items: await attachTagsToItems(userId, rows.map(mapItem)),
     limit: safeLimit,
@@ -258,22 +231,29 @@ async function listModuleItems(userId, moduleId, { limit = 50, offset = 0 } = {}
   };
 }
 
-/**
- * 删除模块；组内标签 module_id 由 FK ON DELETE SET NULL 回到未归类。
- */
 async function deleteModule(userId, moduleId) {
   const mid = Number(moduleId);
   if (!Number.isFinite(mid) || mid <= 0) {
-    throw Object.assign(new Error('无效的归类 ID'), { status: 400 });
+    throw Object.assign(new Error('无效的标签 ID'), { status: 400 });
   }
-  await getOwnedModule(userId, mid);
+  const moduleRow = await getOwnedModule(userId, mid);
+  const newParent =
+    moduleRow.parent_id == null ? null : Number(moduleRow.parent_id);
+
+  await pool.execute(
+    `UPDATE categories
+     SET parent_id = :newParent, updated_at = CURRENT_TIMESTAMP(3)
+     WHERE user_id = :userId AND section = 'tag' AND parent_id = :moduleId`,
+    { newParent, userId, moduleId: mid },
+  );
+
   const [result] = await pool.execute(
-    `DELETE FROM tag_modules
-     WHERE id = :moduleId AND user_id = :userId`,
+    `DELETE FROM categories
+     WHERE id = :moduleId AND user_id = :userId AND section = 'tag'`,
     { moduleId: mid, userId },
   );
   if (!result.affectedRows) {
-    throw Object.assign(new Error('归类不存在'), { status: 404 });
+    throw Object.assign(new Error('标签不存在'), { status: 404 });
   }
   return { ok: true };
 }
@@ -286,5 +266,5 @@ module.exports = {
   deleteModule,
   pruneEmptyAiModules,
   getOwnedModule,
-  mapModule,
+  mapModule: mapModuleFromParentTag,
 };

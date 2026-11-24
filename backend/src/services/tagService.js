@@ -17,6 +17,9 @@ function mapTag(row) {
     row.placement_origin === 'ai' || row.placement_origin === 'user'
       ? row.placement_origin
       : null;
+  const parentId =
+    row.parent_id == null ? null : Number(row.parent_id);
+  // moduleId 兼容旧客户端：等同直接父标签 id
   return {
     id: row.id,
     name: row.name,
@@ -24,7 +27,8 @@ function mapTag(row) {
     code: row.code,
     isSystem: !!row.is_system,
     sortOrder: row.sort_order,
-    moduleId: row.module_id == null ? null : Number(row.module_id),
+    parentId,
+    moduleId: parentId,
     origin,
     placementOrigin,
     /** AI 可挪：AI 创建且用户从未拖动过 */
@@ -99,6 +103,7 @@ async function listTags(userId) {
        c.is_system,
        c.sort_order,
        c.module_id,
+       c.parent_id,
        c.origin,
        c.placement_origin,
        c.created_at,
@@ -119,10 +124,47 @@ async function listTags(userId) {
   return rows.map(mapTag);
 }
 
+async function resolveParentTagId(userId, parentIdOrModuleId) {
+  if (parentIdOrModuleId == null || parentIdOrModuleId === '') return null;
+  const pid = Number(parentIdOrModuleId);
+  if (!Number.isFinite(pid) || pid <= 0) {
+    throw Object.assign(new Error('无效的父标签 ID'), { status: 400 });
+  }
+  await getOwnedTag(userId, pid);
+  return pid;
+}
+
+/** 沿 parent_id 上行，禁止把标签挂到自己的子孙下 */
+async function wouldCreateCycle(userId, tagId, newParentId) {
+  if (newParentId == null) return false;
+  if (Number(newParentId) === Number(tagId)) return true;
+  let cursor = Number(newParentId);
+  const seen = new Set();
+  while (cursor != null) {
+    if (cursor === Number(tagId)) return true;
+    if (seen.has(cursor)) return true;
+    seen.add(cursor);
+    const [rows] = await pool.execute(
+      `SELECT parent_id FROM categories
+       WHERE id = :id AND user_id = :userId AND section = 'tag'
+       LIMIT 1`,
+      { id: cursor, userId },
+    );
+    const p = rows[0]?.parent_id;
+    cursor = p == null ? null : Number(p);
+  }
+  return false;
+}
+
 async function createTag(
   userId,
   rawName,
-  { moduleId, description: rawDescription, origin: rawOrigin } = {},
+  {
+    moduleId,
+    parentId,
+    description: rawDescription,
+    origin: rawOrigin,
+  } = {},
 ) {
   const name = String(rawName || '').trim();
   if (!name) {
@@ -137,19 +179,12 @@ async function createTag(
   const description = normalizeDescription(rawDescription);
   const origin = rawOrigin === 'ai' ? 'ai' : 'user';
 
-  let resolvedModuleId = null;
-  if (moduleId != null && moduleId !== '') {
-    const mid = Number(moduleId);
-    if (!Number.isFinite(mid) || mid <= 0) {
-      throw Object.assign(new Error('无效的归类 ID'), { status: 400 });
-    }
-    const { getOwnedModule } = require('./tagModuleService');
-    await getOwnedModule(userId, mid);
-    resolvedModuleId = mid;
-  }
+  const rawParent =
+    parentId != null && parentId !== '' ? parentId : moduleId;
+  const resolvedParentId = await resolveParentTagId(userId, rawParent);
 
   const placementOrigin =
-    resolvedModuleId == null ? null : origin === 'ai' ? 'ai' : 'user';
+    resolvedParentId == null ? null : origin === 'ai' ? 'ai' : 'user';
 
   const [existing] = await pool.execute(
     `SELECT id FROM categories
@@ -162,31 +197,31 @@ async function createTag(
   }
 
   const [sortRows] = await pool.execute(
-    resolvedModuleId == null
+    resolvedParentId == null
       ? `SELECT COALESCE(MAX(sort_order), 0) AS max_sort
          FROM categories
-         WHERE user_id = :userId AND section = 'tag' AND module_id IS NULL`
+         WHERE user_id = :userId AND section = 'tag' AND parent_id IS NULL`
       : `SELECT COALESCE(MAX(sort_order), 0) AS max_sort
          FROM categories
-         WHERE user_id = :userId AND section = 'tag' AND module_id = :moduleId`,
-    resolvedModuleId == null
+         WHERE user_id = :userId AND section = 'tag' AND parent_id = :parentId`,
+    resolvedParentId == null
       ? { userId }
-      : { userId, moduleId: resolvedModuleId },
+      : { userId, parentId: resolvedParentId },
   );
   const sortOrder = Number(sortRows[0]?.max_sort || 0) + 10;
 
   try {
     const [result] = await pool.execute(
       `INSERT INTO categories
-         (user_id, section, code, name, description, is_system, sort_order, module_id, origin, placement_origin)
+         (user_id, section, code, name, description, is_system, sort_order, module_id, parent_id, origin, placement_origin)
        VALUES
-         (:userId, 'tag', NULL, :name, :description, 0, :sortOrder, :moduleId, :origin, :placementOrigin)`,
+         (:userId, 'tag', NULL, :name, :description, 0, :sortOrder, NULL, :parentId, :origin, :placementOrigin)`,
       {
         userId,
         name,
         description,
         sortOrder,
-        moduleId: resolvedModuleId,
+        parentId: resolvedParentId,
         origin,
         placementOrigin,
       },
@@ -315,15 +350,14 @@ async function renameTag(userId, tagId, rawName) {
 }
 
 /**
- * 放置标签：调整所属模块，并可插入到目标组内指定标签之前（beforeTagId 为空则追加到末尾）
- * @param {{ moduleId?: number|null, beforeTagId?: number|null, source?: 'user'|'ai' }} [opts]
- *   source=user（默认）：用户拖动，写入 placement_origin=user，之后 AI 不可再挪
- *   source=ai：仅当标签可 AI 挪动时生效；否则原样返回
+ * 放置标签：挂到父标签下（任意层），并可插入到同级指定标签之前。
+ * moduleId 与 parentId 同义（兼容旧 API）。
+ * @param {{ moduleId?: number|null, parentId?: number|null, beforeTagId?: number|null, source?: 'user'|'ai' }} [opts]
  */
 async function placeTag(
   userId,
   tagId,
-  { moduleId, beforeTagId, source: rawSource } = {},
+  { moduleId, parentId, beforeTagId, source: rawSource } = {},
 ) {
   const tag = await getOwnedTag(userId, tagId);
   const source = rawSource === 'ai' ? 'ai' : 'user';
@@ -341,22 +375,25 @@ async function placeTag(
     return mapTag(rows[0]);
   }
 
-  let resolvedModuleId = null;
-  if (moduleId != null && moduleId !== '') {
-    const mid = Number(moduleId);
-    if (!Number.isFinite(mid) || mid <= 0) {
-      throw Object.assign(new Error('无效的归类 ID'), { status: 400 });
+  const rawParent =
+    parentId != null && parentId !== '' ? parentId : moduleId;
+  let resolvedParentId = null;
+  if (rawParent != null && rawParent !== '') {
+    resolvedParentId = await resolveParentTagId(userId, rawParent);
+    if (resolvedParentId === Number(tag.id)) {
+      throw Object.assign(new Error('不能挂到自己下面'), { status: 400 });
     }
-    const { getOwnedModule } = require('./tagModuleService');
-    await getOwnedModule(userId, mid);
-    resolvedModuleId = mid;
+    if (await wouldCreateCycle(userId, tag.id, resolvedParentId)) {
+      throw Object.assign(new Error('不能挂到自己的下级标签下'), {
+        status: 400,
+      });
+    }
   }
 
-  // 用户拖到未归类仍记 user，防止 AI 再塞回；AI 留未归类则 NULL（仍可再排）
   let placementOrigin;
   if (source === 'user') {
     placementOrigin = 'user';
-  } else if (resolvedModuleId == null) {
+  } else if (resolvedParentId == null) {
     placementOrigin = null;
   } else {
     placementOrigin = 'ai';
@@ -375,17 +412,17 @@ async function placeTag(
 
   const siblingParams = { userId, tagId: tag.id };
   let siblingSql;
-  if (resolvedModuleId == null) {
+  if (resolvedParentId == null) {
     siblingSql = `SELECT id FROM categories
       WHERE user_id = :userId AND section = 'tag'
-        AND module_id IS NULL AND id <> :tagId
+        AND parent_id IS NULL AND id <> :tagId
       ORDER BY sort_order ASC, id ASC`;
   } else {
     siblingSql = `SELECT id FROM categories
       WHERE user_id = :userId AND section = 'tag'
-        AND module_id = :moduleId AND id <> :tagId
+        AND parent_id = :parentId AND id <> :tagId
       ORDER BY sort_order ASC, id ASC`;
-    siblingParams.moduleId = resolvedModuleId;
+    siblingParams.parentId = resolvedParentId;
   }
 
   const [siblings] = await pool.execute(siblingSql, siblingParams);
@@ -395,7 +432,7 @@ async function placeTag(
   if (beforeId != null) {
     const idx = orderedIds.indexOf(beforeId);
     if (idx < 0) {
-      throw Object.assign(new Error('插入位置不在目标归类内'), { status: 400 });
+      throw Object.assign(new Error('插入位置不在同级标签内'), { status: 400 });
     }
     insertAt = idx;
   }
@@ -406,12 +443,13 @@ async function placeTag(
     await conn.beginTransaction();
     await conn.execute(
       `UPDATE categories
-       SET module_id = :moduleId,
+       SET parent_id = :parentId,
+           module_id = NULL,
            placement_origin = :placementOrigin,
            updated_at = CURRENT_TIMESTAMP(3)
        WHERE id = :tagId AND user_id = :userId AND section = 'tag'`,
       {
-        moduleId: resolvedModuleId,
+        parentId: resolvedParentId,
         placementOrigin,
         tagId: tag.id,
         userId,
@@ -551,6 +589,7 @@ async function searchTagsAndItems(
        c.is_system,
        c.sort_order,
        c.module_id,
+       c.parent_id,
        c.origin,
        c.placement_origin,
        c.created_at,
@@ -638,6 +677,7 @@ async function searchTagsAndItems(
        c.is_system,
        c.sort_order,
        c.module_id,
+       c.parent_id,
        c.origin,
        c.placement_origin,
        c.created_at,
@@ -706,6 +746,8 @@ module.exports = {
   deleteTag,
   listTagItems,
   searchTagsAndItems,
+  getOwnedTag,
+  wouldCreateCycle,
   bumpOrganizeAiCreatedSince,
   getOrganizeState,
   markFullOrganizeDone,
