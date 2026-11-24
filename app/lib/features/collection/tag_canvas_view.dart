@@ -9,7 +9,8 @@ import 'package:super_collection/features/collection/tag_models.dart';
 
 /// 二维画布：标签上下排布（点上字下）；
 /// 同屏内若有父子，父在左、子在右并画连线（连线在「外面一层」）；
-/// 短拖改位置、长按挂下级、捏合缩放、空白拖移。
+/// 捏合缩小后子标签收成「+N」簇，放大或点簇再展开；
+/// 短拖改位置、长按挂下级、空白拖移。
 class TagCanvasView extends StatefulWidget {
   const TagCanvasView({
     super.key,
@@ -75,6 +76,9 @@ class _TagCanvasViewState extends State<TagCanvasView> {
   /// 手指按在标签上时关掉画布平移，避免和改位置抢手势。
   bool _fingerOnTag = false;
 
+  /// 缩小时子标签收成「+N」簇；带回差避免捏合临界抖动。
+  bool _kidsCollapsed = false;
+
   static const _minScale = 0.55;
   static const _maxScale = 2.4;
   static const _itemW = 104.0;
@@ -84,12 +88,48 @@ class _TagCanvasViewState extends State<TagCanvasView> {
   static const _worldPad = 280.0;
   /// 散落 / 簇布局参数变更时递增，强制重算默认坐标（用户拖位仍覆盖）。
   static const _layoutVersion = 'v4-cluster';
+  /// scale 低于此 → 聚合子标签；高于 [_clusterExpandAbove] → 展开
+  static const _clusterCollapseBelow = 0.86;
+  static const _clusterExpandAbove = 0.98;
+  /// 点「+N」簇时放大到此比例以展开子标签
+  static const _clusterTapScale = 1.08;
 
   Matrix4 _homeTransform() =>
       Matrix4.translationValues(-_worldPad, -_worldPad, 0);
 
+  double _currentScale() => _transform.value.getMaxScaleOnAxis();
+
   void _resetToHome() {
     _transform.value = _homeTransform();
+    _syncCollapseFromScale();
+  }
+
+  void _onTransformTick() => _syncCollapseFromScale();
+
+  void _syncCollapseFromScale() {
+    final s = _currentScale();
+    final next = _kidsCollapsed
+        ? s < _clusterExpandAbove
+        : s < _clusterCollapseBelow;
+    if (next == _kidsCollapsed) return;
+    setState(() => _kidsCollapsed = next);
+  }
+
+  /// 绕场景点缩放到 [targetScale]（场景坐标 = InteractiveViewer child）
+  void _zoomAboutScenePoint(Offset scenePoint, double targetScale) {
+    final matrix = Matrix4.copy(_transform.value);
+    final current = matrix.getMaxScaleOnAxis();
+    final clamped = targetScale.clamp(_minScale, _maxScale);
+    if ((clamped - current).abs() < 0.02) return;
+    final viewportFocal = MatrixUtils.transformPoint(matrix, scenePoint);
+    final scaleDelta = clamped / current;
+    final next = Matrix4.identity();
+    next.translateByDouble(viewportFocal.dx, viewportFocal.dy, 0, 1);
+    next.scaleByDouble(scaleDelta, scaleDelta, scaleDelta, 1);
+    next.translateByDouble(-viewportFocal.dx, -viewportFocal.dy, 0, 1);
+    next.multiply(matrix);
+    _transform.value = next;
+    _syncCollapseFromScale();
   }
 
   @override
@@ -97,6 +137,7 @@ class _TagCanvasViewState extends State<TagCanvasView> {
     super.initState();
     // 世界坐标含 pad，首屏对齐中间「主视口」区域。
     _transform.value = _homeTransform();
+    _transform.addListener(_onTransformTick);
     _ensureNormLayout(widget.tags);
     _loadUserPositions();
   }
@@ -117,8 +158,60 @@ class _TagCanvasViewState extends State<TagCanvasView> {
 
   @override
   void dispose() {
+    _transform.removeListener(_onTransformTick);
     _transform.dispose();
     super.dispose();
+  }
+
+  Map<int, List<Tag>> _kidsByParent(List<Tag> tags) {
+    final byId = {for (final t in tags) t.id: t};
+    final map = <int, List<Tag>>{};
+    for (final t in tags) {
+      final p = t.effectiveParentId;
+      if (p == null || !byId.containsKey(p)) continue;
+      map.putIfAbsent(p, () => []).add(t);
+    }
+    for (final list in map.values) {
+      list.sort((a, b) {
+        final o = a.sortOrder.compareTo(b.sortOrder);
+        return o != 0 ? o : a.id.compareTo(b.id);
+      });
+    }
+    return map;
+  }
+
+  /// 聚合时仍单独露出的子：当前选中 / 正在拖的
+  Set<int> _pinnedChildIds(Map<int, List<Tag>> kidsOf) {
+    final pinned = <int>{};
+    final selected = widget.selectedTagId;
+    if (selected != null) {
+      for (final kids in kidsOf.values) {
+        if (kids.any((t) => t.id == selected)) pinned.add(selected);
+      }
+    }
+    final ids = widget.selectedTagIds;
+    if (ids != null) {
+      for (final kids in kidsOf.values) {
+        for (final t in kids) {
+          if (ids.contains(t.id)) pinned.add(t.id);
+        }
+      }
+    }
+    final dragging = widget.draggingTagId;
+    if (dragging != null) pinned.add(dragging);
+    return pinned;
+  }
+
+  Offset _clusterPixel(int parentId, List<Tag> kids, Size home) {
+    if (kids.isEmpty) {
+      final p = _pixelPos(parentId, home);
+      return Offset(p.dx + 56, p.dy);
+    }
+    var sum = Offset.zero;
+    for (final k in kids) {
+      sum += _pixelPos(k.id, home);
+    }
+    return sum / kids.length.toDouble();
   }
 
   Future<void> _loadUserPositions() async {
@@ -386,8 +479,26 @@ class _TagCanvasViewState extends State<TagCanvasView> {
             widget.draggingTagId == null;
 
         final hubs = _hubIds(widget.tags);
+        final kidsOf = _kidsByParent(widget.tags);
+        final childIds = {
+          for (final kids in kidsOf.values)
+            for (final t in kids) t.id,
+        };
+        final pinned = _kidsCollapsed ? _pinnedChildIds(kidsOf) : const <int>{};
+        final hiddenChildIds = _kidsCollapsed
+            ? {
+                for (final id in childIds)
+                  if (!pinned.contains(id)) id,
+              }
+            : const <int>{};
+
+        final visibleTags = [
+          for (final t in widget.tags)
+            if (!hiddenChildIds.contains(t.id)) t,
+        ];
+
         // 枢纽后绘，便于点中；子标签稍前。
-        final ordered = [...widget.tags]..sort((a, b) {
+        final ordered = [...visibleTags]..sort((a, b) {
             final ah = hubs.contains(a.id) ? 1 : 0;
             final bh = hubs.contains(b.id) ? 1 : 0;
             if (ah != bh) return ah.compareTo(bh);
@@ -396,16 +507,40 @@ class _TagCanvasViewState extends State<TagCanvasView> {
             return ae.compareTo(be);
           });
         final sampleId = widget.sampleTagId ??
-            (widget.tags.isEmpty
+            (visibleTags.isEmpty
                 ? null
-                : ([...widget.tags]..sort((a, b) => a.id.compareTo(b.id)))
+                : ([...visibleTags]..sort((a, b) => a.id.compareTo(b.id)))
                     .first
                     .id);
+
+        // 连线：展开时画全部；聚合时只连仍露出的钉住子节点
+        final linkTags = _kidsCollapsed
+            ? [
+                for (final t in widget.tags)
+                  if (!hiddenChildIds.contains(t.id) || hubs.contains(t.id)) t,
+              ]
+            : widget.tags;
         final positions = {
-          for (final t in widget.tags)
+          for (final t in linkTags)
             t.id: _pixelPos(t.id, size) +
                 _dotCenterInItem(hub: hubs.contains(t.id)),
         };
+
+        final clusters = <({int parentId, List<Tag> kids, Offset at})>[];
+        if (_kidsCollapsed) {
+          for (final e in kidsOf.entries) {
+            final hiddenKids = [
+              for (final t in e.value)
+                if (hiddenChildIds.contains(t.id)) t,
+            ];
+            if (hiddenKids.isEmpty) continue;
+            clusters.add((
+              parentId: e.key,
+              kids: e.value,
+              at: _clusterPixel(e.key, e.value, size),
+            ));
+          }
+        }
 
         // 外层可视区可能被下拉挤矮；内部仍按稳定尺寸排布，只裁剪不压缩。
         // 点阵铺在视口层，按变换矩阵反算可见范围，平移/缩放始终铺满。
@@ -445,11 +580,11 @@ class _TagCanvasViewState extends State<TagCanvasView> {
                       child: Stack(
                         clipBehavior: Clip.none,
                         children: [
-                          if (hubs.isNotEmpty)
+                          if (hubs.isNotEmpty && linkTags.length > 1)
                             Positioned.fill(
                               child: CustomPaint(
                                 painter: _ParentChildLinkPainter(
-                                  tags: widget.tags,
+                                  tags: linkTags,
                                   positions: positions,
                                 ),
                               ),
@@ -506,6 +641,24 @@ class _TagCanvasViewState extends State<TagCanvasView> {
                                       _onRepositionUpdate(delta, size),
                                   onPanEnd: () => _onRepositionEnd(size),
                                 ),
+                              ),
+                            ),
+                          for (final c in clusters)
+                            Positioned(
+                              left: c.at.dx,
+                              top: c.at.dy,
+                              child: _ClusterBadge(
+                                count: c.kids.length,
+                                color: TagDotColors.forModule(c.parentId),
+                                onTap: () {
+                                  AppHaptics.select();
+                                  final center = c.at +
+                                      const Offset(_itemW / 2, 22);
+                                  _zoomAboutScenePoint(
+                                    center,
+                                    _clusterTapScale,
+                                  );
+                                },
                               ),
                             ),
                         ],
@@ -624,6 +777,84 @@ class _ParentChildLinkPainter extends CustomPainter {
       if (o == null || o != e.value) return true;
     }
     return false;
+  }
+}
+
+/// 缩放聚合：父旁「+N」簇点，点击放大展开子标签。
+class _ClusterBadge extends StatelessWidget {
+  const _ClusterBadge({
+    required this.count,
+    required this.color,
+    required this.onTap,
+  });
+
+  final int count;
+  final Color color;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () {
+        HapticFeedback.selectionClick();
+        onTap();
+      },
+      child: SizedBox(
+        width: 104,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            SizedBox(
+              width: 36,
+              height: 36,
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: color.withValues(alpha: 0.14),
+                  border: Border.all(
+                    color: color.withValues(alpha: 0.45),
+                    width: 1.8,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: color.withValues(alpha: 0.22),
+                      blurRadius: 10,
+                      offset: const Offset(0, 3),
+                    ),
+                  ],
+                ),
+                child: Center(
+                  child: Text(
+                    '+$count',
+                    style: TextStyle(
+                      fontSize: count >= 10 ? 12 : 13,
+                      fontWeight: FontWeight.w800,
+                      height: 1,
+                      color: color,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 5),
+            Text(
+              '子标签',
+              textAlign: TextAlign.center,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                height: 1.15,
+                color: Color.lerp(const Color(0xFF3A4452), color, 0.35)!
+                    .withValues(alpha: 0.85),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }
 
