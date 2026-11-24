@@ -156,11 +156,13 @@ class _CollectionPageState extends State<CollectionPage> {
     }
   }
 
-  Future<void> _createModule() async {
+  /// 当前下钻层的父标签；`null` = 顶层「全部」
+  int? _createParentId;
+
+  /// 右上角「+」：在当前面包屑层级新建标签
+  Future<void> _createAtCurrentLevel() async {
     if (_coachStep != null) return;
-    final module = await showCreateModuleSheet(context);
-    if (module == null || !mounted) return;
-    await _load(quiet: true);
+    await _addTagToModule(_createParentId);
   }
 
   Future<void> _maybeStartCoach() async {
@@ -278,8 +280,8 @@ class _CollectionPageState extends State<CollectionPage> {
     switch (step) {
       case _stepCreate:
         targetKey = _createModuleKey;
-        title = '新建标签';
-        message = '点右上角「+」，新建一个顶层标签，之后可再挂下级。';
+        title = '添加标签';
+        message = '点右上角「+」，在当前层级新建标签；下钻后再点则挂到该层下面。';
         confirm = '下一步';
         holeRadius = 18;
         inflate = 4;
@@ -382,6 +384,28 @@ class _CollectionPageState extends State<CollectionPage> {
       await _tagModulesRepo.deleteModule(module.id);
       if (!mounted) return;
       AppToast.show(context, '已删除「${module.name}」');
+      await _load(quiet: true);
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      AppToast.show(context, e.message);
+    } catch (_) {
+      if (!mounted) return;
+      AppToast.show(context, '删除失败');
+    }
+  }
+
+  Future<void> _deleteTag(Tag tag) async {
+    final ok = await showAppConfirmDialog(
+      context,
+      title: '删除标签',
+      message: '确定删除「${tag.name}」？下级标签会升到上一级；仅解除与条目的关联，不会删除内容。',
+      confirmLabel: '删除',
+    );
+    if (ok != true || !mounted) return;
+    try {
+      await _tagsRepo.deleteTag(tag.id);
+      if (!mounted) return;
+      AppToast.show(context, '已删除「${tag.name}」');
       await _load(quiet: true);
     } on ApiException catch (e) {
       if (!mounted) return;
@@ -505,10 +529,10 @@ class _CollectionPageState extends State<CollectionPage> {
   Widget _buildCreateModuleButton({EdgeInsetsGeometry? padding}) {
     final button = IconButton(
       key: _createModuleKey,
-      tooltip: '创建归类',
+      tooltip: '添加标签',
       padding: EdgeInsets.zero,
       constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
-      onPressed: () => unawaited(_createModule()),
+      onPressed: () => unawaited(_createAtCurrentLevel()),
       icon: Container(
         width: 32,
         height: 32,
@@ -635,7 +659,11 @@ class _CollectionPageState extends State<CollectionPage> {
                       onAddTag: _addTagToModule,
                       onRenameModule: _renameModule,
                       onDeleteModule: _deleteModule,
-                      onCreateModule: _createModule,
+                      onDeleteTag: _deleteTag,
+                      onCreateModule: _createAtCurrentLevel,
+                      onPathParentChanged: (parentId) {
+                        _createParentId = parentId;
+                      },
                       onPlaceTag: _placeTag,
                     ),
                   ),

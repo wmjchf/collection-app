@@ -7,12 +7,15 @@ import 'package:super_collection/core/network/api_client.dart';
 import 'package:super_collection/core/ui/app_bottom_sheet.dart';
 import 'package:super_collection/core/ui/app_orientation.dart';
 import 'package:super_collection/core/ui/app_toast.dart';
+import 'package:super_collection/features/auth/auth_repository.dart';
 import 'package:super_collection/features/collection/tag_models.dart';
 import 'package:super_collection/features/collection/tag_module_models.dart';
 import 'package:super_collection/features/collection/tag_modules_repository.dart';
 import 'package:super_collection/features/collection/tags_repository.dart';
 import 'package:super_collection/features/items/ai_meta_models.dart';
 import 'package:super_collection/features/items/items_repository.dart';
+import 'package:super_collection/features/onboarding/home_coach_overlay.dart';
+import 'package:super_collection/features/onboarding/reading_tags_long_press_tip_prefs.dart';
 
 class _TagsSheetSession {
   final Set<int> selectedIds = {};
@@ -80,7 +83,7 @@ class _ReadingTagsSheet extends StatefulWidget {
 class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
   static const _text = Color(0xFF1F242E);
   static const _muted = Color(0xFF737A85);
-  static const _sectionMuted = Color(0xFF8B929C);
+  static const _pathMuted = Color(0xFF8B929C);
   static const _blue = Color(0xFF2F6FED);
   static const _chipBg = Color(0xFFF5F7FA);
   static const _surface = Color(0xFFF3F6FA);
@@ -89,18 +92,26 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
   final _modulesRepo = TagModulesRepository();
   final _tagsRepo = TagsRepository();
   final _itemsRepo = ItemsRepository();
+  final _auth = AuthRepository();
   final _searchController = TextEditingController();
   final _searchFocus = FocusNode();
+  final GlobalKey _drillSampleKey = GlobalKey();
   List<TagModule> _modules = const [];
   List<Tag> _ungrouped = const [];
   final Set<int> _selected = {};
   /// AI 建议名（生成后默认全选；可点掉）
   final Set<String> _aiSelected = {};
+  /// 选标下钻路径；空=顶层分区浏览
+  final List<Tag> _browsePath = [];
   bool _loading = true;
   bool _saving = false;
   bool _creating = false;
   String? _error;
   late AiTagsMeta _tagsMeta;
+  OverlayEntry? _longPressTipOverlay;
+  int? _tipUserId;
+  bool _tipStarting = false;
+  bool _tipFinished = false;
 
   @override
   void initState() {
@@ -114,6 +125,7 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
 
   @override
   void dispose() {
+    _removeLongPressTip();
     _searchController.dispose();
     _searchFocus.dispose();
     super.dispose();
@@ -222,9 +234,21 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
             }
           }
         }
+        final byId = {
+          for (final t in [
+            ..._ungrouped,
+            for (final m in _modules) ...m.tags,
+          ])
+            t.id: t,
+        };
+        _browsePath.removeWhere((t) => !byId.containsKey(t.id));
+        for (var i = 0; i < _browsePath.length; i++) {
+          _browsePath[i] = byId[_browsePath[i].id]!;
+        }
         _loading = false;
       });
       _syncSession();
+      unawaited(_maybeShowLongPressTip());
     } on ApiException catch (e) {
       if (!mounted) return;
       setState(() {
@@ -272,9 +296,10 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
   Future<void> _createFromQuery() async {
     final name = _queryKey;
     if (name.isEmpty || _creating) return;
+    final parentId = _browsePath.isEmpty ? null : _browsePath.last.id;
     setState(() => _creating = true);
     try {
-      final created = await _tagsRepo.createTag(name);
+      final created = await _tagsRepo.createTag(name, moduleId: parentId);
       if (!mounted) return;
       HapticFeedback.selectionClick();
       _searchController.clear();
@@ -369,23 +394,124 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
     return n.startsWith('#') ? n : '#$n';
   }
 
+  void _removeLongPressTip() {
+    _longPressTipOverlay?.remove();
+    _longPressTipOverlay = null;
+  }
+
+  Future<void> _finishLongPressTip() async {
+    if (_tipFinished) return;
+    _tipFinished = true;
+    _removeLongPressTip();
+    await ReadingTagsLongPressTipPrefs.markSeen(userId: _tipUserId);
+  }
+
+  Future<void> _maybeShowLongPressTip() async {
+    if (!mounted ||
+        _tipStarting ||
+        _tipFinished ||
+        _loading ||
+        _error != null ||
+        _queryKey.isNotEmpty) {
+      return;
+    }
+    if (!_levelTags.any(_hasChildren)) return;
+    _tipStarting = true;
+    try {
+      final session = await _auth.readSession();
+      _tipUserId = session?.userId;
+      final seen =
+          await ReadingTagsLongPressTipPrefs.isSeen(userId: _tipUserId);
+      if (!mounted || seen || _tipFinished) return;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || _tipFinished) return;
+        _syncLongPressTipOverlay();
+        // 再等一帧，确保 chip 已布局出 hole
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted && !_tipFinished) {
+            _longPressTipOverlay?.markNeedsBuild();
+          }
+        });
+      });
+    } finally {
+      _tipStarting = false;
+    }
+  }
+
+  void _syncLongPressTipOverlay() {
+    _removeLongPressTip();
+    if (!mounted || _tipFinished) return;
+    _longPressTipOverlay = OverlayEntry(
+      builder: (context) {
+        final hole = rectForKey(_drillSampleKey, inflate: 8);
+        final tipTop = hole == null
+            ? null
+            : (hole.bottom + 14).clamp(
+                80.0,
+                MediaQuery.sizeOf(context).height - 220,
+              );
+        return CoachHoleOverlay(
+          hole: hole,
+          holeRadius: 14,
+          tooltipTop: tipTop,
+          onHoleTap: () {},
+          onHoleLongPress: () {
+            Tag? sample;
+            for (final t in _levelTags) {
+              if (_hasChildren(t)) {
+                sample = t;
+                break;
+              }
+            }
+            if (sample != null) _toggleTag(sample.id);
+            unawaited(_finishLongPressTip());
+          },
+          tooltip: CoachTooltipCard(
+            stepLabel: '选标签',
+            title: '长按可选中这一层',
+            message: '点带 › 的标签进入下一层；想勾选这一层本身，请长按。',
+            confirmLabel: '知道了',
+            showSkip: false,
+            onConfirm: () => unawaited(_finishLongPressTip()),
+          ),
+        );
+      },
+    );
+    Overlay.of(context, rootOverlay: true).insert(_longPressTipOverlay!);
+  }
+
   Widget _pill({
     required String label,
     required bool selected,
     VoidCallback? onTap,
+    VoidCallback? onLongPress,
     VoidCallback? onRemove,
+    bool showDrillChevron = false,
     bool isNew = false,
+    GlobalKey? key,
   }) {
     final fg = selected ? Colors.white : _text;
+    final rightPad =
+        onRemove != null || showDrillChevron ? 6.0 : 10.0;
     return GestureDetector(
+      key: key,
       onTap: onTap,
+      onLongPress: onLongPress == null
+          ? null
+          : () {
+              HapticFeedback.selectionClick();
+              onLongPress();
+            },
       behavior: HitTestBehavior.opaque,
       child: Container(
         // 略放大但仍保证常见「三个四字标签」一排放下
-        padding: EdgeInsets.fromLTRB(isNew ? 6 : 10, 7, onRemove != null ? 7 : 10, 7),
+        padding: EdgeInsets.fromLTRB(isNew ? 6 : 10, 7, rightPad, 7),
         decoration: BoxDecoration(
           color: selected ? _blue : _chipBg,
           borderRadius: BorderRadius.circular(999),
+          border: selected
+              ? null
+              : Border.all(color: const Color(0xFFE8EAF0)),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
@@ -422,6 +548,14 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
                 color: fg,
               ),
             ),
+            if (showDrillChevron) ...[
+              const SizedBox(width: 2),
+              Icon(
+                Icons.chevron_right_rounded,
+                size: 18,
+                color: selected ? Colors.white : _muted,
+              ),
+            ],
             if (onRemove != null) ...[
               const SizedBox(width: 3),
               GestureDetector(
@@ -553,40 +687,259 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
     );
   }
 
-  Widget _buildModuleSection({
-    required String title,
-    required List<Tag> tags,
-  }) {
-    final visible = tags.where(_tagMatches).toList();
-    if (visible.isEmpty) return const SizedBox.shrink();
+  Map<int?, List<Tag>> _childrenMap() {
+    final byId = {for (final t in _allTags) t.id: t};
+    final children = <int?, List<Tag>>{};
+    for (final t in _allTags) {
+      final p = t.effectiveParentId;
+      final key = (p != null && byId.containsKey(p)) ? p : null;
+      children.putIfAbsent(key, () => []).add(t);
+    }
+    for (final list in children.values) {
+      list.sort((a, b) {
+        final byOrder = a.sortOrder.compareTo(b.sortOrder);
+        if (byOrder != 0) return byOrder;
+        return a.id.compareTo(b.id);
+      });
+    }
+    return children;
+  }
+
+  bool _hasChildren(Tag tag) {
+    final kids = _childrenMap()[tag.id];
+    return kids != null && kids.isNotEmpty;
+  }
+
+  String _ancestryPath(Tag tag) {
+    final byId = {for (final t in _allTags) t.id: t};
+    final names = <String>[];
+    var cursor = tag.effectiveParentId;
+    final seen = <int>{};
+    while (cursor != null && byId.containsKey(cursor) && seen.add(cursor)) {
+      names.insert(0, byId[cursor]!.name);
+      cursor = byId[cursor]!.effectiveParentId;
+    }
+    if (names.isEmpty) return '';
+    return names.join(' / ');
+  }
+
+  void _drillInto(Tag tag) {
+    if (!_hasChildren(tag)) return;
+    setState(() {
+      _browsePath.add(tag);
+      _searchController.clear();
+      _searchFocus.unfocus();
+    });
+  }
+
+  void _browseBack() {
+    if (_browsePath.isEmpty) return;
+    setState(() => _browsePath.removeLast());
+  }
+
+  void _browseToRoot() {
+    if (_browsePath.isEmpty) return;
+    setState(() => _browsePath.clear());
+  }
+
+  /// 点到路径第 index 段（0=全部；1..=_browsePath[i-1]）
+  void _browseToPathIndex(int index) {
+    if (index <= 0) {
+      _browseToRoot();
+      return;
+    }
+    final keep = index.clamp(1, _browsePath.length);
+    if (keep == _browsePath.length) return;
+    setState(() => _browsePath.removeRange(keep, _browsePath.length));
+  }
+
+  List<Tag> get _levelTags {
+    final map = _childrenMap();
+    if (_browsePath.isEmpty) return map[null] ?? const [];
+    return map[_browsePath.last.id] ?? const [];
+  }
+
+  Widget _buildLevelChips(List<Tag> tags) {
+    if (tags.isEmpty) {
+      return const Text(
+        '这一层还没有子标签',
+        style: TextStyle(fontSize: 13, color: _muted, height: 1.4),
+      );
+    }
+    int? sampleId;
+    for (final t in tags) {
+      if (_hasChildren(t)) {
+        sampleId = t.id;
+        break;
+      }
+    }
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: [
+        for (final tag in tags)
+          _pill(
+            key: tag.id == sampleId ? _drillSampleKey : null,
+            label: tag.name,
+            selected: _selected.contains(tag.id),
+            showDrillChevron: _hasChildren(tag),
+            // 有下级：点击进入；长按勾选。无下级：点击勾选。
+            onTap: _hasChildren(tag)
+                ? () {
+                    unawaited(_finishLongPressTip());
+                    _drillInto(tag);
+                  }
+                : () => _toggleTag(tag.id),
+            onLongPress: _hasChildren(tag)
+                ? () {
+                    unawaited(_finishLongPressTip());
+                    _toggleTag(tag.id);
+                  }
+                : null,
+          ),
+      ],
+    );
+  }
+
+  Widget _buildFullPathBar() {
+    // 全部 / a / b / c —— 末段可点选当前父级，前面各段点按返回
+    final segments = <({String label, int pathIndex, bool isCurrent})>[
+      (label: '全部', pathIndex: 0, isCurrent: false),
+      for (var i = 0; i < _browsePath.length; i++)
+        (
+          label: _browsePath[i].name,
+          pathIndex: i + 1,
+          isCurrent: i == _browsePath.length - 1,
+        ),
+    ];
+
     return Padding(
-      padding: const EdgeInsets.only(bottom: 16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          Text(
-            title,
-            style: const TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w600,
-              color: _sectionMuted,
+          GestureDetector(
+            onTap: _browseBack,
+            behavior: HitTestBehavior.opaque,
+            child: const Padding(
+              padding: EdgeInsets.only(right: 2),
+              child: Icon(
+                Icons.chevron_left_rounded,
+                size: 22,
+                color: _pathMuted,
+              ),
             ),
           ),
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 6,
-            runSpacing: 8,
-            children: [
-              for (final tag in visible)
-                _pill(
-                  label: tag.name,
-                  selected: _selected.contains(tag.id),
-                  onTap: () => _toggleTag(tag.id),
-                ),
-            ],
+          Expanded(
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  for (var s = 0; s < segments.length; s++) ...[
+                    if (s > 0)
+                      const Padding(
+                        padding: EdgeInsets.symmetric(horizontal: 4),
+                        child: Text(
+                          '/',
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: _pathMuted,
+                          ),
+                        ),
+                      ),
+                    GestureDetector(
+                      onTap: () {
+                        final seg = segments[s];
+                        if (seg.isCurrent) {
+                          _toggleTag(_browsePath.last.id);
+                        } else {
+                          _browseToPathIndex(seg.pathIndex);
+                        }
+                      },
+                      behavior: HitTestBehavior.opaque,
+                      child: Text(
+                        segments[s].label,
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: segments[s].isCurrent
+                              ? FontWeight.w600
+                              : FontWeight.w500,
+                          color: segments[s].isCurrent &&
+                                  _selected.contains(_browsePath.last.id)
+                              ? _blue
+                              : (segments[s].isCurrent ? _text : _pathMuted),
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
           ),
         ],
       ),
+    );
+  }
+
+  /// 默认只平铺当前层（顶层=根标签）；有 › 再进下一层。
+  Widget _buildBrowseLevel() {
+    final level = _levelTags;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (_browsePath.isNotEmpty) _buildFullPathBar(),
+        _buildLevelChips(level),
+      ],
+    );
+  }
+
+  Widget _buildSearchHits() {
+    final hits = _allTags.where(_tagMatches).toList()
+      ..sort((a, b) {
+        final byOrder = a.sortOrder.compareTo(b.sortOrder);
+        if (byOrder != 0) return byOrder;
+        return a.id.compareTo(b.id);
+      });
+    if (hits.isEmpty) return const SizedBox.shrink();
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: [
+        for (final tag in hits)
+          Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (_ancestryPath(tag).isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 4, left: 2),
+                  child: SizedBox(
+                    width: 160,
+                    child: Text(
+                      _ancestryPath(tag),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 11,
+                        height: 1.2,
+                        color: _pathMuted,
+                      ),
+                    ),
+                  ),
+                ),
+              _pill(
+                label: tag.name,
+                selected: _selected.contains(tag.id),
+                showDrillChevron: _hasChildren(tag),
+                onTap: _hasChildren(tag)
+                    ? () => _drillInto(tag)
+                    : () => _toggleTag(tag.id),
+                onLongPress:
+                    _hasChildren(tag) ? () => _toggleTag(tag.id) : null,
+              ),
+            ],
+          ),
+      ],
     );
   }
 
@@ -627,7 +980,9 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
                       child: Text(
                         _creating
                             ? '创建中…'
-                            : '新建 ${_hashLabel(_queryKey)}',
+                            : (_browsePath.isEmpty
+                                ? '新建 ${_hashLabel(_queryKey)}'
+                                : '在「${_browsePath.last.name}」下新建 ${_hashLabel(_queryKey)}'),
                         style: TextStyle(
                           fontSize: 14,
                           fontWeight: FontWeight.w600,
@@ -650,11 +1005,10 @@ class _ReadingTagsSheetState extends State<_ReadingTagsSheet> {
             '没有「$_query」相关的标签',
             style: const TextStyle(fontSize: 13, color: _muted, height: 1.4),
           )
-        else ...[
-          _buildModuleSection(title: '未归类', tags: _ungrouped),
-          for (final m in _modules)
-            _buildModuleSection(title: m.name, tags: m.tags),
-        ],
+        else if (_queryKey.isNotEmpty)
+          _buildSearchHits()
+        else
+          _buildBrowseLevel(),
       ],
     );
   }

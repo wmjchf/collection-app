@@ -17,8 +17,10 @@ class CollectionTagModulesSection extends StatefulWidget {
     this.onOpenModule,
     required this.onAddTag,
     required this.onCreateModule,
+    this.onPathParentChanged,
     this.onRenameModule,
     this.onDeleteModule,
+    this.onDeleteTag,
     this.onPlaceTag,
     this.fillRemaining = false,
     this.showHeader = true,
@@ -34,8 +36,11 @@ class CollectionTagModulesSection extends StatefulWidget {
   final ValueChanged<TagModule>? onOpenModule;
   final ValueChanged<int?> onAddTag;
   final VoidCallback onCreateModule;
+  /// 面包屑当前父标签 id（顶层为 null），供页顶「+」同层新建
+  final ValueChanged<int?>? onPathParentChanged;
   final ValueChanged<TagModule>? onRenameModule;
   final ValueChanged<TagModule>? onDeleteModule;
+  final ValueChanged<Tag>? onDeleteTag;
   final void Function(Tag tag, int? targetParentId)? onPlaceTag;
   final bool fillRemaining;
   final bool showHeader;
@@ -135,9 +140,16 @@ class _CollectionTagModulesSectionState
   }
 
   @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _notifyPathParent());
+  }
+
+  @override
   void didUpdateWidget(covariant CollectionTagModulesSection oldWidget) {
     super.didUpdateWidget(oldWidget);
     final byId = {for (final t in _allTags()) t.id: t};
+    final before = _focus?.id;
     _path.removeWhere((t) => !byId.containsKey(t.id));
     for (var i = 0; i < _path.length; i++) {
       _path[i] = byId[_path[i].id]!;
@@ -145,10 +157,18 @@ class _CollectionTagModulesSectionState
     if (_selected != null) {
       _selected = byId[_selected!.id];
     }
+    final after = _focus?.id;
+    if (before != after) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _notifyPathParent());
+    }
   }
 
   void _select(Tag tag) {
     setState(() => _selected = tag);
+  }
+
+  void _notifyPathParent() {
+    widget.onPathParentChanged?.call(_focus?.id);
   }
 
   void _goRoot() {
@@ -156,6 +176,7 @@ class _CollectionTagModulesSectionState
       _path.clear();
       _selected = null;
     });
+    _notifyPathParent();
   }
 
   void _goToBreadcrumb(int index) {
@@ -168,6 +189,7 @@ class _CollectionTagModulesSectionState
       }
       _selected = null;
     });
+    _notifyPathParent();
   }
 
   void _drillInto(Tag tag) {
@@ -189,6 +211,7 @@ class _CollectionTagModulesSectionState
         ..add(tag);
       _selected = null;
     });
+    _notifyPathParent();
   }
 
   Future<void> _onMoveLevel(Tag tag) async {
@@ -276,7 +299,7 @@ class _CollectionTagModulesSectionState
                 child: empty
                     ? _EmptyTags(
                         label: '还没有标签',
-                        onAdd: () => widget.onAddTag(null),
+                        onAdd: () => widget.onAddTag(_focus?.id),
                         addButtonKey: widget.addTagKey,
                       )
                     : TagCanvasView(
@@ -319,6 +342,13 @@ class _CollectionTagModulesSectionState
                   onMove: widget.onPlaceTag == null
                       ? null
                       : () => _onMoveLevel(_selected!),
+                  onDelete: widget.onDeleteTag == null
+                      ? null
+                      : () {
+                          final t = _selected!;
+                          setState(() => _selected = null);
+                          widget.onDeleteTag!(t);
+                        },
                 ),
               ],
             ],
@@ -454,6 +484,7 @@ class _TagActionBar extends StatelessWidget {
     required this.onDrill,
     required this.onAddChild,
     this.onMove,
+    this.onDelete,
   });
 
   final Tag tag;
@@ -462,6 +493,7 @@ class _TagActionBar extends StatelessWidget {
   final VoidCallback onDrill;
   final VoidCallback onAddChild;
   final VoidCallback? onMove;
+  final VoidCallback? onDelete;
 
   static const _handle = Color(0xFFD8DCE3);
   static const _chipBg = Color(0xFFF3F5F8);
@@ -559,6 +591,14 @@ class _TagActionBar extends StatelessWidget {
                       onTap: onMove,
                     ),
                   ],
+                  if (onDelete != null) ...[
+                    const SizedBox(width: 8),
+                    _ActionChip(
+                      label: '删除',
+                      onTap: onDelete,
+                      danger: true,
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -573,14 +613,19 @@ class _ActionChip extends StatelessWidget {
   const _ActionChip({
     required this.label,
     required this.onTap,
+    this.danger = false,
   });
 
   final String label;
   final VoidCallback? onTap;
+  final bool danger;
 
   @override
   Widget build(BuildContext context) {
     final enabled = onTap != null;
+    final fg = danger
+        ? const Color(0xFFD14343)
+        : CollectionTagModulesSection.ink;
     return GestureDetector(
       onTap: onTap == null
           ? null
@@ -593,16 +638,22 @@ class _ActionChip extends StatelessWidget {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
           decoration: BoxDecoration(
-            color: _TagActionBar._chipBg,
+            color: danger
+                ? const Color(0xFFFBEAEA)
+                : _TagActionBar._chipBg,
             borderRadius: BorderRadius.circular(999),
-            border: Border.all(color: _TagActionBar._chipLine),
+            border: Border.all(
+              color: danger
+                  ? const Color(0xFFF0C4C4)
+                  : _TagActionBar._chipLine,
+            ),
           ),
           child: Text(
             label,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 13,
               fontWeight: FontWeight.w600,
-              color: CollectionTagModulesSection.ink,
+              color: fg,
             ),
           ),
         ),
