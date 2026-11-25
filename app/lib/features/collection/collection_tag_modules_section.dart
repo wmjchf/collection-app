@@ -1,13 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:super_collection/core/ui/app_bottom_sheet.dart';
 import 'package:super_collection/core/ui/app_haptics.dart';
 import 'package:super_collection/features/collection/tag_canvas_view.dart';
 import 'package:super_collection/features/collection/tag_models.dart';
 import 'package:super_collection/features/collection/tag_module_models.dart';
 
-/// 标签页：沿用散落画布（短拖改位 / 捏合缩放 / 长按挂下级）；
-/// 面包屑下钻；点选底栏「查看内容」与「深入下钻」分开（不做搜索）。
+/// 标签页：只画当前层（短拖改位 / 捏合缩放 / 长按挂下级）；
+/// 点选后可查看内容 / 进入子层 / 加子；子越多圆点越大；不做搜索。
 class CollectionTagModulesSection extends StatefulWidget {
   const CollectionTagModulesSection({
     super.key,
@@ -25,7 +24,6 @@ class CollectionTagModulesSection extends StatefulWidget {
     this.fillRemaining = false,
     this.showHeader = true,
     this.bodyOnly = false,
-    this.chipsKey,
     this.addTagKey,
     this.sampleTagKey,
   });
@@ -36,7 +34,8 @@ class CollectionTagModulesSection extends StatefulWidget {
   final ValueChanged<TagModule>? onOpenModule;
   final ValueChanged<int?> onAddTag;
   final VoidCallback onCreateModule;
-  /// 面包屑当前父标签 id（顶层为 null），供页顶「+」同层新建
+
+  /// 当前面包屑层父标签 id（顶层 null），供页顶「+」同层新建
   final ValueChanged<int?>? onPathParentChanged;
   final ValueChanged<TagModule>? onRenameModule;
   final ValueChanged<TagModule>? onDeleteModule;
@@ -46,7 +45,6 @@ class CollectionTagModulesSection extends StatefulWidget {
   final bool showHeader;
   final bool bodyOnly;
 
-  final Key? chipsKey;
   final Key? addTagKey;
   final Key? sampleTagKey;
 
@@ -66,7 +64,7 @@ class CollectionTagModulesSection extends StatefulWidget {
 
 class _CollectionTagModulesSectionState
     extends State<CollectionTagModulesSection> {
-  /// 面包屑路径（不含「全部」）；末项 = 当前焦点
+  /// 面包屑路径（不含「全部」）；末项 = 当前层父标签
   final List<Tag> _path = [];
   Tag? _selected;
   int? _draggingTagId;
@@ -101,11 +99,6 @@ class _CollectionTagModulesSectionState
     return map;
   }
 
-  bool _hasChildren(Tag tag) {
-    final kids = _childrenMap(_allTags())[tag.id];
-    return kids != null && kids.isNotEmpty;
-  }
-
   Tag? get _focus => _path.isEmpty ? null : _path.last;
 
   List<Tag> get _levelChildren {
@@ -115,19 +108,20 @@ class _CollectionTagModulesSectionState
     return map[focus.id] ?? const [];
   }
 
-  /// 当前层标签 + 其直接子标签（连线画在这一层）。
-  /// 下钻进「科技」后画布上不再出现「科技」本身。
-  List<Tag> get _canvasTags {
-    final level = _levelChildren;
+  /// 只画当前层。
+  List<Tag> get _canvasTags => _levelChildren;
+
+  Map<int, int> get _childCounts {
     final map = _childrenMap(_allTags());
-    final byId = <int, Tag>{};
-    for (final t in level) {
-      byId[t.id] = t;
-      for (final c in map[t.id] ?? const <Tag>[]) {
-        byId[c.id] = c;
-      }
-    }
-    return byId.values.toList();
+    return {
+      for (final t in _levelChildren)
+        if ((map[t.id] ?? const []).isNotEmpty) t.id: map[t.id]!.length,
+    };
+  }
+
+  bool _hasChildren(Tag tag) {
+    final kids = _childrenMap(_allTags())[tag.id];
+    return kids != null && kids.isNotEmpty;
   }
 
   void _place(Tag tag, int? parentId) {
@@ -136,7 +130,7 @@ class _CollectionTagModulesSectionState
     if (parentId != null && tag.id == parentId) return;
     AppHaptics.select();
     widget.onPlaceTag!(tag, parentId);
-    setState(() => _selected = null);
+    _clearSelection();
   }
 
   @override
@@ -164,7 +158,16 @@ class _CollectionTagModulesSectionState
   }
 
   void _select(Tag tag) {
+    // 再点已选且有子 → 进入子层；首次点选打开底栏
+    if (_selected?.id == tag.id && _hasChildren(tag)) {
+      _drillInto(tag);
+      return;
+    }
     setState(() => _selected = tag);
+  }
+
+  void _clearSelection() {
+    setState(() => _selected = null);
   }
 
   void _notifyPathParent() {
@@ -180,7 +183,6 @@ class _CollectionTagModulesSectionState
   }
 
   void _goToBreadcrumb(int index) {
-    // index -1 = 全部；0.. = path[0..index]
     setState(() {
       if (index < 0) {
         _path.clear();
@@ -196,7 +198,6 @@ class _CollectionTagModulesSectionState
     if (!_hasChildren(tag)) return;
     AppHaptics.select();
     setState(() {
-      // 若选中的不在当前 path 上，先走到其父链
       final byId = {for (final t in _allTags()) t.id: t};
       final chain = <Tag>[];
       var cursor = tag.effectiveParentId;
@@ -212,34 +213,6 @@ class _CollectionTagModulesSectionState
       _selected = null;
     });
     _notifyPathParent();
-  }
-
-  Future<void> _onMoveLevel(Tag tag) async {
-    if (widget.onPlaceTag == null) return;
-    final all = _allTags();
-    final descendants = <int>{tag.id};
-    final kids = _childrenMap(all);
-    final queue = [...(kids[tag.id] ?? const <Tag>[])];
-    while (queue.isNotEmpty) {
-      final n = queue.removeAt(0);
-      if (!descendants.add(n.id)) continue;
-      queue.addAll(kids[n.id] ?? const []);
-    }
-    final candidates = all.where((t) => !descendants.contains(t.id)).toList()
-      ..sort((a, b) => a.name.compareTo(b.name));
-
-    final result = await showAppBottomSheet<_MoveResult>(
-      context: context,
-      builder: (context) => _MoveParentSheet(
-        tagName: tag.name,
-        candidates: candidates,
-        currentParentId: tag.effectiveParentId,
-      ),
-    );
-    if (!mounted || result == null) return;
-    AppHaptics.select();
-    widget.onPlaceTag!(tag, result.parentId);
-    setState(() => _selected = null);
   }
 
   @override
@@ -258,7 +231,9 @@ class _CollectionTagModulesSectionState
             ? 320.0
             : constraints.hasBoundedHeight && constraints.maxHeight.isFinite
                 ? constraints.maxHeight
-                : (constraints.minHeight.isFinite ? constraints.minHeight : 320.0);
+                : (constraints.minHeight.isFinite
+                    ? constraints.minHeight
+                    : 320.0);
         final fill = minH > 0;
         final canvasTags = _canvasTags;
         final empty = canvasTags.isEmpty;
@@ -272,19 +247,22 @@ class _CollectionTagModulesSectionState
             borderRadius: radius,
           ),
           padding: widget.bodyOnly
-              ? const EdgeInsets.fromLTRB(14, 4, 12, 14)
-              : const EdgeInsets.fromLTRB(14, 14, 12, 14),
+              ? const EdgeInsets.fromLTRB(0, 4, 0, 14)
+              : const EdgeInsets.fromLTRB(0, 14, 0, 14),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               if (includeHeader) ...[
-                CollectionTagsSectionHeader(
-                  onCreateModule: widget.onCreateModule,
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(14, 0, 12, 0),
+                  child: CollectionTagsSectionHeader(
+                    onCreateModule: widget.onCreateModule,
+                  ),
                 ),
                 const SizedBox(height: 10),
               ],
-              KeyedSubtree(
-                key: widget.chipsKey,
+              Padding(
+                padding: const EdgeInsets.fromLTRB(8, 0, 12, 0),
                 child: _BreadcrumbBar(
                   path: _path,
                   dropEnabled: widget.onPlaceTag != null,
@@ -297,13 +275,17 @@ class _CollectionTagModulesSectionState
               const SizedBox(height: 8),
               Expanded(
                 child: empty
-                    ? _EmptyTags(
-                        label: '还没有标签',
-                        onAdd: () => widget.onAddTag(_focus?.id),
-                        addButtonKey: widget.addTagKey,
+                    ? Padding(
+                        padding: const EdgeInsets.fromLTRB(14, 0, 12, 0),
+                        child: _EmptyTags(
+                          label: '还没有标签',
+                          onAdd: () => widget.onAddTag(_focus?.id),
+                          addButtonKey: widget.addTagKey,
+                        ),
                       )
                     : TagCanvasView(
                         tags: canvasTags,
+                        childCounts: _childCounts,
                         sampleTagKey: widget.sampleTagKey,
                         selectedTagId: _selected?.id,
                         draggingTagId: _draggingTagId,
@@ -311,7 +293,8 @@ class _CollectionTagModulesSectionState
                         onTapTag: _select,
                         onNestTag: widget.onPlaceTag == null
                             ? null
-                            : (dragged, target) => _place(dragged, target.id),
+                            : (dragged, target) =>
+                                _place(dragged, target.id),
                         onDragStarted: (tag) {
                           setState(() {
                             _draggingTagId = tag.id;
@@ -323,45 +306,36 @@ class _CollectionTagModulesSectionState
                         },
                       ),
               ),
-              if (_selected != null) ...[
-                const SizedBox(height: 8),
+              if (_selected != null)
                 _TagActionBar(
                   tag: _selected!,
                   canDrill: _hasChildren(_selected!),
+                  onClose: _clearSelection,
                   onViewContent: () {
                     final t = _selected!;
-                    setState(() => _selected = null);
+                    _clearSelection();
                     widget.onOpenTag(t);
                   },
                   onDrill: () => _drillInto(_selected!),
                   onAddChild: () {
                     final id = _selected!.id;
-                    setState(() => _selected = null);
+                    _clearSelection();
                     widget.onAddTag(id);
                   },
-                  onMove: widget.onPlaceTag == null
-                      ? null
-                      : () => _onMoveLevel(_selected!),
                   onDelete: widget.onDeleteTag == null
                       ? null
                       : () {
                           final t = _selected!;
-                          setState(() => _selected = null);
+                          _clearSelection();
                           widget.onDeleteTag!(t);
                         },
                 ),
-              ],
             ],
           ),
         );
       },
     );
   }
-}
-
-class _MoveResult {
-  const _MoveResult(this.parentId);
-  final int? parentId;
 }
 
 class _BreadcrumbBar extends StatelessWidget {
@@ -398,7 +372,7 @@ class _BreadcrumbBar extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 4),
               child: Icon(
                 Icons.chevron_right_rounded,
-                size: 16,
+                size: 18,
                 color: CollectionTagModulesSection.muted.withValues(alpha: 0.7),
               ),
             ),
@@ -443,7 +417,7 @@ class _Crumb extends StatelessWidget {
         child: Text(
           label,
           style: TextStyle(
-            fontSize: 13,
+            fontSize: 15,
             fontWeight: active ? FontWeight.w700 : FontWeight.w500,
             color: active
                 ? CollectionTagModulesSection.ink
@@ -480,129 +454,138 @@ class _TagActionBar extends StatelessWidget {
   const _TagActionBar({
     required this.tag,
     required this.canDrill,
+    required this.onClose,
     required this.onViewContent,
     required this.onDrill,
     required this.onAddChild,
-    this.onMove,
     this.onDelete,
   });
 
   final Tag tag;
   final bool canDrill;
+  final VoidCallback onClose;
   final VoidCallback onViewContent;
   final VoidCallback onDrill;
   final VoidCallback onAddChild;
-  final VoidCallback? onMove;
   final VoidCallback? onDelete;
 
-  static const _handle = Color(0xFFD8DCE3);
   static const _chipBg = Color(0xFFF3F5F8);
   static const _chipLine = Color(0xFFE4E7EC);
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.10),
-            blurRadius: 24,
-            spreadRadius: 0,
-            offset: const Offset(0, 8),
-          ),
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.06),
-            blurRadius: 8,
-            spreadRadius: -1,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 10, 16, 14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            const Center(
-              child: SizedBox(
-                width: 36,
-                height: 4,
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    color: _handle,
-                    borderRadius: BorderRadius.all(Radius.circular(2)),
-                  ),
-                ),
-              ),
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(14, 8, 12, 0),
+      child: Container(
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.10),
+              blurRadius: 24,
+              spreadRadius: 0,
+              offset: const Offset(0, 8),
             ),
-            const SizedBox(height: 12),
-            Text.rich(
-              TextSpan(
-                children: [
-                  TextSpan(
-                    text: tag.name,
-                    style: const TextStyle(
-                      fontSize: 17,
-                      fontWeight: FontWeight.w700,
-                      height: 1.25,
-                      color: CollectionTagModulesSection.ink,
-                    ),
-                  ),
-                  TextSpan(
-                    text: '  ·  ${tag.itemCount}条内容',
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w500,
-                      height: 1.25,
-                      color: CollectionTagModulesSection.muted
-                          .withValues(alpha: 0.95),
-                    ),
-                  ),
-                ],
-              ),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-            const SizedBox(height: 14),
-            SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: Row(
-                children: [
-                  _ActionChip(
-                    label: '查看内容',
-                    onTap: onViewContent,
-                  ),
-                  const SizedBox(width: 8),
-                  _ActionChip(
-                    label: '深入下钻',
-                    onTap: canDrill ? onDrill : null,
-                  ),
-                  const SizedBox(width: 8),
-                  _ActionChip(
-                    label: '添加子标签',
-                    onTap: onAddChild,
-                  ),
-                  if (onMove != null) ...[
-                    const SizedBox(width: 8),
-                    _ActionChip(
-                      label: '移动层级',
-                      onTap: onMove,
-                    ),
-                  ],
-                  if (onDelete != null) ...[
-                    const SizedBox(width: 8),
-                    _ActionChip(
-                      label: '删除',
-                      onTap: onDelete,
-                      danger: true,
-                    ),
-                  ],
-                ],
-              ),
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.06),
+              blurRadius: 8,
+              spreadRadius: -1,
+              offset: const Offset(0, 2),
             ),
           ],
+        ),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 10, 8, 14),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: Text.rich(
+                      TextSpan(
+                        children: [
+                          TextSpan(
+                            text: tag.name,
+                            style: const TextStyle(
+                              fontSize: 17,
+                              fontWeight: FontWeight.w700,
+                              height: 1.25,
+                              color: CollectionTagModulesSection.ink,
+                            ),
+                          ),
+                          TextSpan(
+                            text: '  ·  ${tag.itemCount}条内容',
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w500,
+                              height: 1.25,
+                              color: CollectionTagModulesSection.muted
+                                  .withValues(alpha: 0.95),
+                            ),
+                          ),
+                        ],
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  IconButton(
+                    onPressed: () {
+                      HapticFeedback.selectionClick();
+                      onClose();
+                    },
+                    tooltip: '关闭',
+                    visualDensity: VisualDensity.compact,
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(
+                      minWidth: 36,
+                      minHeight: 36,
+                    ),
+                    icon: Icon(
+                      Icons.close_rounded,
+                      size: 22,
+                      color: CollectionTagModulesSection.muted
+                          .withValues(alpha: 0.9),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  children: [
+                    _ActionChip(
+                      label: '查看内容',
+                      onTap: onViewContent,
+                    ),
+                    if (canDrill) ...[
+                      const SizedBox(width: 8),
+                      _ActionChip(
+                        label: '进入子标签',
+                        onTap: onDrill,
+                      ),
+                    ],
+                    const SizedBox(width: 8),
+                    _ActionChip(
+                      label: '添加子标签',
+                      onTap: onAddChild,
+                    ),
+                    if (onDelete != null) ...[
+                      const SizedBox(width: 8),
+                      _ActionChip(
+                        label: '删除',
+                        onTap: onDelete,
+                        danger: true,
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -655,97 +638,6 @@ class _ActionChip extends StatelessWidget {
               fontWeight: FontWeight.w600,
               color: fg,
             ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _MoveParentSheet extends StatelessWidget {
-  const _MoveParentSheet({
-    required this.tagName,
-    required this.candidates,
-    required this.currentParentId,
-  });
-
-  final String tagName;
-  final List<Tag> candidates;
-  final int? currentParentId;
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: Colors.white,
-      borderRadius: BorderRadius.circular(20),
-      child: SafeArea(
-        top: false,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              const Center(
-                child: SizedBox(
-                  width: 40,
-                  height: 4,
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      color: Color(0xFFE5E8ED),
-                      borderRadius: BorderRadius.all(Radius.circular(2)),
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 12),
-              Text(
-                '移动「$tagName」',
-                style: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w700,
-                  color: CollectionTagModulesSection.ink,
-                ),
-              ),
-              const SizedBox(height: 4),
-              const Text(
-                '选择新的上级标签，或放到顶层',
-                style: TextStyle(
-                  fontSize: 13,
-                  color: CollectionTagModulesSection.muted,
-                ),
-              ),
-              const SizedBox(height: 12),
-              ConstrainedBox(
-                constraints: BoxConstraints(
-                  maxHeight: MediaQuery.sizeOf(context).height * 0.45,
-                ),
-                child: ListView(
-                  shrinkWrap: true,
-                  children: [
-                    ListTile(
-                      title: const Text('顶层（全部）'),
-                      trailing: currentParentId == null
-                          ? const Icon(Icons.check_rounded, size: 20)
-                          : null,
-                      onTap: () => Navigator.pop(
-                        context,
-                        const _MoveResult(null),
-                      ),
-                    ),
-                    for (final t in candidates)
-                      ListTile(
-                        title: Text(t.name),
-                        trailing: currentParentId == t.id
-                            ? const Icon(Icons.check_rounded, size: 20)
-                            : null,
-                        onTap: () =>
-                            Navigator.pop(context, _MoveResult(t.id)),
-                      ),
-                  ],
-                ),
-              ),
-            ],
           ),
         ),
       ),
@@ -849,7 +741,7 @@ class CollectionTagsSectionHeader extends StatelessWidget {
           ),
           const SizedBox(height: 4),
           Text(
-            '短拖改位 · 长按挂下级 · 点选下钻/看内容',
+            '点选后可进入子层 · 子越多点越大 · 短拖改位',
             style: TextStyle(
               fontSize: 12,
               height: 1.35,

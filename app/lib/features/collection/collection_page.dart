@@ -52,19 +52,19 @@ class _CollectionPageState extends State<CollectionPage> {
   static const _bg = Color(0xFFF7F7FA);
   static const _blue = Color(0xFF2F6FED);
 
-  /// 引导步骤：创建归类 → 筛选 →（无标签时）添加 → 短拖 → 长按。
+  /// 引导：+新建 →（空库）添加 → 点选 → 短拖 → 长按挂下级 → 下钻子层。
   static const _stepCreate = 0;
-  static const _stepChips = 1;
-  static const _stepAddTag = 2;
+  static const _stepAddTag = 1;
+  static const _stepSelect = 2;
   static const _stepShortDrag = 3;
   static const _stepLongPress = 4;
+  static const _stepLinks = 5;
 
   final _tagsRepo = TagsRepository();
   final _tagModulesRepo = TagModulesRepository();
   final _auth = AuthRepository();
 
   final _createModuleKey = GlobalKey();
-  final _chipsKey = GlobalKey();
   final _addTagKey = GlobalKey();
   final _sampleTagKey = GlobalKey();
 
@@ -156,10 +156,10 @@ class _CollectionPageState extends State<CollectionPage> {
     }
   }
 
-  /// 当前下钻层的父标签；`null` = 顶层「全部」
+  /// 当前选中标签；`null` = 顶层新建
   int? _createParentId;
 
-  /// 右上角「+」：在当前面包屑层级新建标签
+  /// 右上角「+」：有选中则挂其下，否则顶层新建
   Future<void> _createAtCurrentLevel() async {
     if (_coachStep != null) return;
     await _addTagToModule(_createParentId);
@@ -215,11 +215,16 @@ class _CollectionPageState extends State<CollectionPage> {
     await TagCoachPrefs.markSeen(userId: _coachUserId);
   }
 
-  /// 跳过当前不需要的步骤（有标签则跳过「添加」；仍无标签则跳过拖动两步）。
+  /// 有标签则跳过「添加」；无标签则跳过点选及之后需样例的步骤。
+  bool _coachStepSkipped(int step) {
+    if (step == _stepAddTag && !_hubEmpty) return true;
+    if (step >= _stepSelect && step <= _stepLinks && _hubEmpty) return true;
+    return false;
+  }
+
   int? _nextValidStep(int fromInclusive) {
-    for (var s = fromInclusive; s <= _stepLongPress; s++) {
-      if (s == _stepAddTag && !_hubEmpty) continue;
-      if ((s == _stepShortDrag || s == _stepLongPress) && _hubEmpty) continue;
+    for (var s = fromInclusive; s <= _stepLinks; s++) {
+      if (_coachStepSkipped(s)) continue;
       return s;
     }
     return null;
@@ -241,15 +246,24 @@ class _CollectionPageState extends State<CollectionPage> {
   }
 
   int _coachDisplayIndex(int step) {
-    if (!_coachIncludeAddTag) {
-      if (step <= _stepChips) return step + 1;
-      if (step == _stepShortDrag) return 3;
-      return 4;
+    var i = 0;
+    for (var s = 0; s <= step; s++) {
+      if (s == _stepAddTag && !_coachIncludeAddTag) continue;
+      if (s >= _stepSelect && s <= _stepLinks && _hubEmpty) continue;
+      i++;
     }
-    return step + 1;
+    return i;
   }
 
-  int get _coachDisplayTotal => _coachIncludeAddTag ? 5 : 4;
+  int get _coachDisplayTotal {
+    var n = 0;
+    for (var s = 0; s <= _stepLinks; s++) {
+      if (s == _stepAddTag && !_coachIncludeAddTag) continue;
+      if (s >= _stepSelect && s <= _stepLinks && _hubEmpty) continue;
+      n++;
+    }
+    return n;
+  }
 
   double _tooltipTop(Rect hole, Size screen) {
     const tipH = 210.0;
@@ -263,8 +277,8 @@ class _CollectionPageState extends State<CollectionPage> {
     if (step == null) return const SizedBox.shrink();
     final screen = MediaQuery.sizeOf(context);
 
-    // 走到拖动步却仍无标签：自动收尾。
-    if ((step == _stepShortDrag || step == _stepLongPress) && _hubEmpty) {
+    // 走到需样例的步骤却仍无标签：自动收尾。
+    if (step >= _stepSelect && step <= _stepLinks && _hubEmpty) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted && _coachStep == step) unawaited(_finishCoach());
       });
@@ -281,33 +295,41 @@ class _CollectionPageState extends State<CollectionPage> {
       case _stepCreate:
         targetKey = _createModuleKey;
         title = '添加标签';
-        message = '点右上角「+」，在当前层级新建标签；下钻后再点则挂到该层下面。';
+        message = '点右上角「+」新建标签；若已点选某个标签，新建会挂到它下面。';
         confirm = '下一步';
         holeRadius = 18;
         inflate = 4;
-      case _stepChips:
-        targetKey = _chipsKey;
-        title = '面包屑导航';
-        message = '从「全部」点进标签后可下钻；点面包屑可回到上层。';
-        confirm = '下一步';
       case _stepAddTag:
         targetKey = _addTagKey;
         title = '添加标签';
         message = '还没有标签。先点「添加标签」建一个。';
         confirm = '下一步';
         holeRadius = 14;
-      case _stepShortDrag:
+      case _stepSelect:
         targetKey = _sampleTagKey;
         title = '点选标签';
-        message = '点这个标签，下方会出现「查看内容」和「深入下钻」。';
+        message = '点标签后，底栏可「查看内容」「进入子标签」或「添加子标签」。有下级的圆点更大。';
+        confirm = '下一步';
+        holeRadius = 14;
+        inflate = 10;
+      case _stepShortDrag:
+        targetKey = _sampleTagKey;
+        title = '短拖摆位置';
+        message = '按住标签短拖，可以在画布上改位置；双指捏合可缩放。';
+        confirm = '下一步';
+        holeRadius = 14;
+        inflate = 10;
+      case _stepLongPress:
+        targetKey = _sampleTagKey;
+        title = '长按挂下级';
+        message = '长按一个标签拖到另一个上，会挂成它的子标签。';
         confirm = '下一步';
         holeRadius = 14;
         inflate = 10;
       default:
         targetKey = _sampleTagKey;
-        title = '查看与下钻';
-        message =
-            '「查看内容」进列表；「深入下钻」进入下一层子标签。两者分开，不会点一下就进列表。';
+        title = '进入子层';
+        message = '画布默认只显示当前层。再点已选标签，或点底栏「进入子标签」，用面包屑返回。';
         confirm = '开始整理';
         holeRadius = 14;
         inflate = 10;
@@ -343,7 +365,7 @@ class _CollectionPageState extends State<CollectionPage> {
         title: title,
         message: message,
         confirmLabel: confirm,
-        showSkip: step != _stepLongPress,
+        showSkip: step != _stepLinks,
         onSkip: () => unawaited(_finishCoach()),
         onConfirm: _coachNext,
       ),
@@ -651,7 +673,6 @@ class _CollectionPageState extends State<CollectionPage> {
                       showHeader: false,
                       bodyOnly: false,
                       fillRemaining: true,
-                      chipsKey: _chipsKey,
                       addTagKey: _addTagKey,
                       sampleTagKey: _sampleTagKey,
                       onOpenTag: _openTag,

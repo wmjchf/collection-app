@@ -7,15 +7,14 @@ import 'package:super_collection/features/collection/tag_canvas_layout_prefs.dar
 import 'package:super_collection/features/collection/tag_dot_colors.dart';
 import 'package:super_collection/features/collection/tag_models.dart';
 
-/// 二维画布：标签上下排布（点上字下）；
-/// 同屏内若有父子，父在左、子在右并画连线（连线在「外面一层」）；
-/// 捏合缩小后子标签收成「+N」簇，放大或点簇再展开；
-/// 短拖改位置、长按挂下级、空白拖移。
+/// 二维画布：当前层标签散落（点上字下）；
+/// [childCounts] 越大圆点越大；短拖改位、长按挂下级、捏合/按钮缩放。
 class TagCanvasView extends StatefulWidget {
   const TagCanvasView({
     super.key,
     required this.tags,
     required this.onTapTag,
+    this.childCounts = const {},
     this.isEmphasized,
     this.onDragStarted,
     this.onDragEnded,
@@ -31,6 +30,9 @@ class TagCanvasView extends StatefulWidget {
   final List<Tag> tags;
   final ValueChanged<Tag> onTapTag;
 
+  /// 各标签直接子数量；影响圆点大小。
+  final Map<int, int> childCounts;
+
   /// `null` 或恒 true = 全部实色；筛选时非匹配返回 false → 半透明。
   final bool Function(Tag tag)? isEmphasized;
 
@@ -44,7 +46,7 @@ class TagCanvasView extends StatefulWidget {
   final int? draggingTagId;
   final int? selectedTagId;
 
-  /// 多选高亮（如阅读页选标）；与 [selectedTagId] 可同时生效。
+  /// 多选高亮；与 [selectedTagId] 可同时生效。
   final Set<int>? selectedTagIds;
 
   /// 新手引导：挂在指定 / 稳定示例标签上（默认 id 最小）。
@@ -76,68 +78,62 @@ class _TagCanvasViewState extends State<TagCanvasView> {
   /// 手指按在标签上时关掉画布平移，避免和改位置抢手势。
   bool _fingerOnTag = false;
 
-  /// 缩小时子标签收成「+N」簇；带回差避免捏合临界抖动。
-  bool _kidsCollapsed = false;
-
-  static const _minScale = 0.55;
+  static const _minScale = 0.18;
   static const _maxScale = 2.4;
+  static const _zoomStep = 1.22;
+  /// 缩放 ≥ 此值：全部显示文字；介于与 [_labelHubsAbove]：只显示枢纽名；更小：只留圆点。
+  static const _labelAllAbove = 0.58;
+  static const _labelHubsAbove = 0.34;
   static const _itemW = 104.0;
   static const _itemH = 52.0;
   static const _edge = 14.0;
   /// 首屏外可放置边距：平移画布后仍能把标签拖到可见区域。
   static const _worldPad = 280.0;
   /// 散落 / 簇布局参数变更时递增，强制重算默认坐标（用户拖位仍覆盖）。
-  static const _layoutVersion = 'v4-cluster';
-  /// scale 低于此 → 聚合子标签；高于 [_clusterExpandAbove] → 展开
-  static const _clusterCollapseBelow = 0.86;
-  static const _clusterExpandAbove = 0.98;
-  /// 点「+N」簇时放大到此比例以展开子标签
-  static const _clusterTapScale = 1.08;
+  static const _layoutVersion = 'v9-level';
+  /// 每个叶子至少占多少「主视口高度」单位（树布局备用）。
+  static const _minLeafSlot = 0.10;
+  static const _xStep = 0.28;
+  static const _colGap = 0.42;
+  static const _targetContentH = 2.6;
+
+  /// 内容在归一化坐标中的宽高（可 >1，超出首屏）。
+  Size _contentNormExtent = const Size(1, 1);
+
+  /// 已对哪次布局做过自动 fit；标签集变化后重做。
+  String? _fittedLayoutKey;
+  bool _fitScheduled = false;
 
   Matrix4 _homeTransform() =>
       Matrix4.translationValues(-_worldPad, -_worldPad, 0);
 
-  double _currentScale() => _transform.value.getMaxScaleOnAxis();
-
   void _resetToHome() {
-    _transform.value = _homeTransform();
-    _syncCollapseFromScale();
+    final home = Size(_stableW ?? 320, _stableH ?? 280);
+    _transform.value = _fitTransform(home);
   }
 
-  void _onTransformTick() => _syncCollapseFromScale();
+  /// 相对视口中心缩放；[factor] >1 放大，<1 缩小。
+  void _zoomBy(double factor) {
+    final home = Size(_stableW ?? 320, _stableH ?? 280);
+    final focal = Offset(home.width / 2, home.height / 2);
+    final sceneFocal = _transform.toScene(focal);
+    final current = _currentScale();
+    final next = (current * factor).clamp(_minScale, _maxScale);
+    final ratio = next / current;
+    if ((ratio - 1).abs() < 0.001) return;
 
-  void _syncCollapseFromScale() {
-    final s = _currentScale();
-    final next = _kidsCollapsed
-        ? s < _clusterExpandAbove
-        : s < _clusterCollapseBelow;
-    if (next == _kidsCollapsed) return;
-    setState(() => _kidsCollapsed = next);
-  }
-
-  /// 绕场景点缩放到 [targetScale]（场景坐标 = InteractiveViewer child）
-  void _zoomAboutScenePoint(Offset scenePoint, double targetScale) {
-    final matrix = Matrix4.copy(_transform.value);
-    final current = matrix.getMaxScaleOnAxis();
-    final clamped = targetScale.clamp(_minScale, _maxScale);
-    if ((clamped - current).abs() < 0.02) return;
-    final viewportFocal = MatrixUtils.transformPoint(matrix, scenePoint);
-    final scaleDelta = clamped / current;
-    final next = Matrix4.identity();
-    next.translateByDouble(viewportFocal.dx, viewportFocal.dy, 0, 1);
-    next.scaleByDouble(scaleDelta, scaleDelta, scaleDelta, 1);
-    next.translateByDouble(-viewportFocal.dx, -viewportFocal.dy, 0, 1);
-    next.multiply(matrix);
-    _transform.value = next;
-    _syncCollapseFromScale();
+    final m = Matrix4.copy(_transform.value);
+    m
+      ..translateByDouble(sceneFocal.dx, sceneFocal.dy, 0, 1)
+      ..scaleByDouble(ratio, ratio, 1, 1)
+      ..translateByDouble(-sceneFocal.dx, -sceneFocal.dy, 0, 1);
+    _transform.value = m;
   }
 
   @override
   void initState() {
     super.initState();
-    // 世界坐标含 pad，首屏对齐中间「主视口」区域。
     _transform.value = _homeTransform();
-    _transform.addListener(_onTransformTick);
     _ensureNormLayout(widget.tags);
     _loadUserPositions();
   }
@@ -158,60 +154,8 @@ class _TagCanvasViewState extends State<TagCanvasView> {
 
   @override
   void dispose() {
-    _transform.removeListener(_onTransformTick);
     _transform.dispose();
     super.dispose();
-  }
-
-  Map<int, List<Tag>> _kidsByParent(List<Tag> tags) {
-    final byId = {for (final t in tags) t.id: t};
-    final map = <int, List<Tag>>{};
-    for (final t in tags) {
-      final p = t.effectiveParentId;
-      if (p == null || !byId.containsKey(p)) continue;
-      map.putIfAbsent(p, () => []).add(t);
-    }
-    for (final list in map.values) {
-      list.sort((a, b) {
-        final o = a.sortOrder.compareTo(b.sortOrder);
-        return o != 0 ? o : a.id.compareTo(b.id);
-      });
-    }
-    return map;
-  }
-
-  /// 聚合时仍单独露出的子：当前选中 / 正在拖的
-  Set<int> _pinnedChildIds(Map<int, List<Tag>> kidsOf) {
-    final pinned = <int>{};
-    final selected = widget.selectedTagId;
-    if (selected != null) {
-      for (final kids in kidsOf.values) {
-        if (kids.any((t) => t.id == selected)) pinned.add(selected);
-      }
-    }
-    final ids = widget.selectedTagIds;
-    if (ids != null) {
-      for (final kids in kidsOf.values) {
-        for (final t in kids) {
-          if (ids.contains(t.id)) pinned.add(t.id);
-        }
-      }
-    }
-    final dragging = widget.draggingTagId;
-    if (dragging != null) pinned.add(dragging);
-    return pinned;
-  }
-
-  Offset _clusterPixel(int parentId, List<Tag> kids, Size home) {
-    if (kids.isEmpty) {
-      final p = _pixelPos(parentId, home);
-      return Offset(p.dx + 56, p.dy);
-    }
-    var sum = Offset.zero;
-    for (final k in kids) {
-      sum += _pixelPos(k.id, home);
-    }
-    return sum / kids.length.toDouble();
   }
 
   Future<void> _loadUserPositions() async {
@@ -247,10 +191,11 @@ class _TagCanvasViewState extends State<TagCanvasView> {
       return;
     }
     _layoutKey = key;
+    _fittedLayoutKey = null;
     final hubs = _hubIds(tags);
     _normById = hubs.isEmpty
         ? _computeNormLayout(tags)
-        : _computeClusterLayout(tags, hubs);
+        : _computeTreeLayout(tags);
     _applyUserOverlay();
   }
 
@@ -265,15 +210,12 @@ class _TagCanvasViewState extends State<TagCanvasView> {
     return hubs;
   }
 
-  /// 有父子时：父偏左成簇，子在右侧；无父子的叶子再散落。
-  Map<int, Offset> _computeClusterLayout(List<Tag> tags, Set<int> hubIds) {
+  Map<int, List<Tag>> _kidsOf(List<Tag> tags) {
     final byId = {for (final t in tags) t.id: t};
     final kidsOf = <int, List<Tag>>{};
-    final childIds = <int>{};
     for (final t in tags) {
       final p = t.effectiveParentId;
       if (p == null || !byId.containsKey(p)) continue;
-      childIds.add(t.id);
       kidsOf.putIfAbsent(p, () => []).add(t);
     }
     for (final list in kidsOf.values) {
@@ -282,75 +224,163 @@ class _TagCanvasViewState extends State<TagCanvasView> {
         return o != 0 ? o : a.id.compareTo(b.id);
       });
     }
+    return kidsOf;
+  }
 
-    final hubs = [
+  /// 全树：根按多列森林排布，子向右展开；避免单列细长条。
+  Map<int, Offset> _computeTreeLayout(List<Tag> tags) {
+    final byId = {for (final t in tags) t.id: t};
+    final kidsOf = _kidsOf(tags);
+    final roots = [
       for (final t in tags)
-        if (hubIds.contains(t.id)) t,
+        if (t.effectiveParentId == null ||
+            !byId.containsKey(t.effectiveParentId))
+          t,
     ]..sort((a, b) {
         final o = a.sortOrder.compareTo(b.sortOrder);
         return o != 0 ? o : a.id.compareTo(b.id);
       });
 
+    int weight(Tag t) {
+      final kids = kidsOf[t.id];
+      if (kids == null || kids.isEmpty) return 1;
+      var w = 0;
+      for (final k in kids) {
+        w += weight(k);
+      }
+      return math.max(1, w);
+    }
+
+    int depthOf(Tag t) {
+      final kids = kidsOf[t.id];
+      if (kids == null || kids.isEmpty) return 1;
+      var d = 1;
+      for (final k in kids) {
+        d = math.max(d, 1 + depthOf(k));
+      }
+      return d;
+    }
+
+    if (roots.isEmpty) return _computeNormLayout(tags);
+
+    final totalLeaves = roots.fold<int>(0, (s, r) => s + weight(r));
+    final maxDepth = roots.fold<int>(1, (s, r) => math.max(s, depthOf(r)));
+
+    // 多列：把总高度压到约 [_targetContentH] 视口高
+    final leavesPerCol = math.max(
+      1,
+      (_targetContentH / _minLeafSlot).floor(),
+    );
+    final colCount = math.min(
+      roots.length,
+      math.max(1, (totalLeaves / leavesPerCol).ceil()),
+    );
+
+    final cols = List.generate(colCount, (_) => <Tag>[]);
+    final colWeights = List<int>.filled(colCount, 0);
+    for (final r in roots) {
+      var best = 0;
+      for (var i = 1; i < colCount; i++) {
+        if (colWeights[i] < colWeights[best]) best = i;
+      }
+      cols[best].add(r);
+      colWeights[best] += weight(r);
+    }
+
+    final colStride = maxDepth * _xStep + _colGap;
     final out = <int, Offset>{};
-    final hubN = hubs.length;
-    for (var i = 0; i < hubN; i++) {
-      final hy = hubN == 1 ? 0.46 : (0.18 + 0.64 * i / (hubN - 1));
-      out[hubs[i].id] = Offset(0.20, hy);
-      final kids = kidsOf[hubs[i].id] ?? const <Tag>[];
-      final kn = kids.length;
-      for (var j = 0; j < kn; j++) {
-        final span = math.min(0.28, 0.10 * kn);
-        final ky = kn == 1
-            ? hy
-            : hy - span / 2 + span * j / (kn - 1);
-        final x = 0.62 + (j.isEven ? 0.03 : -0.01);
-        out[kids[j].id] = Offset(x.clamp(0.52, 0.85), ky.clamp(0.10, 0.90));
+    void place(Tag t, double x, double yMin, double yMax) {
+      out[t.id] = Offset(x, (yMin + yMax) / 2);
+      final kids = kidsOf[t.id];
+      if (kids == null || kids.isEmpty) return;
+      final total = kids.fold<int>(0, (s, k) => s + weight(k));
+      var cursor = yMin;
+      final span = yMax - yMin;
+      final nextX = x + _xStep;
+      for (final k in kids) {
+        final h = span * weight(k) / total;
+        place(k, nextX, cursor, cursor + h);
+        cursor += h;
       }
     }
 
-    final lone = [
-      for (final t in tags)
-        if (!hubIds.contains(t.id) && !childIds.contains(t.id)) t,
-    ];
-    if (lone.isNotEmpty) {
-      final scattered = _computeNormLayout(lone);
-      for (final e in scattered.entries) {
-        // 挤到偏下区域，少挡簇
-        out[e.key] = Offset(e.value.dx * 0.9 + 0.05, e.value.dy * 0.35 + 0.62);
+    var maxH = 0.0;
+    for (var c = 0; c < colCount; c++) {
+      final x0 = 0.06 + c * colStride;
+      var cursor = 0.0;
+      for (final r in cols[c]) {
+        final h = weight(r) * _minLeafSlot;
+        place(r, x0, cursor, cursor + h);
+        cursor += h;
+      }
+      maxH = math.max(maxH, cursor);
+    }
+
+    final contentW = math.max(1.0, 0.06 + colCount * colStride);
+    final contentH = math.max(1.0, maxH);
+    _contentNormExtent = Size(contentW, contentH);
+
+    for (final t in tags) {
+      if (!out.containsKey(t.id)) {
+        final rng = math.Random(t.id * 2654435761);
+        out[t.id] = Offset(
+          rng.nextDouble() * contentW,
+          rng.nextDouble() * contentH,
+        );
       }
     }
     return out;
   }
 
-  /// 单位正方形内稳定散落；与画布像素尺寸无关。
+  /// 稳定散落；数量多时把归一化范围放大，避免挤在首屏。
   Map<int, Offset> _computeNormLayout(List<Tag> tags) {
+    final n = tags.length;
+    final side = n <= 12
+        ? 1.0
+        : math.max(1.0, math.sqrt(n) * 0.28);
+    _contentNormExtent = Size(side, side);
+
     final sorted = [...tags]..sort((a, b) => a.id.compareTo(b.id));
     final placed = <Offset>[];
     final out = <int, Offset>{};
-    final minDist = tags.length > 40
-        ? 0.09
-        : (tags.length > 20 ? 0.11 : 0.13);
+    final minDist = n > 40 ? 0.10 : (n > 20 ? 0.12 : 0.14);
 
     for (final tag in sorted) {
       final rng = math.Random(tag.id * 2654435761);
       Offset? chosen;
-      for (var attempt = 0; attempt < 48; attempt++) {
-        final o = Offset(rng.nextDouble(), rng.nextDouble());
+      for (var attempt = 0; attempt < 64; attempt++) {
+        final o = Offset(rng.nextDouble() * side, rng.nextDouble() * side);
         if (placed.every((p) => (p - o).distance >= minDist)) {
           chosen = o;
           break;
         }
       }
-      chosen ??= Offset(rng.nextDouble(), rng.nextDouble());
+      chosen ??= Offset(rng.nextDouble() * side, rng.nextDouble() * side);
       placed.add(chosen);
       out[tag.id] = chosen;
     }
     return out;
   }
 
+  /// 按直接子数量决定光环：0→18 / 少→26 / 中→34 / 多→44
+  static double _haloForChildCount(int childCount, {bool emphasized = false}) {
+    if (childCount <= 0) return emphasized ? 24.0 : 18.0;
+    if (childCount <= 2) return 26.0;
+    if (childCount <= 5) return 34.0;
+    return 44.0;
+  }
+
+  static double _coreForChildCount(int childCount, {bool emphasized = false}) {
+    if (childCount <= 0) return emphasized ? 9.0 : 7.0;
+    if (childCount <= 2) return 10.0;
+    if (childCount <= 5) return 12.0;
+    return 14.0;
+  }
+
   /// 节点圆点中心（相对 Positioned 左上角）
-  Offset _dotCenterInItem({required bool hub}) {
-    final halo = hub ? 44.0 : 22.0;
+  Offset _dotCenterInItem({required int childCount, bool emphasized = false}) {
+    final halo =
+        _haloForChildCount(childCount, emphasized: emphasized);
     return Offset(_itemW / 2, halo / 2);
   }
 
@@ -360,14 +390,38 @@ class _TagCanvasViewState extends State<TagCanvasView> {
     final proposedH = constraints.maxHeight.isFinite
         ? constraints.maxHeight
         : 280.0;
-    _stableW = math.max(_stableW ?? 0, proposedW);
-    _stableH = math.max(_stableH ?? 0, proposedH);
+    // 视口明显变小（旋转等）时重置，避免仍按旧大画布排布
+    const shrinkSlop = 8.0;
+    if (_stableW != null && proposedW < _stableW! - shrinkSlop) {
+      _stableW = proposedW;
+    } else {
+      _stableW = math.max(_stableW ?? 0, proposedW);
+    }
+    if (_stableH != null && proposedH < _stableH! - shrinkSlop) {
+      _stableH = proposedH;
+    } else {
+      _stableH = math.max(_stableH ?? 0, proposedH);
+    }
     return Size(_stableW!, _stableH!);
   }
 
-  /// 可放置世界：主视口 + 四周 pad。
-  Size _worldOf(Size home) =>
-      Size(home.width + _worldPad * 2, home.height + _worldPad * 2);
+  double _spanX(Size home) =>
+      math.max(1.0, home.width - _itemW - 2 * _edge);
+
+  double _spanY(Size home) =>
+      math.max(1.0, home.height - _itemH - 2 * _edge);
+
+  /// 可放置世界：按内容归一化范围放大，再加四周 pad。
+  Size _worldOf(Size home) {
+    final contentW =
+        _edge * 2 + _itemW + _contentNormExtent.width * _spanX(home);
+    final contentH =
+        _edge * 2 + _itemH + _contentNormExtent.height * _spanY(home);
+    return Size(
+      contentW + _worldPad * 2,
+      contentH + _worldPad * 2,
+    );
+  }
 
   Offset _pixelPos(int tagId, Size home) {
     if (_repositionId == tagId && _repositionPixel != null) {
@@ -377,26 +431,18 @@ class _TagCanvasViewState extends State<TagCanvasView> {
     return _normToPixel(n, home);
   }
 
-  /// 归一化相对主视口：默认散落在 [0,1]；拖出主视口后可 <0 或 >1。
+  /// 归一化相对主视口高度/宽度；可 >1 表示超出首屏。
   Offset _normToPixel(Offset n, Size home) {
-    final maxX = math.max(_edge, home.width - _itemW - _edge);
-    final maxY = math.max(_edge, home.height - _itemH - _edge);
-    final spanX = (maxX - _edge).clamp(1.0, double.infinity);
-    final spanY = (maxY - _edge).clamp(1.0, double.infinity);
     return Offset(
-      _worldPad + _edge + n.dx * spanX,
-      _worldPad + _edge + n.dy * spanY,
+      _worldPad + _edge + n.dx * _spanX(home),
+      _worldPad + _edge + n.dy * _spanY(home),
     );
   }
 
   Offset _pixelToNorm(Offset pixel, Size home) {
-    final maxX = math.max(_edge, home.width - _itemW - _edge);
-    final maxY = math.max(_edge, home.height - _itemH - _edge);
-    final spanX = (maxX - _edge).clamp(1.0, double.infinity);
-    final spanY = (maxY - _edge).clamp(1.0, double.infinity);
     return Offset(
-      (pixel.dx - _worldPad - _edge) / spanX,
-      (pixel.dy - _worldPad - _edge) / spanY,
+      (pixel.dx - _worldPad - _edge) / _spanX(home),
+      (pixel.dy - _worldPad - _edge) / _spanY(home),
     );
   }
 
@@ -409,6 +455,85 @@ class _TagCanvasViewState extends State<TagCanvasView> {
       pixel.dy.clamp(_edge, maxY),
     );
   }
+
+  Rect? _contentPixelBounds(Size home) {
+    if (widget.tags.isEmpty) return null;
+    var minX = double.infinity;
+    var minY = double.infinity;
+    var maxX = -double.infinity;
+    var maxY = -double.infinity;
+    for (final t in widget.tags) {
+      final p = _pixelPos(t.id, home);
+      minX = math.min(minX, p.dx);
+      minY = math.min(minY, p.dy);
+      maxX = math.max(maxX, p.dx + _itemW);
+      maxY = math.max(maxY, p.dy + _itemH);
+    }
+    if (!minX.isFinite) return null;
+    return Rect.fromLTRB(minX, minY, maxX, maxY);
+  }
+
+  /// 框进视口；若过高则优先保住宽度（上下可再拖），避免缩成细线。
+  Matrix4 _fitTransform(Size viewport) {
+    final bounds = _contentPixelBounds(viewport);
+    if (bounds == null || bounds.width <= 0 || bounds.height <= 0) {
+      return _homeTransform();
+    }
+    const margin = 28.0;
+    final sx = viewport.width / (bounds.width + margin * 2);
+    final sy = viewport.height / (bounds.height + margin * 2);
+    double scale;
+    if (sy < sx * 0.62) {
+      // 过高：按宽度 fit，高度超出部分靠平移浏览
+      scale = (sx * 0.92).clamp(_minScale, _maxScale);
+    } else {
+      scale = math.min(math.min(sx, sy), 1.0).clamp(_minScale, _maxScale);
+    }
+
+    // 过高时锚在内容顶部附近，而不是正中（否则首屏大片空白）
+    final cx = bounds.center.dx;
+    final cy = sy < sx * 0.62
+        ? bounds.top + (viewport.height / scale) * 0.42
+        : bounds.center.dy;
+    return Matrix4.identity()
+      ..translateByDouble(viewport.width / 2, viewport.height / 2, 0, 1)
+      ..scaleByDouble(scale, scale, 1, 1)
+      ..translateByDouble(-cx, -cy, 0, 1);
+  }
+
+  void _scheduleFitIfNeeded(Size home) {
+    if (_fittedLayoutKey == _layoutKey || _fitScheduled) return;
+    if (_normById.isEmpty) return;
+    _fitScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _fitScheduled = false;
+      if (!mounted) return;
+      if (_fittedLayoutKey == _layoutKey) return;
+      _fittedLayoutKey = _layoutKey;
+      _transform.value = _fitTransform(home);
+    });
+  }
+
+  double _currentScale() {
+    final s = _transform.value.getMaxScaleOnAxis();
+    if (!s.isFinite || s <= 0) return 1;
+    return s;
+  }
+
+  /// 缩放分级：选中/拖动中的始终显示文字；有子的优先显字。
+  bool _showLabel({
+    required int childCount,
+    required bool selected,
+    required bool lifting,
+    required double scale,
+  }) {
+    if (selected || lifting) return true;
+    if (scale >= _labelAllAbove) return true;
+    if (scale >= _labelHubsAbove) return childCount > 0;
+    return false;
+  }
+
+  int _childCountOf(int tagId) => widget.childCounts[tagId] ?? 0;
 
   void _onRepositionStart(Tag tag, Size home) {
     if (widget.draggingTagId != null) return;
@@ -479,68 +604,33 @@ class _TagCanvasViewState extends State<TagCanvasView> {
             widget.draggingTagId == null;
 
         final hubs = _hubIds(widget.tags);
-        final kidsOf = _kidsByParent(widget.tags);
-        final childIds = {
-          for (final kids in kidsOf.values)
-            for (final t in kids) t.id,
-        };
-        final pinned = _kidsCollapsed ? _pinnedChildIds(kidsOf) : const <int>{};
-        final hiddenChildIds = _kidsCollapsed
-            ? {
-                for (final id in childIds)
-                  if (!pinned.contains(id)) id,
-              }
-            : const <int>{};
-
-        final visibleTags = [
-          for (final t in widget.tags)
-            if (!hiddenChildIds.contains(t.id)) t,
-        ];
-
-        // 枢纽后绘，便于点中；子标签稍前。
-        final ordered = [...visibleTags]..sort((a, b) {
-            final ah = hubs.contains(a.id) ? 1 : 0;
-            final bh = hubs.contains(b.id) ? 1 : 0;
-            if (ah != bh) return ah.compareTo(bh);
+        // 子多的后绘，便于点中。
+        final ordered = [...widget.tags]..sort((a, b) {
+            final ac = _childCountOf(a.id);
+            final bc = _childCountOf(b.id);
+            if (ac != bc) return ac.compareTo(bc);
             final ae = _emphasized(a) ? 1 : 0;
             final be = _emphasized(b) ? 1 : 0;
             return ae.compareTo(be);
           });
         final sampleId = widget.sampleTagId ??
-            (visibleTags.isEmpty
+            (widget.tags.isEmpty
                 ? null
-                : ([...visibleTags]..sort((a, b) => a.id.compareTo(b.id)))
+                : ([...widget.tags]..sort((a, b) => a.id.compareTo(b.id)))
                     .first
                     .id);
-
-        // 连线：展开时画全部；聚合时只连仍露出的钉住子节点
-        final linkTags = _kidsCollapsed
-            ? [
-                for (final t in widget.tags)
-                  if (!hiddenChildIds.contains(t.id) || hubs.contains(t.id)) t,
-              ]
-            : widget.tags;
         final positions = {
-          for (final t in linkTags)
+          for (final t in widget.tags)
             t.id: _pixelPos(t.id, size) +
-                _dotCenterInItem(hub: hubs.contains(t.id)),
+                _dotCenterInItem(
+                  childCount: _childCountOf(t.id),
+                  emphasized: widget.selectedTagId == t.id ||
+                      (widget.selectedTagIds?.contains(t.id) ?? false) ||
+                      _repositionId == t.id,
+                ),
         };
 
-        final clusters = <({int parentId, List<Tag> kids, Offset at})>[];
-        if (_kidsCollapsed) {
-          for (final e in kidsOf.entries) {
-            final hiddenKids = [
-              for (final t in e.value)
-                if (hiddenChildIds.contains(t.id)) t,
-            ];
-            if (hiddenKids.isEmpty) continue;
-            clusters.add((
-              parentId: e.key,
-              kids: e.value,
-              at: _clusterPixel(e.key, e.value, size),
-            ));
-          }
-        }
+        _scheduleFitIfNeeded(size);
 
         // 外层可视区可能被下拉挤矮；内部仍按稳定尺寸排布，只裁剪不压缩。
         // 点阵铺在视口层，按变换矩阵反算可见范围，平移/缩放始终铺满。
@@ -570,100 +660,118 @@ class _TagCanvasViewState extends State<TagCanvasView> {
                     constrained: false,
                     minScale: _minScale,
                     maxScale: _maxScale,
-                    boundaryMargin: const EdgeInsets.all(48),
+                    // 大画布下有限 boundary 会因浮点误差把平移「弹回」原点；放开边界。
+                    boundaryMargin: const EdgeInsets.all(double.infinity),
                     clipBehavior: Clip.none,
                     panEnabled: canvasPan,
                     scaleEnabled: true,
                     child: SizedBox(
                       width: _worldOf(size).width,
                       height: _worldOf(size).height,
-                      child: Stack(
-                        clipBehavior: Clip.none,
-                        children: [
-                          if (hubs.isNotEmpty && linkTags.length > 1)
-                            Positioned.fill(
-                              child: CustomPaint(
-                                painter: _ParentChildLinkPainter(
-                                  tags: linkTags,
-                                  positions: positions,
-                                ),
-                              ),
-                            ),
-                          for (final tag in ordered)
-                            Positioned(
-                              left: _pixelPos(tag.id, size).dx,
-                              top: _pixelPos(tag.id, size).dy,
-                              child: KeyedSubtree(
-                                key: tag.id == sampleId
-                                    ? widget.sampleTagKey
-                                    : null,
-                                child: _CanvasTagNode(
-                                  tag: tag,
-                                  color: TagDotColors.forModule(
-                                    hubs.contains(tag.id)
-                                        ? tag.id
-                                        : (tag.effectiveParentId ?? tag.id),
+                      child: ListenableBuilder(
+                        listenable: _transform,
+                        builder: (context, _) {
+                          final scale = _currentScale();
+                          return Stack(
+                            clipBehavior: Clip.none,
+                            children: [
+                              if (hubs.isNotEmpty)
+                                Positioned.fill(
+                                  child: CustomPaint(
+                                    painter: _ParentChildLinkPainter(
+                                      tags: widget.tags,
+                                      positions: positions,
+                                      scale: scale,
+                                    ),
                                   ),
-                                  focus: hubs.contains(tag.id),
-                                  dimmed: widget.draggingTagId == tag.id ||
-                                      !_emphasized(tag),
-                                  softDim: widget.draggingTagId != tag.id &&
-                                      !_emphasized(tag),
-                                  selected: widget.selectedTagId == tag.id ||
-                                      (widget.selectedTagIds
-                                              ?.contains(tag.id) ??
-                                          false),
-                                  lifting: _repositionId == tag.id,
-                                  draggable: widget.draggable,
-                                  onNestAsParent: widget.onNestTag == null
-                                      ? null
-                                      : (dragged) =>
-                                          widget.onNestTag!(dragged, tag),
-                                  onTap: () => widget.onTapTag(tag),
-                                  onDragStarted: widget.onDragStarted == null
-                                      ? null
-                                      : () {
-                                          _onTagPointerCancel();
-                                          widget.onDragStarted!(tag);
-                                        },
-                                  onDragEnded: widget.onDragEnded,
-                                  onFingerDown: () {
-                                    if (widget.draggingTagId != null) return;
-                                    setState(() => _fingerOnTag = true);
-                                  },
-                                  onFingerUp: () {
-                                    if (_repositionId != null) return;
-                                    setState(() => _fingerOnTag = false);
-                                  },
-                                  onPanStart: () =>
-                                      _onRepositionStart(tag, size),
-                                  onPanUpdate: (delta) =>
-                                      _onRepositionUpdate(delta, size),
-                                  onPanEnd: () => _onRepositionEnd(size),
                                 ),
-                              ),
-                            ),
-                          for (final c in clusters)
-                            Positioned(
-                              left: c.at.dx,
-                              top: c.at.dy,
-                              child: _ClusterBadge(
-                                count: c.kids.length,
-                                color: TagDotColors.forModule(c.parentId),
-                                onTap: () {
-                                  AppHaptics.select();
-                                  final center = c.at +
-                                      const Offset(_itemW / 2, 22);
-                                  _zoomAboutScenePoint(
-                                    center,
-                                    _clusterTapScale,
-                                  );
-                                },
-                              ),
-                            ),
-                        ],
+                              for (final tag in ordered)
+                                Positioned(
+                                  left: _pixelPos(tag.id, size).dx,
+                                  top: _pixelPos(tag.id, size).dy,
+                                  child: KeyedSubtree(
+                                    key: tag.id == sampleId
+                                        ? widget.sampleTagKey
+                                        : null,
+                                    child: _CanvasTagNode(
+                                      tag: tag,
+                                      color: TagDotColors.forModule(
+                                        hubs.contains(tag.id)
+                                            ? tag.id
+                                            : (tag.effectiveParentId ??
+                                                tag.id),
+                                      ),
+                                      childCount: _childCountOf(tag.id),
+                                      showLabel: _showLabel(
+                                        childCount: _childCountOf(tag.id),
+                                        selected:
+                                            widget.selectedTagId == tag.id ||
+                                                (widget.selectedTagIds
+                                                        ?.contains(tag.id) ??
+                                                    false),
+                                        lifting: _repositionId == tag.id,
+                                        scale: scale,
+                                      ),
+                                      dimmed: widget.draggingTagId ==
+                                              tag.id ||
+                                          !_emphasized(tag),
+                                      softDim:
+                                          widget.draggingTagId != tag.id &&
+                                              !_emphasized(tag),
+                                      selected: widget.selectedTagId ==
+                                              tag.id ||
+                                          (widget.selectedTagIds
+                                                  ?.contains(tag.id) ??
+                                              false),
+                                      lifting: _repositionId == tag.id,
+                                      draggable: widget.draggable,
+                                      onNestAsParent:
+                                          widget.onNestTag == null
+                                              ? null
+                                              : (dragged) => widget
+                                                  .onNestTag!(dragged, tag),
+                                      onTap: () => widget.onTapTag(tag),
+                                      onDragStarted:
+                                          widget.onDragStarted == null
+                                              ? null
+                                              : () {
+                                                  _onTagPointerCancel();
+                                                  widget.onDragStarted!(tag);
+                                                },
+                                      onDragEnded: widget.onDragEnded,
+                                      onFingerDown: () {
+                                        if (widget.draggingTagId != null) {
+                                          return;
+                                        }
+                                        setState(() => _fingerOnTag = true);
+                                      },
+                                      onFingerUp: () {
+                                        if (_repositionId != null) return;
+                                        setState(() => _fingerOnTag = false);
+                                      },
+                                      onPanStart: () =>
+                                          _onRepositionStart(tag, size),
+                                      onPanUpdate: (delta) =>
+                                          _onRepositionUpdate(delta, size),
+                                      onPanEnd: () =>
+                                          _onRepositionEnd(size),
+                                    ),
+                                  ),
+                                ),
+                            ],
+                          );
+                        },
                       ),
                     ),
+                  ),
+                ),
+                Positioned(
+                  right: 10,
+                  bottom: 10,
+                  child: _CanvasZoomControls(
+                    onZoomIn: () => _zoomBy(_zoomStep),
+                    onZoomOut: () => _zoomBy(1 / _zoomStep),
+                    onFit: _resetToHome,
                   ),
                 ),
               ],
@@ -675,14 +783,103 @@ class _TagCanvasViewState extends State<TagCanvasView> {
   }
 }
 
-/// 视口点阵：在屏幕坐标系铺满可见区，点位随变换矩阵对齐世界坐标。
+/// 画布右下角：放大 / 缩小 / 看全貌。
+class _CanvasZoomControls extends StatelessWidget {
+  const _CanvasZoomControls({
+    required this.onZoomIn,
+    required this.onZoomOut,
+    required this.onFit,
+  });
+
+  final VoidCallback onZoomIn;
+  final VoidCallback onZoomOut;
+  final VoidCallback onFit;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.white.withValues(alpha: 0.94),
+      elevation: 2,
+      shadowColor: Colors.black.withValues(alpha: 0.12),
+      borderRadius: BorderRadius.circular(12),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: const Color(0xFFE6E9EF)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _ZoomIconButton(
+              icon: Icons.add_rounded,
+              tooltip: '放大',
+              onTap: onZoomIn,
+            ),
+            const SizedBox(
+              width: 28,
+              child: Divider(height: 1, thickness: 1, color: Color(0xFFECEFF3)),
+            ),
+            _ZoomIconButton(
+              icon: Icons.remove_rounded,
+              tooltip: '缩小',
+              onTap: onZoomOut,
+            ),
+            const SizedBox(
+              width: 28,
+              child: Divider(height: 1, thickness: 1, color: Color(0xFFECEFF3)),
+            ),
+            _ZoomIconButton(
+              icon: Icons.center_focus_weak_rounded,
+              tooltip: '看全貌',
+              onTap: onFit,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ZoomIconButton extends StatelessWidget {
+  const _ZoomIconButton({
+    required this.icon,
+    required this.tooltip,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String tooltip;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: tooltip,
+      child: InkWell(
+        onTap: () {
+          HapticFeedback.selectionClick();
+          onTap();
+        },
+        borderRadius: BorderRadius.circular(10),
+        child: SizedBox(
+          width: 36,
+          height: 36,
+          child: Icon(icon, size: 20, color: const Color(0xFF3A4452)),
+        ),
+      ),
+    );
+  }
+}
+
+/// 视口点阵：铺满可见区；缩小时加大间距，避免大画布一次画爆。
 class _ViewportDotGridPainter extends CustomPainter {
   const _ViewportDotGridPainter(this.matrix);
 
   final Matrix4 matrix;
 
-  static const _step = 15.0;
+  static const _baseStep = 15.0;
   static const _radius = 1.15;
+  static const _maxDots = 6000;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -702,16 +899,27 @@ class _ViewportDotGridPainter extends CustomPainter {
     var minY = corners.first.dy;
     var maxY = corners.first.dy;
     for (final c in corners) {
+      if (!c.dx.isFinite || !c.dy.isFinite) return;
       minX = math.min(minX, c.dx);
       maxX = math.max(maxX, c.dx);
       minY = math.min(minY, c.dy);
       maxY = math.max(maxY, c.dy);
     }
-    // 多铺一圈，避免边缘露白。
-    minX -= _step;
-    maxX += _step;
-    minY -= _step;
-    maxY += _step;
+
+    final scale = matrix.getMaxScaleOnAxis().clamp(0.05, 8.0);
+    // 屏幕上大约每 15px 一个点；世界步长随缩放变大
+    var step = (_baseStep / scale).clamp(_baseStep, 96.0);
+    final spanX = (maxX - minX).abs();
+    final spanY = (maxY - minY).abs();
+    final rough = (spanX / step) * (spanY / step);
+    if (rough > _maxDots) {
+      step = math.sqrt((spanX * spanY) / _maxDots).clamp(_baseStep, 160.0);
+    }
+
+    minX -= step;
+    maxX += step;
+    minY -= step;
+    maxY += step;
 
     final paint = Paint()
       ..color = const Color(0xFF6B7280).withValues(alpha: 0.28)
@@ -720,11 +928,13 @@ class _ViewportDotGridPainter extends CustomPainter {
     canvas.save();
     canvas.transform(matrix.storage);
 
-    final startX = (minX / _step).floor() * _step + _step / 2;
-    final startY = (minY / _step).floor() * _step + _step / 2;
-    for (var x = startX; x <= maxX; x += _step) {
-      for (var y = startY; y <= maxY; y += _step) {
-        canvas.drawCircle(Offset(x, y), _radius, paint);
+    final startX = (minX / step).floor() * step + step / 2;
+    final startY = (minY / step).floor() * step + step / 2;
+    // 半径随缩放略放大，缩小时仍看得见
+    final radius = (_radius / scale).clamp(_radius, 2.4);
+    for (var x = startX; x <= maxX; x += step) {
+      for (var y = startY; y <= maxY; y += step) {
+        canvas.drawCircle(Offset(x, y), radius, paint);
       }
     }
     canvas.restore();
@@ -739,13 +949,18 @@ class _ParentChildLinkPainter extends CustomPainter {
   _ParentChildLinkPainter({
     required this.tags,
     required this.positions,
+    this.scale = 1,
   });
 
   final List<Tag> tags;
   final Map<int, Offset> positions;
+  final double scale;
 
   @override
   void paint(Canvas canvas, Size size) {
+    // 缩得很小时线略淡，避免糊成一团
+    final alpha = scale < 0.34 ? 0.22 : (scale < 0.58 ? 0.32 : 0.42);
+    final stroke = scale < 0.34 ? 1.0 : 1.4;
     final ids = positions.keys.toSet();
     for (final t in tags) {
       final p = t.effectiveParentId;
@@ -754,8 +969,8 @@ class _ParentChildLinkPainter extends CustomPainter {
       final to = positions[t.id]!;
       final color = TagDotColors.forModule(p);
       final paint = Paint()
-        ..color = color.withValues(alpha: 0.42)
-        ..strokeWidth = 1.4
+        ..color = color.withValues(alpha: alpha)
+        ..strokeWidth = stroke
         ..style = PaintingStyle.stroke
         ..strokeCap = StrokeCap.round;
       final midX = (from.dx + to.dx) / 2;
@@ -768,7 +983,8 @@ class _ParentChildLinkPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _ParentChildLinkPainter old) {
-    if (old.tags.length != tags.length ||
+    if (old.scale != scale ||
+        old.tags.length != tags.length ||
         old.positions.length != positions.length) {
       return true;
     }
@@ -780,95 +996,18 @@ class _ParentChildLinkPainter extends CustomPainter {
   }
 }
 
-/// 缩放聚合：父旁「+N」簇点，点击放大展开子标签。
-class _ClusterBadge extends StatelessWidget {
-  const _ClusterBadge({
-    required this.count,
-    required this.color,
-    required this.onTap,
-  });
-
-  final int count;
-  final Color color;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: () {
-        HapticFeedback.selectionClick();
-        onTap();
-      },
-      child: SizedBox(
-        width: 104,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            SizedBox(
-              width: 36,
-              height: 36,
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: color.withValues(alpha: 0.14),
-                  border: Border.all(
-                    color: color.withValues(alpha: 0.45),
-                    width: 1.8,
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: color.withValues(alpha: 0.22),
-                      blurRadius: 10,
-                      offset: const Offset(0, 3),
-                    ),
-                  ],
-                ),
-                child: Center(
-                  child: Text(
-                    '+$count',
-                    style: TextStyle(
-                      fontSize: count >= 10 ? 12 : 13,
-                      fontWeight: FontWeight.w800,
-                      height: 1,
-                      color: color,
-                    ),
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(height: 5),
-            Text(
-              '子标签',
-              textAlign: TextAlign.center,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-                height: 1.15,
-                color: Color.lerp(const Color(0xFF3A4452), color, 0.35)!
-                    .withValues(alpha: 0.85),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
 class _CanvasTagNode extends StatelessWidget {
   const _CanvasTagNode({
     required this.tag,
     required this.color,
+    required this.childCount,
     required this.onTap,
     required this.draggable,
     required this.dimmed,
     required this.softDim,
     required this.lifting,
     required this.selected,
-    required this.focus,
+    required this.showLabel,
     this.onNestAsParent,
     this.onDragStarted,
     this.onDragEnded,
@@ -881,13 +1020,14 @@ class _CanvasTagNode extends StatelessWidget {
 
   final Tag tag;
   final Color color;
+  final int childCount;
   final VoidCallback onTap;
   final bool draggable;
   final bool dimmed;
   final bool softDim;
   final bool lifting;
   final bool selected;
-  final bool focus;
+  final bool showLabel;
   final ValueChanged<Tag>? onNestAsParent;
   final VoidCallback? onDragStarted;
   final VoidCallback? onDragEnded;
@@ -904,9 +1044,16 @@ class _CanvasTagNode extends StatelessWidget {
           softDim ? 0.55 : 0.22,
         )!
         .withValues(alpha: feedback ? 0.95 : (softDim ? 0.75 : 0.90));
-    final emphasize = focus || feedback || lifting || selected;
-    final core = focus ? 14.0 : (emphasize ? 9.0 : 7.0);
-    final halo = focus ? 44.0 : (emphasize ? 24.0 : 18.0);
+    final emphasize = feedback || lifting || selected;
+    final hasKids = childCount > 0;
+    final core = _TagCanvasViewState._coreForChildCount(
+      childCount,
+      emphasized: emphasize,
+    );
+    final halo = _TagCanvasViewState._haloForChildCount(
+      childCount,
+      emphasized: emphasize,
+    );
 
     return Transform.scale(
       scale: (feedback || lifting) ? 1.12 : 1,
@@ -922,9 +1069,9 @@ class _CanvasTagNode extends StatelessWidget {
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   color: color.withValues(
-                    alpha: focus ? 0.10 : (softDim ? 0.10 : 0.16),
+                    alpha: hasKids ? 0.10 : (softDim ? 0.10 : 0.16),
                   ),
-                  border: focus
+                  border: hasKids
                       ? Border.all(
                           color: color.withValues(alpha: 0.28),
                           width: 2.2,
@@ -935,7 +1082,7 @@ class _CanvasTagNode extends StatelessWidget {
                               width: 2,
                             )
                           : null),
-                  boxShadow: focus
+                  boxShadow: hasKids
                       ? [
                           BoxShadow(
                             color: color.withValues(alpha: 0.28),
@@ -949,10 +1096,10 @@ class _CanvasTagNode extends StatelessWidget {
                   child: DecoratedBox(
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
-                      color: focus
+                      color: hasKids
                           ? color.withValues(alpha: 0.18)
                           : Colors.transparent,
-                      border: focus
+                      border: hasKids
                           ? Border.all(
                               color: color.withValues(alpha: 0.40),
                               width: 1.6,
@@ -960,8 +1107,8 @@ class _CanvasTagNode extends StatelessWidget {
                           : null,
                     ),
                     child: SizedBox(
-                      width: focus ? 28 : core,
-                      height: focus ? 28 : core,
+                      width: hasKids ? 28 : core,
+                      height: hasKids ? 28 : core,
                       child: Center(
                         child: Container(
                           width: core,
@@ -969,7 +1116,7 @@ class _CanvasTagNode extends StatelessWidget {
                           decoration: BoxDecoration(
                             color: color,
                             shape: BoxShape.circle,
-                            boxShadow: focus
+                            boxShadow: hasKids
                                 ? [
                                     BoxShadow(
                                       color: color.withValues(alpha: 0.35),
@@ -986,22 +1133,24 @@ class _CanvasTagNode extends StatelessWidget {
                 ),
               ),
             ),
-            const SizedBox(height: 5),
-            Text(
-              tag.name,
-              textAlign: TextAlign.center,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                fontSize: focus ? 15 : (emphasize ? 14 : 13),
-                fontWeight: focus || selected || !softDim
-                    ? FontWeight.w700
-                    : FontWeight.w500,
-                height: 1.15,
-                letterSpacing: 0.2,
-                color: ink,
+            if (showLabel) ...[
+              const SizedBox(height: 5),
+              Text(
+                tag.name,
+                textAlign: TextAlign.center,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: hasKids ? 15 : (emphasize ? 14 : 13),
+                  fontWeight: hasKids || selected || !softDim
+                      ? FontWeight.w700
+                      : FontWeight.w500,
+                  height: 1.15,
+                  letterSpacing: 0.2,
+                  color: ink,
+                ),
               ),
-            ),
+            ],
           ],
         ),
       ),
