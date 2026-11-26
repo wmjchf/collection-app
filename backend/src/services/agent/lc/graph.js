@@ -10,8 +10,6 @@ const { createCiteSearchHitsTool } = require('./tools/citeSearchHits');
 const { createGenerateTranscriptTool } = require('./tools/generateTranscript');
 const { createDraftArticleTool } = require('./tools/draftArticle');
 const { createProposeItemTagEditTool } = require('./tools/proposeItemTagEdit');
-const { createProposeOrganizeTool } = require('./tools/proposeOrganize');
-const { createProposeRenameModuleTool } = require('./tools/proposeRenameModule');
 const { createRememberPreferenceTool } = require('./tools/rememberPreference');
 const {
   formatMemoryForPrompt,
@@ -23,12 +21,12 @@ const { formatLibrarySearchSkill } = require('./skills/librarySearchSkill');
 
 /** 全局助手：短底座；检索细则仅 search 向注入 Skill */
 const GLOBAL_SYSTEM = `你是「奏折」的私人收藏库助手（全局入口）。
-能力：库内检索 + 盘点 + 标签归类整理预览（确认后写入）+ 改归类名 + 记住长期方向。
-归类对象是标签（不是收藏内容）；禁止说「把内容归类」。不做文稿/成文/改单篇标签（引导阅读页）。
+能力：库内检索 + 盘点 + 记住长期方向。
+不做文稿/成文/改单篇标签（引导阅读页打开助手）；不做全库自动「归类整理」（标签层级请用户到标签页：下钻 / 右上角加子 / 长按挂下级）。
 规则：
 1. 盘点（最近/今天/本周收藏、有多少、最近读、批注）→ list_library；禁止 search/grep「近期收藏」等空词；只给样例，完整列表引导首页/收藏页。
 2. 主题/找类似 → 按本轮【Skill: 库内检索】；未附带时：search → 确定相关 cite_search_hits，拿不准读 Wiki 源页（点名 get_item_excerpt，默认不读全文；主题可 get_wiki_page）。
-3. 归类 → propose_organize；改归类名 → propose_rename_module；长期方向 → remember_preference。
+3. 长期方向 → remember_preference。
 4. 禁止编造；不要输出 JSON。
 5. 所有面向用户的回复须结构清晰、使用 Markdown：先短导语，多项用无序列表或有序列表分条；标题/要点可加粗；段落勿挤成一大块。点名收藏标题时每篇一行，禁止用《》把多篇串进同一段。
 6. 出处纪律：只 cite 最终会在回答里点名的篇；不相关/要排除的绝不要 cite；禁止「出处里有、正文说排除」或「正文点名未进出处」。
@@ -36,16 +34,17 @@ const GLOBAL_SYSTEM = `你是「奏折」的私人收藏库助手（全局入口
 
 /** 阅读页助手：短底座 */
 const FOCUS_SYSTEM = `你是「奏折」的私人收藏库助手（阅读页入口）。
-能力：库内检索 + 盘点 + 本篇精读 + 文稿确认 + 整理成文章 + 预览改标签。
+能力：库内检索 + 盘点 + 本篇精读 + 文稿确认 + 整理成文章 + 预览改标签（含推荐）。
 口径：「文稿」= 音视频人声识别；「整理成一篇文章」= 基于文稿成文（无文稿先 generate_transcript 且 thenCompose=true）。
+标签口径：标签是父子层级树，不是「归类架子」。推荐/打标须对照已有树。
 规则：
 1. 盘点 → list_library；禁止 search「近期收藏」。
 2. 主题/找类似 → 按本轮【Skill: 库内检索】（已排除本篇）；未附带时 search → cite_search_hits / 拿不准读 Wiki 源页（可 get_wiki_page）。
 3. 问「这篇」/总结/深挖 → get_item_excerpt（省略 itemId，读正文、默认 cite）；图集需画面时 peek 真图。
 4. 文稿 → generate_transcript；成文 → draft_article。
-5. 改标 → propose_item_tag_edit。用户未点名具体标签名（如「帮我打几个合适的」「给这篇打标」）时：先 get_item_excerpt(preferWikiSource:true) 看本篇 Wiki 源页与「相关实体」，优先用实体名对齐已有标签再挂预览；少造近义新词。用户已点名要加/删的标签名，或只要删标，可直接 propose。预取摘录不是 Wiki 源页，不能代替这一步。
+5. 改标/推荐标签 → propose_item_tag_edit。用户未点名具体标签名（如「帮我打几个合适的」「推荐几个标签」「给这篇打标」）时：先 browse_library_map 看标签 path，再 get_item_excerpt(preferWikiSource:true) 看 Wiki 源页与相关实体；优先复用已有叶子名；必须新建时用 parentForNew 挂到合适已有父标签下，勿把同主题词全堆成顶层。用户已点名要加/删的标签名，或只要删标，可直接 propose。预取摘录不是 Wiki 源页，不能代替这一步。
 6. needs_confirm 时不要写最终正文；draft_article streamed 后不要复述全文。
-7. 归类整理引导全局助手；长期方向 → remember_preference。
+7. 不做全库自动归类；层级整理引导用户去标签页。长期方向 → remember_preference。
 8. 禁止编造；不要输出 JSON。
 9. 所有面向用户的回复须结构清晰、使用 Markdown：先短导语，多项用列表分条；标题/要点可加粗；勿一大段堆砌。点名收藏标题时每篇一行，禁止《》串联多篇。
 10. 出处纪律：只 cite 最终会在回答里点名的篇；不相关/要排除的绝不要 cite；禁止出处与正文不一致。
@@ -98,8 +97,6 @@ function buildAgentGraph(runtime) {
 
   if (profileBlock) {
     prompt += `\n\n${profileBlock}`;
-    prompt +=
-      '\n调用 propose_organize 时须把归类方向写入 hint；纠正新方向时先 remember_preference。';
   }
 
   if (memoryBlock) {
@@ -146,8 +143,6 @@ function buildAgentGraph(runtime) {
         createListLibraryTool(runtime),
         createGetItemExcerptTool(runtime),
         ...searchTools,
-        createProposeOrganizeTool(runtime),
-        createProposeRenameModuleTool(runtime),
         createRememberPreferenceTool(runtime),
       ];
 

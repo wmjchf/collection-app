@@ -16,20 +16,8 @@ const RULES = [
     pending: ['start_transcript'],
   },
   {
-    action: 'organize',
-    label: '智能归类',
-    tools: ['propose_organize'],
-    pending: ['organize_tags'],
-  },
-  {
-    action: 'rename_module',
-    label: '改归类名',
-    tools: ['propose_rename_module'],
-    pending: ['rename_module'],
-  },
-  {
     action: 'item_tag_edit',
-    label: '智能归类',
+    label: '推荐标签',
     tools: ['propose_item_tag_edit'],
     pending: ['item_tag_edit'],
   },

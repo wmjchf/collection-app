@@ -28,12 +28,15 @@ async function confirmAction({ userId, conversationId, messageId, approve }) {
   }
 
   const pending = message.pendingAction;
-  if (
-    !pending ||
-    (pending.type !== 'item_tag_edit' &&
-      pending.type !== 'organize_tags' &&
-      pending.type !== 'rename_module')
-  ) {
+  if (!pending || pending.type !== 'item_tag_edit') {
+    if (
+      pending?.type === 'organize_tags' ||
+      pending?.type === 'rename_module'
+    ) {
+      throw Object.assign(new Error('归类整理已下线，请到标签页手动调整层级'), {
+        status: 410,
+      });
+    }
     throw Object.assign(new Error('没有待确认的操作'), { status: 400 });
   }
 
@@ -51,16 +54,10 @@ async function confirmAction({ userId, conversationId, messageId, approve }) {
     await conversationService.patchMessageToolPayload(messageId, {
       pendingAction: next,
     });
-    const cancelContent =
-      pending.type === 'organize_tags'
-        ? '已取消这次归类整理。'
-        : pending.type === 'rename_module'
-          ? '已取消这次归类改名。'
-          : '已取消这次标签调整。';
     const cancelMsg = await conversationService.insertMessage({
       conversationId,
       role: 'assistant',
-      content: cancelContent,
+      content: '已取消这次标签调整。',
       citations: null,
       toolTrace: {
         steps: [{ tool: 'confirm_action', ok: true, args: { approve: false } }],
@@ -71,24 +68,6 @@ async function confirmAction({ userId, conversationId, messageId, approve }) {
       assistantMessage: cancelMsg,
       alreadySettled: false,
     };
-  }
-
-  if (pending.type === 'organize_tags') {
-    return confirmOrganize({
-      userId,
-      conversationId,
-      messageId,
-      pending,
-    });
-  }
-
-  if (pending.type === 'rename_module') {
-    return confirmRenameModule({
-      userId,
-      conversationId,
-      messageId,
-      pending,
-    });
   }
 
   return confirmTagEdit({
@@ -241,7 +220,11 @@ async function confirmTagEdit({
     ? pending.after.map((n) => String(n || '').trim()).filter(Boolean)
     : [];
 
-  const tagIds = await resolveTagIdsByNames(userId, afterNames);
+  const tagIds = await resolveTagIdsByNames(
+    userId,
+    afterNames,
+    pending.parentForNew,
+  );
   const tags = await itemService.setItemTags(userId, itemId, tagIds);
   const tagNames = tags.map((t) => t.name).filter(Boolean);
 
@@ -298,22 +281,77 @@ async function confirmTagEdit({
   };
 }
 
-async function resolveTagIdsByNames(userId, names) {
+/**
+ * 按 parentForNew 依赖序创建缺失标签（父先于子），再返回 names 对应 id。
+ * @param {number} userId
+ * @param {string[]} names
+ * @param {Array<{ name?: string, parentName?: string }>|null|undefined} parentForNew
+ */
+async function resolveTagIdsByNames(userId, names, parentForNew) {
   const all = await tagService.listTags(userId);
   const byKey = new Map(
     all.map((t) => [String(t.name || '').trim().toLowerCase(), t]),
   );
+  const parentByChild = new Map();
+  for (const row of Array.isArray(parentForNew) ? parentForNew : []) {
+    const name = String(row?.name || '').trim();
+    const parentName = String(row?.parentName || '').trim();
+    if (!name || !parentName) continue;
+    if (name.toLowerCase() === parentName.toLowerCase()) continue;
+    parentByChild.set(name.toLowerCase(), parentName);
+  }
+
+  const wanted = new Set();
+  for (const raw of names || []) {
+    const name = String(raw || '').trim();
+    if (name) wanted.add(name);
+  }
+  for (const [childKey, parentName] of parentByChild) {
+    // 用原始大小写：从 names / parentForNew 回找
+    const childRow = (parentForNew || []).find(
+      (r) => String(r?.name || '').trim().toLowerCase() === childKey,
+    );
+    if (childRow?.name) wanted.add(String(childRow.name).trim());
+    wanted.add(parentName);
+  }
+
+  async function ensureTag(name, stack = new Set()) {
+    const key = name.toLowerCase();
+    if (byKey.has(key)) return byKey.get(key);
+    if (stack.has(key)) {
+      const tag = await tagService.createTag(userId, name, {
+        origin: 'user',
+        parentId: null,
+      });
+      byKey.set(key, tag);
+      return tag;
+    }
+    stack.add(key);
+    const parentName = parentByChild.get(key);
+    let parentId = null;
+    if (parentName) {
+      const parent = await ensureTag(parentName, stack);
+      parentId = parent?.id ?? null;
+    }
+    const tag = await tagService.createTag(userId, name, {
+      origin: 'user',
+      parentId,
+    });
+    byKey.set(key, tag);
+    return tag;
+  }
+
+  // 先确保挂接链上的标签都建好
+  for (const name of wanted) {
+    await ensureTag(name);
+  }
+
   const ids = [];
-  for (const raw of names) {
+  for (const raw of names || []) {
     const name = String(raw || '').trim();
     if (!name) continue;
-    const key = name.toLowerCase();
-    let tag = byKey.get(key);
-    if (!tag) {
-      tag = await tagService.createTag(userId, name, { origin: 'user' });
-      byKey.set(key, tag);
-    }
-    ids.push(tag.id);
+    const tag = await ensureTag(name);
+    if (tag?.id) ids.push(tag.id);
   }
   return ids;
 }

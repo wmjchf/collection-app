@@ -6,7 +6,7 @@
 
 ## 0. 一句话
 
-**AI Agent 是用户级私人 Agent**：当前热路径用 **LangChain.js + LangGraph ReAct** 做库内 Agentic Search、盘点、读篇摘录、生成文稿确认、整理成文章、阅读页改标与全局归类预览；阅读页会预取当前篇。会话 API / SSE 与 App 样式保持兼容。
+**AI Agent 是用户级私人 Agent**：当前热路径用 **LangChain.js + LangGraph ReAct** 做库内 Agentic Search、盘点、读篇摘录、生成文稿确认、整理成文章、阅读页推荐/改标（对照标签层级）；阅读页会预取当前篇。**全库自动归类已下线**。会话 API / SSE 与 App 样式保持兼容。
 
 ## 1. 产品定位
 
@@ -19,16 +19,16 @@
 
 **入口（已定稿）**
 
-- 主入口：首页 / 收藏页 AppBar `✦ AI Agent`（与首页「添加」并列；收藏页归类聚焦时让位给新建归类）
+- 主入口：首页 / 收藏页 AppBar `✦ AI Agent`（与首页「添加」并列；标签页聚焦时让位给新建标签）
 - 不进底栏、不进搜索
 - 门控：太子+；非会员点入 → 升级页（`from=agent`）
 
 **空态文案口径**
 
 - 构图：居中；主题色 ✦ 圆标（无光晕）+ 标题「你的 AI Agent」+ 副文（空态无能力标）
-- 副文：帮你在收藏里更快找到内容，也能深挖原文
+- 副文：在收藏里更快找到内容，也能给本篇推荐标签
 - 不展示示例提示卡；输入占位：跟助手说点什么…
-- 输入框上方预设：克制短句点选先填入输入框；空会话起步；有回复后按规则切换（标签盘点→整理归类；归类询问→按行业/按主题/由你来分；有出处→深入解读/对照等）；**挂确认条的最后一步不展示预设**，不另调模型
+- 输入框上方预设：克制短句点选先填入输入框；空会话起步（查找 / 类似 / 最近收藏等）；有出处→深入解读等；**挂确认条的最后一步不展示预设**；不再提供「帮我整理归类」
 
 ## 2. 目标与非目标
 
@@ -45,8 +45,8 @@
 
 | 阶段 | 能力条 | 做什么 | 不做什么 |
 | --- | --- | --- | --- |
-| **P1 查** | `查收藏` 点亮 | 检索收藏、深挖原文；改标签在阅读页；归类在全局助手 | 不静默写库、不批量全库改标、不生成分享稿 |
-| **P2 整理** | `整理` 点亮 | 收拢现网 AI 为 Tools：解读 / 脑图 / 打标建议；归类已部分前移至 P1 助手 | 不写对外长文、不发帖 |
+| **P1 查** | `查收藏` 点亮 | 检索收藏、深挖原文；推荐/改标签在阅读页（对照层级） | 不静默写库、不批量全库改标、不生成分享稿 |
+| **P2 整理** | `整理` 点亮 | 收拢现网 AI 为 Tools：解读 / 脑图 / 打标建议；**全库归类 Tool 已下线** | 不写对外长文、不发帖 |
 | **P3a 轻创作** | `创作` 点亮（轻） | 基于出处的分享文案、对照短评、一句话推荐、摘句润色 | 不写无出处的自由长文 |
 | **P3b 中创作** | `创作` 加深 | 多篇综合备忘、主题导读、读书笔记草稿（可编辑再导出） | 不承诺自动发布 |
 | **更后 重创作** | — | 大纲 / 脚本 / 对外发布稿 / 自动发帖 | Phase 1～3 明确非目标；质检与版权风险高 |
@@ -62,8 +62,9 @@
 | `summarize_item` | `aiSummaryService` | 解读 / brief |
 | `mindmap_item` | `aiMindmapService` | 导图树 |
 | `suggest_tags` | `aiSuggestService` | 建议标签（可 `autoApply=false` 给用户确认） |
-| `propose_organize`（已落地） | `aiOrganizeService` | 可建议新建架子 + 填入；**确认后** `createModule` / `placeTag`；hint 自动拼短档案 `organize` |
-| `propose_rename_module`（已落地） | `tagModuleService.renameModule` | 改已有架名预览；**确认后**写入；勿用 organize 冒充 |
+| `propose_organize`（**已下线**） | `aiOrganizeService` | 不再挂入 Agent 图；历史确认返回 410 |
+| `propose_rename_module`（**已下线**） | `tagModuleService.renameModule` | 同上 |
+| `propose_item_tag_edit`（已落地） | `tagService` / `setItemTags` | 阅读页推荐/改标预览；`parentForNew` 挂层级；确认后写入 |
 | `remember_preference`（已落地） | `agentProfileService` | 写入用户级短档案（`users.agent_profile`）；跨会话 |
 | `get_item` / `search_library` | items / search | 查库（Phase 1 核心，P2 继续用） |
 

@@ -1145,7 +1145,7 @@ class _UpgradeProPageState extends State<UpgradeProPage> with ScreenDwellMixin {
   static const _agentCapabilities = [
     '意图检索',
     '深度研读',
-    '智能归类',
+    '推荐标签',
     '视频转写',
     '图文重构',
   ];

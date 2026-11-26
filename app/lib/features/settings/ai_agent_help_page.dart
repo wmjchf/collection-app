@@ -55,10 +55,10 @@ class AiAgentHelpPage extends StatelessWidget {
             ),
             const SizedBox(height: 12),
             const _CapabilityCard(
-              title: '智能归类',
+              title: '推荐标签',
               desc:
-                  '智能分析并提取标签，自动规划归类路径。支持全链路预览与二次微调，'
-                  '确保每一次写入都完美契合你的知识体系。',
+                  '在阅读页为当前篇推荐合适标签，对照你已有的标签层级树优先复用；'
+                  '新建时尽量挂到合适父级，确认后再写入。',
             ),
             const SizedBox(height: 12),
             const _CapabilityCard(
@@ -108,7 +108,7 @@ class AiAgentHelpPage extends StatelessWidget {
             ),
             const SizedBox(height: 12),
             const _TipCard(
-              '打标签请在阅读页打开助手；整理归类请用首页/收藏顶栏的全局助手。',
+              '推荐/打标签请在阅读页打开助手；标签层级请在标签页下钻、加子或长按挂下级。',
             ),
             const SizedBox(height: 12),
             const _TipCard(
@@ -165,7 +165,7 @@ class _IntroCard extends StatelessWidget {
           ),
           SizedBox(height: 10),
           Text(
-            '依托 Agentic Search 理解意图，在个人收藏库中检索；也可深度研读单篇、整理归类；'
+            '依托 Agentic Search 理解意图，在个人收藏库中检索；也可深度研读单篇、推荐标签；'
             '音视频、知识类图片也可整理成文章，沉淀为你的个人资产。',
             style: TextStyle(
               fontSize: 14,

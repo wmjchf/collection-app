@@ -297,8 +297,6 @@ async function runUserTurn({
         runtime.suppressAnswerTokens ||
         runtime.pendingAction?.type === 'start_transcript' ||
         runtime.pendingAction?.type === 'item_tag_edit' ||
-        runtime.pendingAction?.type === 'organize_tags' ||
-        runtime.pendingAction?.type === 'rename_module' ||
         runtime.draftContent
       ) {
         continue;
@@ -331,14 +329,6 @@ async function runUserTurn({
     pendingAction &&
     pendingAction.type === 'item_tag_edit' &&
     pendingAction.status === 'pending';
-  const organizeConfirm =
-    pendingAction &&
-    pendingAction.type === 'organize_tags' &&
-    pendingAction.status === 'pending';
-  const renameConfirm =
-    pendingAction &&
-    pendingAction.type === 'rename_module' &&
-    pendingAction.status === 'pending';
   const drafted = String(runtime.draftContent || '').trim();
   usageTotal = mergeUsage(usageTotal, runtime.draftUsage);
   usageTotal = mergeUsage(usageTotal, runtime.excerptVisionUsage);
@@ -348,10 +338,6 @@ async function runUserTurn({
     contentOut = await buildTranscriptConfirmContent(userId, pendingAction);
   } else if (tagConfirm) {
     contentOut = buildTagConfirmContent(pendingAction);
-  } else if (organizeConfirm) {
-    contentOut = buildOrganizeConfirmContent(pendingAction);
-  } else if (renameConfirm) {
-    contentOut = buildRenameConfirmContent(pendingAction);
   } else if (drafted) {
     // 成文已在 tool 内流式发出；此处只落库，不再重复 token
     contentOut = drafted;
@@ -405,13 +391,31 @@ function buildTagConfirmContent(pendingAction) {
     ? pendingAction.willCreate.map((n) => String(n || '').trim()).filter(Boolean)
     : [];
   const createSet = new Set(willCreate);
+  const parentByNew = new Map();
+  for (const row of Array.isArray(pendingAction?.parentForNew)
+    ? pendingAction.parentForNew
+    : []) {
+    const name = String(row?.name || '').trim();
+    const parentName = String(row?.parentName || '').trim();
+    if (!name || !parentName) continue;
+    parentByNew.set(name, parentName);
+  }
 
   const lines = ['准备调整本篇标签。', '', `**${title}**`, ''];
 
   if (after.length) {
     lines.push('**调整后**');
     for (const name of after) {
-      lines.push(createSet.has(name) ? `- ${name}（新建）` : `- ${name}`);
+      if (createSet.has(name)) {
+        const parent = parentByNew.get(name);
+        lines.push(
+          parent
+            ? `- ${parent} › ${name}（新建）`
+            : `- ${name}（新建）`,
+        );
+      } else {
+        lines.push(`- ${name}`);
+      }
     }
   } else {
     lines.push('确认后将清空该篇用户标签。');
@@ -425,94 +429,6 @@ function buildTagConfirmContent(pendingAction) {
   }
 
   lines.push('', '点「确认调整」后写入；未确认不会改库。');
-  return lines.join('\n');
-}
-
-function buildRenameConfirmContent(pendingAction) {
-  const fromName = String(pendingAction?.fromName || '').trim() || '该归类';
-  const toName = String(pendingAction?.toName || '').trim() || '新名字';
-  return [
-    `准备把归类「${fromName}」改名为「${toName}」。`,
-    '请点「确认改名」后再写入；未确认不会改库。',
-  ].join('\n');
-}
-
-function buildOrganizeConfirmContent(pendingAction) {
-  const mode = pendingAction?.mode === 'full' ? 'full' : 'ungrouped';
-  const modules = Array.isArray(pendingAction?.modules)
-    ? pendingAction.modules
-    : [];
-  const ungroupedTags = Array.isArray(pendingAction?.ungroupedTags)
-    ? pendingAction.ungroupedTags
-    : [];
-  const ungroupedCount = ungroupedTags.length
-    ? ungroupedTags.length
-    : Array.isArray(pendingAction?.ungroupedTagIds)
-      ? pendingAction.ungroupedTagIds.length
-      : 0;
-
-  const lines = [
-    mode === 'full'
-      ? '按这样全部重排归类（确认后才会写入）：'
-      : '按这样整理未归类标签（已手动摆好的尽量不动；确认后才会写入）：',
-    '',
-  ];
-
-  for (const m of modules.slice(0, 12)) {
-    const names = Array.isArray(m?.tagNames)
-      ? m.tagNames.map((n) => String(n || '').trim()).filter(Boolean)
-      : (m?.tags || [])
-          .map((t) => String(t?.name || '').trim())
-          .filter(Boolean);
-    const title = String(m?.name || '').trim() || '未命名';
-    const newMark = m?.create ? '（新建）' : '';
-    lines.push(`**${title}**${newMark}`);
-    if (names.length) {
-      const shown = names.slice(0, 12);
-      lines.push(
-        `· ${shown.join('、')}${names.length > 12 ? '…' : ''}`,
-      );
-    } else {
-      lines.push('· （暂无标签）');
-    }
-    lines.push('');
-  }
-  if (modules.length > 12) {
-    lines.push(`…另有 ${modules.length - 12} 个归类未展开`, '');
-  }
-
-  if (ungroupedCount > 0) {
-    lines.push('**仍未归类**');
-    if (ungroupedTags.length) {
-      const shown = ungroupedTags
-        .slice(0, 12)
-        .map((t) => String(t?.name || '').trim())
-        .filter(Boolean);
-      lines.push(
-        `· ${shown.join('、')}${ungroupedTags.length > 12 ? '…' : ''}`,
-      );
-    } else {
-      lines.push(`· 共 ${ungroupedCount} 个`);
-    }
-    lines.push('');
-  }
-
-  const placed = modules.reduce((n, m) => {
-    const names = Array.isArray(m?.tagNames)
-      ? m.tagNames
-      : m?.tags || [];
-    return n + names.length;
-  }, 0);
-  const total = placed + ungroupedCount;
-  if (total > 0) {
-    lines.push(
-      ungroupedCount
-        ? `共涉及 ${total} 个标签（其中 ${ungroupedCount} 个仍未归类）。请点「确认整理」后再写入。`
-        : `共涉及 ${total} 个标签。请点「确认整理」后再写入。`,
-    );
-  } else {
-    lines.push('请点「确认整理」后再写入；未确认不会改库。');
-  }
   return lines.join('\n');
 }
 

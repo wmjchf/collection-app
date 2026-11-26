@@ -114,16 +114,16 @@ function createAgentChatModel(opts = {}) {
 }
 
 /**
- * 本轮 ReAct 是否用 Agentic Search 模型（与深挖/归类等分开）。
+ * 本轮 ReAct 是否用 Agentic Search 模型（与深挖/打标等分开）。
  * @param {{ userText?: string, hasFocus?: boolean }} args
  */
 function preferSearchChatModel({ userText, hasFocus } = {}) {
   const t = String(userText || '').trim();
   if (!t) return !hasFocus;
 
-  // 归类 / 改名 / 偏好：走 agent
+  // 打标 / 推荐标签 / 偏好：走 agent
   if (
-    /帮我归类|整理归类|改归类名|改名|记住|偏好|打标|改标签|加减标签/.test(t)
+    /帮我归类|整理归类|推荐标签|打标|改标签|加减标签|记住|偏好/.test(t)
   ) {
     return false;
   }

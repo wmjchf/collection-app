@@ -2018,7 +2018,7 @@ class _EmptyState extends StatelessWidget {
             ),
             const SizedBox(height: 12),
             const Text(
-              '在收藏里更快找到内容，也能整理归类',
+              '在收藏里更快找到内容，也能给本篇推荐标签',
               textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: 15,
@@ -2872,8 +2872,8 @@ class _AgentPresetRules {
     return const [
       '查找关于…',
       '类似××的内容有哪些',
-      '帮我整理归类',
       '我存过哪些关于…',
+      '最近收藏了什么',
     ];
   }
 
@@ -2929,12 +2929,12 @@ class _AgentPresetRules {
         canComposeGallery: canComposeGallery,
       );
     }
-    // 全局助手：Agentic Search + 归类（无深挖）
+    // 全局助手：Agentic Search + 盘点（无深挖）
     return const [
       '查找关于…',
       '类似××的内容有哪些',
-      '帮我整理归类',
       '我存过哪些关于…',
+      '最近收藏了什么',
     ];
   }
 }

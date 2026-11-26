@@ -46,15 +46,15 @@ function createRememberPreferenceTool(runtime) {
         text: result.text,
         note:
           '已写入并压成原则级短档案（清聊天仍保留；具体例子会被抽象掉）。' +
-          '若紧接着整理归类，propose_organize 的 hint 须遵守短档案原则。',
+          '打标习惯写入 tagging；以后推荐标签时对照用户层级习惯。',
       });
     },
     {
       name: 'remember_preference',
       description:
         '把用户明确的长期方向写入短档案（跨会话；系统会压成抽象原则）。' +
-        '用户纠正归类分法、打标习惯、或说明以后怎么做时调用。' +
-        'namespace：organize=归类；tagging=打标；general=其它。' +
+        '用户纠正打标习惯、检索偏好、或说明以后怎么做时调用。' +
+        'namespace：tagging=打标/层级习惯；organize=旧档案兼容；general=其它。' +
         'text 可含用户原话/例子，但尽量写成可复用原则；不要记一次性检索词。' +
         '禁止把品牌名、具体标签名当长期规则正文去「教系统死记」。',
       schema: z.object({

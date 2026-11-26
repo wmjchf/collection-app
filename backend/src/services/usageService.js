@@ -786,11 +786,11 @@ function aiFeatureLabel(feature, meta = null) {
       case 'excerpt':
         return '深度研读';
       case 'organize':
-        return '智能归类';
+        return '推荐标签';
       case 'rename_module':
-        return '改归类名';
+        return '推荐标签';
       case 'item_tag_edit':
-        return '智能归类';
+        return '推荐标签';
       case 'generate_transcript':
         return '视频转写';
       case 'draft_article':
