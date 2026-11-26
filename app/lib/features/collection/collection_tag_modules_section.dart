@@ -1,12 +1,11 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:super_collection/core/ui/app_haptics.dart';
 import 'package:super_collection/features/collection/tag_canvas_view.dart';
 import 'package:super_collection/features/collection/tag_models.dart';
 import 'package:super_collection/features/collection/tag_module_models.dart';
 
 /// 标签页：只画当前层（短拖改位 / 捏合缩放 / 长按挂下级）；
-/// 点选后可看收藏 / 看子层；加子统一走右上角「+」；子越多圆点越大。
+/// 单击看列表；双击有子则下钻；删除在列表页；「+」挂当前面包屑层。
 class CollectionTagModulesSection extends StatefulWidget {
   const CollectionTagModulesSection({
     super.key,
@@ -19,7 +18,6 @@ class CollectionTagModulesSection extends StatefulWidget {
     this.onPathParentChanged,
     this.onRenameModule,
     this.onDeleteModule,
-    this.onDeleteTag,
     this.onPlaceTag,
     this.fillRemaining = false,
     this.showHeader = true,
@@ -39,7 +37,6 @@ class CollectionTagModulesSection extends StatefulWidget {
   final ValueChanged<int?>? onPathParentChanged;
   final ValueChanged<TagModule>? onRenameModule;
   final ValueChanged<TagModule>? onDeleteModule;
-  final ValueChanged<Tag>? onDeleteTag;
   final void Function(Tag tag, int? targetParentId)? onPlaceTag;
   final bool fillRemaining;
   final bool showHeader;
@@ -66,7 +63,6 @@ class _CollectionTagModulesSectionState
     extends State<CollectionTagModulesSection> {
   /// 面包屑路径（不含「全部」）；末项 = 当前层父标签
   final List<Tag> _path = [];
-  Tag? _selected;
   int? _draggingTagId;
 
   List<Tag> _allTags() {
@@ -130,7 +126,6 @@ class _CollectionTagModulesSectionState
     if (parentId != null && tag.id == parentId) return;
     AppHaptics.select();
     widget.onPlaceTag!(tag, parentId);
-    _clearSelection();
   }
 
   @override
@@ -148,39 +143,32 @@ class _CollectionTagModulesSectionState
     for (var i = 0; i < _path.length; i++) {
       _path[i] = byId[_path[i].id]!;
     }
-    if (_selected != null) {
-      _selected = byId[_selected!.id];
-    }
     final after = _focus?.id;
     if (before != after) {
       WidgetsBinding.instance.addPostFrameCallback((_) => _notifyPathParent());
     }
   }
 
-  void _select(Tag tag) {
-    // 再点已选且有子 → 进入子层；首次点选打开底栏
-    if (_selected?.id == tag.id && _hasChildren(tag)) {
+  /// 单击：看列表。
+  void _onTapTag(Tag tag) {
+    widget.onOpenTag(tag);
+  }
+
+  /// 双击：有子则下钻。
+  void _onDoubleTapTag(Tag tag) {
+    if (_hasChildren(tag)) {
       _drillInto(tag);
-      return;
     }
-    setState(() => _selected = tag);
-    _notifyPathParent();
   }
 
-  void _clearSelection() {
-    setState(() => _selected = null);
-    _notifyPathParent();
-  }
-
-  /// 「+」挂载目标：有点选则挂其下，否则挂当前面包屑层。
+  /// 「+」挂载目标：当前面包屑层。
   void _notifyPathParent() {
-    widget.onPathParentChanged?.call(_selected?.id ?? _focus?.id);
+    widget.onPathParentChanged?.call(_focus?.id);
   }
 
   void _goRoot() {
     setState(() {
       _path.clear();
-      _selected = null;
     });
     _notifyPathParent();
   }
@@ -192,7 +180,6 @@ class _CollectionTagModulesSectionState
       } else if (index < _path.length - 1) {
         _path.removeRange(index + 1, _path.length);
       }
-      _selected = null;
     });
     _notifyPathParent();
   }
@@ -213,7 +200,6 @@ class _CollectionTagModulesSectionState
         ..clear()
         ..addAll(chain)
         ..add(tag);
-      _selected = null;
     });
     _notifyPathParent();
   }
@@ -283,27 +269,17 @@ class _CollectionTagModulesSectionState
                             childCounts: _childCounts,
                             // 给叠层面包屑留空，点阵仍铺满整卡
                             topInset: 44,
-                            // 底栏叠上时只抬缩放钮，不改画布尺寸
-                            bottomControlsInset:
-                                _selected != null ? 118 : 0,
                             sampleTagKey: widget.sampleTagKey,
-                            selectedTagId: _selected?.id,
                             draggingTagId: _draggingTagId,
                             draggable: widget.onPlaceTag != null,
-                            onTapTag: _select,
-                            onBlankTap: _selected == null
-                                ? null
-                                : _clearSelection,
+                            onTapTag: _onTapTag,
+                            onDoubleTapTag: _onDoubleTapTag,
                             onNestTag: widget.onPlaceTag == null
                                 ? null
                                 : (dragged, target) =>
                                     _place(dragged, target.id),
                             onDragStarted: (tag) {
-                              setState(() {
-                                _draggingTagId = tag.id;
-                                _selected = null;
-                              });
-                              _notifyPathParent();
+                              setState(() => _draggingTagId = tag.id);
                             },
                             onDragEnded: () {
                               setState(() => _draggingTagId = null);
@@ -343,29 +319,6 @@ class _CollectionTagModulesSectionState
                         ),
                       ),
                     ),
-                    if (_selected != null)
-                      Positioned(
-                        left: 0,
-                        right: 0,
-                        bottom: 0,
-                        child: _TagActionBar(
-                          tag: _selected!,
-                          canDrill: _hasChildren(_selected!),
-                          onViewContent: () {
-                            final t = _selected!;
-                            _clearSelection();
-                            widget.onOpenTag(t);
-                          },
-                          onDrill: () => _drillInto(_selected!),
-                          onDelete: widget.onDeleteTag == null
-                              ? null
-                              : () {
-                                  final t = _selected!;
-                                  _clearSelection();
-                                  widget.onDeleteTag!(t);
-                                },
-                        ),
-                      ),
                   ],
                 ),
               ),
@@ -489,178 +442,6 @@ class _Crumb extends StatelessWidget {
   }
 }
 
-class _TagActionBar extends StatelessWidget {
-  const _TagActionBar({
-    required this.tag,
-    required this.canDrill,
-    required this.onViewContent,
-    required this.onDrill,
-    this.onDelete,
-  });
-
-  final Tag tag;
-  final bool canDrill;
-  final VoidCallback onViewContent;
-  final VoidCallback onDrill;
-  final VoidCallback? onDelete;
-
-  static const _chipBg = Color(0xFFF3F5F8);
-  static const _chipLine = Color(0xFFE4E7EC);
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(14, 8, 12, 10),
-      child: Container(
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(20),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.10),
-              blurRadius: 24,
-              spreadRadius: 0,
-              offset: const Offset(0, 8),
-            ),
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.06),
-              blurRadius: 8,
-              spreadRadius: -1,
-              offset: const Offset(0, 2),
-            ),
-          ],
-        ),
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 14),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Center(
-                child: Container(
-                  width: 36,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFD8DCE3),
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 10),
-              Text.rich(
-                TextSpan(
-                  children: [
-                    TextSpan(
-                      text: tag.name,
-                      style: const TextStyle(
-                        fontSize: 17,
-                        fontWeight: FontWeight.w700,
-                        height: 1.25,
-                        color: CollectionTagModulesSection.ink,
-                      ),
-                    ),
-                    TextSpan(
-                      text: '  ·  ${tag.itemCount}条内容',
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w500,
-                        height: 1.25,
-                        color: CollectionTagModulesSection.muted
-                            .withValues(alpha: 0.95),
-                      ),
-                    ),
-                  ],
-                ),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-              const SizedBox(height: 10),
-              SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: Row(
-                  children: [
-                    _ActionChip(
-                      label: '看收藏',
-                      onTap: onViewContent,
-                    ),
-                    if (canDrill) ...[
-                      const SizedBox(width: 8),
-                      _ActionChip(
-                        label: '看子层',
-                        onTap: onDrill,
-                      ),
-                    ],
-                    if (onDelete != null) ...[
-                      const SizedBox(width: 8),
-                      _ActionChip(
-                        label: '删除',
-                        onTap: onDelete,
-                        danger: true,
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _ActionChip extends StatelessWidget {
-  const _ActionChip({
-    required this.label,
-    required this.onTap,
-    this.danger = false,
-  });
-
-  final String label;
-  final VoidCallback? onTap;
-  final bool danger;
-
-  @override
-  Widget build(BuildContext context) {
-    final enabled = onTap != null;
-    final fg = danger
-        ? const Color(0xFFD14343)
-        : CollectionTagModulesSection.ink;
-    return GestureDetector(
-      onTap: onTap == null
-          ? null
-          : () {
-              HapticFeedback.selectionClick();
-              onTap!();
-            },
-      child: Opacity(
-        opacity: enabled ? 1 : 0.45,
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
-          decoration: BoxDecoration(
-            color: danger
-                ? const Color(0xFFFBEAEA)
-                : _TagActionBar._chipBg,
-            borderRadius: BorderRadius.circular(999),
-            border: Border.all(
-              color: danger
-                  ? const Color(0xFFF0C4C4)
-                  : _TagActionBar._chipLine,
-            ),
-          ),
-          child: Text(
-            label,
-            style: TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w600,
-              color: fg,
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 class _EmptyTags extends StatelessWidget {
   const _EmptyTags({
     required this.label,
@@ -757,7 +538,7 @@ class CollectionTagsSectionHeader extends StatelessWidget {
           ),
           const SizedBox(height: 4),
           Text(
-            '点选后可看子层 · 子越多点越大 · 短拖改位',
+            '单击看列表 · 双击进子层 · 子越多点越大',
             style: TextStyle(
               fontSize: 12,
               height: 1.35,
@@ -793,7 +574,7 @@ class CollectionCreateModuleButton extends StatelessWidget {
         alignment: alignEnd ? Alignment.centerRight : Alignment.center,
         child: TextButton(
           onPressed: () {
-            HapticFeedback.selectionClick();
+            AppHaptics.select();
             onPressed();
           },
           style: TextButton.styleFrom(

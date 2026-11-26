@@ -14,6 +14,7 @@ class TagCanvasView extends StatefulWidget {
     super.key,
     required this.tags,
     required this.onTapTag,
+    this.onDoubleTapTag,
     this.onBlankTap,
     this.childCounts = const {},
     this.topInset = 0,
@@ -33,7 +34,10 @@ class TagCanvasView extends StatefulWidget {
   final List<Tag> tags;
   final ValueChanged<Tag> onTapTag;
 
-  /// 空白轻点（非拖/捏、未点在标签上）；用于收起底栏。
+  /// 双击标签（如看收藏）；与单击可并存。
+  final ValueChanged<Tag>? onDoubleTapTag;
+
+  /// 空白轻点（非拖/捏、未点在标签上）。
   final VoidCallback? onBlankTap;
 
   /// 各标签直接子数量；影响圆点大小。
@@ -825,6 +829,9 @@ class _TagCanvasViewState extends State<TagCanvasView> {
                                               : (dragged) => widget
                                                   .onNestTag!(dragged, tag),
                                       onTap: () => widget.onTapTag(tag),
+                                      onDoubleTap: widget.onDoubleTapTag == null
+                                          ? null
+                                          : () => widget.onDoubleTapTag!(tag),
                                       onDragStarted:
                                           widget.onDragStarted == null
                                               ? null
@@ -1102,6 +1109,7 @@ class _CanvasTagNode extends StatelessWidget {
     required this.color,
     required this.childCount,
     required this.onTap,
+    this.onDoubleTap,
     required this.draggable,
     required this.dimmed,
     required this.softDim,
@@ -1122,6 +1130,7 @@ class _CanvasTagNode extends StatelessWidget {
   final Color color;
   final int childCount;
   final VoidCallback onTap;
+  final VoidCallback? onDoubleTap;
   final bool draggable;
   final bool dimmed;
   final bool softDim;
@@ -1273,6 +1282,12 @@ class _CanvasTagNode extends StatelessWidget {
           HapticFeedback.selectionClick();
           onTap();
         },
+        onDoubleTap: onDoubleTap == null
+            ? null
+            : () {
+                HapticFeedback.selectionClick();
+                onDoubleTap!();
+              },
         onPanStart: onPanStart == null ? null : (_) => onPanStart!(),
         onPanUpdate: onPanUpdate == null
             ? null

@@ -52,7 +52,7 @@ class _CollectionPageState extends State<CollectionPage> {
   static const _bg = Color(0xFFF7F7FA);
   static const _blue = Color(0xFF2F6FED);
 
-  /// 引导：+新建 →（空库）添加 → 点选 → 短拖 → 长按挂下级 → 下钻子层。
+  /// 引导：+新建 →（空库）添加 → 点标签 → 短拖 → 长按挂下级 → 面包屑。
   static const _stepCreate = 0;
   static const _stepAddTag = 1;
   static const _stepSelect = 2;
@@ -156,10 +156,10 @@ class _CollectionPageState extends State<CollectionPage> {
     }
   }
 
-  /// 当前选中标签；`null` = 顶层新建
+  /// 当前面包屑层父标签；`null` = 顶层新建
   int? _createParentId;
 
-  /// 右上角「+」：有选中则挂其下，否则顶层新建
+  /// 右上角「+」：挂到当前面包屑层
   Future<void> _createAtCurrentLevel() async {
     if (_coachStep != null) return;
     await _addTagToModule(_createParentId);
@@ -295,7 +295,7 @@ class _CollectionPageState extends State<CollectionPage> {
       case _stepCreate:
         targetKey = _createModuleKey;
         title = '添加标签';
-        message = '点右上角「+」新建标签；若已点选某个标签，新建会挂到它下面。';
+        message = '点右上角「+」在当前层新建标签；先点进某层，再点「+」就会挂在那一层。';
         confirm = '下一步';
         holeRadius = 18;
         inflate = 4;
@@ -307,8 +307,8 @@ class _CollectionPageState extends State<CollectionPage> {
         holeRadius = 14;
       case _stepSelect:
         targetKey = _sampleTagKey;
-        title = '点选标签';
-        message = '点标签后，底栏可「看收藏」或「看子层」；要加子标签点右上角「+」。有下级的圆点更大。';
+        title = '点标签';
+        message = '单击看列表；有下级的圆点更大，双击进入子层。';
         confirm = '下一步';
         holeRadius = 14;
         inflate = 10;
@@ -328,8 +328,8 @@ class _CollectionPageState extends State<CollectionPage> {
         inflate = 10;
       default:
         targetKey = _sampleTagKey;
-        title = '看子层';
-        message = '画布默认只显示当前层。再点已选标签，或点底栏「看子层」，用面包屑返回。';
+        title = '面包屑';
+        message = '画布只显示当前层。点进子层后，用顶部面包屑返回；删除标签请到列表页。';
         confirm = '开始整理';
         holeRadius = 14;
         inflate = 10;
@@ -406,28 +406,6 @@ class _CollectionPageState extends State<CollectionPage> {
       await _tagModulesRepo.deleteModule(module.id);
       if (!mounted) return;
       AppToast.show(context, '已删除「${module.name}」');
-      await _load(quiet: true);
-    } on ApiException catch (e) {
-      if (!mounted) return;
-      AppToast.show(context, e.message);
-    } catch (_) {
-      if (!mounted) return;
-      AppToast.show(context, '删除失败');
-    }
-  }
-
-  Future<void> _deleteTag(Tag tag) async {
-    final ok = await showAppConfirmDialog(
-      context,
-      title: '删除标签',
-      message: '确定删除「${tag.name}」？下级标签会升到上一级；仅解除与条目的关联，不会删除内容。',
-      confirmLabel: '删除',
-    );
-    if (ok != true || !mounted) return;
-    try {
-      await _tagsRepo.deleteTag(tag.id);
-      if (!mounted) return;
-      AppToast.show(context, '已删除「${tag.name}」');
       await _load(quiet: true);
     } on ApiException catch (e) {
       if (!mounted) return;
@@ -680,7 +658,6 @@ class _CollectionPageState extends State<CollectionPage> {
                       onAddTag: _addTagToModule,
                       onRenameModule: _renameModule,
                       onDeleteModule: _deleteModule,
-                      onDeleteTag: _deleteTag,
                       onCreateModule: _createAtCurrentLevel,
                       onPathParentChanged: (parentId) {
                         _createParentId = parentId;
