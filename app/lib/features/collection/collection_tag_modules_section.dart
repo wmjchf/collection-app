@@ -291,6 +291,9 @@ class _CollectionTagModulesSectionState
                             draggingTagId: _draggingTagId,
                             draggable: widget.onPlaceTag != null,
                             onTapTag: _select,
+                            onBlankTap: _selected == null
+                                ? null
+                                : _clearSelection,
                             onNestTag: widget.onPlaceTag == null
                                 ? null
                                 : (dragged, target) =>
@@ -348,7 +351,6 @@ class _CollectionTagModulesSectionState
                         child: _TagActionBar(
                           tag: _selected!,
                           canDrill: _hasChildren(_selected!),
-                          onClose: _clearSelection,
                           onViewContent: () {
                             final t = _selected!;
                             _clearSelection();
@@ -491,7 +493,6 @@ class _TagActionBar extends StatelessWidget {
   const _TagActionBar({
     required this.tag,
     required this.canDrill,
-    required this.onClose,
     required this.onViewContent,
     required this.onDrill,
     this.onDelete,
@@ -499,7 +500,6 @@ class _TagActionBar extends StatelessWidget {
 
   final Tag tag;
   final bool canDrill;
-  final VoidCallback onClose;
   final VoidCallback onViewContent;
   final VoidCallback onDrill;
   final VoidCallback? onDelete;
@@ -531,61 +531,47 @@ class _TagActionBar extends StatelessWidget {
           ],
         ),
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 10, 8, 14),
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 14),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: Text.rich(
-                      TextSpan(
-                        children: [
-                          TextSpan(
-                            text: tag.name,
-                            style: const TextStyle(
-                              fontSize: 17,
-                              fontWeight: FontWeight.w700,
-                              height: 1.25,
-                              color: CollectionTagModulesSection.ink,
-                            ),
-                          ),
-                          TextSpan(
-                            text: '  ·  ${tag.itemCount}条内容',
-                            style: TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w500,
-                              height: 1.25,
-                              color: CollectionTagModulesSection.muted
-                                  .withValues(alpha: 0.95),
-                            ),
-                          ),
-                        ],
+              Center(
+                child: Container(
+                  width: 36,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFD8DCE3),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 10),
+              Text.rich(
+                TextSpan(
+                  children: [
+                    TextSpan(
+                      text: tag.name,
+                      style: const TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.w700,
+                        height: 1.25,
+                        color: CollectionTagModulesSection.ink,
                       ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
                     ),
-                  ),
-                  IconButton(
-                    onPressed: () {
-                      HapticFeedback.selectionClick();
-                      onClose();
-                    },
-                    tooltip: '关闭',
-                    visualDensity: VisualDensity.compact,
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(
-                      minWidth: 36,
-                      minHeight: 36,
+                    TextSpan(
+                      text: '  ·  ${tag.itemCount}条内容',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w500,
+                        height: 1.25,
+                        color: CollectionTagModulesSection.muted
+                            .withValues(alpha: 0.95),
+                      ),
                     ),
-                    icon: Icon(
-                      Icons.close_rounded,
-                      size: 22,
-                      color: CollectionTagModulesSection.muted
-                          .withValues(alpha: 0.9),
-                    ),
-                  ),
-                ],
+                  ],
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
               ),
               const SizedBox(height: 10),
               SingleChildScrollView(

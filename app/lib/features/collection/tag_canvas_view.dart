@@ -14,6 +14,7 @@ class TagCanvasView extends StatefulWidget {
     super.key,
     required this.tags,
     required this.onTapTag,
+    this.onBlankTap,
     this.childCounts = const {},
     this.topInset = 0,
     this.bottomControlsInset = 0,
@@ -31,6 +32,9 @@ class TagCanvasView extends StatefulWidget {
 
   final List<Tag> tags;
   final ValueChanged<Tag> onTapTag;
+
+  /// 空白轻点（非拖/捏、未点在标签上）；用于收起底栏。
+  final VoidCallback? onBlankTap;
 
   /// 各标签直接子数量；影响圆点大小。
   final Map<int, int> childCounts;
@@ -86,9 +90,20 @@ class _TagCanvasViewState extends State<TagCanvasView> {
   /// 手指按在标签上时关掉画布平移，避免和改位置抢手势。
   bool _fingerOnTag = false;
 
+  /// 按下瞬间是否落在标签上（子 Listener 先置位；抬起前由 down 快照，避免残留挡空白）。
+  bool _pointerOnTag = false;
+  bool _blankDownOnTag = false;
+
+  /// 空白轻点：外层 Listener 记位移，不依赖 InteractiveViewer 回调。
+  int? _blankPointer;
+  Offset? _blankDownGlobal;
+  bool _blankMoved = false;
+  int _blankPointersDown = 0;
+
   static const _minScale = 0.18;
   static const _maxScale = 2.4;
   static const _zoomStep = 1.22;
+  static const _blankTapSlop = 14.0;
   /// 缩放 ≥ 此值：全部显示文字；介于与 [_labelHubsAbove]：只显示枢纽名；更小：只留圆点。
   static const _labelAllAbove = 0.58;
   static const _labelHubsAbove = 0.34;
@@ -601,6 +616,54 @@ class _TagCanvasViewState extends State<TagCanvasView> {
     });
   }
 
+  void _onBlankPointerDown(PointerDownEvent e) {
+    _blankPointersDown++;
+    if (_blankPointersDown == 1) {
+      _blankPointer = e.pointer;
+      _blankDownGlobal = e.position;
+      _blankMoved = false;
+      // 子 Listener 已先跑；本轮点标签则为 true。顺带清掉点选后残留的 true。
+      _blankDownOnTag = _pointerOnTag;
+      _pointerOnTag = false;
+    } else {
+      _blankMoved = true; // 双指
+    }
+  }
+
+  void _onBlankPointerMove(PointerMoveEvent e) {
+    if (e.pointer != _blankPointer || _blankDownGlobal == null) return;
+    if ((e.position - _blankDownGlobal!).distance > _blankTapSlop) {
+      _blankMoved = true;
+    }
+  }
+
+  void _onBlankPointerUp(PointerUpEvent e) {
+    final wasBlankTap = e.pointer == _blankPointer &&
+        !_blankMoved &&
+        !_blankDownOnTag &&
+        _repositionId == null &&
+        widget.draggingTagId == null;
+    _blankPointersDown = math.max(0, _blankPointersDown - 1);
+    if (_blankPointersDown == 0) {
+      _blankPointer = null;
+      _blankDownGlobal = null;
+      _blankDownOnTag = false;
+      _pointerOnTag = false;
+    }
+    if (wasBlankTap) widget.onBlankTap?.call();
+  }
+
+  void _onBlankPointerCancel(PointerEvent e) {
+    _blankPointersDown = math.max(0, _blankPointersDown - 1);
+    if (_blankPointersDown == 0) {
+      _blankPointer = null;
+      _blankDownGlobal = null;
+      _blankMoved = true;
+      _blankDownOnTag = false;
+      _pointerOnTag = false;
+    }
+  }
+
   bool _emphasized(Tag tag) {
     final fn = widget.isEmphasized;
     if (fn == null) return true;
@@ -666,30 +729,47 @@ class _TagCanvasViewState extends State<TagCanvasView> {
                     ),
                   ),
                 ),
-                GestureDetector(
-                  onDoubleTap: _resetToHome,
-                  child: InteractiveViewer(
-                    transformationController: _transform,
-                    // 世界坐标比视口大，必须 false，否则内容被压回视口、标签易「消失」。
-                    constrained: false,
-                    minScale: _minScale,
-                    maxScale: _maxScale,
-                    // 大画布下有限 boundary 会因浮点误差把平移「弹回」原点；放开边界。
-                    boundaryMargin: const EdgeInsets.all(double.infinity),
-                    clipBehavior: Clip.none,
-                    panEnabled: canvasPan,
-                    scaleEnabled: true,
-                    child: SizedBox(
-                      width: _worldOf(size).width,
-                      height: _worldOf(size).height,
-                      child: ListenableBuilder(
-                        listenable: _transform,
-                        builder: (context, _) {
-                          final scale = _currentScale();
-                          return Stack(
-                            clipBehavior: Clip.none,
-                            children: [
-                              if (hubs.isNotEmpty)
+                Listener(
+                  behavior: HitTestBehavior.translucent,
+                  onPointerDown: widget.onBlankTap == null
+                      ? null
+                      : _onBlankPointerDown,
+                  onPointerMove: widget.onBlankTap == null
+                      ? null
+                      : _onBlankPointerMove,
+                  onPointerUp:
+                      widget.onBlankTap == null ? null : _onBlankPointerUp,
+                  onPointerCancel: widget.onBlankTap == null
+                      ? null
+                      : _onBlankPointerCancel,
+                  child: GestureDetector(
+                    onDoubleTap: _resetToHome,
+                    child: InteractiveViewer(
+                      transformationController: _transform,
+                      // 世界坐标比视口大，必须 false，否则内容被压回视口、标签易「消失」。
+                      constrained: false,
+                      minScale: _minScale,
+                      maxScale: _maxScale,
+                      // 大画布下有限 boundary 会因浮点误差把平移「弹回」原点；放开边界。
+                      boundaryMargin: const EdgeInsets.all(double.infinity),
+                      clipBehavior: Clip.none,
+                      panEnabled: canvasPan,
+                      scaleEnabled: true,
+                      child: SizedBox(
+                        width: _worldOf(size).width,
+                        height: _worldOf(size).height,
+                        child: ListenableBuilder(
+                          listenable: _transform,
+                          builder: (context, _) {
+                            final scale = _currentScale();
+                            return Stack(
+                              clipBehavior: Clip.none,
+                              children: [
+                                // Stack 空白默认不命中；透明底保证空白处也有命中目标。
+                                const Positioned.fill(
+                                  child: ColoredBox(color: Color(0x00000000)),
+                                ),
+                                if (hubs.isNotEmpty)
                                 Positioned.fill(
                                   child: CustomPaint(
                                     painter: _ParentChildLinkPainter(
@@ -754,12 +834,17 @@ class _TagCanvasViewState extends State<TagCanvasView> {
                                                 },
                                       onDragEnded: widget.onDragEnded,
                                       onFingerDown: () {
+                                        _pointerOnTag = true;
                                         if (widget.draggingTagId != null) {
                                           return;
                                         }
                                         setState(() => _fingerOnTag = true);
                                       },
                                       onFingerUp: () {
+                                        // 无空白监听时（未选中）立刻清掉，避免点选后残留挡第一次空白轻点。
+                                        if (widget.onBlankTap == null) {
+                                          _pointerOnTag = false;
+                                        }
                                         if (_repositionId != null) return;
                                         setState(() => _fingerOnTag = false);
                                       },
@@ -772,9 +857,10 @@ class _TagCanvasViewState extends State<TagCanvasView> {
                                     ),
                                   ),
                                 ),
-                            ],
-                          );
-                        },
+                              ],
+                            );
+                          },
+                        ),
                       ),
                     ),
                   ),
