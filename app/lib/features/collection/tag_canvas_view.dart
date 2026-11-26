@@ -15,6 +15,8 @@ class TagCanvasView extends StatefulWidget {
     required this.tags,
     required this.onTapTag,
     this.childCounts = const {},
+    this.topInset = 0,
+    this.bottomControlsInset = 0,
     this.isEmphasized,
     this.onDragStarted,
     this.onDragEnded,
@@ -32,6 +34,12 @@ class TagCanvasView extends StatefulWidget {
 
   /// 各标签直接子数量；影响圆点大小。
   final Map<int, int> childCounts;
+
+  /// 顶部安全区（叠面包屑时把散落/fit 下移，避免压字）。
+  final double topInset;
+
+  /// 右下角缩放钮上移量（叠底栏时避开，不改画布布局）。
+  final double bottomControlsInset;
 
   /// `null` 或恒 true = 全部实色；筛选时非匹配返回 false → 半透明。
   final bool Function(Tag tag)? isEmphasized;
@@ -405,18 +413,20 @@ class _TagCanvasViewState extends State<TagCanvasView> {
     return Size(_stableW!, _stableH!);
   }
 
+  double get _edgeTop => _edge + widget.topInset;
+
   double _spanX(Size home) =>
       math.max(1.0, home.width - _itemW - 2 * _edge);
 
   double _spanY(Size home) =>
-      math.max(1.0, home.height - _itemH - 2 * _edge);
+      math.max(1.0, home.height - _itemH - _edge - _edgeTop);
 
   /// 可放置世界：按内容归一化范围放大，再加四周 pad。
   Size _worldOf(Size home) {
     final contentW =
         _edge * 2 + _itemW + _contentNormExtent.width * _spanX(home);
     final contentH =
-        _edge * 2 + _itemH + _contentNormExtent.height * _spanY(home);
+        _edge + _edgeTop + _itemH + _contentNormExtent.height * _spanY(home);
     return Size(
       contentW + _worldPad * 2,
       contentH + _worldPad * 2,
@@ -435,24 +445,24 @@ class _TagCanvasViewState extends State<TagCanvasView> {
   Offset _normToPixel(Offset n, Size home) {
     return Offset(
       _worldPad + _edge + n.dx * _spanX(home),
-      _worldPad + _edge + n.dy * _spanY(home),
+      _worldPad + _edgeTop + n.dy * _spanY(home),
     );
   }
 
   Offset _pixelToNorm(Offset pixel, Size home) {
     return Offset(
       (pixel.dx - _worldPad - _edge) / _spanX(home),
-      (pixel.dy - _worldPad - _edge) / _spanY(home),
+      (pixel.dy - _worldPad - _edgeTop) / _spanY(home),
     );
   }
 
   Offset _clampPixel(Offset pixel, Size home) {
     final world = _worldOf(home);
     final maxX = math.max(_edge, world.width - _itemW - _edge);
-    final maxY = math.max(_edge, world.height - _itemH - _edge);
+    final maxY = math.max(_edgeTop, world.height - _itemH - _edge);
     return Offset(
       pixel.dx.clamp(_edge, maxX),
-      pixel.dy.clamp(_edge, maxY),
+      pixel.dy.clamp(_edgeTop, maxY),
     );
   }
 
@@ -480,8 +490,9 @@ class _TagCanvasViewState extends State<TagCanvasView> {
       return _homeTransform();
     }
     const margin = 28.0;
+    final usableH = math.max(1.0, viewport.height - widget.topInset);
     final sx = viewport.width / (bounds.width + margin * 2);
-    final sy = viewport.height / (bounds.height + margin * 2);
+    final sy = usableH / (bounds.height + margin * 2);
     double scale;
     if (sy < sx * 0.62) {
       // 过高：按宽度 fit，高度超出部分靠平移浏览
@@ -492,24 +503,27 @@ class _TagCanvasViewState extends State<TagCanvasView> {
 
     // 过高时锚在内容顶部附近，而不是正中（否则首屏大片空白）
     final cx = bounds.center.dx;
+    final viewCy = widget.topInset + usableH / 2;
     final cy = sy < sx * 0.62
-        ? bounds.top + (viewport.height / scale) * 0.42
+        ? bounds.top + (usableH / scale) * 0.42
         : bounds.center.dy;
     return Matrix4.identity()
-      ..translateByDouble(viewport.width / 2, viewport.height / 2, 0, 1)
+      ..translateByDouble(viewport.width / 2, viewCy, 0, 1)
       ..scaleByDouble(scale, scale, 1, 1)
       ..translateByDouble(-cx, -cy, 0, 1);
   }
 
+  String get _fitKey => '$_layoutKey|ti=${widget.topInset.round()}';
+
   void _scheduleFitIfNeeded(Size home) {
-    if (_fittedLayoutKey == _layoutKey || _fitScheduled) return;
+    if (_fittedLayoutKey == _fitKey || _fitScheduled) return;
     if (_normById.isEmpty) return;
     _fitScheduled = true;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _fitScheduled = false;
       if (!mounted) return;
-      if (_fittedLayoutKey == _layoutKey) return;
-      _fittedLayoutKey = _layoutKey;
+      if (_fittedLayoutKey == _fitKey) return;
+      _fittedLayoutKey = _fitKey;
       _transform.value = _fitTransform(home);
     });
   }
@@ -767,7 +781,7 @@ class _TagCanvasViewState extends State<TagCanvasView> {
                 ),
                 Positioned(
                   right: 10,
-                  bottom: 10,
+                  bottom: 10 + widget.bottomControlsInset,
                   child: _CanvasZoomControls(
                     onZoomIn: () => _zoomBy(_zoomStep),
                     onZoomOut: () => _zoomBy(1 / _zoomStep),

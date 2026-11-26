@@ -6,7 +6,7 @@ import 'package:super_collection/features/collection/tag_models.dart';
 import 'package:super_collection/features/collection/tag_module_models.dart';
 
 /// 标签页：只画当前层（短拖改位 / 捏合缩放 / 长按挂下级）；
-/// 点选后可查看内容 / 进入子层 / 加子；子越多圆点越大；不做搜索。
+/// 点选后可看收藏 / 看子层；加子统一走右上角「+」；子越多圆点越大。
 class CollectionTagModulesSection extends StatefulWidget {
   const CollectionTagModulesSection({
     super.key,
@@ -164,14 +164,17 @@ class _CollectionTagModulesSectionState
       return;
     }
     setState(() => _selected = tag);
+    _notifyPathParent();
   }
 
   void _clearSelection() {
     setState(() => _selected = null);
+    _notifyPathParent();
   }
 
+  /// 「+」挂载目标：有点选则挂其下，否则挂当前面包屑层。
   void _notifyPathParent() {
-    widget.onPathParentChanged?.call(_focus?.id);
+    widget.onPathParentChanged?.call(_selected?.id ?? _focus?.id);
   }
 
   void _goRoot() {
@@ -261,75 +264,109 @@ class _CollectionTagModulesSectionState
                 ),
                 const SizedBox(height: 10),
               ],
-              Padding(
-                padding: const EdgeInsets.fromLTRB(8, 0, 12, 0),
-                child: _BreadcrumbBar(
-                  path: _path,
-                  dropEnabled: widget.onPlaceTag != null,
-                  onRoot: _goRoot,
-                  onTapIndex: _goToBreadcrumb,
-                  onAcceptRoot: (tag) => _place(tag, null),
-                  onAcceptAt: (tag, parent) => _place(tag, parent.id),
-                ),
-              ),
-              const SizedBox(height: 8),
               Expanded(
-                child: empty
-                    ? Padding(
-                        padding: const EdgeInsets.fromLTRB(14, 0, 12, 0),
-                        child: _EmptyTags(
-                          label: '还没有标签',
-                          onAdd: () => widget.onAddTag(_focus?.id),
-                          addButtonKey: widget.addTagKey,
+                child: Stack(
+                  fit: StackFit.expand,
+                  clipBehavior: Clip.none,
+                  children: [
+                    empty
+                        ? Padding(
+                            padding: const EdgeInsets.fromLTRB(14, 44, 12, 0),
+                            child: _EmptyTags(
+                              label: '还没有标签',
+                              onAdd: () => widget.onAddTag(_focus?.id),
+                              addButtonKey: widget.addTagKey,
+                            ),
+                          )
+                        : TagCanvasView(
+                            tags: canvasTags,
+                            childCounts: _childCounts,
+                            // 给叠层面包屑留空，点阵仍铺满整卡
+                            topInset: 44,
+                            // 底栏叠上时只抬缩放钮，不改画布尺寸
+                            bottomControlsInset:
+                                _selected != null ? 118 : 0,
+                            sampleTagKey: widget.sampleTagKey,
+                            selectedTagId: _selected?.id,
+                            draggingTagId: _draggingTagId,
+                            draggable: widget.onPlaceTag != null,
+                            onTapTag: _select,
+                            onNestTag: widget.onPlaceTag == null
+                                ? null
+                                : (dragged, target) =>
+                                    _place(dragged, target.id),
+                            onDragStarted: (tag) {
+                              setState(() {
+                                _draggingTagId = tag.id;
+                                _selected = null;
+                              });
+                              _notifyPathParent();
+                            },
+                            onDragEnded: () {
+                              setState(() => _draggingTagId = null);
+                            },
+                          ),
+                    Positioned(
+                      left: 0,
+                      right: 0,
+                      top: 0,
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                            colors: [
+                              CollectionTagModulesSection.panel
+                                  .withValues(alpha: 0.94),
+                              CollectionTagModulesSection.panel
+                                  .withValues(alpha: 0.70),
+                              CollectionTagModulesSection.panel
+                                  .withValues(alpha: 0.0),
+                            ],
+                            stops: const [0.0, 0.52, 1.0],
+                          ),
                         ),
-                      )
-                    : TagCanvasView(
-                        tags: canvasTags,
-                        childCounts: _childCounts,
-                        sampleTagKey: widget.sampleTagKey,
-                        selectedTagId: _selected?.id,
-                        draggingTagId: _draggingTagId,
-                        draggable: widget.onPlaceTag != null,
-                        onTapTag: _select,
-                        onNestTag: widget.onPlaceTag == null
-                            ? null
-                            : (dragged, target) =>
-                                _place(dragged, target.id),
-                        onDragStarted: (tag) {
-                          setState(() {
-                            _draggingTagId = tag.id;
-                            _selected = null;
-                          });
-                        },
-                        onDragEnded: () {
-                          setState(() => _draggingTagId = null);
-                        },
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(8, 2, 12, 22),
+                          child: _BreadcrumbBar(
+                            path: _path,
+                            dropEnabled: widget.onPlaceTag != null,
+                            onRoot: _goRoot,
+                            onTapIndex: _goToBreadcrumb,
+                            onAcceptRoot: (tag) => _place(tag, null),
+                            onAcceptAt: (tag, parent) =>
+                                _place(tag, parent.id),
+                          ),
+                        ),
                       ),
-              ),
-              if (_selected != null)
-                _TagActionBar(
-                  tag: _selected!,
-                  canDrill: _hasChildren(_selected!),
-                  onClose: _clearSelection,
-                  onViewContent: () {
-                    final t = _selected!;
-                    _clearSelection();
-                    widget.onOpenTag(t);
-                  },
-                  onDrill: () => _drillInto(_selected!),
-                  onAddChild: () {
-                    final id = _selected!.id;
-                    _clearSelection();
-                    widget.onAddTag(id);
-                  },
-                  onDelete: widget.onDeleteTag == null
-                      ? null
-                      : () {
-                          final t = _selected!;
-                          _clearSelection();
-                          widget.onDeleteTag!(t);
-                        },
+                    ),
+                    if (_selected != null)
+                      Positioned(
+                        left: 0,
+                        right: 0,
+                        bottom: 0,
+                        child: _TagActionBar(
+                          tag: _selected!,
+                          canDrill: _hasChildren(_selected!),
+                          onClose: _clearSelection,
+                          onViewContent: () {
+                            final t = _selected!;
+                            _clearSelection();
+                            widget.onOpenTag(t);
+                          },
+                          onDrill: () => _drillInto(_selected!),
+                          onDelete: widget.onDeleteTag == null
+                              ? null
+                              : () {
+                                  final t = _selected!;
+                                  _clearSelection();
+                                  widget.onDeleteTag!(t);
+                                },
+                        ),
+                      ),
+                  ],
                 ),
+              ),
             ],
           ),
         );
@@ -418,10 +455,10 @@ class _Crumb extends StatelessWidget {
           label,
           style: TextStyle(
             fontSize: 15,
-            fontWeight: active ? FontWeight.w700 : FontWeight.w500,
+            fontWeight: active ? FontWeight.w600 : FontWeight.w500,
             color: active
-                ? CollectionTagModulesSection.ink
-                : CollectionTagModulesSection.muted,
+                ? CollectionTagModulesSection.ink.withValues(alpha: 0.88)
+                : CollectionTagModulesSection.muted.withValues(alpha: 0.85),
           ),
         ),
       ),
@@ -457,7 +494,6 @@ class _TagActionBar extends StatelessWidget {
     required this.onClose,
     required this.onViewContent,
     required this.onDrill,
-    required this.onAddChild,
     this.onDelete,
   });
 
@@ -466,7 +502,6 @@ class _TagActionBar extends StatelessWidget {
   final VoidCallback onClose;
   final VoidCallback onViewContent;
   final VoidCallback onDrill;
-  final VoidCallback onAddChild;
   final VoidCallback? onDelete;
 
   static const _chipBg = Color(0xFFF3F5F8);
@@ -475,7 +510,7 @@ class _TagActionBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(14, 8, 12, 0),
+      padding: const EdgeInsets.fromLTRB(14, 8, 12, 10),
       child: Container(
         decoration: BoxDecoration(
           color: Colors.white,
@@ -558,21 +593,16 @@ class _TagActionBar extends StatelessWidget {
                 child: Row(
                   children: [
                     _ActionChip(
-                      label: '查看内容',
+                      label: '看收藏',
                       onTap: onViewContent,
                     ),
                     if (canDrill) ...[
                       const SizedBox(width: 8),
                       _ActionChip(
-                        label: '进入子标签',
+                        label: '看子层',
                         onTap: onDrill,
                       ),
                     ],
-                    const SizedBox(width: 8),
-                    _ActionChip(
-                      label: '添加子标签',
-                      onTap: onAddChild,
-                    ),
                     if (onDelete != null) ...[
                       const SizedBox(width: 8),
                       _ActionChip(
@@ -741,7 +771,7 @@ class CollectionTagsSectionHeader extends StatelessWidget {
           ),
           const SizedBox(height: 4),
           Text(
-            '点选后可进入子层 · 子越多点越大 · 短拖改位',
+            '点选后可看子层 · 子越多点越大 · 短拖改位',
             style: TextStyle(
               fontSize: 12,
               height: 1.35,

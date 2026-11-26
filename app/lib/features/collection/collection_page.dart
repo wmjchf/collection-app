@@ -308,7 +308,7 @@ class _CollectionPageState extends State<CollectionPage> {
       case _stepSelect:
         targetKey = _sampleTagKey;
         title = '点选标签';
-        message = '点标签后，底栏可「查看内容」「进入子标签」或「添加子标签」。有下级的圆点更大。';
+        message = '点标签后，底栏可「看收藏」或「看子层」；要加子标签点右上角「+」。有下级的圆点更大。';
         confirm = '下一步';
         holeRadius = 14;
         inflate = 10;
@@ -328,8 +328,8 @@ class _CollectionPageState extends State<CollectionPage> {
         inflate = 10;
       default:
         targetKey = _sampleTagKey;
-        title = '进入子层';
-        message = '画布默认只显示当前层。再点已选标签，或点底栏「进入子标签」，用面包屑返回。';
+        title = '看子层';
+        message = '画布默认只显示当前层。再点已选标签，或点底栏「看子层」，用面包屑返回。';
         confirm = '开始整理';
         holeRadius = 14;
         inflate = 10;
