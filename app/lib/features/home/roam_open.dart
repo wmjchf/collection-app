@@ -43,7 +43,7 @@ Future<bool?> openRoamSnippet(
         initialItem: item,
         openEntry: 'roam',
         focusAnnotationId: snippet.annotationId,
-        openNoteOnLaunch: snippet.isThought,
+        openNoteOnLaunch: snippet.isNoteEntry,
       ),
     ),
   );

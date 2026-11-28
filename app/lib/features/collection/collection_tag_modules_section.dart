@@ -5,7 +5,7 @@ import 'package:super_collection/features/collection/tag_models.dart';
 import 'package:super_collection/features/collection/tag_module_models.dart';
 
 /// 标签页：只画当前层（短拖改位 / 捏合缩放 / 长按挂下级）；
-/// 单击看列表；双击有子则下钻；删除在列表页；「+」挂当前面包屑层。
+/// 单击看列表；双击进子层（叶子也可进空层加子）；删除在列表页；「+」挂当前面包屑层。
 class CollectionTagModulesSection extends StatefulWidget {
   const CollectionTagModulesSection({
     super.key,
@@ -115,11 +115,6 @@ class _CollectionTagModulesSectionState
     };
   }
 
-  bool _hasChildren(Tag tag) {
-    final kids = _childrenMap(_allTags())[tag.id];
-    return kids != null && kids.isNotEmpty;
-  }
-
   void _place(Tag tag, int? parentId) {
     if (widget.onPlaceTag == null) return;
     if (tag.effectiveParentId == parentId) return;
@@ -154,11 +149,9 @@ class _CollectionTagModulesSectionState
     widget.onOpenTag(tag);
   }
 
-  /// 双击：有子则下钻。
+  /// 双击：进入该标签的子层（无子时进空层，便于「+」加子）。
   void _onDoubleTapTag(Tag tag) {
-    if (_hasChildren(tag)) {
-      _drillInto(tag);
-    }
+    _drillInto(tag);
   }
 
   /// 「+」挂载目标：当前面包屑层。
@@ -185,7 +178,6 @@ class _CollectionTagModulesSectionState
   }
 
   void _drillInto(Tag tag) {
-    if (!_hasChildren(tag)) return;
     AppHaptics.select();
     setState(() {
       final byId = {for (final t in _allTags()) t.id: t};
@@ -259,7 +251,7 @@ class _CollectionTagModulesSectionState
                         ? Padding(
                             padding: const EdgeInsets.fromLTRB(14, 44, 12, 0),
                             child: _EmptyTags(
-                              label: '还没有标签',
+                              label: _focus == null ? '还没有标签' : '还没有子标签',
                               onAdd: () => widget.onAddTag(_focus?.id),
                               addButtonKey: widget.addTagKey,
                             ),
@@ -538,7 +530,7 @@ class CollectionTagsSectionHeader extends StatelessWidget {
           ),
           const SizedBox(height: 4),
           Text(
-            '单击看列表 · 双击进子层 · 子越多点越大',
+            '单击看列表 · 双击进子层（可加子）· 子越多点越大',
             style: TextStyle(
               fontSize: 12,
               height: 1.35,

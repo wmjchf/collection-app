@@ -390,6 +390,7 @@ function subtitleFor(kind, item) {
 }
 
 function roamKindLabel(snippet) {
+  if (snippet?.kind === 'article') return '文章';
   if (snippet?.kind === 'thought') return '感想';
   if (snippet?.kind === 'note') return '批注';
   return '高亮';

@@ -24,7 +24,9 @@ function mapRoamRow(row) {
   let kind = 'highlight';
   let quote = null;
   let body = text;
-  if (source === 'thought') {
+  if (source === 'article') {
+    kind = 'article';
+  } else if (source === 'thought') {
     kind = 'thought';
   } else if (extra) {
     kind = 'note';
@@ -48,7 +50,7 @@ function mapRoamRow(row) {
   };
 }
 
-/** 想法 JSON 拆成多条漫游卡片 */
+/** 想法 / 文章 JSON 拆成多条漫游卡片（article 保留 kind，其余笔记条目标 thought） */
 function expandRoamRows(rows) {
   const out = [];
   for (const row of rows) {
@@ -58,9 +60,11 @@ function expandRoamRows(rows) {
     }
     const thoughts = parseItemThoughts(row.text);
     for (const t of thoughts) {
+      const noteKind = t.kind === 'article' ? 'article' : 'thought';
       out.push(
         mapRoamRow({
           ...row,
+          kind: noteKind,
           sid: `t:${row.item_id}:${t.id}`,
           text: t.text,
           sort_at: t.createdAt || row.sort_at,

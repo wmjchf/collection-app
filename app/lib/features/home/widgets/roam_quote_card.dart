@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:super_collection/features/agent/agent_markdown.dart';
 import 'package:super_collection/features/home/home_format.dart';
 import 'package:super_collection/features/home/roam_models.dart';
 
@@ -256,16 +257,31 @@ class RoamQuoteCard extends StatelessWidget {
         : null;
 
     Widget bodyText({int? lines}) {
+      const style = TextStyle(
+        fontSize: _bodySize,
+        height: _bodyHeight,
+        color: _text,
+      );
+      // 成文：Markdown；叠卡/限高裁切顶部（MD 不便按行省略）
+      if (snippet.isArticle && !hasQuote) {
+        final md = AgentMarkdown(primary, style: style);
+        if (lines == null) return md;
+        final maxH = _bodySize * _bodyHeight * lines;
+        return SizedBox(
+          height: maxH,
+          width: double.infinity,
+          child: SingleChildScrollView(
+            physics: const NeverScrollableScrollPhysics(),
+            child: md,
+          ),
+        );
+      }
       return Text(
         primary,
         maxLines: lines,
         overflow:
             lines == null ? TextOverflow.visible : TextOverflow.ellipsis,
-        style: const TextStyle(
-          fontSize: _bodySize,
-          height: _bodyHeight,
-          color: _text,
-        ),
+        style: style,
       );
     }
 

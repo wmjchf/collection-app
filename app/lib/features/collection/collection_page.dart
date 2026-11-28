@@ -308,7 +308,7 @@ class _CollectionPageState extends State<CollectionPage> {
       case _stepSelect:
         targetKey = _sampleTagKey;
         title = '点标签';
-        message = '单击看列表；有下级的圆点更大，双击进入子层。';
+        message = '单击看列表；双击进入子层（没有子也可进，方便加子）；有下级的圆点更大。';
         confirm = '下一步';
         holeRadius = 14;
         inflate = 10;

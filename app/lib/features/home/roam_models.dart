@@ -11,24 +11,28 @@ class RoamSnippet {
     this.createdAt,
   });
 
-  /// highlight=标注原文，note=批注，thought=感想
+  /// highlight=标注原文，note=批注，thought=感想，article=笔记文章（MD）
   final String id;
   final String kind;
   final String text;
   final String? quote;
   final int itemId;
   final int? annotationId;
-  /// `body` 或 `transcript:<segmentKey>`；感想为 null
+  /// `body` 或 `transcript:<segmentKey>`；感想/文章为 null
   final String? annotationSource;
   final String? itemTitle;
   final DateTime? createdAt;
 
   bool get isNote => kind == 'note';
   bool get isThought => kind == 'thought';
+  bool get isArticle => kind == 'article';
+  /// 感想或成文：点开进阅读页并打开笔记
+  bool get isNoteEntry => isThought || isArticle;
   bool get isTranscriptAnnotation =>
       (annotationSource ?? '').startsWith('transcript:');
 
   String get kindLabel {
+    if (isArticle) return '文章';
     if (isThought) return '感想';
     if (isNote) return '批注';
     return '高亮';

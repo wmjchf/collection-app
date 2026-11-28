@@ -140,10 +140,10 @@ class _RoamPlayerPageState extends State<RoamPlayerPage>
   }
 
   Future<void> _shareSnippet(RoamSnippet snippet, Rect? origin) async {
-    final thought = snippet.isThought;
+    final noteEntry = snippet.isNoteEntry;
     final passage = (snippet.quote ?? '').trim();
     final isAnnotation = snippet.isNote && passage.isNotEmpty;
-    final quote = thought
+    final quote = noteEntry
         ? snippet.text.trim()
         : (isAnnotation ? passage : snippet.text.trim());
     if (quote.isEmpty) return;
@@ -158,7 +158,7 @@ class _RoamPlayerPageState extends State<RoamPlayerPage>
         link: (item.canonicalUrl ?? item.url).trim(),
         coverUrl: item.shareCoverUrl,
         pageUrl: item.sourcePageUrl,
-        kind: thought
+        kind: noteEntry
             ? ReadingShareKind.note
             : (isAnnotation
                 ? ReadingShareKind.annotation
