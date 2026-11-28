@@ -3,6 +3,7 @@ import 'package:super_collection/features/home/roam_models.dart';
 import 'package:super_collection/features/items/item_reading_page.dart';
 import 'package:super_collection/features/items/item_transcript_page.dart';
 import 'package:super_collection/features/items/items_repository.dart';
+import 'package:super_collection/features/items/reading_item_notes_sheet.dart';
 
 /// 漫游点开：文稿标注底部滑出文稿，其余进阅读页。
 Future<bool?> openRoamSnippet(
@@ -44,6 +45,11 @@ Future<bool?> openRoamSnippet(
         openEntry: 'roam',
         focusAnnotationId: snippet.annotationId,
         openNoteOnLaunch: snippet.isNoteEntry,
+        openNoteInitialFilter: snippet.isArticle
+            ? ReadingNotesFilter.article
+            : snippet.isThought
+                ? ReadingNotesFilter.thought
+                : null,
       ),
     ),
   );

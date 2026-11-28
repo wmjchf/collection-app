@@ -57,6 +57,7 @@ class ItemReadingPage extends StatefulWidget {
     this.openEntry = 'unknown',
     this.focusAnnotationId,
     this.openNoteOnLaunch = false,
+    this.openNoteInitialFilter,
     this.embedded = false,
     this.onDeleted,
   });
@@ -70,8 +71,11 @@ class ItemReadingPage extends StatefulWidget {
   /// 打开后滚动到该标注/批注在正文中的位置（如漫游进入）
   final int? focusAnnotationId;
 
-  /// 打开后直接弹出笔记（如漫游点想法进入）
+  /// 打开后直接弹出笔记（如漫游点想法/文章进入）
   final bool openNoteOnLaunch;
+
+  /// 与 [openNoteOnLaunch] 配套；默认想法筛
+  final ReadingNotesFilter? openNoteInitialFilter;
 
   /// iPad 分栏嵌入：无返回钮，删除后回调宿主而非 pop。
   final bool embedded;
@@ -172,7 +176,12 @@ class _ItemReadingPageState extends State<ItemReadingPage> {
     _noteSheetLaunched = true;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      unawaited(_onNote(initialFilter: ReadingNotesFilter.thought));
+      unawaited(
+        _onNote(
+          initialFilter:
+              widget.openNoteInitialFilter ?? ReadingNotesFilter.thought,
+        ),
+      );
     });
   }
 

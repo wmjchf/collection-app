@@ -8,7 +8,8 @@ import 'package:super_collection/features/collection/tag_dot_colors.dart';
 import 'package:super_collection/features/collection/tag_models.dart';
 
 /// 二维画布：当前层标签散落（点上字下）；
-/// [childCounts] 越大圆点越大；短拖改位、长按挂下级、捏合/按钮缩放。
+/// [childCounts] 越大圆点越大；短拖改位、长按挂下级、捏合/按钮缩放；
+/// 点位与视口（缩放/平移）按 [viewportKey] 本地记住。
 class TagCanvasView extends StatefulWidget {
   const TagCanvasView({
     super.key,
@@ -19,6 +20,7 @@ class TagCanvasView extends StatefulWidget {
     this.childCounts = const {},
     this.topInset = 0,
     this.bottomControlsInset = 0,
+    this.viewportKey = 'root',
     this.isEmphasized,
     this.onDragStarted,
     this.onDragEnded,
@@ -33,6 +35,9 @@ class TagCanvasView extends StatefulWidget {
 
   final List<Tag> tags;
   final ValueChanged<Tag> onTapTag;
+
+  /// 视口存档作用域：面包屑层（`root` / 父标签 id）。
+  final String viewportKey;
 
   /// 双击标签（如看收藏）；与单击可并存。
   final ValueChanged<Tag>? onDoubleTapTag;
@@ -127,16 +132,28 @@ class _TagCanvasViewState extends State<TagCanvasView> {
   /// 内容在归一化坐标中的宽高（可 >1，超出首屏）。
   Size _contentNormExtent = const Size(1, 1);
 
-  /// 已对哪次布局做过自动 fit；标签集变化后重做。
+  /// 已对哪次布局做过自动 fit / 恢复视口；标签集变化后重做。
   String? _fittedLayoutKey;
   bool _fitScheduled = false;
+
+  /// 从本地读到的视口；应用后清空。
+  Matrix4? _pendingViewport;
+  bool _viewportLoadScheduled = false;
 
   Matrix4 _homeTransform() =>
       Matrix4.translationValues(-_worldPad, -_worldPad, 0);
 
+  void _persistViewport() {
+    TagCanvasLayoutPrefs.saveViewport(
+      widget.viewportKey,
+      _transform.value,
+    );
+  }
+
   void _resetToHome() {
     final home = Size(_stableW ?? 320, _stableH ?? 280);
     _transform.value = _fitTransform(home);
+    _persistViewport();
   }
 
   /// 相对视口中心缩放；[factor] >1 放大，<1 缩小。
@@ -155,6 +172,7 @@ class _TagCanvasViewState extends State<TagCanvasView> {
       ..scaleByDouble(ratio, ratio, 1, 1)
       ..translateByDouble(-sceneFocal.dx, -sceneFocal.dy, 0, 1);
     _transform.value = m;
+    _persistViewport();
   }
 
   @override
@@ -162,13 +180,22 @@ class _TagCanvasViewState extends State<TagCanvasView> {
     super.initState();
     _transform.value = _homeTransform();
     _ensureNormLayout(widget.tags);
-    _loadUserPositions();
+    _loadUserLayout();
   }
 
   @override
   void didUpdateWidget(covariant TagCanvasView oldWidget) {
     super.didUpdateWidget(oldWidget);
-    _ensureNormLayout(widget.tags);
+    final scopeChanged = oldWidget.viewportKey != widget.viewportKey;
+    if (scopeChanged) {
+      _persistViewportFor(oldWidget.viewportKey);
+      _pendingViewport = null;
+      _fittedLayoutKey = null;
+    }
+    _ensureNormLayout(widget.tags, preserveViewport: !scopeChanged);
+    if (scopeChanged) {
+      _loadViewportOnly();
+    }
     // 长按挂层级开始时取消未完成的改位。
     if (widget.draggingTagId != null &&
         oldWidget.draggingTagId == null &&
@@ -181,17 +208,39 @@ class _TagCanvasViewState extends State<TagCanvasView> {
 
   @override
   void dispose() {
+    _persistViewport();
     _transform.dispose();
     super.dispose();
   }
 
-  Future<void> _loadUserPositions() async {
+  Future<void> _loadUserLayout() async {
     final loaded = await TagCanvasLayoutPrefs.load();
+    final viewport =
+        await TagCanvasLayoutPrefs.loadViewport(widget.viewportKey);
     if (!mounted) return;
     setState(() {
       _userNorm = loaded;
       _applyUserOverlay();
+      _pendingViewport = viewport;
+      _fittedLayoutKey = null;
     });
+  }
+
+  Future<void> _loadViewportOnly() async {
+    if (_viewportLoadScheduled) return;
+    _viewportLoadScheduled = true;
+    final viewport =
+        await TagCanvasLayoutPrefs.loadViewport(widget.viewportKey);
+    _viewportLoadScheduled = false;
+    if (!mounted) return;
+    setState(() {
+      _pendingViewport = viewport;
+      _fittedLayoutKey = null;
+    });
+  }
+
+  void _persistViewportFor(String scope) {
+    TagCanvasLayoutPrefs.saveViewport(scope, _transform.value);
   }
 
   void _applyUserOverlay() {
@@ -211,12 +260,13 @@ class _TagCanvasViewState extends State<TagCanvasView> {
     return '$_layoutVersion:${ids.join(',')}|${edges.join(',')}';
   }
 
-  void _ensureNormLayout(List<Tag> tags) {
+  void _ensureNormLayout(List<Tag> tags, {bool preserveViewport = true}) {
     final key = _idsKey(tags);
     if (key == _layoutKey && _normById.isNotEmpty) {
       _applyUserOverlay();
       return;
     }
+    final hadLayout = _layoutKey.isNotEmpty;
     _layoutKey = key;
     _fittedLayoutKey = null;
     final hubs = _hubIds(tags);
@@ -224,6 +274,10 @@ class _TagCanvasViewState extends State<TagCanvasView> {
         ? _computeNormLayout(tags)
         : _computeTreeLayout(tags);
     _applyUserOverlay();
+    // 同层增删标签时保留当前缩放/平移，避免被自动 fit 冲掉
+    if (hadLayout && preserveViewport) {
+      _pendingViewport = Matrix4.copy(_transform.value);
+    }
   }
 
   /// 同屏内有子标签的节点 = 枢纽（画同心环 + 连线起点）
@@ -519,6 +573,8 @@ class _TagCanvasViewState extends State<TagCanvasView> {
     } else {
       scale = math.min(math.min(sx, sy), 1.0).clamp(_minScale, _maxScale);
     }
+    // 默认再缩一档（约等于点一次缩小），留出呼吸感
+    scale = (scale / _zoomStep).clamp(_minScale, _maxScale);
 
     // 过高时锚在内容顶部附近，而不是正中（否则首屏大片空白）
     final cx = bounds.center.dx;
@@ -543,7 +599,13 @@ class _TagCanvasViewState extends State<TagCanvasView> {
       if (!mounted) return;
       if (_fittedLayoutKey == _fitKey) return;
       _fittedLayoutKey = _fitKey;
-      _transform.value = _fitTransform(home);
+      final pending = _pendingViewport;
+      _pendingViewport = null;
+      if (pending != null) {
+        _transform.value = pending;
+      } else {
+        _transform.value = _fitTransform(home);
+      }
     });
   }
 
@@ -746,8 +808,6 @@ class _TagCanvasViewState extends State<TagCanvasView> {
                   onPointerCancel: widget.onBlankTap == null
                       ? null
                       : _onBlankPointerCancel,
-                  child: GestureDetector(
-                    onDoubleTap: _resetToHome,
                     child: InteractiveViewer(
                       transformationController: _transform,
                       // 世界坐标比视口大，必须 false，否则内容被压回视口、标签易「消失」。
@@ -759,6 +819,7 @@ class _TagCanvasViewState extends State<TagCanvasView> {
                       clipBehavior: Clip.none,
                       panEnabled: canvasPan,
                       scaleEnabled: true,
+                      onInteractionEnd: (_) => _persistViewport(),
                       child: SizedBox(
                         width: _worldOf(size).width,
                         height: _worldOf(size).height,
@@ -871,7 +932,6 @@ class _TagCanvasViewState extends State<TagCanvasView> {
                       ),
                     ),
                   ),
-                ),
                 Positioned(
                   right: 10,
                   bottom: 10 + widget.bottomControlsInset,

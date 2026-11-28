@@ -261,6 +261,9 @@ class _CollectionTagModulesSectionState
                             childCounts: _childCounts,
                             // 给叠层面包屑留空，点阵仍铺满整卡
                             topInset: 44,
+                            viewportKey: _focus == null
+                                ? 'root'
+                                : '${_focus!.id}',
                             sampleTagKey: widget.sampleTagKey,
                             draggingTagId: _draggingTagId,
                             draggable: widget.onPlaceTag != null,

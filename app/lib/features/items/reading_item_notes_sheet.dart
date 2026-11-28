@@ -535,8 +535,6 @@ class _ReadingItemNotesSheetState extends State<_ReadingItemNotesSheet> {
               height: 1.55,
               color: _text,
             ),
-            maxLines: 4,
-            overflow: TextOverflow.ellipsis,
           ),
         ],
       );

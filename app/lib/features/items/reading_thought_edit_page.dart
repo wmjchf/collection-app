@@ -284,7 +284,7 @@ class _ReadingThoughtEditPageState extends State<ReadingThoughtEditPage> {
     });
   }
 
-  /// 开书图标：可提交则记为已保存并进阅读；否则仅预览阅读态。
+  /// 对勾：可提交则记为已保存并进阅读；否则仅预览阅读态。
   void _onBookTap() {
     if (_canCommit) {
       _sessionSaved = ThoughtEditResult(
@@ -516,7 +516,7 @@ class _ReadingThoughtEditPageState extends State<ReadingThoughtEditPage> {
                 tooltip: _canCommit ? '保存并阅读' : '阅读',
                 onPressed: _onBookTap,
                 icon: Icon(
-                  Icons.menu_book_outlined,
+                  Icons.check_rounded,
                   size: 22,
                   color: _canCommit ? _text : _muted,
                 ),
